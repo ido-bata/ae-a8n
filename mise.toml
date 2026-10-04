@@ -1,0 +1,30 @@
+[tools]
+node = "24"
+pnpm = "10"
+
+[env]
+NODE_ENV = "development"
+
+[tasks.build]
+description = "Compile TypeScript to dist/"
+run = "tsc -p tsconfig.build.json"
+
+[tasks.typecheck]
+description = "Type-check without emitting"
+run = "tsc -p tsconfig.json --noEmit"
+
+[tasks.lint]
+description = "Lint sources"
+run = "eslint src test --no-error-on-unmatched-pattern"
+
+[tasks.test]
+description = "Run unit tests"
+run = "vitest run"
+
+[tasks.test.watch]
+description = "Run unit tests in watch mode"
+run = "vitest"
+
+[tasks.check]
+description = "Full local quality gate"
+depends = ["typecheck", "lint", "test"]

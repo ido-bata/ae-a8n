@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# ae-a8n session scratch: request/result files, artifacts
+.a8n-tmp/
+
+# local task output
+.test-results/

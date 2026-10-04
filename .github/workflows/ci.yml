@@ -1,0 +1,38 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, "release-*"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install toolchain
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.9.12
+          install: true
+
+      - name: Install dependencies
+        run: mise exec -- npm ci
+
+      - name: Typecheck
+        run: mise exec -- npm run typecheck
+
+      - name: Lint
+        run: mise exec -- npm run lint
+
+      - name: Test
+        run: mise exec -- npm run test
+
+      - name: Build
+        run: mise exec -- npm run build
