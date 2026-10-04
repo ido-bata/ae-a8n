@@ -43,3 +43,17 @@ jobs:
       # normal suite; this keeps the check visible as a gate on its own.
       - name: Check the ES3 host script parses
         run: node --check host/a8n-host.js && node --check host/a8n-json.js
+
+      # The verification doc tells a real-host operator to paste a JSX probe
+      # into After Effects. That snippet has to be ES3 too, or the first thing
+      # it does is fail in a way that looks like a bridge problem.
+      - name: Check documented JSX snippets are ES3
+        run: node scripts/check-doc-snippets.js docs/verification.md
+
+      # This repository's tests import through relative paths, so a broken
+      # `exports` map is invisible to them: every test stayed green while
+      # `./testing` pointed at a file the build never produced, and consumers
+      # got ERR_MODULE_NOT_FOUND. This packs, installs into a clean project,
+      # and resolves the package the way a consumer does.
+      - name: Verify the packed package resolves as published
+        run: node scripts/check-packed-package.js
