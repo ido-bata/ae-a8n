@@ -77,6 +77,35 @@ in a CEP socket later does not move the protocol, the host script, or the API.
 - The fake host evaluates the *same* `host/a8n-host.js` in a `node:vm` context,
   with `JSON` removed, so the code path under test is the one production takes.
 
+## The publication rule
+
+A result is published by **rename within the same directory**, which is atomic:
+a reader sees either nothing or a whole envelope. That is a guarantee the
+protocol makes and the reader relies on, so it needs a stated failure story,
+not an assumption.
+
+The host retries the rename before giving up — on Windows a transient handle
+(antivirus, After Effects itself) is the usual cause. If every attempt fails it
+writes the result directly instead of discarding a computed result. That write
+is **not** atomic, and it is the only way a reader can observe a partial file.
+
+So the reader is defined accordingly: `probeResult` reports three states —
+`absent`, `unreadable`, `read` — and **only `read` counts as a result**. A file
+that exists but does not parse is *not ready*, not broken. The driver keeps
+polling, and only at the deadline does it report, naming the unparseable
+result rather than claiming a timeout.
+
+This was a real defect, found in review of the first draft of this branch:
+
+```text
+rename fails → direct write → poller reads part of it → ProtocolError
+```
+
+Every step of that chain is reachable, and the final error pointed at the
+protocol rather than at the publication failure that caused it. `test/publication.test.ts`
+executes the whole chain by making `File.rename` fail inside the real host
+script, so the guarantee is exercised rather than asserted.
+
 ## Evidence level
 
 | Claim | Level |
@@ -88,6 +117,12 @@ in a CEP socket later does not move the protocol, the host script, or the API.
 | `RenderQueue` PNG-sequence settings | **not verified here** — written to the documented API |
 | `ADBE Effect Parade` match-name lookup for third-party effects | **not verified here** — needs a real plugin installed |
 
-The first two rows are proven. Everything requiring an After Effects installation is
-written to the documented API and unproven; see `docs/verification.md` for what to
-run on a real host to close that gap.
+The first two rows are proven. The rest are unproven, and the unproven set is
+larger than this table: it also covers process launch and exit, AE's
+`File`/`Folder` semantics, flush and encoding behaviour, what happens when AE is
+already running, modal dialogs, plugin load failure, AE crash and hang, and
+path representation on each platform.
+
+**`docs/verification.md` is the authority on this**, and the full boundary it
+draws — confirmed versus not confirmed — should be read as the measure of what
+is still unknown, not as a list of loose ends to be tidied later.

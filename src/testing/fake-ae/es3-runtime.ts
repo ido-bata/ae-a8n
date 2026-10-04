@@ -157,6 +157,10 @@ export class FakeFile {
   }
 
   rename(newPath: string): boolean {
+    if (renameFailuresRemaining > 0) {
+      renameFailuresRemaining -= 1;
+      return false;
+    }
     try {
       renameSync(this.fsName, newPath);
       return true;
@@ -164,6 +168,30 @@ export class FakeFile {
       return false;
     }
   }
+}
+
+/**
+ * Fault injection for the host's publication step.
+ *
+ * The host publishes its result by rename and falls back to a direct write
+ * when that fails. That fallback is the one path where a reader can observe a
+ * half-written file, so it needs to be *executed* in tests rather than argued
+ * about. This makes `File.rename` fail on demand, which is the only way to
+ * reach it from outside the host script.
+ */
+let renameFailuresRemaining = 0;
+
+/** Make the next `count` `File.rename` calls return false. */
+export function failNextRenames(count: number): void {
+  renameFailuresRemaining = count;
+}
+
+export function resetRenameFaults(): void {
+  renameFailuresRemaining = 0;
+}
+
+export function renamesFailed(): number {
+  return renameFailuresRemaining;
 }
 
 export type HostGlobals = Record<string, unknown> & {
@@ -200,7 +228,11 @@ export function runHostScript(
   // tracks whichever file is currently executing — so a script that resolves a
   // sibling include sees its own directory, not the caller's. Both behaviours
   // are load-bearing for the host script.
-  const dollar: { evalFile: (target: string | FakeFile) => void; fileName: string } = {
+  const dollar: {
+    evalFile: (target: string | FakeFile) => void;
+    fileName: string;
+    sleep: (ms: number) => void;
+  } = {
     evalFile: (target: string | FakeFile): void => {
       const path = typeof target === "string" ? target : target.fsName;
       const included = readFileSync(path, "utf-8");
@@ -213,6 +245,16 @@ export function runHostScript(
       }
     },
     fileName: scriptPath,
+    // ExtendScript's blocking sleep. The host uses it between rename attempts;
+    // a real one is instant here, which is fine — the retry *count* is what the
+    // tests assert on, not the wall clock.
+    sleep: (ms: number): void => {
+      if (ms > 0) {
+        // Atomics.wait is the only genuinely blocking sleep in Node, which is
+        // what ExtendScript's `$.sleep` is.
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+      }
+    },
   };
 
   sandbox["$"] = dollar;

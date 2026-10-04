@@ -30,6 +30,9 @@ export {
   CloseOptions,
   FakeFile,
   FakeFolder,
+  failNextRenames,
+  renamesFailed,
+  resetRenameFaults,
   runHostScript,
 } from "./fake-ae/es3-runtime.js";
 export type { HostGlobals } from "./fake-ae/es3-runtime.js";

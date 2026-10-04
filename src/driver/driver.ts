@@ -24,7 +24,7 @@ import {
   REQUEST_POLL_MAX_INTERVAL_MS,
   createSessionPaths,
   nextRequestId,
-  readResultIfPresent,
+  probeResult,
   writeRequest,
   writeSessionManifest,
   type SessionPaths,
@@ -61,6 +61,8 @@ export type DriverOptions = {
   readonly hostScriptPath?: string;
   readonly trace: TraceRecorder;
   readonly defaultTimeoutMs?: number;
+  /** Budget for the post-launch readiness probe; a cold AE start is slow. */
+  readonly readinessTimeoutMs?: number;
 };
 
 export type CallOptions = {
@@ -70,6 +72,9 @@ export type CallOptions = {
 };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+
+/** A cold After Effects start can take a minute on a spinning disk. */
+const READINESS_TIMEOUT_MS = 180_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((done) => setTimeout(done, ms));
@@ -81,6 +86,7 @@ export class AeDriver {
   readonly #hostScriptPath: string;
   readonly #trace: TraceRecorder;
   readonly #defaultTimeoutMs: number;
+  readonly #readinessTimeoutMs: number;
   #started = false;
   #closed = false;
 
@@ -90,6 +96,9 @@ export class AeDriver {
     this.#hostScriptPath = options.hostScriptPath ?? DEFAULT_HOST_SCRIPT;
     this.#trace = options.trace;
     this.#defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS;
+    // A cold After Effects start is slow. Sharing the per-operation budget with
+    // the probe would report a healthy-but-slow host as a broken install.
+    this.#readinessTimeoutMs = options.readinessTimeoutMs ?? READINESS_TIMEOUT_MS;
 
     if (!existsSync(this.#hostScriptPath)) {
       throw new HostUnavailableError(`host script not found: ${this.#hostScriptPath}`);
@@ -128,7 +137,10 @@ export class AeDriver {
       // The probe and the teardown quit are lifecycle detail, not operations
       // the caller issued; naming them keeps the trace readable without
       // dropping the record.
-      const info = (await this.#call("app.info", {}, { timeoutMs: 15_000, opName: "session.probe" })) as {
+      const info = (await this.#call("app.info", {}, {
+        timeoutMs: this.#readinessTimeoutMs,
+        opName: "session.probe",
+      })) as {
         version: string;
         build?: string;
       };
@@ -239,11 +251,20 @@ export class AeDriver {
   > {
     const deadline = Date.now() + timeoutMs;
     let interval = REQUEST_POLL_INTERVAL_MS;
+    // Kept so a deadline reached with an unparseable file reports the real
+    // cause instead of a bare timeout.
+    let lastUnreadable: string | undefined;
 
     for (;;) {
-      const envelope = readResultIfPresent(this.#paths, id);
-      if (envelope !== null) {
-        const parsed = parseResultEnvelope(envelope);
+      const probe = probeResult(this.#paths, id);
+
+      if (probe.state === "unreadable") {
+        // The result exists but is not yet a whole envelope. The host publishes
+        // by rename, and falls back to a direct write when the rename fails;
+        // only that fallback can be observed half-written. Keep polling.
+        lastUnreadable = probe.reason;
+      } else if (probe.state === "read") {
+        const parsed = parseResultEnvelope(probe.envelope);
         if (parsed.ok) {
           const value = parsed.result;
           return {
@@ -262,12 +283,24 @@ export class AeDriver {
         };
       }
       if (Date.now() >= deadline) {
+        // A file that never became readable is a publication problem, not a
+        // slow host. Saying "timed out" here would send the reader looking in
+        // the wrong place entirely.
+        const cause =
+          lastUnreadable === undefined
+            ? null
+            : new ProtocolError(
+                `result file for ${method} (${id}) was never parseable: ${lastUnreadable}`,
+              );
         return {
           status: "error",
-          error: new TimeoutError(method, timeoutMs),
+          error: cause ?? new TimeoutError(method, timeoutMs),
           detail: {
-            args: { method, ...params, timeoutMs },
-            error: { name: "TimeoutError", message: `${method} timed out after ${timeoutMs}ms` },
+            args: { method, ...params, timeoutMs, ...(cause === null ? {} : { requestId: id }) },
+            error:
+              cause === null
+                ? { name: "TimeoutError", message: `${method} timed out after ${timeoutMs}ms` }
+                : { name: "ProtocolError", message: cause.message },
           },
         };
       }

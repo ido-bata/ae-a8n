@@ -20,7 +20,7 @@ var A8NJson = (function () {
     "\f": "\\f",
     "\n": "\\n",
     "\r": "\\r",
-    "\t": "\\t",
+    "\t": "\\t"
   };
 
   function quoteChar(ch) {
@@ -174,7 +174,7 @@ var A8NJson = (function () {
             f: "\f",
             n: "\n",
             r: "\r",
-            t: "\t",
+            t: "\t"
           };
           if (!simple.hasOwnProperty(esc)) {
             fail("invalid escape \\" + esc);
@@ -191,7 +191,7 @@ var A8NJson = (function () {
 
     function parseNumber() {
       var match = /^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)?/.exec(
-        text.substring(pos),
+        text.substring(pos)
       );
       if (match === null) {
         fail("invalid number");

@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ProtocolError, type RequestEnvelope } from "./envelope.js";
+import type { RequestEnvelope } from "./envelope.js";
 import { PROTOCOL_VERSION } from "./envelope.js";
 
 export const REQUEST_POLL_INTERVAL_MS = 10;
@@ -82,29 +82,40 @@ export function writeRequest(paths: SessionPaths, request: RequestEnvelope): str
 }
 
 /**
- * Returns the parsed result file, or `null` if the host has not written one yet.
+ * What is currently readable at a result path.
  *
- * The return type is `unknown`, not `ResultEnvelope`, because the contents are
- * **not** validated here — `parseResultEnvelope` does that. Typing this as an
- * envelope would let a caller skip the one check the bridge protocol exists to
- * provide, and `unknown` already subsumes `null`, so the null case is carried
- * by this contract rather than by the type.
+ * Three states, not two, and the third is the point. A result file that exists
+ * but does not parse is **not ready**, not broken: the host publishes by
+ * rename so that a reader never sees a partial envelope, but it falls back to a
+ * direct write if the rename fails, and that write is not atomic. A poller that
+ * treated the first read as final would convert a transient publication
+ * failure into a permanent `ProtocolError` — which is both wrong and very far
+ * from the real cause.
  */
-export function readResultIfPresent(paths: SessionPaths, id: string): unknown {
+export type ResultProbe =
+  | { readonly state: "absent" }
+  | { readonly state: "unreadable"; readonly reason: string }
+  | { readonly state: "read"; readonly envelope: unknown };
+
+/**
+ * Inspects a result file without deciding whether it is usable.
+ *
+ * The `read` state's payload is `unknown`, not `ResultEnvelope`, because the
+ * contents are **not** validated here — `parseResultEnvelope` does that. Typing
+ * it as an envelope would let a caller skip the one check the bridge protocol
+ * exists to provide.
+ */
+export function probeResult(paths: SessionPaths, id: string): ResultProbe {
   const path = join(paths.outbox, `${id}.result.json`);
   const raw = readIfPresent(path);
   if (raw === null) {
-    return null;
+    return { state: "absent" };
   }
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    return { state: "read", envelope: JSON.parse(raw) };
   } catch (error) {
-    throw new ProtocolError(
-      `result file for ${id} is not valid JSON: ${(error as Error).message}`,
-    );
+    return { state: "unreadable", reason: (error as Error).message };
   }
-  return parsed;
 }
 
 export function writeSessionManifest(

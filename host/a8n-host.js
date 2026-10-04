@@ -65,7 +65,7 @@
   function toErrorPayload(error) {
     var payload = {
       name: "Error",
-      message: "unknown host error",
+      message: "unknown host error"
     };
     if (error === null || typeof error !== "object") {
       payload.message = String(error);
@@ -257,7 +257,7 @@
   methods["project.close"] = function (params) {
     var save = optionalParam(params, "save", false);
     getProject().close(
-      save ? CloseOptions.SAVE_CHANGES : CloseOptions.DO_NOT_SAVE_CHANGES,
+      save ? CloseOptions.SAVE_CHANGES : CloseOptions.DO_NOT_SAVE_CHANGES
     );
     return { closed: true };
   };
@@ -267,7 +267,7 @@
     return {
       file: project.file === null ? null : String(project.file.fsName),
       name: project.file === null ? null : String(project.file.name),
-      itemCount: project.numItems,
+      itemCount: project.numItems
     };
   };
 
@@ -283,7 +283,7 @@
           height: item.height,
           duration: item.duration,
           frameRate: item.frameRate,
-          layerCount: item.numLayers,
+          layerCount: item.numLayers
         });
       }
     }
@@ -298,7 +298,7 @@
       height: comp.height,
       duration: comp.duration,
       frameRate: comp.frameRate,
-      layerCount: comp.numLayers,
+      layerCount: comp.numLayers
     };
   };
 
@@ -336,7 +336,7 @@
     return {
       name: result.effect.name,
       matchName: result.effect.matchName,
-      created: result.created,
+      created: result.created
     };
   };
 
@@ -428,7 +428,7 @@
       path: rendered === null ? String(target.fsName) : rendered,
       frame: frame,
       width: comp.width,
-      height: comp.height,
+      height: comp.height
     };
   };
 
@@ -492,7 +492,7 @@
         id: request.id,
         ok: true,
         durationMs: new Date().getTime() - started,
-        result: result === undefined ? null : result,
+        result: result === undefined ? null : result
       };
     } catch (error) {
       var id = "unknown";
@@ -504,22 +504,44 @@
         id: id,
         ok: false,
         durationMs: new Date().getTime() - started,
-        error: toErrorPayload(error),
+        error: toErrorPayload(error)
       };
     }
 
-    // Publish by rename so the driver never reads a partial envelope.
-    var staging = String(context.result) + ".part";
-    writeTextFile(staging, codec.stringify(envelope));
-    var stagingFile = new File(staging);
-    var finalFile = new File(context.result);
-    if (finalFile.exists) {
-      finalFile.remove();
+    // Publish by rename so the driver never reads a partial envelope. A
+    // rename on the same directory is atomic; a direct write is not, and the
+    // driver can only tell the difference by refusing to read a half-written
+    // file. So the atomic path is worth retrying before giving it up — on
+    // Windows a transient handle (antivirus, AE itself) is the usual cause.
+    publishResult(String(context.result), codec.stringify(envelope));
+  }
+
+  var PUBLISH_ATTEMPTS = 3;
+  var PUBLISH_RETRY_MS = 50;
+
+  function publishResult(resultPath, text) {
+    var staging = resultPath + ".part";
+    writeTextFile(staging, text);
+    var finalFile = new File(resultPath);
+
+    for (var attempt = 0; attempt < PUBLISH_ATTEMPTS; attempt++) {
+      var stagingFile = new File(staging);
+      // ExtendScript's rename refuses an existing destination.
+      if (finalFile.exists) {
+        finalFile.remove();
+      }
+      if (stagingFile.rename(finalFile.fsName)) {
+        return;
+      }
+      if (attempt + 1 < PUBLISH_ATTEMPTS) {
+        $.sleep(PUBLISH_RETRY_MS);
+      }
     }
-    if (!stagingFile.rename(finalFile.fsName)) {
-      // Fall back to a direct write: correctness over atomicity.
-      writeTextFile(context.result, codec.stringify(envelope));
-    }
+
+    // Every atomic attempt failed. Write anyway rather than lose a computed
+    // result: the driver tolerates a partial read, so this degrades latency
+    // rather than correctness.
+    writeTextFile(resultPath, text);
   }
 
   main();

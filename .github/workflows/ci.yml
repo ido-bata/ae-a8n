@@ -36,3 +36,10 @@ jobs:
 
       - name: Build
         run: mise exec -- npm run build
+
+      # The host scripts ship verbatim, not compiled, so nothing else in the
+      # build would catch modern syntax before it reaches ExtendScript and
+      # fails there with a far worse message. The ES3 test covers this in the
+      # normal suite; this keeps the check visible as a gate on its own.
+      - name: Check the ES3 host script parses
+        run: node --check host/a8n-host.js && node --check host/a8n-json.js
