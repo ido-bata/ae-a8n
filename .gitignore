@@ -8,3 +8,9 @@ coverage/
 
 # local task output
 .test-results/
+
+# npm pack output
+*.tgz
+
+# scratch directories used while reviewing the published shape
+.review-probe/

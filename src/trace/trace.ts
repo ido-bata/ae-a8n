@@ -72,9 +72,15 @@ function redact(value: unknown, depth: number): unknown {
 export type TraceSink = (event: TraceEvent) => void;
 
 /**
- * Buffers nothing and swallows nothing: a trace write that throws would mask
- * the operation result the caller actually cares about, so failures are
- * reported to the sink's own error channel instead of propagating.
+ * A trace write that throws must not mask the operation result the caller
+ * actually asked for, so failures never propagate. They are routed to
+ * `onError` instead.
+ *
+ * With no `onError` configured, a write failure is **discarded**. That is a
+ * real gap: the trace is the primary evidence a failed run is diagnosed from,
+ * so a full disk or an unwritable path would leave a session that looks fine
+ * with an empty trace and no hint why. Pass `onError` unless the trace is
+ * known to be optional.
  */
 export class TraceRecorder {
   readonly #file: string | undefined;

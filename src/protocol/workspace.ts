@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ProtocolError, type RequestEnvelope, type ResultEnvelope } from "./envelope.js";
+import { ProtocolError, type RequestEnvelope } from "./envelope.js";
 import { PROTOCOL_VERSION } from "./envelope.js";
 
 export const REQUEST_POLL_INTERVAL_MS = 10;
@@ -81,10 +81,16 @@ export function writeRequest(paths: SessionPaths, request: RequestEnvelope): str
   return path;
 }
 
-export function readResultIfPresent(
-  paths: SessionPaths,
-  id: string,
-): ResultEnvelope | null {
+/**
+ * Returns the parsed result file, or `null` if the host has not written one yet.
+ *
+ * The return type is `unknown`, not `ResultEnvelope`, because the contents are
+ * **not** validated here — `parseResultEnvelope` does that. Typing this as an
+ * envelope would let a caller skip the one check the bridge protocol exists to
+ * provide, and `unknown` already subsumes `null`, so the null case is carried
+ * by this contract rather than by the type.
+ */
+export function readResultIfPresent(paths: SessionPaths, id: string): unknown {
   const path = join(paths.outbox, `${id}.result.json`);
   const raw = readIfPresent(path);
   if (raw === null) {
@@ -98,7 +104,7 @@ export function readResultIfPresent(
       `result file for ${id} is not valid JSON: ${(error as Error).message}`,
     );
   }
-  return parsed as ResultEnvelope;
+  return parsed;
 }
 
 export function writeSessionManifest(
