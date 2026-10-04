@@ -11,6 +11,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { entryScriptPath, writeBootstrapScript } from "./bootstrap.js";
+import { READINESS_TIMEOUT_MS } from "./script-invocation.js";
 import type { HostTransport } from "./transport.js";
 import {
   HostError,
