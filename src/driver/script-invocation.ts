@@ -10,16 +10,19 @@
  *            therefore not waited on; the driver's result-file poll is what
  *            reports success or timeout.
  *
- *   macOS    `osascript` → `tell application "Adobe After Effects" to DoScript`
- *            Synchronous, and the script's result comes back on stdout.
+ *   macOS    `osascript` → `tell application <bundle path>` → `DoScriptFile`
+ *            Synchronous. The bundle is addressed by path, not by name: the
+ *            name differs per release (`Adobe After Effects 2026`) and the
+ *            bare `Adobe After Effects` does not resolve to AE at all, which
+ *            makes osascript fail to compile the script (-2741).
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, unlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { resolveInstall, type AfterEffectsInstall } from "./install-path.js";
+import { macAppBundle, resolveInstall, type AfterEffectsInstall } from "./install-path.js";
 import type { HostTransport } from "./transport.js";
 
 export type ScriptInvocationOptions = {
@@ -35,15 +38,61 @@ export type ScriptInvocationOptions = {
 /** A cold After Effects start can take a minute on a spinning disk. */
 export const READINESS_TIMEOUT_MS = 180_000;
 
-function escapeAppleScriptString(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+/**
+ * Runs `DoScriptFile` against the application at a path, both taken from argv.
+ *
+ * Neither path is ever spliced into AppleScript source, so nothing needs
+ * escaping. That forces the raw event code: with the target only known at run
+ * time the compiler cannot look up the `DoScriptFile` term in AE's dictionary.
+ * `miscfile` is the code AE's sdef declares for it.
+ */
+export const MAC_DO_SCRIPT_FILE = [
+  "on run argv",
+  "  tell application (item 1 of argv)",
+  "    «event miscfile» (item 2 of argv)",
+  "  end tell",
+  "end run",
+];
+
+/** Keeps a failure report bounded however much a process writes. */
+export const MAX_DIAGNOSTIC_CHARS = 4_000;
+
+/**
+ * Trims process output into something safe to put in an error and a trace:
+ * bounded in size, and with the home directory replaced so a shared trace
+ * does not carry the user's account name.
+ */
+export function summariseProcessOutput(output: string, home: string = homedir()): string {
+  let text = output.trim();
+  if (home.length > 1) {
+    text = text.split(home).join("~");
+  }
+  if (text.length > MAX_DIAGNOSTIC_CHARS) {
+    const omitted = text.length - MAX_DIAGNOSTIC_CHARS;
+    text = `${text.slice(0, MAX_DIAGNOSTIC_CHARS)}… [${omitted} more characters]`;
+  }
+  return text;
+}
+
+/** A launcher process that failed, with what it said about why. */
+export class ScriptInvocationError extends Error {
+  readonly exitCode: number | null;
+  readonly stderr: string;
+
+  constructor(command: string, exitCode: number | null, stderr: string) {
+    super(
+      `${command} exited with code ${exitCode ?? "null"}` + (stderr.length > 0 ? `: ${stderr}` : ""),
+    );
+    this.name = "ScriptInvocationError";
+    this.exitCode = exitCode;
+    this.stderr = stderr;
+  }
 }
 
 export class ScriptInvocationTransport implements HostTransport {
   readonly kind = "script-invocation";
   readonly #install: AfterEffectsInstall;
   readonly #platform: NodeJS.Platform;
-  #scriptCount = 0;
 
   constructor(options: ScriptInvocationOptions = {}) {
     const platform = options.platform ?? process.platform;
@@ -89,19 +138,17 @@ export class ScriptInvocationTransport implements HostTransport {
       return;
     }
     if (this.#platform === "darwin") {
-      const scriptPath = this.#writeAppleScript(entryScriptPath);
-      try {
-        // `DoScript` takes a string of JavaScript; `$.evalFile` is how a file
-        // on disk becomes one, and avoids guessing whether AE would accept the
-        // bare path.
-        await this.#runAppleScript(scriptPath);
-      } finally {
-        try {
-          unlinkSync(scriptPath);
-        } catch {
-          // Best effort; the file is in the OS temp directory.
-        }
+      const bundle = macAppBundle(this.#install.executable);
+      if (bundle === null) {
+        throw new Error(
+          `cannot address After Effects by AppleScript: ${this.#install.executable} is not inside an .app bundle`,
+        );
       }
+      await this.#run("/", "osascript", [
+        ...MAC_DO_SCRIPT_FILE.flatMap((line) => ["-e", line]),
+        bundle,
+        entryScriptPath,
+      ]);
       return;
     }
     throw new Error(
@@ -115,24 +162,6 @@ export class ScriptInvocationTransport implements HostTransport {
     // project first. Killing the process here would discard unsaved state.
   }
 
-  #writeAppleScript(entryScriptPath: string): string {
-    // Unique per invocation: two concurrent sessions must not share a scratch
-    // file.
-    this.#scriptCount += 1;
-    const path = join(tmpdir(), `a8n-${process.pid}-${this.#scriptCount}.scpt`);
-    const body = [
-      'tell application "Adobe After Effects"',
-      `  DoScript "$.evalFile(new File(\\"${escapeAppleScriptString(entryScriptPath)}\\"))"`,
-      "end tell",
-    ].join("\n");
-    writeFileSync(path, body, "utf-8");
-    return path;
-  }
-
-  #runAppleScript(scriptPath: string): Promise<void> {
-    return this.#run("/", "osascript", [scriptPath]);
-  }
-
   /**
    * Runs a process and resolves when it exits. Errors are surfaced, except
    * where noted in `invoke` for Windows.
@@ -141,8 +170,17 @@ export class ScriptInvocationTransport implements HostTransport {
     return new Promise((resolve, reject) => {
       const child = spawn(command, [...args], {
         cwd,
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", "pipe"],
         windowsHide: true,
+      });
+      // Only the head is kept: a runaway process must not grow this without
+      // bound, and the cause of a launcher failure is in the first lines.
+      let stderr = "";
+      child.stderr.setEncoding("utf-8");
+      child.stderr.on("data", (chunk: string) => {
+        if (stderr.length <= MAX_DIAGNOSTIC_CHARS) {
+          stderr += chunk;
+        }
       });
       child.on("error", reject);
       child.on("close", (code) => {
@@ -157,9 +195,7 @@ export class ScriptInvocationTransport implements HostTransport {
           resolve();
           return;
         }
-        reject(
-          new Error(`${command} ${args.join(" ")} exited with code ${code ?? "null"}`),
-        );
+        reject(new ScriptInvocationError(command, code, summariseProcessOutput(stderr)));
       });
     });
   }

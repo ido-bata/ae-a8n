@@ -227,8 +227,14 @@
 
   methods["app.info"] = function () {
     var info = { version: String(app.version) };
+    // AE exposes the build as `app.buildNumber`; `app.build` is undefined on a
+    // real host (observed on 26.5x89). An absent value is left out rather than
+    // reported as the string "undefined".
     try {
-      info.build = String(app.build);
+      var build = app.buildNumber;
+      if (build !== undefined && build !== null && String(build) !== "") {
+        info.build = String(build);
+      }
     } catch (e) {
       // build is not guaranteed; version alone is enough for a readiness probe.
     }
@@ -519,10 +525,32 @@
   var PUBLISH_ATTEMPTS = 3;
   var PUBLISH_RETRY_MS = 50;
 
+  /** The last path segment, taken from the string so nothing is URI-encoded. */
+  function fileNameOf(path) {
+    var slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+    return slash < 0 ? path : path.substring(slash + 1);
+  }
+
+  /**
+   * Publishes `text` at `resultPath` and says how: "rename" or "direct".
+   *
+   * "rename": the result appeared whole, by renaming a fully written staging
+   * file in the same directory. A reader can never observe part of it.
+   *
+   * "direct": every rename failed and the result was written in place. A
+   * reader *can* observe a partial file; the driver re-reads until the
+   * envelope parses, so this costs latency, not correctness.
+   *
+   * Either way no staging file is left behind.
+   */
   function publishResult(resultPath, text) {
     var staging = resultPath + ".part";
     writeTextFile(staging, text);
     var finalFile = new File(resultPath);
+    // ExtendScript's `File.rename` takes a new *name* and keeps the file in
+    // its directory; given a full path it returns false (observed on AE
+    // 26.5x89). Passing a path would make every publication non-atomic.
+    var finalName = fileNameOf(resultPath);
 
     for (var attempt = 0; attempt < PUBLISH_ATTEMPTS; attempt++) {
       var stagingFile = new File(staging);
@@ -530,8 +558,8 @@
       if (finalFile.exists) {
         finalFile.remove();
       }
-      if (stagingFile.rename(finalFile.fsName)) {
-        return;
+      if (stagingFile.rename(finalName)) {
+        return "rename";
       }
       if (attempt + 1 < PUBLISH_ATTEMPTS) {
         $.sleep(PUBLISH_RETRY_MS);
@@ -539,9 +567,13 @@
     }
 
     // Every atomic attempt failed. Write anyway rather than lose a computed
-    // result: the driver tolerates a partial read, so this degrades latency
-    // rather than correctness.
+    // result, then drop the staging copy so it does not accumulate.
     writeTextFile(resultPath, text);
+    var leftover = new File(staging);
+    if (leftover.exists) {
+      leftover.remove();
+    }
+    return "direct";
   }
 
   main();

@@ -156,13 +156,23 @@ export class FakeFile {
     return true;
   }
 
-  rename(newPath: string): boolean {
+  /**
+   * Matches ExtendScript: the argument is a new *name*, and the file stays in
+   * its directory. A path is refused with `false` — that is what real AE does
+   * (observed on 26.5x89), and accepting one here is what let a host that
+   * passed full paths look atomic under test while never being so on a host.
+   */
+  rename(newName: string): boolean {
     if (renameFailuresRemaining > 0) {
       renameFailuresRemaining -= 1;
       return false;
     }
+    if (newName.length === 0 || /[\\/]/.test(newName)) {
+      return false;
+    }
     try {
-      renameSync(this.fsName, newPath);
+      renameSync(this.fsName, joinPath(dirname(this.fsName), newName));
+      renameSuccesses += 1;
       return true;
     } catch {
       return false;
@@ -180,6 +190,7 @@ export class FakeFile {
  * reach it from outside the host script.
  */
 let renameFailuresRemaining = 0;
+let renameSuccesses = 0;
 
 /** Make the next `count` `File.rename` calls return false. */
 export function failNextRenames(count: number): void {
@@ -188,6 +199,16 @@ export function failNextRenames(count: number): void {
 
 export function resetRenameFaults(): void {
   renameFailuresRemaining = 0;
+  renameSuccesses = 0;
+}
+
+/**
+ * `File.rename` calls that succeeded since the last reset. A publication that
+ * fell back to a direct write leaves this unchanged, so a test can tell the
+ * atomic path from the fallback even though both leave no `.part` behind.
+ */
+export function renamesSucceeded(): number {
+  return renameSuccesses;
 }
 
 export function renamesFailed(): number {

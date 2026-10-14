@@ -90,22 +90,28 @@ On a machine with After Effects installed:
 
 ### Run the sequence directly
 
-Write this JSX and run it with `AfterFX.exe -r path\to\probe.jsx`:
+Write this JSX. It must not use `JSON`: AE's ExtendScript has no `JSON`
+object (`typeof JSON === "undefined"` on AE 26.5x89), which is why the host
+ships its own codec. The build is `app.buildNumber`; `app.build` is undefined.
 
 ```js
 (function () {
-  var out = new File("~/ae-probe-result.json");
+  var out = new File(Folder.temp.fsName + "/ae-probe-result.txt");
   out.encoding = "UTF-8";
+  out.lineFeed = "Unix";
   out.open("w");
-  out.write(
-    JSON.stringify({
-      version: String(app.version),
-      build: String(app.build)
-    })
-  );
+  out.write("version=" + app.version + "\n");
+  out.write("buildNumber=" + app.buildNumber + "\n");
   out.close();
 })();
 ```
+
+Run it:
+
+- Windows: `AfterFX.exe -r path\to\probe.jsx`
+- macOS: `osascript -e 'tell application "Adobe After Effects 2026" to DoScriptFile "/path/to/probe.jsx"'`
+  — name the installed release; the bare `"Adobe After Effects"` does not
+  resolve to AE and osascript fails to compile the line (-2741).
 
 If the result file appears with a version in it, the transport's premise holds on
 this machine. If it does not, nothing above `ae-a8n` is worth debugging yet.

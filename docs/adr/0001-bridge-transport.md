@@ -20,10 +20,17 @@ Grounded on the existing, maintained implementation in
 | Interface | Usable externally | Windows | macOS | Deterministic | Verdict |
 | --- | --- | --- | --- | --- | --- |
 | `AfterFX.exe -r <script.jsx>` | yes | native | n/a | yes | **adopted** |
-| `osascript` → `tell application "Adobe After Effects" to DoScript` | yes | n/a | native | yes | **adopted** |
+| `osascript` → `tell application <bundle path>` → `DoScriptFile` | yes | n/a | native | yes | **adopted** (see note) |
 | `aerender -r <script>` | yes | native | native | yes | render only; later candidate |
 | CEP panel + Node socket | yes | needs a host-side install | needs a host-side install | yes | deferred |
 | UXP | no | — | — | — | AE is not a UXP host |
+
+Note (macOS, amended after the first real-host run on AE 26.5x89): the bare
+application name `"Adobe After Effects"` does not resolve to AE — osascript
+fails to compile with -2741. The transport therefore addresses the discovered
+`.app` bundle by path and sends `DoScriptFile` as its raw event (`miscfile`),
+with the bundle and script paths passed as `argv` so neither is spliced into
+AppleScript source.
 | UI automation / image recognition | yes | fragile | fragile | no | last resort, never for model operations |
 
 A prerequisite both adopted paths share: **After Effects → Preferences → General →
@@ -47,7 +54,7 @@ channel on both platforms.**
 
 ```text
 driver ──writes──▶  inbox/<id>.request.json
-      ──launches─▶  AfterFX.exe -r <id>.entry.jsx   |   osascript … DoScript
+      ──launches─▶  AfterFX.exe -r <id>.entry.jsx   |   osascript … DoScriptFile
                     host/a8n-host.js  reads request, dispatches, writes
       ◀─polls────  outbox/<id>.result.json
 ```

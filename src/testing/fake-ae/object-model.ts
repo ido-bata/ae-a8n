@@ -379,7 +379,8 @@ export class FakeProject {
 
 export class FakeApplication {
   version = "26.0.0";
-  build = "0";
+  // Real AE has `buildNumber` and no `build` (observed on 26.5x89).
+  buildNumber = 0;
   project = new FakeProject();
   #quitCount = 0;
   /** Every project the fake has opened, in order. */
