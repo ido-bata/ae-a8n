@@ -38,6 +38,11 @@ const gate = (await import(pathToFileURL(gatePath).href)) as {
   MANUAL_FIRST_PUBLISH: string;
 };
 
+const stage = (await import(pathToFileURL(fileURLToPath(new URL("../scripts/stage-publish.js", import.meta.url))).href)) as {
+  versionAtLeast: (a: string, b: string) => boolean;
+  MINIMUM_NPM: string;
+};
+
 const NEXT = "0.1.0-alpha.1";
 const SHA = "459a618f74a3e7937fe794f2343497d729c0ed90";
 
@@ -260,20 +265,36 @@ describe("the gate as the workflow runs it", () => {
 
 describe("the publish workflow", () => {
   const workflow = readFileSync(new URL("../.github/workflows/publish.yml", import.meta.url), "utf-8");
-  const publishJob = workflow.slice(workflow.indexOf("\n  publish:"));
+  const stageJob = workflow.slice(workflow.indexOf("\n  stage:"));
+  const code = workflow
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .join("\n");
 
-  it("publishes only on the gate's word", () => {
-    expect(publishJob).toMatch(/^\s+if: needs\.verify\.outputs\.publish == 'true'$/m);
+  it("sends anything to npm only on the gate's word", () => {
+    expect(stageJob).toMatch(/^\s+if: needs\.verify\.outputs\.publish == 'true'$/m);
     expect(workflow).toContain("NPM_PUBLISH_VERSION: ${{ vars.NPM_PUBLISH_VERSION }}");
-    const code = workflow
-      .split("\n")
-      .filter((line) => !line.trimStart().startsWith("#"))
-      .join("\n");
     expect(code).not.toMatch(/NPM_PUBLISH_ENABLED|NPM_TOKEN|NODE_AUTH_TOKEN|secrets\./);
   });
 
-  it("publishes the tarball the gate checked", () => {
-    expect(publishJob).toContain("EXPECTED_SHASUM: ${{ needs.verify.outputs.shasum }}");
+  it("stages and never publishes directly", () => {
+    expect(code).not.toMatch(/npm publish/);
+    expect(stageJob).toContain("node scripts/stage-publish.js");
+    expect(stageJob).not.toContain("--dry-run");
+  });
+
+  it("stages the tarball the gate checked", () => {
+    expect(stageJob).toContain("EXPECTED_SHASUM: ${{ needs.verify.outputs.shasum }}");
+  });
+
+  it("pins one npm CLI, new enough for npm stage, in both jobs", () => {
+    const pinned = /NPM_CLI_VERSION: "(\d+\.\d+\.\d+)"/.exec(workflow)?.[1];
+    expect(pinned).toBeDefined();
+    expect(stage.versionAtLeast(pinned ?? "0.0.0", stage.MINIMUM_NPM)).toBe(true);
+    expect(workflow.match(/- name: Pin the npm CLI/g)).toHaveLength(2);
+    expect(workflow.indexOf("Pin the npm CLI", workflow.indexOf("\n  stage:"))).toBeLessThan(
+      workflow.indexOf("stage-publish.js", workflow.indexOf("\n  stage:")),
+    );
   });
 
   it("names no environment, which on this plan would be created unprotected", () => {
@@ -284,7 +305,7 @@ describe("the publish workflow", () => {
     expect(workflow).toMatch(/fetch-depth: 0/);
   });
 
-  it("does not dry-run over a published version, which npm refuses", () => {
-    expect(workflow).toMatch(/- name: Publish \(dry run\)\n\s+if: steps\.gate\.outputs\.registry != 'present'/);
+  it("does not rehearse staging a published version", () => {
+    expect(workflow).toMatch(/- name: Stage \(dry run\)\n\s+if: steps\.gate\.outputs\.registry != 'present'/);
   });
 });
