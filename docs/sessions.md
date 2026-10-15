@@ -52,10 +52,14 @@ an ExtendScript cannot be interrupted from outside. So a timeout ends the
 - **The next call** waits for that script to finish before sending its own,
   within the next call's deadline. If it is still running at that deadline,
   the next call times out too, without having been sent.
-- **Retrying** is not done for you, and is not safe in general: a retry of a
-  timed-out `applyEffect` runs after the first one has finished, and the
-  layer ends up with the effect twice. Retry only operations that are safe to
-  repeat, or read the state back first.
+- **Retrying** is not done for you. A retry runs after the timed-out
+  script has finished, so it sees that script's effects. The host's own
+  operations are written to be repeatable: `layer.applyEffect` returns an
+  effect with that identifier if the layer already has one (on AE 26.5x89, a
+  retry after a timed-out apply left exactly one effect and reported
+  `created: false`), `effect.setParameter` writes an absolute value, and
+  `comp.renderFrame` overwrites its file. Anything a caller builds on top
+  that is not repeatable has to read the state back before retrying.
 - **`close()`** sends `app.quit` the same way: it waits for a script still
   running, within the quit's 10 s budget. If that runs out, `close()` rejects
   with `TimeoutError`, AE is left running, and the quit was never sent.
