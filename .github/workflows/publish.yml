@@ -71,7 +71,9 @@ jobs:
           mise exec -- node scripts/check-public-api.js
 
       - name: Pack
-        run: mise exec -- npm pack --pack-destination "$RUNNER_TEMP/package"
+        run: |
+          mkdir -p "$RUNNER_TEMP/package"
+          mise exec -- npm pack --pack-destination "$RUNNER_TEMP/package"
 
       - name: Publish (dry run)
         run: mise exec -- npm publish "$RUNNER_TEMP"/package/*.tgz --dry-run --tag next --access public --provenance=false
