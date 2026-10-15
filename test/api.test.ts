@@ -8,7 +8,7 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AfterEffects, EntityNotFoundError } from "../src/index.js";
@@ -65,7 +65,9 @@ describe("the documented flow", () => {
     const frame = await comp.renderFrame(3, { subdirectory: "smoke" });
 
     expect(frame.path.startsWith(ae.artifactsDir)).toBe(true);
-    expect(frame.path).toContain(join("smoke", "Main.00003.png"));
+    // The fake host joins with "/" where a real AE reports a native path, so
+    // compare separators-normalised; on Windows this is `smoke/Main…` vs `smoke\Main…`.
+    expect(normalize(frame.path)).toContain(join("smoke", "Main.00003.png"));
     // The session made these edits itself; discarding them is the point.
     await ae.close({ unsavedChanges: "discard" });
   });

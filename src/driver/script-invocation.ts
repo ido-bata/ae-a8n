@@ -18,6 +18,7 @@
  */
 
 import { execFileSync, spawn } from "node:child_process";
+import type { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -39,7 +40,20 @@ export type ScriptInvocationOptions = {
   readonly processes?: () => readonly HostProcess[];
   /** The clock ownership is judged against. Mainly a test seam. */
   readonly now?: () => number;
+  /** Starts the Windows launcher. Mainly a test seam. */
+  readonly spawnLauncher?: SpawnLauncher;
 };
+
+/** What the Windows launcher needs from a child process. */
+export interface LauncherChild extends Pick<EventEmitter, "on"> {
+  unref(): void;
+}
+
+export type SpawnLauncher = (
+  command: string,
+  args: readonly string[],
+  options: { readonly cwd: string; readonly detached: boolean; readonly stdio: "ignore"; readonly windowsHide: boolean },
+) => LauncherChild;
 
 export type HostProcess = {
   readonly pid: number;
@@ -168,6 +182,7 @@ export class ScriptInvocationTransport implements HostTransport {
   readonly #exitTimeoutMs: number;
   readonly #processes: () => readonly HostProcess[];
   readonly #now: () => number;
+  readonly #spawnLauncher: SpawnLauncher;
   /** Host processes already running when launch() began. */
   #preexisting: readonly HostProcess[] | null = null;
   #launchBegan = 0;
@@ -185,6 +200,7 @@ export class ScriptInvocationTransport implements HostTransport {
     this.#exitTimeoutMs = options.exitTimeoutMs ?? EXIT_TIMEOUT_MS;
     this.#processes = options.processes ?? psProcesses;
     this.#now = options.now ?? Date.now;
+    this.#spawnLauncher = options.spawnLauncher ?? spawn;
     this.#install =
       options.install ??
       resolveInstall(platform, {
@@ -227,7 +243,10 @@ export class ScriptInvocationTransport implements HostTransport {
     if (this.#platform !== "win32") {
       return;
     }
-    await this.#run(join(this.#install.executable, ".."), this.#install.executable, []);
+    // No arguments: this is After Effects itself, not a command that finishes.
+    // Waiting for it to exit would hold the session until AE quit and the
+    // readiness probe would never run, so only the start is awaited.
+    await this.#startWindows([]);
   }
 
   confirmLaunched(): void {
@@ -293,12 +312,11 @@ export class ScriptInvocationTransport implements HostTransport {
 
   async invoke(entryScriptPath: string, options: InvokeOptions = {}): Promise<void> {
     if (this.#platform === "win32") {
-      // No signal: on a cold start `AfterFX.exe -r` *is* After Effects, and
-      // the process returns without waiting for the script anyway.
-      await this.#run(join(this.#install.executable, ".."), this.#install.executable, [
-        "-r",
-        entryScriptPath,
-      ]);
+      // Not waited on: on a cold start `AfterFX.exe -r` *is* After Effects,
+      // and when AE is already running it hands the script over and exits with
+      // a status that says nothing about the script. The result file is the
+      // authority, and the driver's deadline covers it.
+      await this.#startWindows(["-r", entryScriptPath]);
       return;
     }
     if (this.#platform === "darwin") {
@@ -368,9 +386,36 @@ export class ScriptInvocationTransport implements HostTransport {
   }
 
   /**
-   * Runs a process and resolves when it exits. Errors are surfaced, except
-   * where noted in `invoke` for Windows.
+   * Starts `AfterFX.exe` and resolves once the process exists, not when it
+   * exits. Rejects if it cannot be started at all (missing executable, access
+   * denied). The child is detached and unreferenced so it neither keeps this
+   * process alive nor dies with it, and it is never signalled: a launcher that
+   * exits early (a hand-off to a running AE) is normal, and this transport has
+   * no evidence about which process it would be killing.
    */
+  #startWindows(args: readonly string[]): Promise<void> {
+    const executable = this.#install.executable;
+    return new Promise((resolve, reject) => {
+      const child = this.#spawnLauncher(executable, args, {
+        cwd: join(executable, ".."),
+        detached: true,
+        stdio: "ignore",
+        // AfterFX.exe is a GUI application; hiding it would also hide any
+        // dialog it raises.
+        windowsHide: false,
+      });
+      // `on`, not `once`: an error after the spawn must still be handled.
+      child.on("error", (error: Error) => {
+        reject(new Error(`cannot start ${executable}: ${error.message}`, { cause: error }));
+      });
+      child.on("spawn", () => {
+        child.unref();
+        resolve();
+      });
+    });
+  }
+
+  /** Runs a process and resolves when it exits. A non-zero exit is an error. */
   #run(cwd: string, command: string, args: readonly string[]): Promise<void> {
     return new Promise((resolve, reject) => {
       const child = spawn(command, [...args], {
@@ -389,14 +434,7 @@ export class ScriptInvocationTransport implements HostTransport {
       });
       child.on("error", reject);
       child.on("close", (code) => {
-        // Windows reports a non-zero exit from `AfterFX.exe -r` even when the
-        // script ran correctly, because the process hands off to an existing
-        // instance. The result file is the authority there, not the exit code.
-        if (this.#platform === "win32" && code !== 0 && args.length > 0) {
-          resolve();
-          return;
-        }
-        if (code === 0) {
+          if (code === 0) {
           resolve();
           return;
         }
