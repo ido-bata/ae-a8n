@@ -98,7 +98,9 @@ ships its own codec. The build is `app.buildNumber`; `app.build` is undefined.
 
 ```js
 (function () {
-  var out = new File(Folder.temp.fsName + "/ae-probe-result.txt");
+  // Next to this file. (`Folder.temp` is not the shell's temp directory: on
+  // macOS it is $TMPDIR/TemporaryItems.)
+  var out = new File(new File($.fileName).parent.fsName + "/ae-probe-result.txt");
   out.encoding = "UTF-8";
   out.lineFeed = "Unix";
   out.open("w");
