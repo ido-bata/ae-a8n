@@ -37,7 +37,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await driver.stop();
+  await driver.stop({ unsavedChanges: "discard" });
   rmSync(dir, { recursive: true, force: true });
 });
 

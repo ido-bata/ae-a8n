@@ -33,6 +33,18 @@ export class EntityNotFoundError extends AfterEffectsError {
   }
 }
 
+/**
+ * The open project has unsaved changes and the operation would discard them.
+ * Not a failure of After Effects: a decision the caller has to make, by
+ * repeating the call with `unsavedChanges: "discard"`.
+ */
+export class UnsavedChangesError extends AfterEffectsError {
+  constructor(op: string, options?: { cause?: unknown }) {
+    super(`${op} refused: the open project has unsaved changes`, op, options);
+    this.name = "UnsavedChangesError";
+  }
+}
+
 export { HostError };
 
 /**
@@ -42,6 +54,9 @@ export { HostError };
 export function contextualise(op: string, error: unknown): never {
   if (error instanceof EntityNotFoundError) {
     throw error;
+  }
+  if (error instanceof HostError && error.name === "UnsavedChangesError") {
+    throw new UnsavedChangesError(op, { cause: error });
   }
   if (error instanceof HostError) {
     throw new AfterEffectsError(

@@ -66,10 +66,16 @@ function findEffectSpec(identifier: string): FakeEffectSpec | undefined {
   );
 }
 
+/** Marks the owning project dirty, as any edit in real AE does. */
+type Touch = () => void;
+const untouched: Touch = () => {};
+
 export class FakeProperty {
   readonly name: string;
   readonly matchName: string;
   #value: number;
+  /** @internal */
+  _touch: Touch = untouched;
 
   constructor(name: string, matchName: string, value: number) {
     this.name = name;
@@ -89,6 +95,7 @@ export class FakeProperty {
       );
     }
     this.#value = value;
+    this._touch();
   }
 }
 
@@ -96,6 +103,8 @@ export class FakePropertyGroup {
   readonly name: string;
   readonly matchName: string;
   readonly #children: FakeProperty[] = [];
+  /** @internal */
+  _touch: Touch = untouched;
 
   constructor(name: string, matchName: string) {
     this.name = name;
@@ -123,12 +132,14 @@ export class FakePropertyGroup {
       throw aeError(5023, `effect "${identifier}" is not available in this host`);
     }
     const group = new FakePropertyGroup(spec.displayName, spec.matchName);
+    group._touch = () => this._touch();
     for (const parameter of spec.parameters) {
-      group.addChild(
-        new FakeProperty(parameter.name, parameter.matchName, parameter.defaultValue),
-      );
+      const child = new FakeProperty(parameter.name, parameter.matchName, parameter.defaultValue);
+      child._touch = () => this._touch();
+      group.addChild(child);
     }
     this.#children.push(group as unknown as FakeProperty);
+    this._touch();
     return group as unknown as FakeProperty;
   }
 
@@ -173,6 +184,11 @@ export class FakeLayer {
   get effects(): FakePropertyGroup {
     return this.#parade;
   }
+
+  /** @internal */
+  _attach(touch: Touch): void {
+    this.#parade._touch = touch;
+  }
 }
 
 export class FakeComp {
@@ -201,8 +217,26 @@ export class FakeComp {
     this.#layers = options.layers.map((layer, index) => new FakeLayer(layer.name, index + 1));
   }
 
-  /** The viewer's resolution; a real `saveFrameToPng` renders at it. */
-  resolutionFactor: [number, number] = [1, 1];
+  #resolutionFactor: [number, number] = [1, 1];
+  #touch: Touch = untouched;
+
+  /** The viewer's resolution; a real `saveFrameToPng` renders at it. Setting it is an edit. */
+  get resolutionFactor(): [number, number] {
+    return this.#resolutionFactor;
+  }
+
+  set resolutionFactor(value: [number, number]) {
+    this.#resolutionFactor = value;
+    this.#touch();
+  }
+
+  /** @internal */
+  _attach(touch: Touch): void {
+    this.#touch = touch;
+    for (const layer of this.#layers) {
+      layer._attach(touch);
+    }
+  }
   /** Every frame `saveFrameToPng` wrote, in order. */
   readonly renders: RenderCall[] = [];
   #saveFailure: string | undefined;
@@ -307,6 +341,8 @@ export type RenderCall = {
 
 export class FakeProject {
   file: FakeFile | null = null;
+  /** Unsaved changes, as AE's `Project.dirty`. */
+  dirty = false;
   #items: FakeComp[] = [];
 
   get numItems(): number {
@@ -320,6 +356,10 @@ export class FakeProject {
   load(comp: FakeComp, file: FakeFile | null): void {
     this.#items = [comp];
     this.file = file;
+    this.dirty = false;
+    comp._attach(() => {
+      this.dirty = true;
+    });
   }
 
   item(index: number): FakeComp | undefined {
@@ -332,6 +372,7 @@ export class FakeProject {
     }
     this.#items = [];
     this.file = null;
+    this.dirty = false;
   }
 }
 

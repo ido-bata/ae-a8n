@@ -189,7 +189,7 @@ describe("driver against the fake host", () => {
       parameter: "Amount",
       value: 25,
     });
-    await driver.stop();
+    await driver.stop({ unsavedChanges: "discard" });
 
     const trace = readTrace();
     expect(trace.map((event) => event.op)).toEqual([

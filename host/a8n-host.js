@@ -272,10 +272,29 @@
     return info;
   };
 
-  methods["app.quit"] = function () {
+  /**
+   * Refuses when the open project has unsaved changes, unless the caller
+   * explicitly allowed discarding them. Named, so the driver can tell a
+   * decision the caller must make from a failure.
+   */
+  function guardUnsavedChanges(params, action) {
     var project = app.project;
-    if (project !== null && project !== undefined && project.file !== null) {
-      project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+    if (project === null || project === undefined || !project.dirty) {
+      return false;
+    }
+    if (optionalParam(params, "discardUnsavedChanges", false) !== true) {
+      var refused = new Error("the open project has unsaved changes; " + action + " would discard them");
+      refused.name = "UnsavedChangesError";
+      throw refused;
+    }
+    return true;
+  }
+
+  methods["app.quit"] = function (params) {
+    if (guardUnsavedChanges(params, "quitting")) {
+      // Closed first, untitled or not: a dirty project would otherwise put a
+      // save prompt in front of the quit.
+      app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
     }
     app.quit();
     return { quitting: true };
@@ -286,6 +305,12 @@
     var file = new File(path);
     if (!file.exists) {
       throw new Error("project file not found: " + path);
+    }
+    // Opening replaces the open project; with unsaved changes AE would put a
+    // save prompt in front of the script, and the changes may be someone
+    // else's work.
+    if (guardUnsavedChanges(params, "opening another project")) {
+      app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
     }
     var opened = app.open(file);
     return { file: String(opened.fsName || opened.name) };

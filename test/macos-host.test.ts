@@ -236,37 +236,33 @@ describe("closing a session", () => {
   // failed with -609 on a real host. close must outlast the process.
   const executable = "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects";
   const install = { executable, versionName: "Adobe After Effects 2026.app", renderExecutable: null };
+  const T0 = Date.parse("2026-10-15T00:00:00Z");
+  const ae = (pid: number, startedAt = T0 + 1_000) => ({ pid, startedAt, executable });
+
+  /** A transport that launched AE as pid 42, then sees `after` on each later poll. */
+  async function ownedTransport(after: Array<ReturnType<typeof ae>[]>, exitTimeoutMs = 60_000) {
+    let polls = 0;
+    const lists: Array<ReturnType<typeof ae>[]> = [[], [ae(42)], ...after];
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      exitTimeoutMs,
+      now: () => T0,
+      processes: () => lists[Math.min(polls++, lists.length - 1)] as ReturnType<typeof ae>[],
+    });
+    await transport.launch();
+    transport.confirmLaunched();
+    return { transport, polls: () => polls };
+  }
 
   it("returns only once the AE process has exited", async () => {
-    let polls = 0;
-    const transport = new ScriptInvocationTransport({
-      platform: "darwin",
-      install,
-      runningExecutables: () => {
-        polls += 1;
-        return polls < 3 ? ["/sbin/launchd", executable] : ["/sbin/launchd"];
-      },
-    });
+    const { transport, polls } = await ownedTransport([[ae(42)], [ae(42)], []]);
     await transport.close();
-    expect(polls).toBe(3);
-  });
-
-  it("does not mistake another install for this one", async () => {
-    const transport = new ScriptInvocationTransport({
-      platform: "darwin",
-      install,
-      runningExecutables: () => [executable.replace(/2026/g, "2025")],
-    });
-    await expect(transport.close()).resolves.toBeUndefined();
+    expect(polls()).toBe(5);
   });
 
   it("says so, without killing anything, when AE does not exit", async () => {
-    const transport = new ScriptInvocationTransport({
-      platform: "darwin",
-      install,
-      exitTimeoutMs: 300,
-      runningExecutables: () => [executable],
-    });
+    const { transport } = await ownedTransport([[ae(42)]], 300);
     await expect(transport.close()).rejects.toThrow(/did not exit within 300 ms/);
   });
 
@@ -274,10 +270,81 @@ describe("closing a session", () => {
     const transport = new ScriptInvocationTransport({
       platform: "win32",
       install: { executable: "C:\\AE\\Support Files\\AfterFX.exe", versionName: "x", renderExecutable: null },
-      runningExecutables: () => {
+      processes: () => {
         throw new Error("must not be consulted");
       },
     });
     await expect(transport.close()).resolves.toBeUndefined();
+  });
+});
+
+describe("who owns the After Effects process", () => {
+  const executable = "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects";
+  const install = { executable, versionName: "Adobe After Effects 2026.app", renderExecutable: null };
+  const T0 = Date.parse("2026-10-15T00:00:00Z");
+  type P = { pid: number; startedAt: number; executable: string };
+  const ae = (pid: number, startedAt = T0 + 1_000, exe = executable): P => ({ pid, startedAt, executable: exe });
+
+  function transportSeeing(...lists: P[][]) {
+    let i = 0;
+    return new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      now: () => T0,
+      processes: () => lists[Math.min(i++, lists.length - 1)] as P[],
+    });
+  }
+
+  it("owns a host that appeared after launch and is the only one", async () => {
+    const t = transportSeeing([], [ae(42)], [ae(42)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership().kind).toBe("owned");
+  });
+
+  it("is attached to a host that was already running", async () => {
+    const t = transportSeeing([ae(7, T0 - 60_000)], [ae(7, T0 - 60_000)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership()).toMatchObject({ kind: "attached" });
+  });
+
+  it("ignores other installs when deciding", async () => {
+    const other = executable.replace(/2026/g, "2025");
+    const t = transportSeeing([ae(7, T0 - 60_000, other)], [ae(7, T0 - 60_000, other), ae(42)], [ae(7, T0 - 60_000, other), ae(42)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership().kind).toBe("owned");
+  });
+
+  it("is unsure when the only host started before launch began", async () => {
+    // Someone else started it between the snapshot and the probe.
+    const t = transportSeeing([], [ae(42, T0 - 30_000)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership().kind).toBe("unknown");
+  });
+
+  it("stops owning a host whose pid now belongs to a different start", async () => {
+    const t = transportSeeing([], [ae(42)], [ae(42, T0 + 90_000)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership()).toMatchObject({ kind: "unknown" });
+  });
+
+  it("stops owning once a second instance is running", async () => {
+    const t = transportSeeing([], [ae(42)], [ae(42), ae(43)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership().kind).toBe("unknown");
+  });
+
+  it("does not claim ownership on Windows, where it is not checked", () => {
+    const t = new ScriptInvocationTransport({
+      platform: "win32",
+      install: { executable: "C:\\AE\\Support Files\\AfterFX.exe", versionName: "x", renderExecutable: null },
+    });
+    t.confirmLaunched();
+    expect(t.ownership().kind).toBe("unknown");
   });
 });

@@ -17,6 +17,19 @@ export type InvokeOptions = {
   readonly signal?: AbortSignal;
 };
 
+/**
+ * Whether this session started the host process.
+ *
+ * "owned": this session launched it and it is still that process.
+ * "attached": the host was already running; it belongs to someone else.
+ * "unknown": neither could be established. Treated like "attached".
+ */
+export type HostOwnership = {
+  readonly kind: "owned" | "attached" | "unknown";
+  /** What the decision rests on, for the trace and for a human. */
+  readonly evidence: string;
+};
+
 export interface HostTransport {
   /** Stable identifier recorded in the session manifest and trace. */
   readonly kind: string;
@@ -34,6 +47,18 @@ export interface HostTransport {
    */
   invoke(entryScriptPath: string, options?: InvokeOptions): Promise<void>;
 
-  /** Stop the host, if this transport started it. */
+  /**
+   * Called once the readiness probe has answered, so the transport can tie
+   * the host process to this session. Optional.
+   */
+  confirmLaunched?(): void;
+
+  /**
+   * Who owns the host *now*. The driver quits the host only on "owned".
+   * A transport without this is treated as "unknown".
+   */
+  ownership?(): HostOwnership;
+
+  /** Wait for a host this session quit to go away. */
   close(): Promise<void>;
 }

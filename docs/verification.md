@@ -101,8 +101,8 @@ Open, not fixed here:
 - **ae-test teardown hides a stuck session.** `TestFixture.teardown` swallows
   `close()` errors, so a test whose session failed to quit is reported as
   passed and the next test launches into the stuck AE.
-- **`close()` quits an AE it did not start**, discarding the open project's
-  unsaved changes, if the session attached to a running instance.
+- ~~`close()` quits an AE it did not start~~ — fixed after `6de80c5`; see
+  [sessions.md](sessions.md).
 
 ## What is verified, in detail
 
