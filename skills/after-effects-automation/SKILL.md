@@ -82,9 +82,25 @@ await blur.get();         // read back; plugins may clamp
   (Gaussian Blur's "Blurriness" is "ブラー" in a Japanese UI); match names are
   not. Find them from what AE reports:
   `await layer.effects.all()` → `{ name, matchName }[]`,
-  `await effect.parameters()` → `{ name, matchName, value }[]`.
-- `effects.apply(id)` returns the existing effect if the layer already has
-  one with that name or match name; it does not add a second.
+  `await effect.parameters()` → `{ name, matchName, kind, value? }[]`.
+- Every property has a `kind`, and a `value` only when `kind` is `"value"`.
+  The others have nothing a script can read or write: `"no-value"` (e.g.
+  Tint's nameless `ADBE Tint-0004`), `"custom-value"` (Levels' histogram,
+  Curves) and `"group"` (every effect's Compositing Options). `get()` and
+  `set()` on them reject with `PropertyHasNoValueError` (its `kind` says
+  which) and write nothing; `info()` describes them without failing. (In
+  0.1.0-alpha.0 such a property made `parameters()` fail for the whole
+  effect.)
+- A `"value"` property's `value` is a number for sliders and checkboxes but
+  an array for colours (`[r, g, b, a]`) and points, even though the types
+  say `number` (#21). `set()` takes numbers only.
+- A parameter identifier the effect does not have fails with "parameter not
+  found", an `AfterEffectsError` rather than `EntityNotFoundError` (#24).
+- To use an effect that should already be on the layer, look it up with
+  `layer.effects.get(id)`: it throws `EntityNotFoundError` if the effect is
+  not there. `effects.apply(id)` returns the existing effect if the layer
+  already has one with that name or match name, and **adds one** if not, so
+  a misspelt identifier passed to `apply()` adds an effect.
 - Defaults are AE's, not zero: Gaussian Blur's Blurriness defaults to 25.
 - Built-in effects can have options that confine a change. Gaussian Blur's
   "Repeat Edge Pixels" (`ADBE Gaussian Blur 2-0003`) defaults on and keeps
@@ -108,6 +124,11 @@ const after = await comp.renderFrame(0, { subdirectory: "after" });
 - Output is 8-bit RGBA at full comp resolution; outside the layers alpha is 0.
 - Compare files by hash *and* by pixels. `examples/png.ts` in this package
   has a dependency-free reader and `countChangedPixels`.
+- Compare renders from the same session. The same frame of the same project
+  can come out ±1 in one channel on soft edges in a different After Effects
+  session (observed: 13 pixels on a blurred edge, #25), so a hash or exact
+  pixel match against another session's file can fail spuriously; allow a
+  tolerance there.
 - Rendering marks the project as changed (the viewer resolution is forced to
   full and restored), so plan to close with `discard`.
 
@@ -123,12 +144,17 @@ const result = await ae.close({ unsavedChanges: "discard" }); // only for your o
 - `quit: false` with a `reason` means AE was left running on purpose.
 - Then check: `pgrep -lx "After Effects"` should print nothing if you owned
   it, and `pgrep -l osascript` should be empty.
+- After Effects helper processes (`crashpad_handler`, `dynamiclinkmanager`,
+  `TeamProjectsLocalHub`) can stay up for seconds to minutes after AE has
+  quit, and exit on their own. `pgrep -f "After Effects"` matches them; they
+  are not a running After Effects. Do not wait on them or kill them.
 
 ## When something goes wrong
 
 | Error | Meaning | Do |
 | --- | --- | --- |
 | `EntityNotFoundError` (`kind`) | comp/layer/effect name not in the project | list with `comps()`, `layers()`, `effects.all()` |
+| `PropertyHasNoValueError` (`kind`) | get/set on a property without a value; nothing was written | pick a `kind: "value"` property from `parameters()` |
 | `UnsavedChangesError` | would discard unsaved work | if it is yours, retry with `discard`; else stop |
 | `AfterEffectsError` | AE reported a failure; message has AE's text | read `error.message` and `error.cause` |
 | `TimeoutError` (as `cause`) | no answer within the budget | see below — the work may still be running |
@@ -143,7 +169,8 @@ with `op`, `status` (`ok`/`error`/`timeout`), `durationMs`, `args`, `result`
 or `error`. `ae.traceEvents` is the same in memory. The session directory
 (`dirname(ae.tracePath)`) also holds every request and result envelope
 (`inbox/`, `outbox/`) and renders (`artifacts/`). Read these before
-re-running anything.
+re-running anything. A failed operation currently appears twice in the trace
+(#20); count failures by `seq` pairs, not rows.
 
 ## After a timeout
 
@@ -155,6 +182,20 @@ work:
 - Nothing is retried for you. Before retrying, **read the state back**
   (`effects.all()`, `parameter.get()`); the operations above are written to
   be repeatable, but your own sequence may not be.
+- The session's `timeoutMs` is the default for every call, and it includes
+  the bridge's own overhead, not only the time inside AE. Opening a small
+  project took 330–510 ms inside AE, so a budget under about a second can
+  time out on `openProject` alone. Give the slow calls their own budget
+  instead of raising the session's: `openProject(path, { timeoutMs })`,
+  `renderFrame(frame, { timeoutMs })`, `ae.project({ timeoutMs })`. How long a
+  timed-out call really took inside AE is `durationMs` in its
+  `outbox/<id>.result.json`; do not add up your waits.
+- A timed-out `openProject` still opens the project in AE, but gives you no
+  `Project`. Get one with `await ae.project()`: it waits for the open to
+  finish, opens nothing, and `(await project.info()).file` tells you which
+  project it is. Do not call `openProject` again for this; after edits that
+  raises `UnsavedChangesError`, and passing `discard` to get past it throws
+  your work away.
 - If calls keep timing out, AE is probably blocked by a modal dialog. Scripts
   cannot dismiss it. Stop, tell the human what you saw (trace + the last
   error), and do not kill AE.

@@ -8,6 +8,7 @@
 
 import { HostError, ProtocolError } from "../protocol/envelope.js";
 import { HostUnavailableError, TimeoutError } from "../driver/driver.js";
+import type { PropertyKind } from "./types.js";
 
 export { HostUnavailableError, ProtocolError, TimeoutError };
 
@@ -42,6 +43,29 @@ export class UnsavedChangesError extends AfterEffectsError {
   constructor(op: string, options?: { cause?: unknown }) {
     super(`${op} refused: the open project has unsaved changes`, op, options);
     this.name = "UnsavedChangesError";
+  }
+}
+
+/**
+ * A read or write of a property that has no value a script can use: a
+ * NO_VALUE or CUSTOM_VALUE property, or a group. Nothing was written.
+ */
+export class PropertyHasNoValueError extends AfterEffectsError {
+  /** Why there is no value: `no-value`, `custom-value`, or `group`. */
+  readonly kind: Exclude<PropertyKind, "value">;
+  /** The parameter identifier the caller used. */
+  readonly property: string;
+
+  constructor(
+    kind: Exclude<PropertyKind, "value">,
+    property: string,
+    op: string,
+    options?: { cause?: unknown },
+  ) {
+    super(`${op} refused: ${property} has no value to read or write (${kind})`, op, options);
+    this.name = "PropertyHasNoValueError";
+    this.kind = kind;
+    this.property = property;
   }
 }
 
