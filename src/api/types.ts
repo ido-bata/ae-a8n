@@ -39,11 +39,30 @@ export type EffectInfo = {
   readonly matchName?: string;
 };
 
+/**
+ * What a property holds, as far as scripting can tell without reading it.
+ *
+ * - `value`: a value a script can read and write; `value` is present.
+ * - `no-value`: `PropertyValueType.NO_VALUE`, nothing to read or write
+ *   (e.g. Tint's `ADBE Tint-0004`, Gradient Ramp's `ADBE Ramp-0008`).
+ * - `custom-value`: `PropertyValueType.CUSTOM_VALUE`, data After Effects does
+ *   not expose to scripts (Levels' histogram, Curves).
+ * - `group`: a property group, such as every effect's Compositing Options
+ *   (`ADBE Effect Built In Params`).
+ */
+export type PropertyKind = "value" | "no-value" | "custom-value" | "group";
+
+/**
+ * One property of an effect. `value` is present exactly when `kind` is
+ * `"value"`; narrow on `kind` to read it.
+ */
 export type PropertyInfo = {
   readonly name: string;
   readonly matchName?: string;
-  readonly value: number;
-};
+} & (
+  | { readonly kind: "value"; readonly value: number }
+  | { readonly kind: Exclude<PropertyKind, "value">; readonly value?: undefined }
+);
 
 export type RenderedFrame = {
   /** Absolute path to the written PNG. */

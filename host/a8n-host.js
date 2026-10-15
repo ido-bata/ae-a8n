@@ -96,6 +96,10 @@
     if (error.errorNumber !== undefined && typeof error.errorNumber === "number") {
       payload.aeError = error.errorNumber;
     }
+    // Set by the host's own typed errors (NoValueError) for the API to branch on.
+    if (typeof error.kind === "string") {
+      payload.kind = error.kind;
+    }
     if (error.matchName !== undefined && error.matchName !== null) {
       payload.message = payload.message + " (matchName: " + String(error.matchName) + ")";
     }
@@ -233,15 +237,48 @@
     return null;
   }
 
+  /**
+   * Whether a script can read this property's value, without reading it.
+   * On AE 26.5x89 reading `value` throws for PropertyValueType.NO_VALUE
+   * (e.g. ADBE Tint-0004, ADBE Ramp-0008) and CUSTOM_VALUE (Levels'
+   * histogram, Curves), and a group (Compositing Options) has no value.
+   */
+  function propertyKind(property) {
+    if (property.propertyType !== PropertyType.PROPERTY) {
+      return "group";
+    }
+    if (property.propertyValueType === PropertyValueType.NO_VALUE) {
+      return "no-value";
+    }
+    if (property.propertyValueType === PropertyValueType.CUSTOM_VALUE) {
+      return "custom-value";
+    }
+    return "value";
+  }
+
   function describeProperty(property) {
-    var out = { name: property.name };
+    var kind = propertyKind(property);
+    var out = { name: property.name, kind: kind };
     if (property.matchName !== undefined && property.matchName !== null) {
       out.matchName = property.matchName;
     }
-    if (property.value !== undefined) {
+    if (kind === "value") {
       out.value = property.value;
     }
     return out;
+  }
+
+  /** Refuses, before touching it, a write to a property that has no value. */
+  function requireValueProperty(property) {
+    var kind = propertyKind(property);
+    if (kind !== "value") {
+      var error = new Error(
+        "property has no value to write (" + kind + "): " + property.matchName
+      );
+      error.name = "NoValueError";
+      error.kind = kind;
+      throw error;
+    }
   }
 
   function zeroPad(value, width) {
@@ -423,6 +460,7 @@
   methods["effect.setParameter"] = function (params) {
     var effect = resolveEffect(params);
     var property = requireProperty(effect, String(requireParam(params, "parameter")));
+    requireValueProperty(property);
     property.setValue(requireParam(params, "value"));
     return describeProperty(property);
   };
