@@ -133,15 +133,25 @@
   }
 
   function findComp(name) {
+    // A real Project has no lookup by name (`itemByName` is undefined on AE
+    // 26.5x89), so walk the items. Names are not unique in AE; the first
+    // composition with the name wins, and a non-composition item that shares
+    // it is skipped.
     var project = getProject();
-    var item = project.itemByName(name);
-    if (item === null || item === undefined) {
-      throw new Error("composition not found: " + name);
+    var sawOther = false;
+    for (var i = 1; i <= project.numItems; i++) {
+      var item = project.item(i);
+      if (item.name === name) {
+        if (item instanceof CompItem) {
+          return item;
+        }
+        sawOther = true;
+      }
     }
-    if (!(item instanceof CompItem)) {
+    if (sawOther) {
       throw new Error("item is not a composition: " + name);
     }
-    return item;
+    throw new Error("composition not found: " + name);
   }
 
   function findLayer(comp, name) {

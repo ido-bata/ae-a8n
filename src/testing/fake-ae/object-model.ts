@@ -364,10 +364,6 @@ export class FakeProject {
     return this.#items[index - 1];
   }
 
-  itemByName(name: string): FakeComp | undefined {
-    return this.#items.find((item) => item.name === name);
-  }
-
   close(closeOptions: number): void {
     if (closeOptions !== CloseOptions.DO_NOT_SAVE_CHANGES && this.file !== null) {
       throw new Error("fake projects cannot be saved");

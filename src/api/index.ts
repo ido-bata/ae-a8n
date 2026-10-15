@@ -195,15 +195,15 @@ export class Project {
   /**
    * Resolves a composition by name, verifying it exists.
    *
-   * A host failure to read a composition that was asked for by name *is* a
-   * not-found condition, so it is translated here rather than leaked as a raw
-   * ExtendScript message.
+   * Existence is decided from the project's own list, the way `Comp.layer`
+   * does it. Any other host failure is reported as itself: translating every
+   * failure into "not found" once hid that the host called an API a real AE
+   * does not have.
    */
   async comp(name: string): Promise<Comp> {
     const compName = requireString(name, "comp name");
-    try {
-      await this.#session.call<CompInfo>("comp.info", "comp.info", { name: compName });
-    } catch {
+    const comps = await this.comps();
+    if (!comps.some((comp) => comp.name === compName)) {
       throw new EntityNotFoundError("composition", compName, "project.comp");
     }
     return new Comp(this.#session, compName);
