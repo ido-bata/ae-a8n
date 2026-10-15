@@ -318,6 +318,9 @@
 
   methods["project.close"] = function (params) {
     var save = optionalParam(params, "save", false);
+    if (save !== true) {
+      guardUnsavedChanges(params, "closing without saving");
+    }
     getProject().close(
       save ? CloseOptions.SAVE_CHANGES : CloseOptions.DO_NOT_SAVE_CHANGES
     );

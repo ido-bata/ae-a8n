@@ -74,6 +74,21 @@ describe("a host the session owns", () => {
   });
 });
 
+describe("closing a project through the driver", () => {
+  it("refuses to drop unsaved changes unless told to", async () => {
+    const ae = await launch();
+    await edit(ae);
+    const { AeDriver } = await import("../src/driver/driver.js");
+    const { TraceRecorder } = await import("../src/trace/trace.js");
+    const d = new AeDriver({ transport, sessionRoot: join(root, "d"), trace: new TraceRecorder({ file: join(root, "d.jsonl") }) });
+    await d.start();
+    await expect(d.call("project.close", {})).rejects.toMatchObject({ name: "UnsavedChangesError" });
+    expect(transport.app.project.dirty).toBe(true);
+    await d.call("project.close", { discardUnsavedChanges: true });
+    expect(transport.app.project.file).toBeNull();
+  });
+});
+
 describe("opening a project over unsaved changes", () => {
   it("refuses unless told to discard them", async () => {
     const ae = await launch();
