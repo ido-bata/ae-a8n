@@ -1,5 +1,7 @@
 /**
- * Decides whether the publish workflow may publish this commit to npm.
+ * Decides whether the publish workflow may send this commit to npm. Since
+ * 0.1.0-alpha.1 "send" means stage (scripts/stage-publish.js): the version
+ * becomes installable only when a maintainer approves it with 2FA.
  *
  *   node scripts/publish-gate.js <packed-tarball.tgz>   (from the package root)
  *
