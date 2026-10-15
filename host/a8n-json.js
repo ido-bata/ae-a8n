@@ -23,10 +23,17 @@ var A8NJson = (function () {
     "\t": "\\t"
   };
 
+  // ExtendScript's Object.prototype carries non-enumerable members — among
+  // them functions named "+", "-", "*" and "/" (observed on AE 26.5x89) — so a
+  // plain `table[key]` finds one for any of those characters. Every lookup by
+  // a key that came from data goes through `has`.
+  function has(object, key) {
+    return Object.prototype.hasOwnProperty.call(object, key);
+  }
+
   function quoteChar(ch) {
-    var escaped = ESCAPES[ch];
-    if (escaped !== undefined) {
-      return escaped;
+    if (has(ESCAPES, ch)) {
+      return ESCAPES[ch];
     }
     var code = ch.charCodeAt(0);
     if (code < 0x20) {
@@ -86,7 +93,7 @@ var A8NJson = (function () {
       }
       var keys = [];
       for (var key in value) {
-        if (value.hasOwnProperty(key)) {
+        if (has(value, key)) {
           var serialised = stringify(value[key]);
           if (serialised !== undefined) {
             keys.push(stringifyString(key) + ":" + serialised);
@@ -176,7 +183,7 @@ var A8NJson = (function () {
             r: "\r",
             t: "\t"
           };
-          if (!simple.hasOwnProperty(esc)) {
+          if (!has(simple, esc)) {
             fail("invalid escape \\" + esc);
           }
           out += simple[esc];

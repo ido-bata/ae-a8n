@@ -105,6 +105,26 @@ describe("the host's JSON codec", () => {
   });
 });
 
+describe("keys that ExtendScript's Object.prototype already has", () => {
+  // Real AE: ({})["-"], ({})["/"], ({})["toSource"] ... are functions.
+  it.each(["toSource", "-", "watch"])("treats method %j as unknown, not as a prototype member", async (name) => {
+    const d = driverFor(new FakeAfterEffectsTransport());
+    await d.start();
+    await expect(d.call(name)).rejects.toThrow(/unknown method/);
+    await d.stop();
+  });
+
+  it("round-trips strings made of operator characters", async () => {
+    // A request id is a UUID and every path has "/": both went through the
+    // escape table, which found AE's prototype functions for "-" and "/".
+    const d = driverFor(new FakeAfterEffectsTransport());
+    await d.start();
+    const path = join(dir, "a-b+c*d", "fixture.aep");
+    await expect(d.call("project.open", { path })).rejects.toThrow(path);
+    await d.stop();
+  });
+});
+
 describe("an exception that escapes the host", () => {
   async function failureFrom(hostSource: string): Promise<HostError> {
     const host = join(dir, "broken-host.js");

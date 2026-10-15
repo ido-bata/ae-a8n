@@ -104,15 +104,22 @@
 
   // ------------------------------------------------------------- helpers ---
 
+  // ExtendScript's Object.prototype has members a plain `object[key]` finds
+  // (functions named "+", "-", "*", "/", `toSource`, `watch`, ... observed on
+  // AE 26.5x89), so a key that came from a request is looked up as own only.
+  function has(object, key) {
+    return Object.prototype.hasOwnProperty.call(object, key);
+  }
+
   function requireParam(params, name) {
-    if (params === null || params === undefined || params[name] === undefined) {
+    if (params === null || params === undefined || !has(params, name) || params[name] === undefined) {
       throw new Error("missing required parameter: " + name);
     }
     return params[name];
   }
 
   function optionalParam(params, name, fallback) {
-    if (params === null || params === undefined || params[name] === undefined) {
+    if (params === null || params === undefined || !has(params, name) || params[name] === undefined) {
       return fallback;
     }
     return params[name];
@@ -482,7 +489,7 @@
     if (request === null || typeof request !== "object") {
       throw new Error("request envelope is not an object");
     }
-    var method = methods[request.method];
+    var method = has(methods, request.method) ? methods[request.method] : undefined;
     if (method === undefined) {
       throw new Error("unknown method: " + String(request.method));
     }

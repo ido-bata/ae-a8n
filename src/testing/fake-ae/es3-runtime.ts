@@ -239,6 +239,30 @@ export type RunHostResult =
   | { success: false; error: Error; globals: Record<string, unknown> };
 
 /**
+ * Gives a context's `Object.prototype` the non-enumerable members a real AE's
+ * has (observed on 26.5x89): operator-overload functions named "+", "-", "*"
+ * and "/", plus `toSource`, `watch`, `unwatch` and `reflect`. Any `table[key]`
+ * lookup whose key can be one of those finds a value that is not in the table.
+ */
+function installExtendScriptPrototype(target: vm.Context): void {
+  vm.runInContext(
+    `(function () {
+      var names = ["+", "-", "*", "/", "toSource", "watch", "unwatch"];
+      for (var i = 0; i < names.length; i++) {
+        Object.defineProperty(Object.prototype, names[i], {
+          value: function () { throw new Error("ExtendScript Object.prototype member called"); },
+          enumerable: false, writable: true, configurable: true
+        });
+      }
+      Object.defineProperty(Object.prototype, "reflect", {
+        value: {}, enumerable: false, writable: true, configurable: true
+      });
+    })();`,
+    target,
+  );
+}
+
+/**
  * Evaluates a host script the way ExtendScript evaluates a JSX file: its
  * top-level `var`s become globals.
  *
@@ -268,6 +292,7 @@ export function runHostScript(
   const isolatedContext = (): vm.Context => {
     const isolated = vm.createContext({ ...sandbox });
     removeJson(isolated);
+    installExtendScriptPrototype(isolated);
     return isolated;
   };
 
@@ -314,6 +339,7 @@ export function runHostScript(
   sandbox["Folder"] = FakeFolder;
 
   removeJson(context);
+  installExtendScriptPrototype(context);
   if (options.foreignJson !== undefined) {
     sandbox["JSON"] = options.foreignJson;
   }
