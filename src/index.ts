@@ -16,6 +16,7 @@ export {
   EntityNotFoundError,
   HostError,
   HostUnavailableError,
+  PropertyHasNoValueError,
   ProtocolError,
   TimeoutError,
   UnsavedChangesError,
@@ -32,6 +33,7 @@ export type {
   OperationOptions,
   ProjectInfo,
   PropertyInfo,
+  PropertyKind,
   RenderOptions,
   RenderedFrame,
 } from "./api/types.js";

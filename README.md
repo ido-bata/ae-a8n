@@ -73,11 +73,13 @@ unsaved edit in someone's open project is still their work.
 | `project.comp(name)` → `Comp` | `comp.info()`, `comp.layers()`, `comp.layer(name)` |
 | `comp.renderFrame(frame, { subdirectory?, prefix?, timeoutMs? })` | one PNG under `ae.artifactsDir`; size read from the file |
 | `layer.effects.all()`, `.apply(id)`, `.get(id)` | `id` is a match name (stable) or display name (localised) |
-| `effect.parameters()`, `effect.parameter(id).get()` / `.set(n)` / `.info()` | numeric parameters |
+| `effect.parameters()`, `effect.parameter(id).get()` / `.set(n)` / `.info()` | numeric parameters; every property is listed with a `kind` (`value`, `no-value`, `custom-value`, `group`) and has `value` only when `kind` is `"value"` |
 | `ae.close({ unsavedChanges? })` | → `{ quit, ownership, reason? }` |
 | `ae.tracePath`, `ae.traceEvents`, `ae.artifactsDir` | evidence |
 
 Errors: `EntityNotFoundError` (with `kind`), `UnsavedChangesError`,
+`PropertyHasNoValueError` (a `get`/`set` on a property without a value; nothing
+is written),
 `AfterEffectsError` (AE's own message; `cause` holds the protocol-level
 error), `AfterEffectsNotInstalledError`. Lower-level pieces (`AeDriver`,
 `ScriptInvocationTransport`, `resolveInstall`) are exported for tooling.

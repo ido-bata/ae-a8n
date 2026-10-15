@@ -27,6 +27,8 @@ export type HostErrorPayload = {
   readonly line?: number;
   /** AE error number, for host errors AE itself raised. */
   readonly aeError?: number;
+  /** Detail of the host's own typed errors, e.g. a NoValueError's property kind. */
+  readonly kind?: string;
 };
 
 export type SuccessEnvelope = {
@@ -56,12 +58,14 @@ export class HostError extends Error {
   override readonly name: string;
   readonly line: number | undefined;
   readonly aeError: number | undefined;
+  readonly kind: string | undefined;
 
   constructor(payload: HostErrorPayload) {
     super(payload.message);
     this.name = payload.name;
     this.line = payload.line;
     this.aeError = payload.aeError;
+    this.kind = payload.kind;
   }
 }
 
@@ -141,6 +145,7 @@ export function parseResultEnvelope(raw: unknown): ResultEnvelope {
       message: string;
       line?: number;
       aeError?: number;
+      kind?: string;
     } = {
       name: typeof error["name"] === "string" ? error["name"] : "Error",
       message:
@@ -151,6 +156,9 @@ export function parseResultEnvelope(raw: unknown): ResultEnvelope {
     }
     if (typeof error["aeError"] === "number") {
       payload.aeError = error["aeError"];
+    }
+    if (typeof error["kind"] === "string") {
+      payload.kind = error["kind"];
     }
     return { v, id, ok: false, durationMs, error: payload };
   }
