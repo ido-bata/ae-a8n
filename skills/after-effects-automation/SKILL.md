@@ -182,17 +182,20 @@ work:
 - Nothing is retried for you. Before retrying, **read the state back**
   (`effects.all()`, `parameter.get()`); the operations above are written to
   be repeatable, but your own sequence may not be.
-- `timeoutMs` is one budget for every call in the session, and it includes
+- The session's `timeoutMs` is the default for every call, and it includes
   the bridge's own overhead, not only the time inside AE. Opening a small
   project took 330–510 ms inside AE, so a budget under about a second can
-  time out on `openProject` alone. How long a timed-out call really took
-  inside AE is `durationMs` in its `outbox/<id>.result.json`; do not add up
-  your waits.
-- A timed-out `openProject` gives you no `Project`, although AE usually
-  finishes the open (#22). If nothing has been edited yet, call
-  `openProject` again with the same path: it reopens the file and returns a
-  handle. After edits it raises `UnsavedChangesError`; do not pass
-  `discard` just to get a handle back.
+  time out on `openProject` alone. Give the slow calls their own budget
+  instead of raising the session's: `openProject(path, { timeoutMs })`,
+  `renderFrame(frame, { timeoutMs })`, `ae.project({ timeoutMs })`. How long a
+  timed-out call really took inside AE is `durationMs` in its
+  `outbox/<id>.result.json`; do not add up your waits.
+- A timed-out `openProject` still opens the project in AE, but gives you no
+  `Project`. Get one with `await ae.project()`: it waits for the open to
+  finish, opens nothing, and `(await project.info()).file` tells you which
+  project it is. Do not call `openProject` again for this; after edits that
+  raises `UnsavedChangesError`, and passing `discard` to get past it throws
+  your work away.
 - If calls keep timing out, AE is probably blocked by a modal dialog. Scripts
   cannot dismiss it. Stop, tell the human what you saw (trace + the last
   error), and do not kill AE.

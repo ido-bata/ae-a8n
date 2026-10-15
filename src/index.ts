@@ -29,6 +29,8 @@ export type {
   EffectInfo,
   LaunchOptions,
   LayerInfo,
+  OpenProjectOptions,
+  OperationOptions,
   ProjectInfo,
   PropertyInfo,
   PropertyKind,
