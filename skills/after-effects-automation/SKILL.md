@@ -86,10 +86,13 @@ await blur.get();         // read back; plugins may clamp
 - `effects.apply(id)` returns the existing effect if the layer already has
   one with that name or match name; it does not add a second.
 - Defaults are AE's, not zero: Gaussian Blur's Blurriness defaults to 25.
-- Built-in effects can have options that hide a change. Gaussian Blur's
-  "Repeat Edge Pixels" (`ADBE Gaussian Blur 2-0003`) defaults on, which keeps
-  the blur inside the layer — a uniform solid then looks identical at any
-  blurriness.
+- Built-in effects can have options that confine a change. Gaussian Blur's
+  "Repeat Edge Pixels" (`ADBE Gaussian Blur 2-0003`) defaults on and keeps
+  the blur inside the layer's bounds: pixels outside the layer never change,
+  and on a uniform solid only a thin band just inside its edges does
+  (observed: 79,212 of 2,073,600 pixels between blur 0 and 100, alpha
+  255 → 253 at the edge). Compare the whole image, not one sample point, or
+  turn the option off (`0`) to let the blur spread past the layer.
 
 ## Rendering and checking pixels
 

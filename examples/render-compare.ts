@@ -9,7 +9,7 @@
  * e.g. copy.aep Main "Solid 1" "ADBE Gaussian Blur 2" "ADBE Gaussian Blur 2-0001" 0 100 \
  *      "ADBE Gaussian Blur 2-0003=0"
  * (Gaussian Blur's Repeat Edge Pixels, 2-0003, defaults on and keeps the blur
- * inside the layer, where a uniform solid would not change at all.)
+ * inside the layer's bounds; turning it off lets the change spread past them.)
  *
  * Use a disposable copy of a project: the edits are discarded at the end, and
  * the file itself is never saved.
