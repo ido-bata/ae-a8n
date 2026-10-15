@@ -13,7 +13,7 @@
 import { execFile, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:http";
+import { createServer, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,7 +39,7 @@ interface Decision {
 const gatePath = fileURLToPath(new URL("../scripts/publish-gate.js", import.meta.url));
 const gate = (await import(pathToFileURL(gatePath).href)) as {
   decide: (facts: Facts) => Decision;
-  registryState: (name: string, version: string, registry?: string) => Promise<RegistryState>;
+  registryState: (name: string, version: string, registry?: string, timeoutMs?: number) => Promise<RegistryState>;
   MANUAL_FIRST_PUBLISH: string;
 };
 
@@ -143,6 +143,11 @@ class FakeRegistry {
   server: Server = createServer((req, res) => {
     this.requests.push(req.url ?? "");
     const a = this.answer;
+    if (a === "hang") {
+      // Accepts the request and never answers; closed when the server stops.
+      this.hanging.push(res);
+      return;
+    }
     if (a === "absent") {
       res.writeHead(404, { "content-type": "application/json" });
       res.end('{"error":"version not found"}');
@@ -154,8 +159,9 @@ class FakeRegistry {
       res.end(a.body);
     }
   });
-  answer: "absent" | { shasum: string } | { status: number; body: string } = "absent";
+  answer: "absent" | "hang" | { shasum: string } | { status: number; body: string } = "absent";
   requests: string[] = [];
+  hanging: ServerResponse[] = [];
   url = "";
 
   async start(): Promise<void> {
@@ -164,6 +170,8 @@ class FakeRegistry {
   }
 
   async stop(): Promise<void> {
+    for (const res of this.hanging.splice(0)) res.destroy();
+    this.server.closeAllConnections();
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
   }
 }
@@ -191,12 +199,22 @@ describe("registryState", () => {
   });
 
   it.each([
+    ["a refusal (403)", { status: 403, body: '{"error":"Forbidden"}' }],
+    ["rate limiting (429)", { status: 429, body: '{"error":"Too Many Requests"}' }],
     ["a server error", { status: 503, body: "{}" }],
+    ["another server error", { status: 500, body: "{}" }],
     ["a body that is not JSON", { status: 200, body: "<html>" }],
     ["a manifest without dist.shasum", { status: 200, body: '{"dist":{}}' }],
   ])("reads %s as unknown", async (_label, answer) => {
     registry.answer = answer;
     expect((await gate.registryState("@ido-bata/ae-a8n", NEXT, registry.url)).state).toBe("unknown");
+  });
+
+  it("reads a registry that does not answer in time as unknown", async () => {
+    registry.answer = "hang";
+    const state = await gate.registryState("@ido-bata/ae-a8n", NEXT, registry.url, 200);
+    expect(state.state).toBe("unknown");
+    expect(state).toMatchObject({ error: expect.stringContaining("TimeoutError") });
   });
 
   it("reads a registry nobody answers on as unknown", async () => {
@@ -307,10 +325,26 @@ describe("the gate as the workflow runs it", () => {
     expect(result.stderr).toContain("does not point at what was published");
   });
 
-  it("fails an approved version when the registry is unreachable", async () => {
-    registry.answer = { status: 503, body: "{}" };
+  it.each([
+    ["403", { status: 403, body: "{}" }],
+    ["429", { status: 429, body: "{}" }],
+    ["503", { status: 503, body: "{}" }],
+    ["a body that is not JSON", { status: 200, body: "<html>" }],
+    ["a manifest without dist.shasum", { status: 200, body: '{"dist":{}}' }],
+  ])("fails an approved version, and does not publish, when the registry answers %s", async (_label, answer) => {
+    registry.answer = answer;
     const result = await run({ NPM_PUBLISH_VERSION: NEXT });
     expect(result.status).toBe(1);
+    expect(result.outputs.publish).toBe("false");
+    expect(result.outputs.registry).toBe("unknown");
+    expect(result.stderr).toContain("cannot tell whether");
+  });
+
+  it("does not publish an unapproved version whose registry state is unknown", async () => {
+    registry.answer = { status: 503, body: "{}" };
+    const result = await run({});
+    expect(result.status).toBe(0);
+    expect(result.outputs.publish).toBe("false");
     expect(result.outputs.registry).toBe("unknown");
   });
 

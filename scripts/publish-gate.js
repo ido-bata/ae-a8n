@@ -114,14 +114,20 @@ export const DEFAULT_REGISTRY = "https://registry.npmjs.org/";
  * @param {string} name
  * @param {string} version
  * @param {string} [registry]
+ * @param {number} [timeoutMs] how long to wait for an answer; then the state is unknown
  * @returns {Promise<RegistryState>}
  */
-export async function registryState(name, version, registry = process.env.npm_config_registry || DEFAULT_REGISTRY) {
+export async function registryState(
+  name,
+  version,
+  registry = process.env.npm_config_registry || DEFAULT_REGISTRY,
+  timeoutMs = 30_000,
+) {
   // Scoped names keep the `@` and escape the `/`: /@scope%2fname/<version>.
   const url = new URL(`${name.replace("/", "%2f")}/${encodeURIComponent(version)}`, registry.endsWith("/") ? registry : `${registry}/`);
   let response;
   try {
-    response = await fetch(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(30_000) });
+    response = await fetch(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(timeoutMs) });
   } catch (error) {
     const cause = /** @type {{ cause?: { code?: string }, name?: string, message?: string }} */ (error);
     return { state: "unknown", error: `GET ${url} failed: ${cause.cause?.code ?? cause.name ?? cause.message}` };
