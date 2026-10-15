@@ -24,7 +24,13 @@ import { join } from "node:path";
 import { AeDriver } from "../driver/driver.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
 import { TraceRecorder, type TraceEvent } from "../trace/trace.js";
-import { AfterEffectsError, EntityNotFoundError, HostError, contextualise } from "./errors.js";
+import {
+  AfterEffectsError,
+  EntityNotFoundError,
+  HostError,
+  PropertyHasNoValueError,
+  contextualise,
+} from "./errors.js";
 import type { StopResult } from "../driver/driver.js";
 import type { HostOwnership } from "../driver/transport.js";
 
@@ -39,6 +45,7 @@ import type {
   LayerInfo,
   ProjectInfo,
   PropertyInfo,
+  PropertyKind,
   RenderOptions,
   RenderedFrame,
 } from "./types.js";
@@ -67,6 +74,10 @@ class Session {
       contextualise(op, error);
     }
   }
+}
+
+function isNoValueKind(kind: unknown): kind is Exclude<PropertyKind, "value"> {
+  return kind === "no-value" || kind === "custom-value" || kind === "group";
 }
 
 function requireString(value: unknown, field: string): string {
@@ -425,20 +436,39 @@ export class Parameter {
     this.name = name;
   }
 
+  /**
+   * Reads the value. A property without one (`kind` other than `"value"`)
+   * rejects with `PropertyHasNoValueError`; use `info()` to describe any
+   * property without failing.
+   */
   async get(): Promise<number> {
     const info = await this.info();
+    if (info.kind !== "value") {
+      throw new PropertyHasNoValueError(info.kind, this.name, "effect.getParameter");
+    }
     return info.value;
   }
 
-  /** Sets the value and returns what the host reports back afterwards. */
+  /**
+   * Sets the value and returns what the host reports back afterwards. A
+   * property without a value rejects with `PropertyHasNoValueError` and is
+   * left untouched: the host refuses before writing.
+   */
   async set(value: number): Promise<number> {
     if (typeof value !== "number" || !Number.isFinite(value)) {
       throw new TypeError("parameter value must be a finite number");
     }
     const info = await this.info(value);
+    if (info.kind !== "value") {
+      throw new PropertyHasNoValueError(info.kind, this.name, "effect.setParameter");
+    }
     return info.value;
   }
 
+  /**
+   * Describes the property (`kind`, and `value` when it has one). With a
+   * `value`, writes it first, as `set` does.
+   */
   async info(value?: number): Promise<PropertyInfo> {
     const params = {
       comp: this.#comp,
@@ -447,8 +477,17 @@ export class Parameter {
       parameter: this.name,
       ...(value === undefined ? {} : { value }),
     };
-    return value === undefined
-      ? this.#session.call<PropertyInfo>("effect.getParameter", "effect.getParameter", params)
-      : this.#session.call<PropertyInfo>("effect.setParameter", "effect.setParameter", params);
+    if (value === undefined) {
+      return this.#session.call<PropertyInfo>("effect.getParameter", "effect.getParameter", params);
+    }
+    try {
+      return await this.#session.call<PropertyInfo>("effect.setParameter", "effect.setParameter", params);
+    } catch (error) {
+      const cause = error instanceof AfterEffectsError ? error.cause : undefined;
+      if (cause instanceof HostError && cause.name === "NoValueError" && isNoValueKind(cause.kind)) {
+        throw new PropertyHasNoValueError(cause.kind, this.name, "effect.setParameter", { cause });
+      }
+      throw error;
+    }
   }
 }

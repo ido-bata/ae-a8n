@@ -133,6 +133,30 @@ What this does and does not show:
   usual. Cause not established.
 - Windows: not run.
 
+## Properties without a value (#18), 2026-10-16
+
+macOS 27.0.1 arm64, AE 26.5x89 (ja). On this host reading `value` throws for
+`PropertyValueType.NO_VALUE` (6412: `ADBE Tint-0004`, `ADBE Ramp-0008`) and
+`CUSTOM_VALUE` (6419: `ADBE Easy Levels2-0002`, `ADBE CurvesCustom-0001`);
+every effect ends with the group `ADBE Effect Built In Params` (`propertyType`
+6213) whose `value` is `undefined`. Groups are told apart by `propertyType`
+(`PROPERTY` 6212), the others by `propertyValueType`, without reading `value`.
+
+The same script against the released code and the fix, on a disposable copy
+of a fixture with Tint, Gaussian Blur, Levels, Curves and Gradient Ramp:
+
+| | before | after |
+| --- | --- | --- |
+| `parameters()` on Tint, Levels, Curves, Ramp | fails for the whole effect | lists every property with `kind` |
+| `info()` on a NO_VALUE property | AE's localised error | `{ kind: "no-value" }`, no `value` |
+| `get()` / `set()` on NO_VALUE, CUSTOM_VALUE | `AfterEffectsError` with AE's text | `PropertyHasNoValueError` (`kind`); the host refuses before `setValue` |
+| `get()` on the group | resolved `undefined` | `PropertyHasNoValueError` (`group`) |
+| `set()` on the group | "property.setValue is undefined" | `PropertyHasNoValueError` (`group`) |
+| numeric parameters (Tint-0003, Gaussian Blur, Levels-0003) | read/write | unchanged |
+
+Colour and point parameters report `kind: "value"` with an array `value`;
+their typing is #21.
+
 ## What is verified, in detail
 
 | Area | Level | How |

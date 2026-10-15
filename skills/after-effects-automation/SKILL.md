@@ -82,17 +82,20 @@ await blur.get();         // read back; plugins may clamp
   (Gaussian Blur's "Blurriness" is "ブラー" in a Japanese UI); match names are
   not. Find them from what AE reports:
   `await layer.effects.all()` → `{ name, matchName }[]`,
-  `await effect.parameters()` → `{ name, matchName, value }[]`.
-- `effect.parameters()` fails for the whole effect when any one of its
-  properties holds no value (in 0.1.0-alpha.0, Tint's `ADBE Tint-0004`;
-  #18). Then read parameters one at a time with
-  `effect.parameter(matchName).info()`. Built-in match names run
-  `<effect match name>-0001`, `-0002`, …; past the last one the call fails
-  with "parameter not found", an `AfterEffectsError` rather than
-  `EntityNotFoundError` (#24).
-- `value` is a number for sliders and checkboxes, an array for colours
-  (`[r, g, b, a]`), and absent for groups such as Compositing Options, even
-  though the types say `number` (#21). `set()` takes numbers only.
+  `await effect.parameters()` → `{ name, matchName, kind, value? }[]`.
+- Every property has a `kind`, and a `value` only when `kind` is `"value"`.
+  The others have nothing a script can read or write: `"no-value"` (e.g.
+  Tint's nameless `ADBE Tint-0004`), `"custom-value"` (Levels' histogram,
+  Curves) and `"group"` (every effect's Compositing Options). `get()` and
+  `set()` on them reject with `PropertyHasNoValueError` (its `kind` says
+  which) and write nothing; `info()` describes them without failing. (In
+  0.1.0-alpha.0 such a property made `parameters()` fail for the whole
+  effect.)
+- A `"value"` property's `value` is a number for sliders and checkboxes but
+  an array for colours (`[r, g, b, a]`) and points, even though the types
+  say `number` (#21). `set()` takes numbers only.
+- A parameter identifier the effect does not have fails with "parameter not
+  found", an `AfterEffectsError` rather than `EntityNotFoundError` (#24).
 - To use an effect that should already be on the layer, look it up with
   `layer.effects.get(id)`: it throws `EntityNotFoundError` if the effect is
   not there. `effects.apply(id)` returns the existing effect if the layer
@@ -151,6 +154,7 @@ const result = await ae.close({ unsavedChanges: "discard" }); // only for your o
 | Error | Meaning | Do |
 | --- | --- | --- |
 | `EntityNotFoundError` (`kind`) | comp/layer/effect name not in the project | list with `comps()`, `layers()`, `effects.all()` |
+| `PropertyHasNoValueError` (`kind`) | get/set on a property without a value; nothing was written | pick a `kind: "value"` property from `parameters()` |
 | `UnsavedChangesError` | would discard unsaved work | if it is yours, retry with `discard`; else stop |
 | `AfterEffectsError` | AE reported a failure; message has AE's text | read `error.message` and `error.cause` |
 | `TimeoutError` (as `cause`) | no answer within the budget | see below — the work may still be running |
