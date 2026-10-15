@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import * as acorn from "acorn";
 
 const file = process.argv[2];
-const markdown = readFileSync(file, "utf-8");
+// A CRLF checkout (Git for Windows' default core.autocrlf=true) would match
+// no block at all and report "0 snippet(s) valid" as success.
+const markdown = readFileSync(file, "utf-8").replace(/\r\n/g, "\n");
 const pattern = /```js\n([\s\S]*?)```/g;
 
 let match;

@@ -65,3 +65,34 @@ jobs:
       # exists, so it lives here rather than in the packing check.
       - name: Verify the public API from an installed package
         run: node scripts/check-public-api.js
+
+  # Issue #16: the release tooling's tests on native Windows, checked out as
+  # Git for Windows does by default (core.autocrlf=true, so CRLF files). Only
+  # these files: the rest of the suite's Windows status belongs to the Windows
+  # work (#15/#17), not to this job.
+  release-tooling-windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out with CRLF line ends
+        run: git config --global core.autocrlf true
+
+      - uses: actions/checkout@v5
+
+      - name: Confirm the checkout is CRLF
+        shell: bash
+        run: |
+          git ls-files --eol README.md .github/workflows/publish.yml | tee /dev/stderr | grep -q 'w/crlf'
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Release tooling tests
+        run: npx vitest run test/publish-gate.test.ts test/docs-api.test.ts test/doc-snippets.test.ts
+
+      - name: Check documented JSX snippets are ES3
+        run: node scripts/check-doc-snippets.js docs/verification.md
