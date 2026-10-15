@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, "release-*"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install toolchain
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.9.12
+          install: true
+
+      - name: Install dependencies
+        run: mise exec -- npm ci
+
+      - name: Typecheck
+        run: mise exec -- npm run typecheck
+
+      - name: Lint
+        run: mise exec -- npm run lint
+
+      - name: Test
+        run: mise exec -- npm run test
+
+      - name: Build
+        run: mise exec -- npm run build
+
+      # The host scripts ship verbatim, not compiled, so nothing else in the
+      # build would catch modern syntax before it reaches ExtendScript and
+      # fails there with a far worse message. The ES3 test covers this in the
+      # normal suite; this keeps the check visible as a gate on its own.
+      - name: Check the ES3 host script parses
+        run: node --check host/a8n-host.js && node --check host/a8n-json.js
+
+      # The verification doc tells a real-host operator to paste a JSX probe
+      # into After Effects. That snippet has to be ES3 too, or the first thing
+      # it does is fail in a way that looks like a bridge problem.
+      - name: Check documented JSX snippets are ES3
+        run: node scripts/check-doc-snippets.js docs/verification.md
+
+      # This repository's tests import through relative paths, so a broken
+      # `exports` map is invisible to them: every test stayed green while
+      # `./testing` pointed at a file the build never produced, and consumers
+      # got ERR_MODULE_NOT_FOUND. This packs, installs into a clean project,
+      # and resolves the package the way a consumer does.
+      - name: Verify the packed package resolves as published
+        run: node scripts/check-packed-package.js
+
+      # The packing check above covers the package surface. This one covers what
+      # a consumer does next: imports the entry points and drives a session,
+      # which is what proves the built driver finds the shipped host script from
+      # inside someone else's node_modules. Only meaningful once the public API
+      # exists, so it lives here rather than in the packing check.
+      - name: Verify the public API from an installed package
+        run: node scripts/check-public-api.js

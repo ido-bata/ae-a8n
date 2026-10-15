@@ -1,0 +1,149 @@
+name: publish
+
+# Publishing is a deliberate act, not a side effect of merging or of pressing
+# a button.
+#
+# - `verify` needs no credentials and runs on pull requests that touch the
+#   release surface, on manual dispatch, and on version tags. It runs the
+#   quality gate, checks the packed tarball is usable, checks the release
+#   preconditions, and does `npm publish --dry-run`.
+# - `verify` ends with scripts/publish-gate.js, which decides whether this
+#   run may publish: only a pushed tag `v<version>` of a commit on main, only
+#   when the repository variable NPM_PUBLISH_VERSION equals that version,
+#   never a version already on npm, and never the first version (published by
+#   hand with 2FA). Manual dispatch and pull requests never publish.
+# - `publish` runs only when the gate says so. It publishes the exact tarball
+#   `verify` built and checked (same shasum), with npm Trusted Publishing
+#   (OIDC): no NPM_TOKEN exists to leak.
+#
+# There is no `environment:` with required reviewers: on GitHub Free those are
+# not available to private repositories, and a job naming an environment that
+# does not exist creates it, unprotected — a gate that only looks like one.
+# docs/releasing.md has the whole procedure and what this does not protect.
+#
+# Provenance is off: npm does not generate it for private source
+# repositories. Enabling it belongs with making the repository public.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - ".github/workflows/publish.yml"
+      - "package.json"
+      - "scripts/**"
+
+permissions: {}
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.gate.outputs.publish }}
+      shasum: ${{ steps.gate.outputs.shasum }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          # The gate checks the tagged commit is on main.
+          fetch-depth: 0
+
+      - name: Install toolchain
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.9.12
+          install: true
+
+      - name: Quality gate
+        run: |
+          mise exec -- npm ci
+          mise exec -- npm run check
+          mise exec -- npm run build
+          node --check host/a8n-host.js
+          node --check host/a8n-json.js
+
+      - name: Release preconditions
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: mise exec -- node scripts/check-release.js "$TAG"
+
+      # `npm pack` succeeding is not evidence the package is usable: install
+      # the tarball into a clean project and drive the public API from it.
+      - name: Verify the tarball is usable as published
+        run: |
+          mise exec -- node scripts/check-packed-package.js
+          mise exec -- node scripts/check-public-api.js
+
+      - name: Pack
+        run: |
+          mkdir -p "$RUNNER_TEMP/package"
+          mise exec -- npm pack --pack-destination "$RUNNER_TEMP/package"
+
+      - name: Publish gate
+        id: gate
+        env:
+          NPM_PUBLISH_VERSION: ${{ vars.NPM_PUBLISH_VERSION }}
+        run: mise exec -- node scripts/publish-gate.js "$RUNNER_TEMP"/package/*.tgz
+
+      # npm refuses even a dry run over a published version; for one, the gate
+      # has already compared the tarball with the registry's.
+      - name: Publish (dry run)
+        if: steps.gate.outputs.registry != 'present'
+        run: mise exec -- npm publish "$RUNNER_TEMP"/package/*.tgz --dry-run --tag next --access public --provenance=false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: ${{ runner.temp }}/package/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: verify
+    if: needs.verify.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Trusted Publishing: the registry accepts this workflow's OIDC token
+      # instead of a stored secret. Needs npm >= 11.5.1 (the toolchain's Node 24
+      # ships 11.x).
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install toolchain
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.9.12
+          install: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: package
+          path: ${{ runner.temp }}/package
+
+      - name: Publish to next
+        env:
+          EXPECTED_SHASUM: ${{ needs.verify.outputs.shasum }}
+        run: |
+          tarball=$(ls "$RUNNER_TEMP"/package/*.tgz)
+          actual=$(sha1sum "$tarball" | cut -d' ' -f1)
+          if [ "$actual" != "$EXPECTED_SHASUM" ]; then
+            echo "::error::downloaded tarball $actual is not the one the gate checked ($EXPECTED_SHASUM)"
+            exit 1
+          fi
+          # Trusted Publishing needs npm >= 11.5.1.
+          mise exec -- node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); if (a<11||(a===11&&(b<5||(b===5&&c<1)))) { console.error("::error::npm "+process.argv[1]+" cannot use Trusted Publishing"); process.exit(1) }' "$(mise exec -- npm --version)"
+          mise exec -- npm publish "$tarball" --tag next --access public --provenance=false

@@ -1,0 +1,225 @@
+/**
+ * Locating the After Effects installation.
+ *
+ * Adobe installs into a version-stamped directory (`Adobe After Effects 2025`)
+ * or app bundle, so a hard-coded path would break on every upgrade. The
+ * highest version present wins.
+ */
+
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
+
+export const ADOBE_WINDOWS_ROOT = "C:\\Program Files\\Adobe";
+export const MAC_APPLICATIONS_ROOT = "/Applications";
+
+const AE_DIR_PATTERN = /^Adobe After Effects (.+)$/;
+
+/** Orders the suffixes Adobe uses: years compare as years, everything else as text. */
+function compareVersionSuffixes(a: string, b: string): number {
+  const yearA = /^\d{4}$/.test(a);
+  const yearB = /^\d{4}$/.test(b);
+  if (yearA && yearB) {
+    return Number(a) - Number(b);
+  }
+  if (yearA !== yearB) {
+    // A calendar-year build is newer than a named release.
+    return yearA ? 1 : -1;
+  }
+  return a.localeCompare(b);
+}
+
+export function sortVersionSuffixes(suffixes: readonly string[]): string[] {
+  return [...suffixes].sort(compareVersionSuffixes);
+}
+
+/** Picks the newest `Adobe After Effects <version>` directory, or null. */
+export function newestAeDirectory(entries: readonly string[]): string | null {
+  const candidates = entries
+    .map((entry) => AE_DIR_PATTERN.exec(entry))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => match[1] as string)
+    .sort(compareVersionSuffixes);
+  const newest = candidates.at(-1);
+  return newest === undefined ? null : `Adobe After Effects ${newest}`;
+}
+
+/** Every `Adobe After Effects <version>` entry, newest first. */
+export function aeDirectoriesNewestFirst(entries: readonly string[]): string[] {
+  return entries
+    .map((entry) => AE_DIR_PATTERN.exec(entry))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => match[1] as string)
+    .sort(compareVersionSuffixes)
+    .reverse()
+    .map((suffix) => `Adobe After Effects ${suffix}`);
+}
+
+export type AfterEffectsInstall = {
+  /** Path to the application executable. */
+  readonly executable: string;
+  /** Version directory or bundle name, e.g. `Adobe After Effects 2025`. */
+  readonly versionName: string;
+  /** `aerender.exe` / `aerender`, when the install ships one. */
+  readonly renderExecutable: string | null;
+};
+
+export type ResolveOptions = {
+  /** Override the detected install. Takes precedence over discovery. */
+  readonly installDir?: string;
+  /** Adobe root to scan. Defaults per platform; mainly a test seam. */
+  readonly root?: string;
+};
+
+export class AfterEffectsNotInstalledError extends Error {
+  constructor(checked: readonly string[]) {
+    super(
+      `no After Effects installation found (looked in: ${checked.join(", ")}). ` +
+        "Pass installDir explicitly if Adobe installed it somewhere unusual.",
+    );
+    this.name = "AfterEffectsNotInstalledError";
+  }
+}
+
+function resolveWindows(root: string): AfterEffectsInstall | null {
+  if (!existsSync(root)) {
+    return null;
+  }
+  const newest = newestAeDirectory(readdirSync(root));
+  if (newest === null) {
+    return null;
+  }
+  const supportFiles = join(root, newest, "Support Files");
+  const executable = join(supportFiles, "AfterFX.exe");
+  if (!existsSync(executable)) {
+    return null;
+  }
+  const render = join(supportFiles, "aerender.exe");
+  return {
+    executable,
+    versionName: newest,
+    renderExecutable: existsSync(render) ? render : null,
+  };
+}
+
+/**
+ * Executable names a macOS bundle may use, for a bundle whose Info.plist is
+ * not XML. AE 2026 (26.5) ships `After Effects`; `AfterFX` is the Windows name
+ * and is kept only as a last resort.
+ */
+const MAC_EXECUTABLE_FALLBACKS = ["After Effects", "AfterFX"];
+
+/** The executable a macOS bundle launches, or null if it has none. */
+function macBundleExecutable(bundle: string): string | null {
+  const macos = join(bundle, "Contents", "MacOS");
+  const candidates: string[] = [];
+  try {
+    const plist = readFileSync(join(bundle, "Contents", "Info.plist"), "utf-8");
+    const declared = /<key>CFBundleExecutable<\/key>\s*<string>([^<]+)<\/string>/.exec(plist);
+    if (declared !== null) {
+      candidates.push(declared[1] as string);
+    }
+  } catch {
+    // Missing or binary plist: fall through to the known names.
+  }
+  candidates.push(...MAC_EXECUTABLE_FALLBACKS);
+  for (const name of candidates) {
+    const executable = join(macos, name);
+    if (existsSync(executable)) {
+      return executable;
+    }
+  }
+  return null;
+}
+
+/**
+ * Reads a macOS install from either its install directory
+ * (`/Applications/Adobe After Effects 2026`, which holds the bundle and
+ * `aerender`) or the bundle itself.
+ */
+function macInstallAt(path: string): AfterEffectsInstall | null {
+  let installDir: string;
+  let bundle: string;
+  if (path.endsWith(".app")) {
+    bundle = path;
+    installDir = dirname(path);
+  } else {
+    installDir = path;
+    bundle = join(path, `${basename(path)}.app`);
+  }
+  const executable = macBundleExecutable(bundle);
+  if (executable === null) {
+    return null;
+  }
+  const render = [join(installDir, "aerender"), join(bundle, "Contents", "Frameworks", "aerender")].find(
+    (candidate) => existsSync(candidate),
+  );
+  return {
+    executable,
+    versionName: basename(bundle),
+    renderExecutable: render ?? null,
+  };
+}
+
+function resolveMac(root: string): AfterEffectsInstall | null {
+  if (!existsSync(root)) {
+    return null;
+  }
+  // An uninstall can leave a version directory behind with no bundle in it, so
+  // the newest *usable* install wins rather than the newest name.
+  for (const name of aeDirectoriesNewestFirst(readdirSync(root))) {
+    const found = macInstallAt(join(root, name));
+    if (found !== null) {
+      return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * The `.app` bundle an executable belongs to, or null when it is not inside
+ * one. AppleScript addresses the bundle, not the executable.
+ */
+export function macAppBundle(executable: string): string | null {
+  const macos = dirname(executable);
+  const contents = dirname(macos);
+  const bundle = dirname(contents);
+  if (basename(macos) !== "MacOS" || basename(contents) !== "Contents" || !bundle.endsWith(".app")) {
+    return null;
+  }
+  return bundle;
+}
+
+export function resolveInstall(
+  platform: NodeJS.Platform = process.platform,
+  options: ResolveOptions = {},
+): AfterEffectsInstall {
+  if (options.installDir !== undefined) {
+    return explicitInstall(platform, options.installDir);
+  }
+  const root = options.root ?? (platform === "darwin" ? MAC_APPLICATIONS_ROOT : ADOBE_WINDOWS_ROOT);
+  const found = platform === "darwin" ? resolveMac(root) : resolveWindows(root);
+  if (found === null) {
+    throw new AfterEffectsNotInstalledError([root]);
+  }
+  return found;
+}
+
+function explicitInstall(platform: NodeJS.Platform, dir: string): AfterEffectsInstall {
+  if (platform === "darwin") {
+    const found = macInstallAt(dir);
+    if (found === null) {
+      throw new AfterEffectsNotInstalledError([dir]);
+    }
+    return found;
+  }
+  const executable = join(dir, "Support Files", "AfterFX.exe");
+  if (!existsSync(executable)) {
+    throw new AfterEffectsNotInstalledError([dir]);
+  }
+  const render = join(dir, "Support Files", "aerender.exe");
+  return {
+    executable,
+    versionName: dir.split(/[\\/]/).at(-1) ?? dir,
+    renderExecutable: existsSync(render) ? render : null,
+  };
+}
