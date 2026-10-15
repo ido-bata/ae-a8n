@@ -297,3 +297,8 @@ var A8NJson = (function () {
 
   return { stringify: stringify, parse: parse };
 })();
+
+// The completion value, so `$.evalFile` returns the codec. A real AE scopes an
+// included file's `var`s to the calling function, so the caller cannot look
+// `A8NJson` up on the global object.
+A8NJson;

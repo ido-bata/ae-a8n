@@ -17,14 +17,24 @@
   // ---------------------------------------------------------------- codec --
 
   function loadJson() {
-    // Prefer the engine's own JSON when it exists (future AE versions may add
-    // one); fall back to the bundled ES3 implementation otherwise.
-    if (typeof JSON !== "undefined" && JSON !== null && typeof JSON.parse === "function") {
-      return JSON;
+    // Always the bundled codec. AE's engine has no `JSON` of its own; one that
+    // is present was put there by another extension (observed on 26.5x89: a
+    // Babel-built polyfill, present once startup finished and absent on a cold
+    // start), so preferring it made the host behave differently cold and warm.
+    //
+    // The codec comes back as `$.evalFile`'s completion value. Looking it up
+    // on the global object does not work: called from inside a function, a
+    // real AE keeps the included file's `var`s in that function's scope.
+    var codec = $.evalFile(new File($.fileName).parent.fsName + "/a8n-json.js");
+    if (
+      codec === undefined ||
+      codec === null ||
+      typeof codec.parse !== "function" ||
+      typeof codec.stringify !== "function"
+    ) {
+      throw new Error("a8n-json.js did not produce a JSON codec");
     }
-    var self = this;
-    $.evalFile(new File($.fileName).parent.fsName + "/a8n-json.js");
-    return self.A8NJson;
+    return codec;
   }
 
   // ------------------------------------------------------------------ fs ---
@@ -480,7 +490,7 @@
   }
 
   function main() {
-    var codec = loadJson.call(this);
+    var codec = loadJson();
     var context = this.__a8n;
     if (context === undefined || context === null) {
       throw new Error("a8n host invoked without a __a8n context");

@@ -27,6 +27,11 @@ export type FakeTransportOptions = {
 export class FakeAfterEffectsTransport implements HostTransport {
   readonly kind = "fake-in-process";
   readonly app = new FakeApplication();
+  /**
+   * A global `JSON` for the host to find, standing in for one another AE
+   * extension installed. Unset by default: real ExtendScript has none.
+   */
+  foreignJson: unknown = undefined;
   #launched = false;
   #closed = false;
   #nextComp: FakeComp = createDefaultComp();
@@ -50,11 +55,15 @@ export class FakeAfterEffectsTransport implements HostTransport {
 
   invoke(entryScriptPath: string): Promise<void> {
     const globals: HostGlobals = createFakeGlobals(this.app);
-    const outcome = runHostScript(entryScriptPath, globals);
+    const outcome = runHostScript(
+      entryScriptPath,
+      globals,
+      this.foreignJson === undefined ? {} : { foreignJson: this.foreignJson },
+    );
     if (!outcome.success) {
-      // Real AE surfaces a script error as a modal dialog and a failed result.
-      // The driver needs the result file to exist, so write the equivalent
-      // envelope rather than throwing past the transport boundary.
+      // The bootstrap catches everything the host throws, so reaching here
+      // means the entry script itself failed. On a real AE that is a modal
+      // dialog that blocks the application until someone dismisses it.
       throw new Error(
         `fake host threw while evaluating the entry script: ${outcome.error.message}`,
       );

@@ -18,7 +18,9 @@ Confirmed
   test runner, assertion, snapshot, artifact, report, timeout
                     │
                     ▼  the *same* host/a8n-host.js, evaluated in node:vm,
-                       with native JSON removed so the production path is taken
+                       with native JSON removed, File.rename taking a name,
+                       and a nested $.evalFile kept off the global object —
+                       each as observed on AE 26.5x89
 
 Not confirmed
 ──────────────────────────────
@@ -115,6 +117,24 @@ Run it:
 
 If the result file appears with a version in it, the transport's premise holds on
 this machine. If it does not, nothing above `ae-a8n` is worth debugging yet.
+
+### Unattended means no dialogs
+
+A script error that escapes into AE becomes a modal alert, and AE then answers
+nothing until a person clicks it away — under `DoScriptFile` the AppleEvent
+times out after 120 s. The generated entry script therefore catches everything
+the host throws, a syntax error included, and publishes it as a failure
+envelope. Two dialogs remain outside its reach, because they come from AE
+itself before any script runs:
+
+- **Crash recovery**, shown on the launch after AE was killed or crashed. Quit
+  AE through `app.quit` / AppleScript `quit`, never by signal, so the next run
+  does not start behind it.
+- **"The scripting plugin is not installed"**, shown when a script arrives
+  while AE is still held at startup (observed only behind the crash-recovery
+  dialog).
+
+Neither can be dismissed through accessibility on macOS; AE draws them itself.
 
 ### Then, in order
 

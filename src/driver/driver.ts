@@ -210,6 +210,7 @@ export class AeDriver {
         hostScriptPath: this.#hostScriptPath,
         requestPath: `${this.#paths.inbox}/${id}.request.json`,
         resultPath: `${this.#paths.outbox}/${id}.result.json`,
+        id,
       });
 
       await this.#transport.invoke(entry);

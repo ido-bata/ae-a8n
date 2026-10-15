@@ -226,6 +226,12 @@ export type RunHostOptions = {
    * must be tested on the codec it will actually use inside After Effects.
    */
   readonly nativeJson?: boolean;
+  /**
+   * Install this as the global `JSON` instead. A real AE engine can carry one
+   * that some other extension put there (observed: a Babel-built polyfill,
+   * present only after startup), so the host must not depend on it.
+   */
+  readonly foreignJson?: unknown;
 };
 
 export type RunHostResult =
@@ -234,8 +240,14 @@ export type RunHostResult =
 
 /**
  * Evaluates a host script the way ExtendScript evaluates a JSX file: its
- * top-level `var`s become globals, and `$.evalFile` includes a sibling file
- * into that same global.
+ * top-level `var`s become globals.
+ *
+ * `$.evalFile` follows what a real AE does (observed on 26.5x89): called from
+ * the top level of a script, the included file's `var`s land on the global
+ * object; called from inside a function, they stay in that function's scope
+ * and never reach the global. Either way the call returns the included
+ * file's completion value. The fake approximates "inside a function" as "from
+ * inside a file that was itself included", which is where the host calls it.
  */
 export function runHostScript(
   scriptPath: string,
@@ -244,24 +256,43 @@ export function runHostScript(
 ): RunHostResult {
   const sandbox: Record<string, unknown> = { ...globals };
   const context = vm.createContext(sandbox);
+  let includeDepth = 0;
+
+  const removeJson = (target: vm.Context): void => {
+    if (options.nativeJson !== true) {
+      // Run inside the context so the reference is taken in that realm.
+      vm.runInContext("var JSON = undefined;", target);
+    }
+  };
+
+  const isolatedContext = (): vm.Context => {
+    const isolated = vm.createContext({ ...sandbox });
+    removeJson(isolated);
+    return isolated;
+  };
 
   // ExtendScript's `$.evalFile` takes a path string or a File, and `$.fileName`
   // tracks whichever file is currently executing — so a script that resolves a
   // sibling include sees its own directory, not the caller's. Both behaviours
   // are load-bearing for the host script.
   const dollar: {
-    evalFile: (target: string | FakeFile) => void;
+    evalFile: (target: string | FakeFile) => unknown;
     fileName: string;
     sleep: (ms: number) => void;
   } = {
-    evalFile: (target: string | FakeFile): void => {
+    evalFile: (target: string | FakeFile): unknown => {
       const path = typeof target === "string" ? target : target.fsName;
       const included = readFileSync(path, "utf-8");
       const previous = dollar.fileName;
       dollar.fileName = path;
+      includeDepth += 1;
       try {
-        vm.runInContext(included, context, { filename: path });
+        // Nested: evaluate against a copy of the globals, so its `var`s are
+        // invisible to the caller's global object, as on a real host.
+        const target = includeDepth > 1 ? isolatedContext() : context;
+        return vm.runInContext(included, target, { filename: path });
       } finally {
+        includeDepth -= 1;
         dollar.fileName = previous;
       }
     },
@@ -282,9 +313,9 @@ export function runHostScript(
   sandbox["File"] = FakeFile;
   sandbox["Folder"] = FakeFolder;
 
-  if (options.nativeJson !== true) {
-    // Run inside the context so the reference is taken in that realm.
-    vm.runInContext("var JSON = undefined;", context);
+  removeJson(context);
+  if (options.foreignJson !== undefined) {
+    sandbox["JSON"] = options.foreignJson;
   }
 
   try {
