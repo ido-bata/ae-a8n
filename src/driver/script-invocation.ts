@@ -17,7 +17,7 @@
  *            makes osascript fail to compile the script (-2741).
  */
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -33,7 +33,23 @@ export type ScriptInvocationOptions = {
   /** Pre-resolved install, when the caller already discovered one. */
   readonly install?: AfterEffectsInstall;
   readonly platform?: NodeJS.Platform;
+  /** How long `close` waits for AE to exit after `app.quit`. */
+  readonly exitTimeoutMs?: number;
+  /** Executable paths of running processes. Mainly a test seam. */
+  readonly runningExecutables?: () => readonly string[];
 };
+
+/** AE saves preferences and tears down plugins on quit; that takes seconds. */
+export const EXIT_TIMEOUT_MS = 60_000;
+const EXIT_POLL_MS = 250;
+
+/** Executable paths of running processes, from `ps`. */
+function psExecutables(): string[] {
+  return execFileSync("ps", ["-axo", "comm="], { encoding: "utf-8" })
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
 
 /** A cold After Effects start can take a minute on a spinning disk. */
 export const READINESS_TIMEOUT_MS = 180_000;
@@ -93,10 +109,14 @@ export class ScriptInvocationTransport implements HostTransport {
   readonly kind = "script-invocation";
   readonly #install: AfterEffectsInstall;
   readonly #platform: NodeJS.Platform;
+  readonly #exitTimeoutMs: number;
+  readonly #runningExecutables: () => readonly string[];
 
   constructor(options: ScriptInvocationOptions = {}) {
     const platform = options.platform ?? process.platform;
     this.#platform = platform;
+    this.#exitTimeoutMs = options.exitTimeoutMs ?? EXIT_TIMEOUT_MS;
+    this.#runningExecutables = options.runningExecutables ?? psExecutables;
     this.#install =
       options.install ??
       resolveInstall(platform, {
@@ -157,9 +177,29 @@ export class ScriptInvocationTransport implements HostTransport {
     );
   }
 
+  /**
+   * Waits for AE to exit after the driver's `app.quit`.
+   *
+   * `app.quit` returns while AE is still shutting down. A session launched in
+   * that window sends its AppleEvent to the exiting process and fails with
+   * -609 "connection is invalid" (observed on AE 26.5x89 with back-to-back
+   * ae-test sessions), so on macOS close only returns once the process is
+   * gone. It never kills AE: that would discard unsaved state and make the
+   * next launch stop at the crash-recovery dialog.
+   */
   async close(): Promise<void> {
-    // The driver issues `app.quit` through the host script, which closes the
-    // project first. Killing the process here would discard unsaved state.
+    if (this.#platform !== "darwin") {
+      return;
+    }
+    const deadline = Date.now() + this.#exitTimeoutMs;
+    while (this.#runningExecutables().includes(this.#install.executable)) {
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `After Effects did not exit within ${this.#exitTimeoutMs} ms of app.quit; it was left running`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, EXIT_POLL_MS));
+    }
   }
 
   /**

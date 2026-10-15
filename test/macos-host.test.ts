@@ -230,3 +230,54 @@ describe("app.info", () => {
     expect(result).not.toHaveProperty("build");
   });
 });
+
+describe("closing a session", () => {
+  // app.quit returns while AE is still shutting down; a launch in that window
+  // failed with -609 on a real host. close must outlast the process.
+  const executable = "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects";
+  const install = { executable, versionName: "Adobe After Effects 2026.app", renderExecutable: null };
+
+  it("returns only once the AE process has exited", async () => {
+    let polls = 0;
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      runningExecutables: () => {
+        polls += 1;
+        return polls < 3 ? ["/sbin/launchd", executable] : ["/sbin/launchd"];
+      },
+    });
+    await transport.close();
+    expect(polls).toBe(3);
+  });
+
+  it("does not mistake another install for this one", async () => {
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      runningExecutables: () => [executable.replace(/2026/g, "2025")],
+    });
+    await expect(transport.close()).resolves.toBeUndefined();
+  });
+
+  it("says so, without killing anything, when AE does not exit", async () => {
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      exitTimeoutMs: 300,
+      runningExecutables: () => [executable],
+    });
+    await expect(transport.close()).rejects.toThrow(/did not exit within 300 ms/);
+  });
+
+  it("does not wait on Windows, where the existing behaviour is kept", async () => {
+    const transport = new ScriptInvocationTransport({
+      platform: "win32",
+      install: { executable: "C:\\AE\\Support Files\\AfterFX.exe", versionName: "x", renderExecutable: null },
+      runningExecutables: () => {
+        throw new Error("must not be consulted");
+      },
+    });
+    await expect(transport.close()).resolves.toBeUndefined();
+  });
+});
