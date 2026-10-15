@@ -216,7 +216,8 @@ export class AeDriver {
       // The deadline covers the invocation as well as the wait for a result:
       // on macOS invoke returns only when the script has finished, so a
       // deadline started afterwards never fired for a slow or hung script
-      // (observed: a 2 s call answered after 9.9 s on a real AE).
+      // (observed: a 2 s call answered after 9.9 s on a real AE). Aborting
+      // makes the transport stop waiting; the script itself runs on in AE.
       const deadline = Date.now() + timeoutMs;
       const abort = new AbortController();
       const timer = setTimeout(() => abort.abort(), timeoutMs);

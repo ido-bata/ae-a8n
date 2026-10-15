@@ -64,9 +64,13 @@ export const READINESS_TIMEOUT_MS = 180_000;
  */
 export const MAC_DO_SCRIPT_FILE = [
   "on run argv",
-  "  tell application (item 1 of argv)",
-  "    «event miscfile» (item 2 of argv)",
-  "  end tell",
+  // AppleScript's default 120 s would fail a long render that AE is still
+  // running. The driver owns the call's deadline; osascript just waits.
+  "  with timeout of 3600 seconds",
+  "    tell application (item 1 of argv)",
+  "      «event miscfile» (item 2 of argv)",
+  "    end tell",
+  "  end timeout",
   "end run",
 ];
 
@@ -90,6 +94,35 @@ export function summariseProcessOutput(output: string, home: string = homedir())
   return text;
 }
 
+/**
+ * Waits for `work`, or rejects as soon as `signal` aborts. `work` itself is
+ * not cancelled; it settles on its own.
+ */
+function untilAborted(work: Promise<void>, signal: AbortSignal | undefined): Promise<void> {
+  if (signal === undefined) {
+    return work;
+  }
+  if (signal.aborted) {
+    return Promise.reject(new Error("invocation abandoned: the call's deadline passed"));
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(new Error("invocation abandoned: the call's deadline passed"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(
+      () => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
+}
+
 /** A launcher process that failed, with what it said about why. */
 export class ScriptInvocationError extends Error {
   readonly exitCode: number | null;
@@ -111,6 +144,8 @@ export class ScriptInvocationTransport implements HostTransport {
   readonly #platform: NodeJS.Platform;
   readonly #exitTimeoutMs: number;
   readonly #runningExecutables: () => readonly string[];
+  /** The DoScriptFile still waiting on AE, if a call gave up on it. */
+  #inFlight: Promise<void> | null = null;
 
   constructor(options: ScriptInvocationOptions = {}) {
     const platform = options.platform ?? process.platform;
@@ -151,12 +186,12 @@ export class ScriptInvocationTransport implements HostTransport {
 
   async invoke(entryScriptPath: string, options: InvokeOptions = {}): Promise<void> {
     if (this.#platform === "win32") {
-      await this.#run(
-        join(this.#install.executable, ".."),
-        this.#install.executable,
-        ["-r", entryScriptPath],
-        options.signal,
-      );
+      // No signal: on a cold start `AfterFX.exe -r` *is* After Effects, and
+      // the process returns without waiting for the script anyway.
+      await this.#run(join(this.#install.executable, ".."), this.#install.executable, [
+        "-r",
+        entryScriptPath,
+      ]);
       return;
     }
     if (this.#platform === "darwin") {
@@ -166,16 +201,31 @@ export class ScriptInvocationTransport implements HostTransport {
           `cannot address After Effects by AppleScript: ${this.#install.executable} is not inside an .app bundle`,
         );
       }
-      // DoScriptFile returns only when the script has finished, so a hung or
-      // slow script would hold the call well past its deadline. On abort the
-      // osascript process is stopped; AE finishes the script on its own and
-      // its late result is never read.
-      await this.#run(
-        "/",
-        "osascript",
-        [...MAC_DO_SCRIPT_FILE.flatMap((line) => ["-e", line]), bundle, entryScriptPath],
-        options.signal,
+      // One DoScriptFile at a time. A call that timed out leaves its script
+      // running in AE; the next one waits for it rather than racing it.
+      if (this.#inFlight !== null) {
+        await untilAborted(this.#inFlight, options.signal);
+      }
+      // DoScriptFile returns only when the script has finished. On a deadline
+      // the call stops *waiting*, but osascript is left to finish: killing it
+      // mid-script left AE refusing every later script ("1") and refusing to
+      // quit (observed on 26.5x89), which only a forced exit cleared.
+      const done = this.#run("/", "osascript", [
+        ...MAC_DO_SCRIPT_FILE.flatMap((line) => ["-e", line]),
+        bundle,
+        entryScriptPath,
+      ]);
+      const tracked: Promise<void> = done.then(
+        () => undefined,
+        () => undefined,
       );
+      this.#inFlight = tracked;
+      void tracked.then(() => {
+        if (this.#inFlight === tracked) {
+          this.#inFlight = null;
+        }
+      });
+      await untilAborted(done, options.signal);
       return;
     }
     throw new Error(
@@ -213,18 +263,12 @@ export class ScriptInvocationTransport implements HostTransport {
    * Runs a process and resolves when it exits. Errors are surfaced, except
    * where noted in `invoke` for Windows.
    */
-  #run(
-    cwd: string,
-    command: string,
-    args: readonly string[],
-    signal?: AbortSignal,
-  ): Promise<void> {
+  #run(cwd: string, command: string, args: readonly string[]): Promise<void> {
     return new Promise((resolve, reject) => {
       const child = spawn(command, [...args], {
         cwd,
         stdio: ["ignore", "ignore", "pipe"],
         windowsHide: true,
-        ...(signal === undefined ? {} : { signal }),
       });
       // Only the head is kept: a runaway process must not grow this without
       // bound, and the cause of a launcher failure is in the first lines.

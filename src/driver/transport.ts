@@ -10,8 +10,9 @@
 export type InvokeOptions = {
   /**
    * Aborted when the call's deadline passes. A transport that waits for the
-   * script to finish (macOS `DoScriptFile` is synchronous) must stop waiting;
-   * the script itself may run on inside the host.
+   * script to finish (macOS `DoScriptFile` is synchronous) must stop waiting
+   * and reject. It must not abandon the host mid-script: the script runs on,
+   * and the transport is responsible for not sending the next one into it.
    */
   readonly signal?: AbortSignal;
 };
