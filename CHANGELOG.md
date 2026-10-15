@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased (changes since 0.1.0-alpha.0)
+## 0.1.0-alpha.1
 
-Verified on macOS against After Effects 2026 (26.5x89); Windows not run.
+Changes since 0.1.0-alpha.0. Verified on macOS against After Effects 2026
+(26.5x89); Windows not run. Published through npm Staged Publishing
+(`next` dist-tag) and approved by a person with 2FA.
 Each item below was reproduced on that host before the change and
 re-run after it (`docs/verification.md`).
 
