@@ -83,8 +83,21 @@ await blur.get();         // read back; plugins may clamp
   not. Find them from what AE reports:
   `await layer.effects.all()` → `{ name, matchName }[]`,
   `await effect.parameters()` → `{ name, matchName, value }[]`.
-- `effects.apply(id)` returns the existing effect if the layer already has
-  one with that name or match name; it does not add a second.
+- `effect.parameters()` fails for the whole effect when any one of its
+  properties holds no value (in 0.1.0-alpha.0, Tint's `ADBE Tint-0004`;
+  #18). Then read parameters one at a time with
+  `effect.parameter(matchName).info()`. Built-in match names run
+  `<effect match name>-0001`, `-0002`, …; past the last one the call fails
+  with "parameter not found", an `AfterEffectsError` rather than
+  `EntityNotFoundError` (#24).
+- `value` is a number for sliders and checkboxes, an array for colours
+  (`[r, g, b, a]`), and absent for groups such as Compositing Options, even
+  though the types say `number` (#21). `set()` takes numbers only.
+- To use an effect that should already be on the layer, look it up with
+  `layer.effects.get(id)`: it throws `EntityNotFoundError` if the effect is
+  not there. `effects.apply(id)` returns the existing effect if the layer
+  already has one with that name or match name, and **adds one** if not, so
+  a misspelt identifier passed to `apply()` adds an effect.
 - Defaults are AE's, not zero: Gaussian Blur's Blurriness defaults to 25.
 - Built-in effects can have options that confine a change. Gaussian Blur's
   "Repeat Edge Pixels" (`ADBE Gaussian Blur 2-0003`) defaults on and keeps
@@ -108,6 +121,11 @@ const after = await comp.renderFrame(0, { subdirectory: "after" });
 - Output is 8-bit RGBA at full comp resolution; outside the layers alpha is 0.
 - Compare files by hash *and* by pixels. `examples/png.ts` in this package
   has a dependency-free reader and `countChangedPixels`.
+- Compare renders from the same session. The same frame of the same project
+  can come out ±1 in one channel on soft edges in a different After Effects
+  session (observed: 13 pixels on a blurred edge, #25), so a hash or exact
+  pixel match against another session's file can fail spuriously; allow a
+  tolerance there.
 - Rendering marks the project as changed (the viewer resolution is forced to
   full and restored), so plan to close with `discard`.
 
@@ -123,6 +141,10 @@ const result = await ae.close({ unsavedChanges: "discard" }); // only for your o
 - `quit: false` with a `reason` means AE was left running on purpose.
 - Then check: `pgrep -lx "After Effects"` should print nothing if you owned
   it, and `pgrep -l osascript` should be empty.
+- After Effects helper processes (`crashpad_handler`, `dynamiclinkmanager`,
+  `TeamProjectsLocalHub`) can stay up for seconds to minutes after AE has
+  quit, and exit on their own. `pgrep -f "After Effects"` matches them; they
+  are not a running After Effects. Do not wait on them or kill them.
 
 ## When something goes wrong
 
@@ -143,7 +165,8 @@ with `op`, `status` (`ok`/`error`/`timeout`), `durationMs`, `args`, `result`
 or `error`. `ae.traceEvents` is the same in memory. The session directory
 (`dirname(ae.tracePath)`) also holds every request and result envelope
 (`inbox/`, `outbox/`) and renders (`artifacts/`). Read these before
-re-running anything.
+re-running anything. A failed operation currently appears twice in the trace
+(#20); count failures by `seq` pairs, not rows.
 
 ## After a timeout
 
@@ -155,6 +178,17 @@ work:
 - Nothing is retried for you. Before retrying, **read the state back**
   (`effects.all()`, `parameter.get()`); the operations above are written to
   be repeatable, but your own sequence may not be.
+- `timeoutMs` is one budget for every call in the session, and it includes
+  the bridge's own overhead, not only the time inside AE. Opening a small
+  project took 330–510 ms inside AE, so a budget under about a second can
+  time out on `openProject` alone. How long a timed-out call really took
+  inside AE is `durationMs` in its `outbox/<id>.result.json`; do not add up
+  your waits.
+- A timed-out `openProject` gives you no `Project`, although AE usually
+  finishes the open (#22). If nothing has been edited yet, call
+  `openProject` again with the same path: it reopens the file and returns a
+  handle. After edits it raises `UnsavedChangesError`; do not pass
+  `discard` just to get a handle back.
 - If calls keep timing out, AE is probably blocked by a modal dialog. Scripts
   cannot dismiss it. Stop, tell the human what you saw (trace + the last
   error), and do not kill AE.

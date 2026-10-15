@@ -27,7 +27,7 @@ await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to th
 | Windows | **Not run. No behaviour is claimed.** The launcher path exists (`AfterFX.exe -r`) but has never executed. A Windows session never quits After Effects for you |
 | Node | 22 or later (developed on 24) |
 
-What has been checked, and how, is in [docs/verification.md](docs/verification.md).
+What has been checked, and how, is in [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md).
 
 ## Install
 
@@ -43,7 +43,7 @@ Requirements on the machine that runs After Effects:
 ## What it does to your After Effects
 
 This is a tool that operates someone's desktop application. The rules it
-follows ([docs/sessions.md](docs/sessions.md)):
+follows ([docs/sessions.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/sessions.md)):
 
 - **Ownership.** `ae.ownership()` is `owned` only if this session started After
   Effects and it is still that process; `attached` if AE was already running;
