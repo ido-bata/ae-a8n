@@ -19,7 +19,7 @@
 
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { AeDriver } from "../driver/driver.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
@@ -95,7 +95,9 @@ export class AfterEffects {
    * error names the operation rather than surfacing a raw bridge message.
    */
   static async launch(options: LaunchOptions = {}): Promise<AfterEffects> {
-    const sessionRoot = options.sessionRoot ?? mkdtempSync(join(tmpdir(), "ae-a8n-"));
+    // Absolute, because AE resolves paths in the scripts it is given against
+    // its own working directory rather than the caller's.
+    const sessionRoot = resolve(options.sessionRoot ?? mkdtempSync(join(tmpdir(), "ae-a8n-")));
     const trace = new TraceRecorder({ file: join(sessionRoot, "trace.jsonl") });
     const transport =
       options.transport ??
@@ -143,7 +145,9 @@ export class AfterEffects {
    * `unsavedChanges` is "discard".
    */
   async openProject(path: string, options: { unsavedChanges?: "refuse" | "discard" } = {}): Promise<Project> {
-    const projectPath = requireString(path, "path");
+    // Absolute for the same reason as the session root: AE resolves a relative
+    // path against its own working directory.
+    const projectPath = resolve(requireString(path, "path"));
     await this.#session.call("project.open", "project.open", {
       path: projectPath,
       discardUnsavedChanges: options.unsavedChanges === "discard",

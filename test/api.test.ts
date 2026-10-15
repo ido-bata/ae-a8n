@@ -8,7 +8,7 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, normalize } from "node:path";
+import { isAbsolute, join, normalize, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AfterEffects, EntityNotFoundError } from "../src/index.js";
@@ -261,5 +261,34 @@ describe("install discovery", () => {
     expect(() => resolveInstall("win32", { root: "/definitely/not/here" })).toThrow(
       /no After Effects installation found/,
     );
+  });
+});
+
+describe("relative paths", () => {
+  it("makes a relative sessionRoot absolute before anything is handed to After Effects", async () => {
+    // AE resolves a path in a script it is given against its own working
+    // directory, not the caller's, so a relative root would send it looking for
+    // an entry script that is not there and `launch` would wait out its timeout.
+    const relativeRoot = relative(process.cwd(), sessionRoot);
+    const ae = await AfterEffects.launch({ sessionRoot: relativeRoot, transport });
+    expect(isAbsolute(ae.tracePath)).toBe(true);
+    expect(normalize(ae.tracePath)).toBe(normalize(join(sessionRoot, "trace.jsonl")));
+    await ae.close();
+  });
+
+  it("is applied to a project path as well", async () => {
+    const ae = await launch();
+    const absolute = join(sessionRoot, "fixture.aep");
+    writeFileSync(absolute, "fake");
+    await ae.openProject(relative(process.cwd(), absolute));
+    const info = await (await ae.openProject(absolute)).info();
+    expect(isAbsolute(info.file ?? "")).toBe(true);
+    const opened = readFileSync(ae.tracePath, "utf-8")
+      .split("\n")
+      .filter((line) => line.includes('"project.open"'))
+      .map((line) => JSON.parse(line) as { args?: { path?: string } });
+    expect(opened[0]?.args?.path).toBeDefined();
+    expect(isAbsolute(opened[0]?.args?.path ?? "")).toBe(true);
+    await ae.close();
   });
 });

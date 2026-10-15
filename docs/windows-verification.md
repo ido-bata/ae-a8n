@@ -23,10 +23,10 @@ a claim that Windows "works": the table says which gate was reached.
 | P0 environment, safe dedicated session | **pass** | real host | No AE process before the run, no unsaved user project; AE started by the supervisor for the run. |
 | P1 independent JSX | **pass for space-free paths; `-r` fails for paths with whitespace** | real host | See "P1". |
 | P2 launch, readiness, `app.info`, result file | **pass, attached to a running AE only** | real host | `launch()` + probe 0.92 s; `info()` = `{version:"26.5x89", build:"89"}`; `close()` left AE running. **Cold start through ae-a8n not run.** Session roots with a space, with Japanese, and with both reached the probe in ~0.4-0.5 s after #17. |
-| P3 real `.aep`, comp/layer, write and read back | **blocked** | - | `openProject` returned in 0.8 s; the next call never answered because AE raised repeated modal errors (below). |
-| P4 effect + PNG, pixels changed | not run | - | Depends on P3. |
-| P5 ae-test real-host | not run | - | Depends on P3/P4. |
-| P6 fresh-session repeats, exceptions, cleanup | not run | - | |
+| P3 real `.aep`, comp/layer, write and read back | **pass on a clean AE** (blocked earlier, cause found: see "The modal") | real host | open → info → comps → comp → layers → layer → effect apply → parameter set/get, every call ~0.3-0.7 s, no modal. The earlier block was a global AE object left by *another* script, not ae-a8n. |
+| P4 effect + PNG, pixels changed | **pass** | real host | Two 1920x1080 PNGs; Gaussian Blur 0 → 100 changed 453,574 pixels, identical in every run. |
+| P5 ae-test real-host | **not run** | - | ae-test is not in this environment. |
+| P6 fresh-session repeats, exceptions, cleanup | **10/10 pass (attach mode)** | real host | Ten sequential `launch → … → close` sessions against one AE, no modal. One unexplained modal in an earlier run (below). Cold start through ae-a8n still not run; `close()` never quits AE here. |
 
 Gate durations (wall clock): AE cold start to a usable GUI ~75 s (two
 splash-like dialogs for ~60 s, then the main window); `-r` against a running AE
@@ -76,31 +76,62 @@ a volume; that case is the refusal, **not verified on such a volume**.
   it. Versioned installs under a location now win.
 - `AfterFX.exe -r` with whitespace in the path (above).
 
-## P3: blocked, cause not established
+## The modal: "Unable to execute script at line 0. Object is invalid"
 
-After `openProject(<disposable copy of the fixture>)` (which succeeded), the
-next call (`project.info`) timed out at 120 s. AE showed two stacked modal
-dialogs, "Unable to execute script at line 0. Object is invalid". Dismissing
-one with its OK button, ten times in a row, made a new one appear each time
-and never reached zero; with no clicking the set stays constant. Real-host
-work was stopped there, as agreed, and the AE process was left for a person to
-close.
+**Cause (reproduced without ae-a8n): a script left a global variable holding an
+After Effects object, and a later script switched projects with `app.open`.**
+`AfterFX.exe -r` runs every script in one persistent engine (`$.engineName` is
+`main`), so a top-level `var comp = app.project.items.addComp(...)` outlives the
+script. When the project that `comp` belongs to is replaced, AE shows the modal
+as the switching script ends, and the dialog regenerates after every OK.
 
-What this does and does not show:
+Controls, each from a fresh AE process, plain JSX, ae-a8n not involved. Steps:
+1. build and save a project (`newProject`, `addComp`, `addSolid`, `save`);
+2. `app.open` a different `.aep`; 3. run a script that only writes a file.
 
-- The error is not raised by an ae-a8n script: the host script keeps no
-  reference to `app.project`, schedules no task, and the entry script catches
-  and reports every exception from the host as a result.
-- It is consistent with a script that AE runs periodically from outside
-  ae-a8n (a CEP panel polling `app.project` after the project object was
-  replaced). **No extension was identified**; the Discord presence panel's
-  host script wraps its reads in try/catch, so it is not an obvious source.
-- It did not occur in P2 (no project opened) and was seen once, so it is not
-  known to be reproducible. Whether it also happens with the third-party
-  panels disabled is **untested**.
-- The dialog regenerating after each OK means it cannot be recovered by
-  automation; ae-a8n's only symptom is a plain timeout. A readiness/timeout
-  message that mentions "a modal dialog may be open" is a candidate follow-up.
+| Condition | Result |
+| --- | --- |
+| A: all AE references inside an IIFE | pass, 2/2 |
+| B: top-level `var comp = ...` (an AE `CompItem`) | **modal after step 2, 2/2** |
+| C: top-level `var`s holding only `File` objects, the comp inside a function | pass |
+| D: as B, but `comp = null` before the script ends | pass |
+| E: as B, no `app.open` | pass (the stale reference alone is harmless) |
+| F: as B, `app.open` run from `#targetengine "a8n_probe"` | **modal** |
+
+F matters for the fix: a separate target engine does **not** avoid it, because
+the stale object lives in `main`. `#targetengine` isolation was therefore not
+implemented. ae-a8n itself leaves only `__a8n` (a plain object of path strings)
+and wraps the host in an IIFE, so it holds no AE object across calls.
+
+What this means for ae-a8n: it cannot prevent another script's globals from
+breaking a project switch, and it cannot clear them. What it can do is name the
+condition. A call that times out while an AE dialog is open looks like any other
+timeout; "a modal dialog may be open in After Effects" in that message is a
+candidate follow-up. **Not done**: that is a diagnostic change, not a fix.
+
+The first occurrence (before this was understood) followed `mkfixture.jsx` and
+`savefixture.jsx`, both of which had top-level `var comp`.
+
+### A second modal, not explained
+
+Once, in the run that followed two refused `openProject` calls (the previous
+session's unsaved changes), AE showed a different dialog: "After Effects
+warning: Attempt was made to ... another script was already running ...
+launching AE with the -ro or -so flag" (the dialog was partly off-screen; the
+middle of the sentence was not readable). The request in `inbox/` was not
+answered. It did **not** reproduce: the same sequence a second time, and ten
+sequential sessions, produced no modal. Evidence: `evidence-rep3` (kept in the
+session scratch directory). Whether two `-r` launches overlapping a still-running
+script can produce it is a hypothesis, not a finding.
+
+### A relative `sessionRoot` or project path (found and fixed, #17)
+
+`AfterEffects.launch({ sessionRoot: "rel/dir" })` made `-r` receive a relative
+entry path. AE resolves it against its own working directory, ignores it
+silently, and `launch` waits out its timeout (180 s) with no error. A relative
+project path made `openProject` fail with "project file not found". Both are now
+resolved to absolute paths in the API; regression tests are in
+`test/api.test.ts`.
 
 ## Not verified
 
@@ -111,7 +142,9 @@ What this does and does not show:
 - Timeout continuation and serialisation on Windows: `-r` returns immediately,
   so the macOS "next call waits for the in-flight script" does not exist here.
 - Process ownership: not implemented; `close()` never quits AE on Windows.
-- P3-P6, ae-test, snapshot, repeat runs, behaviour with the CEP panels off.
+- ae-test, snapshot, behaviour with the CEP panels off and in Safe Mode.
+- Whether a project built *by ae-a8n itself* (not the AE-generated fixture)
+  works; the fixture here was created by AE through plain JSX.
 
 ## Unit tests
 
@@ -137,7 +170,10 @@ three unrelated tests fail on line endings.
 5. `AfterEffects.launch()` against it; read `info()`; `close()` must leave AE
    running.
 
-Do not use `taskkill /F`; quit AE from its own UI.
+Quit AE from its own UI. A forced kill (by PID, never by image name) is only a
+recovery for a test AE blocked by a modal or a hang, after the evidence has been
+saved; it is not a pass. After one, AE shows Crash Repair Options on the next
+start: choose **Continue**, never Reset Preferences.
 
 ## macOS regression risk
 
