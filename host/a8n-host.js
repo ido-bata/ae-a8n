@@ -151,7 +151,11 @@
     if (sawOther) {
       throw new Error("item is not a composition: " + name);
     }
-    throw new Error("composition not found: " + name);
+    var missing = new Error("composition not found: " + name);
+    // The API turns exactly this into EntityNotFoundError; anything else a
+    // lookup raises is reported as itself.
+    missing.name = "NotFoundError";
+    throw missing;
   }
 
   function findLayer(comp, name) {

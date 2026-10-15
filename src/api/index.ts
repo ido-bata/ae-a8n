@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { AeDriver } from "../driver/driver.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
 import { TraceRecorder, type TraceEvent } from "../trace/trace.js";
-import { EntityNotFoundError, contextualise } from "./errors.js";
+import { AfterEffectsError, EntityNotFoundError, HostError, contextualise } from "./errors.js";
 import type {
   ApplicationInfo,
   CompInfo,
@@ -195,16 +195,20 @@ export class Project {
   /**
    * Resolves a composition by name, verifying it exists.
    *
-   * Existence is decided from the project's own list, the way `Comp.layer`
-   * does it. Any other host failure is reported as itself: translating every
-   * failure into "not found" once hid that the host called an API a real AE
-   * does not have.
+   * Only the host's own "not found" becomes EntityNotFoundError. Translating
+   * every failure into "not found" once hid that the host called an API a
+   * real AE does not have.
    */
   async comp(name: string): Promise<Comp> {
     const compName = requireString(name, "comp name");
-    const comps = await this.comps();
-    if (!comps.some((comp) => comp.name === compName)) {
-      throw new EntityNotFoundError("composition", compName, "project.comp");
+    try {
+      await this.#session.call<CompInfo>("comp.info", "comp.info", { name: compName });
+    } catch (error) {
+      const cause = error instanceof AfterEffectsError ? error.cause : undefined;
+      if (cause instanceof HostError && cause.name === "NotFoundError") {
+        throw new EntityNotFoundError("composition", compName, "project.comp");
+      }
+      throw error;
     }
     return new Comp(this.#session, compName);
   }
