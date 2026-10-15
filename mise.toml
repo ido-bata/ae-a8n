@@ -1,0 +1,34 @@
+# Project-local toolchain frontend.
+#
+# Tasks delegate to the npm scripts so each command is defined exactly once.
+# Calling `tsc` / `eslint` / `vitest` directly here would duplicate the
+# definitions in package.json and drift from them, and mise does not put
+# node_modules/.bin on PATH, so it would not work anyway.
+
+[tools]
+node = "24"
+pnpm = "10"
+
+[tasks.build]
+description = "Compile TypeScript to dist/"
+run = "npm run build"
+
+[tasks.typecheck]
+description = "Type-check without emitting"
+run = "npm run typecheck"
+
+[tasks.lint]
+description = "Lint sources"
+run = "npm run lint"
+
+[tasks.test]
+description = "Run unit tests"
+run = "npm test"
+
+[tasks."test.watch"]
+description = "Run unit tests in watch mode"
+run = "npx vitest"
+
+[tasks.check]
+description = "Full local quality gate"
+depends = ["typecheck", "lint", "test"]
