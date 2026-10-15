@@ -57,3 +57,11 @@ jobs:
       # and resolves the package the way a consumer does.
       - name: Verify the packed package resolves as published
         run: node scripts/check-packed-package.js
+
+      # The packing check above covers the package surface. This one covers what
+      # a consumer does next: imports the entry points and drives a session,
+      # which is what proves the built driver finds the shipped host script from
+      # inside someone else's node_modules. Only meaningful once the public API
+      # exists, so it lives here rather than in the packing check.
+      - name: Verify the public API from an installed package
+        run: node scripts/check-public-api.js

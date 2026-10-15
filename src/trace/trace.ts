@@ -95,6 +95,11 @@ export class TraceRecorder {
     this.#errorListener = options.onError;
   }
 
+  /** Path the trace is appended to, when one was configured. */
+  get file(): string | undefined {
+    return this.#file;
+  }
+
   subscribe(sink: TraceSink): () => void {
     this.#listeners.add(sink);
     return () => {

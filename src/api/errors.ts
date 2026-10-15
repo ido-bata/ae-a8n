@@ -1,0 +1,72 @@
+/**
+ * Errors the public API throws.
+ *
+ * Every failure a caller can meaningfully branch on has its own type. A
+ * `HostError` bubbling out of the bridge with a raw ExtendScript message is a
+ * leak, not an API.
+ */
+
+import { HostError, ProtocolError } from "../protocol/envelope.js";
+import { HostUnavailableError, TimeoutError } from "../driver/driver.js";
+
+export { HostUnavailableError, ProtocolError, TimeoutError };
+
+export class AfterEffectsError extends Error {
+  /** Operation that failed, as it appears in the trace. */
+  readonly op: string;
+
+  constructor(message: string, op: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "AfterEffectsError";
+    this.op = op;
+  }
+}
+
+export class EntityNotFoundError extends AfterEffectsError {
+  /** Entity kind, e.g. `composition` or `effect`. */
+  readonly kind: string;
+
+  constructor(kind: string, identifier: string, op: string) {
+    super(`${kind} not found: ${identifier}`, op);
+    this.name = "EntityNotFoundError";
+    this.kind = kind;
+  }
+}
+
+export { HostError };
+
+/**
+ * Re-labels a transport error with the operation that produced it, keeping the
+ * original as `cause` so nothing is lost.
+ */
+export function contextualise(op: string, error: unknown): never {
+  if (error instanceof EntityNotFoundError) {
+    throw error;
+  }
+  if (error instanceof HostError) {
+    throw new AfterEffectsError(
+      `${op} failed in After Effects: ${error.message}` +
+        (error.aeError === undefined ? "" : ` (AE error ${error.aeError})`),
+      op,
+      { cause: error },
+    );
+  }
+  if (error instanceof TimeoutError) {
+    throw new AfterEffectsError(error.message, op, { cause: error });
+  }
+  if (error instanceof ProtocolError) {
+    throw new AfterEffectsError(
+      `${op} got an unreadable response from the After Effects bridge: ${error.message}`,
+      op,
+      { cause: error },
+    );
+  }
+  if (error instanceof AfterEffectsError) {
+    throw error;
+  }
+  throw new AfterEffectsError(
+    `${op} failed: ${error instanceof Error ? error.message : String(error)}`,
+    op,
+    { cause: error },
+  );
+}

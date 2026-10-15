@@ -7,6 +7,18 @@
   "engines": {
     "node": ">=22"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ido-bata/ae-a8n.git"
+  },
+  "homepage": "https://github.com/ido-bata/ae-a8n#readme",
+  "bugs": {
+    "url": "https://github.com/ido-bata/ae-a8n/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

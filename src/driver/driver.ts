@@ -11,6 +11,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { entryScriptPath, writeBootstrapScript } from "./bootstrap.js";
+import { READINESS_TIMEOUT_MS } from "./script-invocation.js";
 import type { HostTransport } from "./transport.js";
 import {
   HostError,
@@ -72,9 +73,6 @@ export type CallOptions = {
 };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-
-/** A cold After Effects start can take a minute on a spinning disk. */
-const READINESS_TIMEOUT_MS = 180_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((done) => setTimeout(done, ms));
