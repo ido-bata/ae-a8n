@@ -25,6 +25,12 @@ import { AeDriver } from "../driver/driver.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
 import { TraceRecorder, type TraceEvent } from "../trace/trace.js";
 import { AfterEffectsError, EntityNotFoundError, HostError, contextualise } from "./errors.js";
+import type { StopResult } from "../driver/driver.js";
+import type { HostOwnership } from "../driver/transport.js";
+
+/** What `AfterEffects.close` did. */
+export type CloseResult = StopResult;
+export type { HostOwnership };
 import type {
   ApplicationInfo,
   CompInfo,
@@ -131,10 +137,27 @@ export class AfterEffects {
     return info.version;
   }
 
-  async openProject(path: string): Promise<Project> {
+  /**
+   * Opens a project, replacing the open one. Refuses with
+   * UnsavedChangesError if that would discard unsaved changes, unless
+   * `unsavedChanges` is "discard".
+   */
+  async openProject(path: string, options: { unsavedChanges?: "refuse" | "discard" } = {}): Promise<Project> {
     const projectPath = requireString(path, "path");
-    await this.#session.call("project.open", "project.open", { path: projectPath });
+    await this.#session.call("project.open", "project.open", {
+      path: projectPath,
+      discardUnsavedChanges: options.unsavedChanges === "discard",
+    });
     return new Project(this.#session);
+  }
+
+  /**
+   * Whether this session owns the After Effects process: "owned" when it
+   * started it and it is still that process. Only an owned host is quit by
+   * `close`.
+   */
+  ownership(): HostOwnership {
+    return this.#session.driver.ownership();
   }
 
   /** Compositions in the currently open project. */
@@ -160,14 +183,27 @@ export class AfterEffects {
   /**
    * Closes the open project and quits After Effects. Safe to call twice.
    */
-  async close(): Promise<void> {
+  /**
+   * Ends the session.
+   *
+   * After Effects is quit only if this session started it and it is still
+   * that process; a host that was already running, or whose identity cannot
+   * be confirmed, is left running and the result says why. Quitting refuses
+   * with UnsavedChangesError rather than discard unsaved changes, unless
+   * `unsavedChanges` is "discard" — and the session stays open for the retry.
+   */
+  async close(options: { unsavedChanges?: "refuse" | "discard" } = {}): Promise<CloseResult> {
     if (this.#closed) {
-      return;
+      return { quit: false, ownership: this.ownership(), reason: "already closed" };
     }
-    this.#closed = true;
     try {
-      await this.#session.driver.stop();
+      const result = await this.#session.driver.stop(options);
+      this.#closed = true;
+      return result;
     } catch (error) {
+      if (!(error instanceof HostError && error.name === "UnsavedChangesError")) {
+        this.#closed = true;
+      }
       contextualise("session.close", error);
     }
   }

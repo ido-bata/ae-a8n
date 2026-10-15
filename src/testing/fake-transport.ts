@@ -14,7 +14,7 @@ import {
   createFakeGlobals,
   type FakeComp,
 } from "./fake-ae/object-model.js";
-import type { HostTransport } from "../driver/transport.js";
+import type { HostOwnership, HostTransport } from "../driver/transport.js";
 
 export type FakeTransportOptions = {
   /**
@@ -32,6 +32,11 @@ export class FakeAfterEffectsTransport implements HostTransport {
    * extension installed. Unset by default: real ExtendScript has none.
    */
   foreignJson: unknown = undefined;
+  /**
+   * What `ownership()` reports. "owned" by default: the fake stands in for a
+   * host the session launched.
+   */
+  ownershipKind: HostOwnership["kind"] = "owned";
   #launched = false;
   #closed = false;
   #nextComp: FakeComp = createDefaultComp();
@@ -69,6 +74,10 @@ export class FakeAfterEffectsTransport implements HostTransport {
       );
     }
     return Promise.resolve();
+  }
+
+  ownership(): HostOwnership {
+    return { kind: this.ownershipKind, evidence: "fake transport" };
   }
 
   close(): Promise<void> {

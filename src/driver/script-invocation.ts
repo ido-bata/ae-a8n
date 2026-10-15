@@ -23,7 +23,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { macAppBundle, resolveInstall, type AfterEffectsInstall } from "./install-path.js";
-import type { HostTransport, InvokeOptions } from "./transport.js";
+import type { HostOwnership, HostTransport, InvokeOptions } from "./transport.js";
 
 export type ScriptInvocationOptions = {
   /** Explicit install directory; skips discovery. */
@@ -35,21 +35,44 @@ export type ScriptInvocationOptions = {
   readonly platform?: NodeJS.Platform;
   /** How long `close` waits for AE to exit after `app.quit`. */
   readonly exitTimeoutMs?: number;
-  /** Executable paths of running processes. Mainly a test seam. */
-  readonly runningExecutables?: () => readonly string[];
+  /** Running processes. Mainly a test seam. */
+  readonly processes?: () => readonly HostProcess[];
+  /** The clock ownership is judged against. Mainly a test seam. */
+  readonly now?: () => number;
+};
+
+export type HostProcess = {
+  readonly pid: number;
+  /** Start time, ms since the epoch (`ps` reports it to the second). */
+  readonly startedAt: number;
+  readonly executable: string;
 };
 
 /** AE saves preferences and tears down plugins on quit; that takes seconds. */
 export const EXIT_TIMEOUT_MS = 60_000;
 const EXIT_POLL_MS = 250;
 
-/** Executable paths of running processes, from `ps`. */
-function psExecutables(): string[] {
-  return execFileSync("ps", ["-axo", "comm="], { encoding: "utf-8" })
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+/**
+ * Running processes from `ps`. `lstart` is a fixed 24-character date, so the
+ * executable path, which may contain spaces, is everything after it.
+ */
+function psProcesses(): HostProcess[] {
+  const out: HostProcess[] = [];
+  const text = execFileSync("ps", ["-axo", "pid=,lstart=,comm="], { encoding: "utf-8" });
+  for (const line of text.split("\n")) {
+    const match = /^\s*(\d+)\s+(\S{3} \S{3}\s+\d+ \d\d:\d\d:\d\d \d{4})\s+(.+)$/.exec(line);
+    if (match === null) continue;
+    out.push({
+      pid: Number(match[1]),
+      startedAt: Date.parse(match[2] as string),
+      executable: (match[3] as string).trim(),
+    });
+  }
+  return out;
 }
+
+/** `ps` reports start times to the second, and clocks round. */
+const START_SLACK_MS = 2_000;
 
 /** A cold After Effects start can take a minute on a spinning disk. */
 export const READINESS_TIMEOUT_MS = 180_000;
@@ -143,7 +166,16 @@ export class ScriptInvocationTransport implements HostTransport {
   readonly #install: AfterEffectsInstall;
   readonly #platform: NodeJS.Platform;
   readonly #exitTimeoutMs: number;
-  readonly #runningExecutables: () => readonly string[];
+  readonly #processes: () => readonly HostProcess[];
+  readonly #now: () => number;
+  /** Host processes already running when launch() began. */
+  #preexisting: readonly HostProcess[] | null = null;
+  #launchBegan = 0;
+  /** The process this session started, once the probe has answered. */
+  #owned: HostProcess | null = null;
+  #ownershipAtLaunch: HostOwnership = { kind: "unknown", evidence: "not launched" };
+  #launched = false;
+  #confirmed = false;
   /** The DoScriptFile still waiting on AE, if a call gave up on it. */
   #inFlight: Promise<void> | null = null;
 
@@ -151,7 +183,8 @@ export class ScriptInvocationTransport implements HostTransport {
     const platform = options.platform ?? process.platform;
     this.#platform = platform;
     this.#exitTimeoutMs = options.exitTimeoutMs ?? EXIT_TIMEOUT_MS;
-    this.#runningExecutables = options.runningExecutables ?? psExecutables;
+    this.#processes = options.processes ?? psProcesses;
+    this.#now = options.now ?? Date.now;
     this.#install =
       options.install ??
       resolveInstall(platform, {
@@ -177,11 +210,85 @@ export class ScriptInvocationTransport implements HostTransport {
    * here on process exit would report success before AE could answer.
    */
   async launch(): Promise<void> {
+    if (this.#launched) {
+      // One transport is one connection to one host. A second driver on it
+      // must not re-decide ownership: the AE this transport started would by
+      // then count as "already running".
+      return;
+    }
+    this.#launched = true;
+    this.#launchBegan = this.#now();
+    if (this.#platform === "darwin") {
+      // Whatever is running now was not started by this session.
+      this.#preexisting = this.#hostProcesses();
+      // On macOS `DoScriptFile` launches AE on demand, so there is nothing to do.
+      return;
+    }
     if (this.#platform !== "win32") {
-      // On macOS `DoScript` launches AE on demand, so there is nothing to do.
       return;
     }
     await this.#run(join(this.#install.executable, ".."), this.#install.executable, []);
+  }
+
+  confirmLaunched(): void {
+    if (this.#confirmed) {
+      return;
+    }
+    this.#confirmed = true;
+    if (this.#platform !== "darwin" || this.#preexisting === null) {
+      this.#ownershipAtLaunch = {
+        kind: "unknown",
+        evidence: `no process ownership check on ${this.#platform}`,
+      };
+      return;
+    }
+    if (this.#preexisting.length > 0) {
+      this.#ownershipAtLaunch = {
+        kind: "attached",
+        evidence: `already running before launch: pid ${this.#preexisting.map((p) => p.pid).join(", ")}`,
+      };
+      return;
+    }
+    const now = this.#hostProcesses();
+    const started = now.filter((p) => p.startedAt >= this.#launchBegan - START_SLACK_MS);
+    if (now.length === 1 && started.length === 1) {
+      this.#owned = started[0] as HostProcess;
+      this.#ownershipAtLaunch = {
+        kind: "owned",
+        evidence: `pid ${this.#owned.pid} started after launch began and is the only instance`,
+      };
+      return;
+    }
+    this.#ownershipAtLaunch = {
+      kind: "unknown",
+      evidence: `after launch: ${now.length} instance(s), ${started.length} started since launch began`,
+    };
+  }
+
+  ownership(): HostOwnership {
+    const owned = this.#owned;
+    if (this.#ownershipAtLaunch.kind !== "owned" || owned === null) {
+      return this.#ownershipAtLaunch;
+    }
+    // Re-checked at the moment it matters: the process must still be the one
+    // this session started (same pid *and* start time, so a reused pid does
+    // not count) and the only instance of this install.
+    const now = this.#hostProcesses();
+    const same = now.filter((p) => p.pid === owned.pid && Math.abs(p.startedAt - owned.startedAt) < 1_000);
+    if (same.length === 1 && now.length === 1) {
+      return { kind: "owned", evidence: `pid ${owned.pid} is still the only instance` };
+    }
+    return {
+      kind: "unknown",
+      evidence:
+        same.length === 0
+          ? `pid ${owned.pid} this session started is gone; ${now.length} other instance(s)`
+          : `${now.length} instances running`,
+    };
+  }
+
+  #hostProcesses(): HostProcess[] {
+    return this.#processes().filter((p) => p.executable === this.#install.executable);
   }
 
   async invoke(entryScriptPath: string, options: InvokeOptions = {}): Promise<void> {
@@ -249,7 +356,8 @@ export class ScriptInvocationTransport implements HostTransport {
       return;
     }
     const deadline = Date.now() + this.#exitTimeoutMs;
-    while (this.#runningExecutables().includes(this.#install.executable)) {
+    const owned = this.#owned;
+    while (owned !== null && this.#hostProcesses().some((p) => p.pid === owned.pid)) {
       if (Date.now() >= deadline) {
         throw new Error(
           `After Effects did not exit within ${this.#exitTimeoutMs} ms of app.quit; it was left running`,

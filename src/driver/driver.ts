@@ -12,7 +12,20 @@ import { fileURLToPath } from "node:url";
 
 import { entryScriptPath, writeBootstrapScript } from "./bootstrap.js";
 import { READINESS_TIMEOUT_MS } from "./script-invocation.js";
-import type { HostTransport } from "./transport.js";
+import type { HostOwnership, HostTransport } from "./transport.js";
+
+export type StopOptions = {
+  /** "discard" permits throwing away the open project's unsaved changes. */
+  readonly unsavedChanges?: "refuse" | "discard";
+};
+
+export type StopResult = {
+  /** Whether After Effects was asked to quit, and exited. */
+  readonly quit: boolean;
+  readonly ownership: HostOwnership;
+  /** Why it was not quit. */
+  readonly reason?: string;
+};
 import {
   HostError,
   ProtocolError,
@@ -143,9 +156,10 @@ export class AeDriver {
         build?: string;
       };
       this.#started = true;
+      this.#transport.confirmLaunched?.();
       this.#trace.record("session.launch", "ok", Date.now() - began, {
         args: { transport: this.#transport.kind },
-        result: info,
+        result: { ...info, ownership: this.ownership() },
       });
       return info;
     } catch (error) {
@@ -157,22 +171,55 @@ export class AeDriver {
     }
   }
 
-  async stop(): Promise<void> {
+  /** Who owns the host process right now; see `HostOwnership`. */
+  ownership(): HostOwnership {
+    return this.#transport.ownership?.() ?? {
+      kind: "unknown",
+      evidence: `transport ${this.#transport.kind} reports no ownership`,
+    };
+  }
+
+  /**
+   * Ends the session. Quits After Effects only when this session owns it
+   * *now* — started it, and it is still that process. An attached or
+   * unidentified host is left running, untouched.
+   *
+   * Quitting never discards unsaved changes unless `unsavedChanges` is
+   * "discard": the host refuses with UnsavedChangesError, and the session
+   * stays open so the caller can decide.
+   */
+  async stop(options: StopOptions = {}): Promise<StopResult> {
     if (this.#closed) {
-      return;
+      return { quit: false, ownership: this.ownership(), reason: "already closed" };
     }
     const began = Date.now();
+    const ownership = this.ownership();
     try {
-      // `app.quit` still has to reach the host, so the closed flag is only set
-      // once teardown has actually run.
-      if (this.#started) {
-        await this.#call("app.quit", {}, { timeoutMs: 10_000, opName: "session.quit" });
+      let result: StopResult;
+      if (!this.#started) {
+        result = { quit: false, ownership, reason: "never started" };
+      } else if (ownership.kind !== "owned") {
+        result = { quit: false, ownership, reason: `not quitting a host this session does not own (${ownership.evidence})` };
+      } else {
+        await this.#call(
+          "app.quit",
+          { discardUnsavedChanges: options.unsavedChanges === "discard" },
+          { timeoutMs: 10_000, opName: "session.quit" },
+        );
+        await this.#transport.close();
+        result = { quit: true, ownership };
       }
-      await this.#transport.close();
       this.#closed = true;
-      this.#trace.record("session.close", "ok", Date.now() - began);
+      this.#trace.record("session.close", "ok", Date.now() - began, {
+        result: { quit: result.quit, ownership: result.ownership.kind, ...(result.reason === undefined ? {} : { reason: result.reason }) },
+      });
+      return result;
     } catch (error) {
-      this.#closed = true;
+      // Unsaved changes are a decision for the caller, not a dead session.
+      const refused = error instanceof HostError && error.name === "UnsavedChangesError";
+      if (!refused) {
+        this.#closed = true;
+      }
       this.#trace.record("session.close", "error", Date.now() - began, {
         error: { name: nameOf(error), message: messageOf(error) },
       });

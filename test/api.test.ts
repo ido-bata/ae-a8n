@@ -54,7 +54,8 @@ describe("the documented flow", () => {
     expect(frame.frame).toBe(0);
     expect(readFileSync(frame.path).subarray(1, 4).toString("ascii")).toBe("PNG");
 
-    await ae.close();
+    // The session made these edits itself; discarding them is the point.
+    await ae.close({ unsavedChanges: "discard" });
     expect(transport.closed).toBe(true);
   });
 
@@ -65,7 +66,8 @@ describe("the documented flow", () => {
 
     expect(frame.path.startsWith(ae.artifactsDir)).toBe(true);
     expect(frame.path).toContain(join("smoke", "Main.00003.png"));
-    await ae.close();
+    // The session made these edits itself; discarding them is the point.
+    await ae.close({ unsavedChanges: "discard" });
   });
 
   it("makes a parameter change observable in the rendered pixels", async () => {
@@ -83,7 +85,8 @@ describe("the documented flow", () => {
     // plugin test would assert; here it proves the write reached the model the
     // render reads from.
     expect(readFileSync(before.path).equals(readFileSync(after.path))).toBe(false);
-    await ae.close();
+    // The session made these edits itself; discarding them is the point.
+    await ae.close({ unsavedChanges: "discard" });
   });
 });
 
@@ -112,7 +115,8 @@ describe("typed errors", () => {
       kind: "composition",
       op: "project.comp",
     });
-    await ae.close();
+    // The session made these edits itself; discarding them is the point.
+    await ae.close({ unsavedChanges: "discard" });
   });
 
   it("reports an unknown layer as EntityNotFoundError", async () => {
@@ -120,7 +124,8 @@ describe("typed errors", () => {
     const comp = await (await openedProject(ae)).comp("Main");
 
     await expect(comp.layer("Nope")).rejects.toMatchObject({ kind: "layer" });
-    await ae.close();
+    // The session made these edits itself; discarding them is the point.
+    await ae.close({ unsavedChanges: "discard" });
   });
 
   it("reports an unknown effect as EntityNotFoundError", async () => {
@@ -131,7 +136,8 @@ describe("typed errors", () => {
     await expect(layer.effects.get("Not Applied")).rejects.toBeInstanceOf(
       EntityNotFoundError,
     );
-    await ae.close();
+    // The session made these edits itself; discarding them is the point.
+    await ae.close({ unsavedChanges: "discard" });
   });
 
   it("keeps the AE error number reachable through the cause chain", async () => {
@@ -146,7 +152,8 @@ describe("typed errors", () => {
       const cause = (error as { cause?: { aeError?: number } }).cause;
       expect(cause?.aeError).toBe(5023);
     }
-    await ae.close();
+    // The session made these edits itself; discarding them is the point.
+    await ae.close({ unsavedChanges: "discard" });
   });
 
   it("rejects bad arguments before touching After Effects", async () => {
@@ -162,7 +169,8 @@ describe("typed errors", () => {
     await expect(effect.parameter("Radius").set(Number.NaN)).rejects.toBeInstanceOf(
       TypeError,
     );
-    await ae.close();
+    // The session made these edits itself; discarding them is the point.
+    await ae.close({ unsavedChanges: "discard" });
   });
 });
 
@@ -174,7 +182,8 @@ describe("trace", () => {
     const effect = await layer.effects.apply("ADBE Fake Gaussian Blur");
     await effect.parameter("Amount").set(50);
     await comp.renderFrame(0);
-    await ae.close();
+    // The session made these edits itself; discarding them is the point.
+    await ae.close({ unsavedChanges: "discard" });
 
     const ops = ae.traceEvents.map((event) => event.op);
     expect(ops).toContain("project.open");
@@ -195,7 +204,8 @@ describe("trace", () => {
     const ae = await launch();
     const comp = await (await openedProject(ae)).comp("Main");
     await comp.renderFrame(0);
-    await ae.close();
+    // The session made these edits itself; discarding them is the point.
+    await ae.close({ unsavedChanges: "discard" });
 
     const raw = readFileSync(ae.tracePath, "utf-8");
     expect(raw).not.toMatch(/password|token|secret/i);
@@ -205,8 +215,8 @@ describe("trace", () => {
 describe("session lifecycle", () => {
   it("is safe to close twice", async () => {
     const ae = await launch();
-    await ae.close();
-    await expect(ae.close()).resolves.toBeUndefined();
+    await expect(ae.close()).resolves.toMatchObject({ quit: true });
+    await expect(ae.close()).resolves.toMatchObject({ quit: false, reason: "already closed" });
   });
 
   it("closes the session when `await using` leaves the block", async () => {
