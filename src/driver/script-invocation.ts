@@ -174,6 +174,8 @@ export class ScriptInvocationTransport implements HostTransport {
   /** The process this session started, once the probe has answered. */
   #owned: HostProcess | null = null;
   #ownershipAtLaunch: HostOwnership = { kind: "unknown", evidence: "not launched" };
+  #launched = false;
+  #confirmed = false;
   /** The DoScriptFile still waiting on AE, if a call gave up on it. */
   #inFlight: Promise<void> | null = null;
 
@@ -208,6 +210,13 @@ export class ScriptInvocationTransport implements HostTransport {
    * here on process exit would report success before AE could answer.
    */
   async launch(): Promise<void> {
+    if (this.#launched) {
+      // One transport is one connection to one host. A second driver on it
+      // must not re-decide ownership: the AE this transport started would by
+      // then count as "already running".
+      return;
+    }
+    this.#launched = true;
     this.#launchBegan = this.#now();
     if (this.#platform === "darwin") {
       // Whatever is running now was not started by this session.
@@ -222,6 +231,10 @@ export class ScriptInvocationTransport implements HostTransport {
   }
 
   confirmLaunched(): void {
+    if (this.#confirmed) {
+      return;
+    }
+    this.#confirmed = true;
     if (this.#platform !== "darwin" || this.#preexisting === null) {
       this.#ownershipAtLaunch = {
         kind: "unknown",

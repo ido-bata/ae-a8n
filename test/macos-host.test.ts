@@ -339,6 +339,17 @@ describe("who owns the After Effects process", () => {
     expect(t.ownership().kind).toBe("unknown");
   });
 
+  it("keeps the ownership it decided when a second driver starts on it", async () => {
+    // By the second start the AE this transport launched is running, and a
+    // fresh snapshot would call it someone else's.
+    const t = transportSeeing([], [ae(42)], [ae(42)], [ae(42)], [ae(42)]);
+    await t.launch();
+    t.confirmLaunched();
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership().kind).toBe("owned");
+  });
+
   it("does not claim ownership on Windows, where it is not checked", () => {
     const t = new ScriptInvocationTransport({
       platform: "win32",
