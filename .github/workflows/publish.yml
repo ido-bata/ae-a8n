@@ -1,50 +1,48 @@
 name: publish
 
-# Publishing is a deliberate act, not a side effect of merging. It is triggered
-# only by a version tag pushed by a human, and only after the same quality gate
-# CI runs — so a broken package cannot reach the registry by accident.
+# Publishing is a deliberate act, not a side effect of merging or of pressing
+# a button.
+#
+# - `verify` needs no credentials and runs on pull requests that touch the
+#   release surface, on manual dispatch, and on version tags. It runs the
+#   quality gate, checks the packed tarball is usable, checks the release
+#   preconditions, and does `npm publish --dry-run`.
+# - `publish` runs only for a pushed `v*` tag, only when the repository
+#   variable NPM_PUBLISH_ENABLED is "true", and only through the `npm`
+#   environment (give it required reviewers). It publishes the exact tarball
+#   `verify` built, with npm Trusted Publishing (OIDC): no NPM_TOKEN exists to
+#   leak. Manual dispatch never publishes.
+#
+# Provenance is off: npm does not generate it for private source
+# repositories. Enabling it belongs with making the repository public.
 
 on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
-    inputs:
-      dry-run:
-        description: "Pack and verify without publishing"
-        type: boolean
-        default: true
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - ".github/workflows/publish.yml"
+      - "package.json"
+      - "scripts/**"
+
+permissions: {}
 
 concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  publish:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
-      # Required for npm provenance: the registry attests the publish came from
-      # this workflow at this commit.
-      id-token: write
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.ref }}
-          # The host script ships verbatim, so a release has to come from the
-          # real commit rather than a rebuilt artifact.
           persist-credentials: false
-
-      - name: Require an npm token
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::NPM_TOKEN is not configured on this repository."
-            echo "::error::Publishing is a release decision, so this is intentionally not wired to any default."
-            exit 1
-          fi
 
       - name: Install toolchain
         uses: jdx/mise-action@v2
@@ -60,26 +58,62 @@ jobs:
           node --check host/a8n-host.js
           node --check host/a8n-json.js
 
-      # `npm pack` succeeding is not evidence the package is usable. This
-      # installs the tarball into a clean project and drives the public API, so
-      # a missing host/ or a broken exports map fails here rather than in
-      # somebody else's node_modules.
-      - name: Verify the tarball is usable as published
-        run: mise exec -- node scripts/check-packed-package.js
-
-      - name: Confirm the tag matches the package version
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          tag_version="${GITHUB_REF_NAME#v}"
-          pkg_version="$(node -p "require('./package.json').version")"
-          if [ "$tag_version" != "$pkg_version" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $pkg_version"
-            exit 1
-          fi
-          echo "publishing $pkg_version"
-
-      - name: Publish
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry-run) }}
-        run: mise exec -- npm publish --provenance --access public
+      - name: Release preconditions
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: mise exec -- node scripts/check-release.js "$TAG"
+
+      # `npm pack` succeeding is not evidence the package is usable: install
+      # the tarball into a clean project and drive the public API from it.
+      - name: Verify the tarball is usable as published
+        run: |
+          mise exec -- node scripts/check-packed-package.js
+          mise exec -- node scripts/check-public-api.js
+
+      - name: Pack
+        run: |
+          mkdir -p "$RUNNER_TEMP/package"
+          mise exec -- npm pack --pack-destination "$RUNNER_TEMP/package"
+
+      - name: Publish (dry run)
+        run: mise exec -- npm publish "$RUNNER_TEMP"/package/*.tgz --dry-run --tag next --access public --provenance=false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: ${{ runner.temp }}/package/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: verify
+    if: github.event_name == 'push' && github.ref_type == 'tag' && vars.NPM_PUBLISH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: npm
+    permissions:
+      contents: read
+      # Trusted Publishing: the registry accepts this workflow's OIDC token
+      # instead of a stored secret. Needs npm >= 11.5.1 (the toolchain's Node 24
+      # ships 11.x).
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install toolchain
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.9.12
+          install: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: package
+          path: ${{ runner.temp }}/package
+
+      - name: Publish to next
+        run: |
+          mise exec -- npm --version
+          mise exec -- npm publish "$RUNNER_TEMP"/package/*.tgz --tag next --access public --provenance=false
