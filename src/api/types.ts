@@ -39,11 +39,30 @@ export type EffectInfo = {
   readonly matchName?: string;
 };
 
+/**
+ * What a property holds, as far as scripting can tell without reading it.
+ *
+ * - `value`: a value a script can read and write; `value` is present.
+ * - `no-value`: `PropertyValueType.NO_VALUE`, nothing to read or write
+ *   (e.g. Tint's `ADBE Tint-0004`, Gradient Ramp's `ADBE Ramp-0008`).
+ * - `custom-value`: `PropertyValueType.CUSTOM_VALUE`, data After Effects does
+ *   not expose to scripts (Levels' histogram, Curves).
+ * - `group`: a property group, such as every effect's Compositing Options
+ *   (`ADBE Effect Built In Params`).
+ */
+export type PropertyKind = "value" | "no-value" | "custom-value" | "group";
+
+/**
+ * One property of an effect. `value` is present exactly when `kind` is
+ * `"value"`; narrow on `kind` to read it.
+ */
 export type PropertyInfo = {
   readonly name: string;
   readonly matchName?: string;
-  readonly value: number;
-};
+} & (
+  | { readonly kind: "value"; readonly value: number }
+  | { readonly kind: Exclude<PropertyKind, "value">; readonly value?: undefined }
+);
 
 export type RenderedFrame = {
   /** Absolute path to the written PNG. */
@@ -53,7 +72,22 @@ export type RenderedFrame = {
   readonly height: number;
 };
 
-export type RenderOptions = {
+/**
+ * A budget for one operation, overriding the session's `timeoutMs` for that
+ * call only. As with the session budget, it ends the wait, not the work: a
+ * script that is still running in After Effects at the deadline runs to
+ * completion, and the next call waits for it.
+ */
+export type OperationOptions = {
+  readonly timeoutMs?: number;
+};
+
+export type OpenProjectOptions = OperationOptions & {
+  /** `"discard"` drops the open project's unsaved changes; default refuses. */
+  readonly unsavedChanges?: "refuse" | "discard";
+};
+
+export type RenderOptions = OperationOptions & {
   /** Subdirectory of the session's artifact directory. Defaults to the root. */
   readonly subdirectory?: string;
   /** Filename stem. Defaults to the composition name. */

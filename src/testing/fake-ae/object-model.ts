@@ -24,6 +24,28 @@ function aeError(errorNumber: number, message: string): Error {
   return error;
 }
 
+/**
+ * Adobe's `PropertyType` and `PropertyValueType` enums, with the numeric
+ * values AE 26.5x89 reports. Only the members the host script compares
+ * against, plus the ones the fake's parameters use.
+ */
+export const PropertyType = {
+  PROPERTY: 6212,
+  NAMED_GROUP: 6213,
+  INDEXED_GROUP: 6214,
+} as const;
+
+export const PropertyValueType = {
+  NO_VALUE: 6412,
+  TwoD_SPATIAL: 6415,
+  OneD: 6417,
+  COLOR: 6418,
+  CUSTOM_VALUE: 6419,
+} as const;
+
+/** Value types the fake models: numbers, and the two AE cannot script. */
+export type FakeValueType = "OneD" | "NO_VALUE" | "CUSTOM_VALUE";
+
 export type FakeEffectSpec = {
   readonly matchName: string;
   readonly displayName: string;
@@ -31,6 +53,8 @@ export type FakeEffectSpec = {
     readonly name: string;
     readonly matchName: string;
     readonly defaultValue: number;
+    /** Defaults to `OneD`. */
+    readonly valueType?: FakeValueType;
   }>;
 };
 
@@ -55,6 +79,26 @@ export const FAKE_EFFECTS: readonly FakeEffectSpec[] = [
       { name: "Intensity", matchName: "ADBE Fake Glow-0002", defaultValue: 0 },
     ],
   },
+  {
+    // Shaped like ADBE Tint on AE 26.5x89: its fourth property has an empty
+    // name and PropertyValueType.NO_VALUE, and reading its value throws.
+    matchName: "ADBE Fake Tint",
+    displayName: "AE Fake Tint",
+    parameters: [
+      { name: "Amount to Tint", matchName: "ADBE Fake Tint-0001", defaultValue: 0 },
+      { name: "", matchName: "ADBE Fake Tint-0002", defaultValue: 0, valueType: "NO_VALUE" },
+    ],
+  },
+  {
+    // Shaped like ADBE Easy Levels2: the histogram is CUSTOM_VALUE, which AE
+    // 26.5x89 refuses to read or write from a script.
+    matchName: "ADBE Fake Levels",
+    displayName: "AE Fake Levels",
+    parameters: [
+      { name: "Histogram", matchName: "ADBE Fake Levels-0001", defaultValue: 0, valueType: "CUSTOM_VALUE" },
+      { name: "Gamma", matchName: "ADBE Fake Levels-0002", defaultValue: 1 },
+    ],
+  },
 ];
 
 function findEffectSpec(identifier: string): FakeEffectSpec | undefined {
@@ -70,24 +114,51 @@ function findEffectSpec(identifier: string): FakeEffectSpec | undefined {
 type Touch = () => void;
 const untouched: Touch = () => {};
 
+/** What AE 26.5x89 raises on reading or writing a value it cannot script. */
+function unscriptableValue(matchName: string, valueType: FakeValueType): Error {
+  return new Error(
+    valueType === "NO_VALUE"
+      ? `After Effects error: can't get or set the value of this property (matchname "${matchName}"); its propertyValueType is PropertyValueType.NO_VALUE.`
+      : `After Effects error: can't get or set the value of this property (matchname "${matchName}"); propertyValueType CUSTOM_VALUE is not implemented.`,
+  );
+}
+
 export class FakeProperty {
   readonly name: string;
   readonly matchName: string;
+  readonly propertyType = PropertyType.PROPERTY;
+  readonly #valueType: FakeValueType;
   #value: number;
   /** @internal */
   _touch: Touch = untouched;
 
-  constructor(name: string, matchName: string, value: number) {
+  constructor(name: string, matchName: string, value: number, valueType: FakeValueType = "OneD") {
     this.name = name;
     this.matchName = matchName;
     this.#value = value;
+    this.#valueType = valueType;
+  }
+
+  get propertyValueType(): number {
+    return PropertyValueType[this.#valueType];
+  }
+
+  /** Whether a script can read and write this property's value. */
+  get scriptable(): boolean {
+    return this.#valueType === "OneD";
   }
 
   get value(): number {
+    if (!this.scriptable) {
+      throw unscriptableValue(this.matchName, this.#valueType);
+    }
     return this.#value;
   }
 
   setValue(value: unknown): void {
+    if (!this.scriptable) {
+      throw unscriptableValue(this.matchName, this.#valueType);
+    }
     if (typeof value !== "number" || !Number.isFinite(value)) {
       throw aeError(
         5024,
@@ -99,16 +170,23 @@ export class FakeProperty {
   }
 }
 
+/**
+ * A property group. Like AE's `PropertyGroup` it has no `value` and no
+ * `setValue`: reading `value` gives `undefined`, and calling `setValue` fails
+ * because it is not a function.
+ */
 export class FakePropertyGroup {
   readonly name: string;
   readonly matchName: string;
+  readonly propertyType: number;
   readonly #children: FakeProperty[] = [];
   /** @internal */
   _touch: Touch = untouched;
 
-  constructor(name: string, matchName: string) {
+  constructor(name: string, matchName: string, propertyType: number = PropertyType.NAMED_GROUP) {
     this.name = name;
     this.matchName = matchName;
+    this.propertyType = propertyType;
   }
 
   get numProperties(): number {
@@ -134,10 +212,22 @@ export class FakePropertyGroup {
     const group = new FakePropertyGroup(spec.displayName, spec.matchName);
     group._touch = () => this._touch();
     for (const parameter of spec.parameters) {
-      const child = new FakeProperty(parameter.name, parameter.matchName, parameter.defaultValue);
+      const child = new FakeProperty(
+        parameter.name,
+        parameter.matchName,
+        parameter.defaultValue,
+        parameter.valueType,
+      );
       child._touch = () => this._touch();
       group.addChild(child);
     }
+    // Every effect on AE 26.5x89 ends with this group ("Compositing
+    // Options"), which holds further properties of its own.
+    const builtIn = new FakePropertyGroup("Compositing Options", "ADBE Effect Built In Params");
+    const maskOpacity = new FakeProperty("Effect Opacity", "ADBE Effect Mask Opacity", 100);
+    maskOpacity._touch = () => this._touch();
+    builtIn.addChild(maskOpacity);
+    group.addChild(builtIn.asProperty());
     this.#children.push(group as unknown as FakeProperty);
     this._touch();
     return group as unknown as FakeProperty;
@@ -147,13 +237,20 @@ export class FakePropertyGroup {
     this.#children.push(property);
   }
 
-  /** Depth-first list of leaf parameters, used by the fake renderer. */
+  /**
+   * The scriptable top-level parameters of every effect in this parade, used
+   * by the fake renderer. Groups inside an effect (Compositing Options) and
+   * properties without a scriptable value do not take part.
+   */
   *leaves(): Generator<FakeProperty> {
-    for (const child of this.#children) {
-      if (child instanceof FakePropertyGroup) {
-        yield* child.leaves();
-      } else {
-        yield child;
+    for (const effect of this.#children) {
+      if (!(effect instanceof FakePropertyGroup)) {
+        continue;
+      }
+      for (const child of effect.#children) {
+        if (child instanceof FakeProperty && child.scriptable) {
+          yield child;
+        }
       }
     }
   }
@@ -167,7 +264,7 @@ export class FakeLayer {
   readonly name: string;
   readonly index: number;
   enabled = true;
-  readonly #parade = new FakePropertyGroup("Effects", "ADBE Effect Parade");
+  readonly #parade = new FakePropertyGroup("Effects", "ADBE Effect Parade", PropertyType.INDEXED_GROUP);
 
   constructor(name: string, index: number) {
     this.name = name;
@@ -418,5 +515,7 @@ export function createFakeGlobals(app: FakeApplication): HostGlobals {
     Folder: FakeFolder,
     CloseOptions,
     CompItem: FakeComp,
+    PropertyType,
+    PropertyValueType,
   };
 }

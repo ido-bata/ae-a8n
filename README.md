@@ -64,19 +64,22 @@ unsaved edit in someone's open project is still their work.
 
 | | |
 | --- | --- |
-| `AfterEffects.launch(options?)` | `{ sessionRoot?, installDir?, timeoutMs?, transport? }`; waits for a readiness probe (180 s budget) |
+| `AfterEffects.launch(options?)` | `{ sessionRoot?, installDir?, timeoutMs?, transport? }`; `timeoutMs` is the per-call default, which `openProject`, `project` and `renderFrame` can override for one call; waits for a readiness probe (180 s budget) |
 | `ae.info()`, `ae.version()` | version from the probe / live |
 | `ae.ownership()` | `{ kind: "owned" \| "attached" \| "unknown", evidence }` |
-| `ae.openProject(path, { unsavedChanges? })` | → `Project` |
+| `ae.openProject(path, { unsavedChanges?, timeoutMs? })` | → `Project` |
+| `ae.project({ timeoutMs? })` | → `Project` for the project open now, without opening anything (e.g. after `openProject` timed out) |
 | `ae.comps()`, `project.comps()`, `project.info()` | listings |
 | `project.comp(name)` → `Comp` | `comp.info()`, `comp.layers()`, `comp.layer(name)` |
-| `comp.renderFrame(frame, { subdirectory?, prefix? })` | one PNG under `ae.artifactsDir`; size read from the file |
+| `comp.renderFrame(frame, { subdirectory?, prefix?, timeoutMs? })` | one PNG under `ae.artifactsDir`; size read from the file |
 | `layer.effects.all()`, `.apply(id)`, `.get(id)` | `id` is a match name (stable) or display name (localised) |
-| `effect.parameters()`, `effect.parameter(id).get()` / `.set(n)` / `.info()` | numeric parameters |
+| `effect.parameters()`, `effect.parameter(id).get()` / `.set(n)` / `.info()` | numeric parameters; every property is listed with a `kind` (`value`, `no-value`, `custom-value`, `group`) and has `value` only when `kind` is `"value"` |
 | `ae.close({ unsavedChanges? })` | → `{ quit, ownership, reason? }` |
 | `ae.tracePath`, `ae.traceEvents`, `ae.artifactsDir` | evidence |
 
 Errors: `EntityNotFoundError` (with `kind`), `UnsavedChangesError`,
+`PropertyHasNoValueError` (a `get`/`set` on a property without a value; nothing
+is written),
 `AfterEffectsError` (AE's own message; `cause` holds the protocol-level
 error), `AfterEffectsNotInstalledError`. Lower-level pieces (`AeDriver`,
 `ScriptInvocationTransport`, `resolveInstall`) are exported for tooling.
