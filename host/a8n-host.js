@@ -17,14 +17,24 @@
   // ---------------------------------------------------------------- codec --
 
   function loadJson() {
-    // Prefer the engine's own JSON when it exists (future AE versions may add
-    // one); fall back to the bundled ES3 implementation otherwise.
-    if (typeof JSON !== "undefined" && JSON !== null && typeof JSON.parse === "function") {
-      return JSON;
+    // Always the bundled codec. AE's engine has no `JSON` of its own; one that
+    // is present was put there by another extension (observed on 26.5x89: a
+    // Babel-built polyfill, present once startup finished and absent on a cold
+    // start), so preferring it made the host behave differently cold and warm.
+    //
+    // The codec comes back as `$.evalFile`'s completion value. Looking it up
+    // on the global object does not work: called from inside a function, a
+    // real AE keeps the included file's `var`s in that function's scope.
+    var codec = $.evalFile(new File($.fileName).parent.fsName + "/a8n-json.js");
+    if (
+      codec === undefined ||
+      codec === null ||
+      typeof codec.parse !== "function" ||
+      typeof codec.stringify !== "function"
+    ) {
+      throw new Error("a8n-json.js did not produce a JSON codec");
     }
-    var self = this;
-    $.evalFile(new File($.fileName).parent.fsName + "/a8n-json.js");
-    return self.A8NJson;
+    return codec;
   }
 
   // ------------------------------------------------------------------ fs ---
@@ -94,15 +104,22 @@
 
   // ------------------------------------------------------------- helpers ---
 
+  // ExtendScript's Object.prototype has members a plain `object[key]` finds
+  // (functions named "+", "-", "*", "/", `toSource`, `watch`, ... observed on
+  // AE 26.5x89), so a key that came from a request is looked up as own only.
+  function has(object, key) {
+    return Object.prototype.hasOwnProperty.call(object, key);
+  }
+
   function requireParam(params, name) {
-    if (params === null || params === undefined || params[name] === undefined) {
+    if (params === null || params === undefined || !has(params, name) || params[name] === undefined) {
       throw new Error("missing required parameter: " + name);
     }
     return params[name];
   }
 
   function optionalParam(params, name, fallback) {
-    if (params === null || params === undefined || params[name] === undefined) {
+    if (params === null || params === undefined || !has(params, name) || params[name] === undefined) {
       return fallback;
     }
     return params[name];
@@ -116,15 +133,29 @@
   }
 
   function findComp(name) {
+    // A real Project has no lookup by name (`itemByName` is undefined on AE
+    // 26.5x89), so walk the items. Names are not unique in AE; the first
+    // composition with the name wins, and a non-composition item that shares
+    // it is skipped.
     var project = getProject();
-    var item = project.itemByName(name);
-    if (item === null || item === undefined) {
-      throw new Error("composition not found: " + name);
+    var sawOther = false;
+    for (var i = 1; i <= project.numItems; i++) {
+      var item = project.item(i);
+      if (item.name === name) {
+        if (item instanceof CompItem) {
+          return item;
+        }
+        sawOther = true;
+      }
     }
-    if (!(item instanceof CompItem)) {
+    if (sawOther) {
       throw new Error("item is not a composition: " + name);
     }
-    return item;
+    var missing = new Error("composition not found: " + name);
+    // The API turns exactly this into EntityNotFoundError; anything else a
+    // lookup raises is reported as itself.
+    missing.name = "NotFoundError";
+    throw missing;
   }
 
   function findLayer(comp, name) {
@@ -227,8 +258,14 @@
 
   methods["app.info"] = function () {
     var info = { version: String(app.version) };
+    // AE exposes the build as `app.buildNumber`; `app.build` is undefined on a
+    // real host (observed on 26.5x89). An absent value is left out rather than
+    // reported as the string "undefined".
     try {
-      info.build = String(app.build);
+      var build = app.buildNumber;
+      if (build !== undefined && build !== null && String(build) !== "") {
+        info.build = String(build);
+      }
     } catch (e) {
       // build is not guaranteed; version alone is enough for a readiness probe.
     }
@@ -382,82 +419,72 @@
 
   methods["comp.renderFrame"] = function (params) {
     var comp = findComp(String(requireParam(params, "comp")));
-    var frame = requireParam(params, "frame");
+    var frame = Number(requireParam(params, "frame"));
     var outputDir = String(requireParam(params, "outputDir"));
     var namePrefix = String(optionalParam(params, "prefix", comp.name));
-    var width = Number(optionalParam(params, "width", 0));
-    var height = Number(optionalParam(params, "height", 0));
 
     var folder = new Folder(outputDir);
-    if (!folder.exists) {
-      folder.create();
+    if (!folder.exists && !folder.create()) {
+      throw new Error("cannot create output directory: " + outputDir);
     }
-
-    var project = getProject();
-    var queue = project.renderQueue;
-    queue.purge();
-
-    // PNG Sequence writes one file per frame; the frame number is appended, so
-    // the caller needs the concrete name rather than a directory.
     var target = new File(folder.fsName + "/" + namePrefix + "." + zeroPad(frame, 5) + ".png");
-    var settings = new OutputModule(target).module("PNG Sequence");
-    settings.file = new Folder(folder.fsName + "/");
-    settings.colorDepth = 16;
-    settings.colorMode = settings.colorMode || 0;
-
-    var item = queue.add(new RenderQueueItem(comp, new OutputModule(target)));
-    item.outputModule.applySettings(settings);
-
-    var renderSettings = item.outputModule.renderSettings;
-    if (width > 0 && height > 0) {
-      renderSettings.changeComp(comp, true);
+    if (target.exists) {
+      target.remove();
     }
-    // Compositing over a fixed matte keeps the render deterministic and
-    // independent of the user's project background colour.
-    renderSettings.useSolidColor = true;
-    renderSettings.solidColor = [0, 0, 0];
 
-    item.startTime = frame;
-    item.endTime = frame;
-    item.render();
+    // `saveFrameToPng`, not the render queue: a localised AE has no output
+    // module template named "PNG Sequence" (ja 26.5x89 lists none) and an
+    // output module's "Format" is read-only to setSettings, so the queue
+    // cannot be told to write PNG. `saveFrameToPng` renders at the viewer's
+    // resolution, so full resolution is forced for the frame and restored.
+    var previousResolution = comp.resolutionFactor;
+    comp.resolutionFactor = [1, 1];
+    try {
+      var pending = comp.saveFrameToPng(frame * comp.frameDuration, target);
+      // It returns before the file is written (observed: 0 bytes at first);
+      // `wait()` blocks until it is, and throws if it failed.
+      try {
+        pending.wait();
+      } catch (waitError) {
+        var cause = pending._exception !== undefined && pending._exception !== null
+          ? String(pending._exception)
+          : String(waitError.message);
+        throw new Error("frame " + frame + " of '" + comp.name + "' was not rendered: " + cause);
+      }
+    } finally {
+      comp.resolutionFactor = previousResolution;
+    }
 
-    var rendered = findRenderedFile(folder, namePrefix, frame);
-    queue.purge();
-
+    var size = readPngSize(target);
     return {
-      path: rendered === null ? String(target.fsName) : rendered,
+      path: String(target.fsName),
       frame: frame,
-      width: comp.width,
-      height: comp.height
+      width: size.width,
+      height: size.height
     };
   };
 
-  /**
-   * Locate the file AE actually wrote.
-   *
-   * PNG Sequence naming is Adobe's to decide, and it has varied between
-   * versions and locales; reconstructing it from the requested name is a
-   * guess. Reading the directory back is not.
-   */
-  function findRenderedFile(folder, prefix, frame) {
-    var entries = folder.getFiles();
-    var frameText = zeroPad(frame, 5);
-    var best = null;
-    for (var i = 0; i < entries.length; i++) {
-      var entry = entries[i];
-      if (entry instanceof File) {
-        var name = entry.name;
-        if (name.length > 4 && name.substring(name.length - 4).toLowerCase() === ".png") {
-          var stem = name.substring(0, name.length - 4);
-          if (stem.indexOf(prefix) === 0 && stem.indexOf(frameText) !== -1) {
-            if (best === null || entry.modified > best.modified) {
-              best = entry;
-            }
-          }
-        }
-      }
+  /** Width and height from a PNG's IHDR: what was written, not what was asked for. */
+  function readPngSize(file) {
+    if (!file.exists) {
+      throw new Error("rendered frame is missing: " + file.fsName);
     }
-    return best === null ? null : String(best.fsName);
+    file.encoding = "BINARY";
+    if (!file.open("r")) {
+      throw new Error("cannot open rendered frame: " + file.fsName);
+    }
+    var head = file.read(24);
+    file.close();
+    if (head.length < 24 || head.substring(12, 16) !== "IHDR") {
+      throw new Error("rendered frame is not a PNG: " + file.fsName);
+    }
+    function u32(offset) {
+      return head.charCodeAt(offset) * 16777216 +
+        head.charCodeAt(offset + 1) * 65536 +
+        head.charCodeAt(offset + 2) * 256 +
+        head.charCodeAt(offset + 3);
+    }
+    return { width: u32(16), height: u32(20) };
   }
 
   // ----------------------------------------------------------- dispatch ---
@@ -466,7 +493,7 @@
     if (request === null || typeof request !== "object") {
       throw new Error("request envelope is not an object");
     }
-    var method = methods[request.method];
+    var method = has(methods, request.method) ? methods[request.method] : undefined;
     if (method === undefined) {
       throw new Error("unknown method: " + String(request.method));
     }
@@ -474,7 +501,7 @@
   }
 
   function main() {
-    var codec = loadJson.call(this);
+    var codec = loadJson();
     var context = this.__a8n;
     if (context === undefined || context === null) {
       throw new Error("a8n host invoked without a __a8n context");
@@ -519,10 +546,32 @@
   var PUBLISH_ATTEMPTS = 3;
   var PUBLISH_RETRY_MS = 50;
 
+  /** The last path segment, taken from the string so nothing is URI-encoded. */
+  function fileNameOf(path) {
+    var slash = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+    return slash < 0 ? path : path.substring(slash + 1);
+  }
+
+  /**
+   * Publishes `text` at `resultPath` and says how: "rename" or "direct".
+   *
+   * "rename": the result appeared whole, by renaming a fully written staging
+   * file in the same directory. A reader can never observe part of it.
+   *
+   * "direct": every rename failed and the result was written in place. A
+   * reader *can* observe a partial file; the driver re-reads until the
+   * envelope parses, so this costs latency, not correctness.
+   *
+   * Either way no staging file is left behind.
+   */
   function publishResult(resultPath, text) {
     var staging = resultPath + ".part";
     writeTextFile(staging, text);
     var finalFile = new File(resultPath);
+    // ExtendScript's `File.rename` takes a new *name* and keeps the file in
+    // its directory; given a full path it returns false (observed on AE
+    // 26.5x89). Passing a path would make every publication non-atomic.
+    var finalName = fileNameOf(resultPath);
 
     for (var attempt = 0; attempt < PUBLISH_ATTEMPTS; attempt++) {
       var stagingFile = new File(staging);
@@ -530,8 +579,8 @@
       if (finalFile.exists) {
         finalFile.remove();
       }
-      if (stagingFile.rename(finalFile.fsName)) {
-        return;
+      if (stagingFile.rename(finalName)) {
+        return "rename";
       }
       if (attempt + 1 < PUBLISH_ATTEMPTS) {
         $.sleep(PUBLISH_RETRY_MS);
@@ -539,9 +588,13 @@
     }
 
     // Every atomic attempt failed. Write anyway rather than lose a computed
-    // result: the driver tolerates a partial read, so this degrades latency
-    // rather than correctness.
+    // result, then drop the staging copy so it does not accumulate.
     writeTextFile(resultPath, text);
+    var leftover = new File(staging);
+    if (leftover.exists) {
+      leftover.remove();
+    }
+    return "direct";
   }
 
   main();

@@ -10,17 +10,20 @@
  *            therefore not waited on; the driver's result-file poll is what
  *            reports success or timeout.
  *
- *   macOS    `osascript` → `tell application "Adobe After Effects" to DoScript`
- *            Synchronous, and the script's result comes back on stdout.
+ *   macOS    `osascript` → `tell application <bundle path>` → `DoScriptFile`
+ *            Synchronous. The bundle is addressed by path, not by name: the
+ *            name differs per release (`Adobe After Effects 2026`) and the
+ *            bare `Adobe After Effects` does not resolve to AE at all, which
+ *            makes osascript fail to compile the script (-2741).
  */
 
-import { spawn } from "node:child_process";
-import { existsSync, unlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { resolveInstall, type AfterEffectsInstall } from "./install-path.js";
-import type { HostTransport } from "./transport.js";
+import { macAppBundle, resolveInstall, type AfterEffectsInstall } from "./install-path.js";
+import type { HostTransport, InvokeOptions } from "./transport.js";
 
 export type ScriptInvocationOptions = {
   /** Explicit install directory; skips discovery. */
@@ -30,24 +33,125 @@ export type ScriptInvocationOptions = {
   /** Pre-resolved install, when the caller already discovered one. */
   readonly install?: AfterEffectsInstall;
   readonly platform?: NodeJS.Platform;
+  /** How long `close` waits for AE to exit after `app.quit`. */
+  readonly exitTimeoutMs?: number;
+  /** Executable paths of running processes. Mainly a test seam. */
+  readonly runningExecutables?: () => readonly string[];
 };
+
+/** AE saves preferences and tears down plugins on quit; that takes seconds. */
+export const EXIT_TIMEOUT_MS = 60_000;
+const EXIT_POLL_MS = 250;
+
+/** Executable paths of running processes, from `ps`. */
+function psExecutables(): string[] {
+  return execFileSync("ps", ["-axo", "comm="], { encoding: "utf-8" })
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
 
 /** A cold After Effects start can take a minute on a spinning disk. */
 export const READINESS_TIMEOUT_MS = 180_000;
 
-function escapeAppleScriptString(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+/**
+ * Runs `DoScriptFile` against the application at a path, both taken from argv.
+ *
+ * Neither path is ever spliced into AppleScript source, so nothing needs
+ * escaping. That forces the raw event code: with the target only known at run
+ * time the compiler cannot look up the `DoScriptFile` term in AE's dictionary.
+ * `miscfile` is the code AE's sdef declares for it.
+ */
+export const MAC_DO_SCRIPT_FILE = [
+  "on run argv",
+  // AppleScript's default 120 s would fail a long render that AE is still
+  // running. The driver owns the call's deadline; osascript just waits.
+  "  with timeout of 3600 seconds",
+  "    tell application (item 1 of argv)",
+  "      «event miscfile» (item 2 of argv)",
+  "    end tell",
+  "  end timeout",
+  "end run",
+];
+
+/** Keeps a failure report bounded however much a process writes. */
+export const MAX_DIAGNOSTIC_CHARS = 4_000;
+
+/**
+ * Trims process output into something safe to put in an error and a trace:
+ * bounded in size, and with the home directory replaced so a shared trace
+ * does not carry the user's account name.
+ */
+export function summariseProcessOutput(output: string, home: string = homedir()): string {
+  let text = output.trim();
+  if (home.length > 1) {
+    text = text.split(home).join("~");
+  }
+  if (text.length > MAX_DIAGNOSTIC_CHARS) {
+    const omitted = text.length - MAX_DIAGNOSTIC_CHARS;
+    text = `${text.slice(0, MAX_DIAGNOSTIC_CHARS)}… [${omitted} more characters]`;
+  }
+  return text;
+}
+
+/**
+ * Waits for `work`, or rejects as soon as `signal` aborts. `work` itself is
+ * not cancelled; it settles on its own.
+ */
+function untilAborted(work: Promise<void>, signal: AbortSignal | undefined): Promise<void> {
+  if (signal === undefined) {
+    return work;
+  }
+  if (signal.aborted) {
+    return Promise.reject(new Error("invocation abandoned: the call's deadline passed"));
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(new Error("invocation abandoned: the call's deadline passed"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(
+      () => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  });
+}
+
+/** A launcher process that failed, with what it said about why. */
+export class ScriptInvocationError extends Error {
+  readonly exitCode: number | null;
+  readonly stderr: string;
+
+  constructor(command: string, exitCode: number | null, stderr: string) {
+    super(
+      `${command} exited with code ${exitCode ?? "null"}` + (stderr.length > 0 ? `: ${stderr}` : ""),
+    );
+    this.name = "ScriptInvocationError";
+    this.exitCode = exitCode;
+    this.stderr = stderr;
+  }
 }
 
 export class ScriptInvocationTransport implements HostTransport {
   readonly kind = "script-invocation";
   readonly #install: AfterEffectsInstall;
   readonly #platform: NodeJS.Platform;
-  #scriptCount = 0;
+  readonly #exitTimeoutMs: number;
+  readonly #runningExecutables: () => readonly string[];
+  /** The DoScriptFile still waiting on AE, if a call gave up on it. */
+  #inFlight: Promise<void> | null = null;
 
   constructor(options: ScriptInvocationOptions = {}) {
     const platform = options.platform ?? process.platform;
     this.#platform = platform;
+    this.#exitTimeoutMs = options.exitTimeoutMs ?? EXIT_TIMEOUT_MS;
+    this.#runningExecutables = options.runningExecutables ?? psExecutables;
     this.#install =
       options.install ??
       resolveInstall(platform, {
@@ -80,8 +184,10 @@ export class ScriptInvocationTransport implements HostTransport {
     await this.#run(join(this.#install.executable, ".."), this.#install.executable, []);
   }
 
-  async invoke(entryScriptPath: string): Promise<void> {
+  async invoke(entryScriptPath: string, options: InvokeOptions = {}): Promise<void> {
     if (this.#platform === "win32") {
+      // No signal: on a cold start `AfterFX.exe -r` *is* After Effects, and
+      // the process returns without waiting for the script anyway.
       await this.#run(join(this.#install.executable, ".."), this.#install.executable, [
         "-r",
         entryScriptPath,
@@ -89,19 +195,37 @@ export class ScriptInvocationTransport implements HostTransport {
       return;
     }
     if (this.#platform === "darwin") {
-      const scriptPath = this.#writeAppleScript(entryScriptPath);
-      try {
-        // `DoScript` takes a string of JavaScript; `$.evalFile` is how a file
-        // on disk becomes one, and avoids guessing whether AE would accept the
-        // bare path.
-        await this.#runAppleScript(scriptPath);
-      } finally {
-        try {
-          unlinkSync(scriptPath);
-        } catch {
-          // Best effort; the file is in the OS temp directory.
-        }
+      const bundle = macAppBundle(this.#install.executable);
+      if (bundle === null) {
+        throw new Error(
+          `cannot address After Effects by AppleScript: ${this.#install.executable} is not inside an .app bundle`,
+        );
       }
+      // One DoScriptFile at a time. A call that timed out leaves its script
+      // running in AE; the next one waits for it rather than racing it.
+      if (this.#inFlight !== null) {
+        await untilAborted(this.#inFlight, options.signal);
+      }
+      // DoScriptFile returns only when the script has finished. On a deadline
+      // the call stops *waiting*, but osascript is left to finish: killing it
+      // mid-script left AE refusing every later script ("1") and refusing to
+      // quit (observed on 26.5x89), which only a forced exit cleared.
+      const done = this.#run("/", "osascript", [
+        ...MAC_DO_SCRIPT_FILE.flatMap((line) => ["-e", line]),
+        bundle,
+        entryScriptPath,
+      ]);
+      const tracked: Promise<void> = done.then(
+        () => undefined,
+        () => undefined,
+      );
+      this.#inFlight = tracked;
+      void tracked.then(() => {
+        if (this.#inFlight === tracked) {
+          this.#inFlight = null;
+        }
+      });
+      await untilAborted(done, options.signal);
       return;
     }
     throw new Error(
@@ -110,27 +234,29 @@ export class ScriptInvocationTransport implements HostTransport {
     );
   }
 
+  /**
+   * Waits for AE to exit after the driver's `app.quit`.
+   *
+   * `app.quit` returns while AE is still shutting down. A session launched in
+   * that window sends its AppleEvent to the exiting process and fails with
+   * -609 "connection is invalid" (observed on AE 26.5x89 with back-to-back
+   * ae-test sessions), so on macOS close only returns once the process is
+   * gone. It never kills AE: that would discard unsaved state and make the
+   * next launch stop at the crash-recovery dialog.
+   */
   async close(): Promise<void> {
-    // The driver issues `app.quit` through the host script, which closes the
-    // project first. Killing the process here would discard unsaved state.
-  }
-
-  #writeAppleScript(entryScriptPath: string): string {
-    // Unique per invocation: two concurrent sessions must not share a scratch
-    // file.
-    this.#scriptCount += 1;
-    const path = join(tmpdir(), `a8n-${process.pid}-${this.#scriptCount}.scpt`);
-    const body = [
-      'tell application "Adobe After Effects"',
-      `  DoScript "$.evalFile(new File(\\"${escapeAppleScriptString(entryScriptPath)}\\"))"`,
-      "end tell",
-    ].join("\n");
-    writeFileSync(path, body, "utf-8");
-    return path;
-  }
-
-  #runAppleScript(scriptPath: string): Promise<void> {
-    return this.#run("/", "osascript", [scriptPath]);
+    if (this.#platform !== "darwin") {
+      return;
+    }
+    const deadline = Date.now() + this.#exitTimeoutMs;
+    while (this.#runningExecutables().includes(this.#install.executable)) {
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `After Effects did not exit within ${this.#exitTimeoutMs} ms of app.quit; it was left running`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, EXIT_POLL_MS));
+    }
   }
 
   /**
@@ -141,8 +267,17 @@ export class ScriptInvocationTransport implements HostTransport {
     return new Promise((resolve, reject) => {
       const child = spawn(command, [...args], {
         cwd,
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", "pipe"],
         windowsHide: true,
+      });
+      // Only the head is kept: a runaway process must not grow this without
+      // bound, and the cause of a launcher failure is in the first lines.
+      let stderr = "";
+      child.stderr.setEncoding("utf-8");
+      child.stderr.on("data", (chunk: string) => {
+        if (stderr.length <= MAX_DIAGNOSTIC_CHARS) {
+          stderr += chunk;
+        }
       });
       child.on("error", reject);
       child.on("close", (code) => {
@@ -157,9 +292,7 @@ export class ScriptInvocationTransport implements HostTransport {
           resolve();
           return;
         }
-        reject(
-          new Error(`${command} ${args.join(" ")} exited with code ${code ?? "null"}`),
-        );
+        reject(new ScriptInvocationError(command, code, summariseProcessOutput(stderr)));
       });
     });
   }

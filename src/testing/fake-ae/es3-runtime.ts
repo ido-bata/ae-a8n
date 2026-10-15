@@ -76,12 +76,17 @@ export class FakeFolder {
       .filter((file) => file.exists && !file.isDirectory);
   }
 
+  /** ExtendScript reports failure by returning false, not by throwing. */
   create(): boolean {
     if (this.exists) {
       return true;
     }
-    mkdirSync(this.fsName, { recursive: true });
-    return true;
+    try {
+      mkdirSync(this.fsName, { recursive: true });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -89,6 +94,7 @@ export class FakeFile {
   readonly fsName: string;
   encoding = "UTF-8";
   #handle: "r" | "w" | null = null;
+  #position = 0;
 
   constructor(fsName: string) {
     this.fsName = fsName;
@@ -130,14 +136,38 @@ export class FakeFile {
       return false;
     }
     this.#handle = mode;
+    this.#position = 0;
     return true;
   }
 
-  read(): string {
+  /** Size in bytes, as ExtendScript's `File.length`. */
+  get length(): number {
+    try {
+      return statSync(this.fsName).size;
+    } catch {
+      return -1;
+    }
+  }
+
+  seek(position: number, mode = 0): boolean {
+    const base = mode === 1 ? this.#position : mode === 2 ? this.length : 0;
+    this.#position = Math.max(0, base + position);
+    return true;
+  }
+
+  /**
+   * Reads from the current position. With `encoding = "BINARY"` each byte is
+   * one character, as in ExtendScript; otherwise the text is UTF-8.
+   */
+  read(count?: number): string {
     if (this.#handle !== "r") {
       throw new Error("file is not open for reading: " + this.fsName);
     }
-    return readFileSync(this.fsName, "utf-8");
+    const bytes = readFileSync(this.fsName);
+    const end = count === undefined ? bytes.length : Math.min(bytes.length, this.#position + count);
+    const slice = bytes.subarray(this.#position, end);
+    this.#position = end;
+    return this.encoding === "BINARY" ? slice.toString("latin1") : slice.toString("utf-8");
   }
 
   write(text: string): void {
@@ -156,13 +186,23 @@ export class FakeFile {
     return true;
   }
 
-  rename(newPath: string): boolean {
+  /**
+   * Matches ExtendScript: the argument is a new *name*, and the file stays in
+   * its directory. A path is refused with `false` — that is what real AE does
+   * (observed on 26.5x89), and accepting one here is what let a host that
+   * passed full paths look atomic under test while never being so on a host.
+   */
+  rename(newName: string): boolean {
     if (renameFailuresRemaining > 0) {
       renameFailuresRemaining -= 1;
       return false;
     }
+    if (newName.length === 0 || /[\\/]/.test(newName)) {
+      return false;
+    }
     try {
-      renameSync(this.fsName, newPath);
+      renameSync(this.fsName, joinPath(dirname(this.fsName), newName));
+      renameSuccesses += 1;
       return true;
     } catch {
       return false;
@@ -180,6 +220,7 @@ export class FakeFile {
  * reach it from outside the host script.
  */
 let renameFailuresRemaining = 0;
+let renameSuccesses = 0;
 
 /** Make the next `count` `File.rename` calls return false. */
 export function failNextRenames(count: number): void {
@@ -188,6 +229,16 @@ export function failNextRenames(count: number): void {
 
 export function resetRenameFaults(): void {
   renameFailuresRemaining = 0;
+  renameSuccesses = 0;
+}
+
+/**
+ * `File.rename` calls that succeeded since the last reset. A publication that
+ * fell back to a direct write leaves this unchanged, so a test can tell the
+ * atomic path from the fallback even though both leave no `.part` behind.
+ */
+export function renamesSucceeded(): number {
+  return renameSuccesses;
 }
 
 export function renamesFailed(): number {
@@ -205,6 +256,12 @@ export type RunHostOptions = {
    * must be tested on the codec it will actually use inside After Effects.
    */
   readonly nativeJson?: boolean;
+  /**
+   * Install this as the global `JSON` instead. A real AE engine can carry one
+   * that some other extension put there (observed: a Babel-built polyfill,
+   * present only after startup), so the host must not depend on it.
+   */
+  readonly foreignJson?: unknown;
 };
 
 export type RunHostResult =
@@ -212,9 +269,39 @@ export type RunHostResult =
   | { success: false; error: Error; globals: Record<string, unknown> };
 
 /**
+ * Gives a context's `Object.prototype` the non-enumerable members a real AE's
+ * has (observed on 26.5x89): operator-overload functions named "+", "-", "*"
+ * and "/", plus `toSource`, `watch`, `unwatch` and `reflect`. Any `table[key]`
+ * lookup whose key can be one of those finds a value that is not in the table.
+ */
+function installExtendScriptPrototype(target: vm.Context): void {
+  vm.runInContext(
+    `(function () {
+      var names = ["+", "-", "*", "/", "toSource", "watch", "unwatch"];
+      for (var i = 0; i < names.length; i++) {
+        Object.defineProperty(Object.prototype, names[i], {
+          value: function () { throw new Error("ExtendScript Object.prototype member called"); },
+          enumerable: false, writable: true, configurable: true
+        });
+      }
+      Object.defineProperty(Object.prototype, "reflect", {
+        value: {}, enumerable: false, writable: true, configurable: true
+      });
+    })();`,
+    target,
+  );
+}
+
+/**
  * Evaluates a host script the way ExtendScript evaluates a JSX file: its
- * top-level `var`s become globals, and `$.evalFile` includes a sibling file
- * into that same global.
+ * top-level `var`s become globals.
+ *
+ * `$.evalFile` follows what a real AE does (observed on 26.5x89): called from
+ * the top level of a script, the included file's `var`s land on the global
+ * object; called from inside a function, they stay in that function's scope
+ * and never reach the global. Either way the call returns the included
+ * file's completion value. The fake approximates "inside a function" as "from
+ * inside a file that was itself included", which is where the host calls it.
  */
 export function runHostScript(
   scriptPath: string,
@@ -223,24 +310,44 @@ export function runHostScript(
 ): RunHostResult {
   const sandbox: Record<string, unknown> = { ...globals };
   const context = vm.createContext(sandbox);
+  let includeDepth = 0;
+
+  const removeJson = (target: vm.Context): void => {
+    if (options.nativeJson !== true) {
+      // Run inside the context so the reference is taken in that realm.
+      vm.runInContext("var JSON = undefined;", target);
+    }
+  };
+
+  const isolatedContext = (): vm.Context => {
+    const isolated = vm.createContext({ ...sandbox });
+    removeJson(isolated);
+    installExtendScriptPrototype(isolated);
+    return isolated;
+  };
 
   // ExtendScript's `$.evalFile` takes a path string or a File, and `$.fileName`
   // tracks whichever file is currently executing — so a script that resolves a
   // sibling include sees its own directory, not the caller's. Both behaviours
   // are load-bearing for the host script.
   const dollar: {
-    evalFile: (target: string | FakeFile) => void;
+    evalFile: (target: string | FakeFile) => unknown;
     fileName: string;
     sleep: (ms: number) => void;
   } = {
-    evalFile: (target: string | FakeFile): void => {
+    evalFile: (target: string | FakeFile): unknown => {
       const path = typeof target === "string" ? target : target.fsName;
       const included = readFileSync(path, "utf-8");
       const previous = dollar.fileName;
       dollar.fileName = path;
+      includeDepth += 1;
       try {
-        vm.runInContext(included, context, { filename: path });
+        // Nested: evaluate against a copy of the globals, so its `var`s are
+        // invisible to the caller's global object, as on a real host.
+        const target = includeDepth > 1 ? isolatedContext() : context;
+        return vm.runInContext(included, target, { filename: path });
       } finally {
+        includeDepth -= 1;
         dollar.fileName = previous;
       }
     },
@@ -261,9 +368,10 @@ export function runHostScript(
   sandbox["File"] = FakeFile;
   sandbox["Folder"] = FakeFolder;
 
-  if (options.nativeJson !== true) {
-    // Run inside the context so the reference is taken in that realm.
-    vm.runInContext("var JSON = undefined;", context);
+  removeJson(context);
+  installExtendScriptPrototype(context);
+  if (options.foreignJson !== undefined) {
+    sandbox["JSON"] = options.foreignJson;
   }
 
   try {

@@ -210,11 +210,35 @@ export class AeDriver {
         hostScriptPath: this.#hostScriptPath,
         requestPath: `${this.#paths.inbox}/${id}.request.json`,
         resultPath: `${this.#paths.outbox}/${id}.result.json`,
+        id,
       });
 
-      await this.#transport.invoke(entry);
+      // The deadline covers the invocation as well as the wait for a result:
+      // on macOS invoke returns only when the script has finished, so a
+      // deadline started afterwards never fired for a slow or hung script
+      // (observed: a 2 s call answered after 9.9 s on a real AE). Aborting
+      // makes the transport stop waiting; the script itself runs on in AE.
+      const deadline = Date.now() + timeoutMs;
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), timeoutMs);
+      try {
+        await this.#transport.invoke(entry, { signal: abort.signal });
+      } catch (error) {
+        if (abort.signal.aborted) {
+          throw new TimeoutError(method, timeoutMs);
+        }
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
 
-      const outcome = await this.#awaitResult(id, method, params, timeoutMs);
+      const outcome = await this.#awaitResult(
+        id,
+        method,
+        params,
+        Math.max(0, deadline - Date.now()),
+        timeoutMs,
+      );
       this.#trace.record(op, outcome.status, Date.now() - began, outcome.detail);
       if (outcome.status === "error") {
         throw outcome.error;
@@ -234,6 +258,7 @@ export class AeDriver {
     id: string,
     method: string,
     params: Record<string, unknown>,
+    remainingMs: number,
     timeoutMs: number,
   ): Promise<
     | {
@@ -247,7 +272,7 @@ export class AeDriver {
         detail: { args: Record<string, unknown>; error: { name: string; message: string } };
       }
   > {
-    const deadline = Date.now() + timeoutMs;
+    const deadline = Date.now() + remainingMs;
     let interval = REQUEST_POLL_INTERVAL_MS;
     // Kept so a deadline reached with an unparseable file reports the real
     // cause instead of a bare timeout.

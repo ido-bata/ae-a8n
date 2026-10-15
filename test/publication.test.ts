@@ -23,7 +23,12 @@ import type { HostTransport } from "../src/driver/transport.js";
 import { createSessionPaths, probeResult, type SessionPaths } from "../src/protocol/workspace.js";
 import { TraceRecorder } from "../src/trace/trace.js";
 import { FakeAfterEffectsTransport } from "../src/testing/fake-transport.js";
-import { failNextRenames, resetRenameFaults } from "../src/testing/fake-ae/es3-runtime.js";
+import {
+  FakeFile,
+  failNextRenames,
+  renamesSucceeded,
+  resetRenameFaults,
+} from "../src/testing/fake-ae/es3-runtime.js";
 
 let sessionRoot: string;
 let transport: FakeAfterEffectsTransport;
@@ -65,12 +70,41 @@ function stagingLeftovers(paths: SessionPaths): string[] {
   return found;
 }
 
+describe("the fake's File.rename", () => {
+  // Real ExtendScript (AE 26.5x89): rename(fullPath) → false, rename(name) → true.
+  it("refuses a path, as a real host does", () => {
+    const from = join(sessionRoot, "a.part");
+    writeFileSync(from, "x");
+    expect(new FakeFile(from).rename(join(sessionRoot, "a.json"))).toBe(false);
+    expect(readdirSync(sessionRoot)).toEqual(["a.part"]);
+  });
+
+  it("renames by name within the file's own directory", () => {
+    const from = join(sessionRoot, "b.part");
+    writeFileSync(from, "x");
+    expect(new FakeFile(from).rename("b.json")).toBe(true);
+    expect(readdirSync(sessionRoot)).toEqual(["b.json"]);
+  });
+});
+
 describe("when the rename succeeds", () => {
   it("completes the call and leaves no staging file behind", async () => {
     const d = makeDriver();
     await d.start();
     await expect(d.call("app.info")).resolves.toMatchObject({ version: expect.any(String) });
     expect(stagingLeftovers(createSessionPaths(sessionRoot))).toEqual([]);
+    await d.stop();
+  });
+
+  it("publishes through the atomic path, not the fallback", async () => {
+    // Both paths leave no `.part` behind, so absence of leftovers cannot tell
+    // them apart. A host that hands `File.rename` a full path fails every
+    // attempt and lands on the fallback — the regression this guards.
+    const d = makeDriver();
+    await d.start();
+    await d.call("app.info");
+    // The readiness probe and the call each published once.
+    expect(renamesSucceeded()).toBe(2);
     await d.stop();
   });
 });
@@ -84,6 +118,7 @@ describe("when the rename fails", () => {
     await d.start();
     await expect(d.call("app.info")).resolves.toBeDefined();
     expect(stagingLeftovers(createSessionPaths(sessionRoot))).toEqual([]);
+    expect(renamesSucceeded()).toBe(2);
     await d.stop();
   });
 
@@ -94,6 +129,16 @@ describe("when the rename fails", () => {
     const d = makeDriver();
     await d.start();
     await expect(d.call("app.info")).resolves.toMatchObject({ version: expect.any(String) });
+    expect(renamesSucceeded()).toBe(0);
+    await d.stop();
+  });
+
+  it("does not leave the staging file behind after the fallback", async () => {
+    failNextRenames(99);
+    const d = makeDriver();
+    await d.start();
+    await d.call("app.info");
+    expect(stagingLeftovers(createSessionPaths(sessionRoot))).toEqual([]);
     await d.stop();
   });
 

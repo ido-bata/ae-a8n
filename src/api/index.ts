@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { AeDriver } from "../driver/driver.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
 import { TraceRecorder, type TraceEvent } from "../trace/trace.js";
-import { EntityNotFoundError, contextualise } from "./errors.js";
+import { AfterEffectsError, EntityNotFoundError, HostError, contextualise } from "./errors.js";
 import type {
   ApplicationInfo,
   CompInfo,
@@ -195,16 +195,20 @@ export class Project {
   /**
    * Resolves a composition by name, verifying it exists.
    *
-   * A host failure to read a composition that was asked for by name *is* a
-   * not-found condition, so it is translated here rather than leaked as a raw
-   * ExtendScript message.
+   * Only the host's own "not found" becomes EntityNotFoundError. Translating
+   * every failure into "not found" once hid that the host called an API a
+   * real AE does not have.
    */
   async comp(name: string): Promise<Comp> {
     const compName = requireString(name, "comp name");
     try {
       await this.#session.call<CompInfo>("comp.info", "comp.info", { name: compName });
-    } catch {
-      throw new EntityNotFoundError("composition", compName, "project.comp");
+    } catch (error) {
+      const cause = error instanceof AfterEffectsError ? error.cause : undefined;
+      if (cause instanceof HostError && cause.name === "NotFoundError") {
+        throw new EntityNotFoundError("composition", compName, "project.comp");
+      }
+      throw error;
     }
     return new Comp(this.#session, compName);
   }

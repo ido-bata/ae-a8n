@@ -214,7 +214,8 @@ describe("driver against the fake host", () => {
     const trace = readTrace();
     const last = trace.at(-1);
     expect(last?.status).toBe("error");
-    expect(last?.error?.name).toBe("Error");
+    // Named, so the API can tell "not found" from any other lookup failure.
+    expect(last?.error?.name).toBe("NotFoundError");
     expect(last?.error?.message).toContain("composition not found");
   });
 

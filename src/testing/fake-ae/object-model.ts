@@ -11,8 +11,8 @@
  * write is *observable* in the produced pixels.
  */
 
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 import { CloseOptions, FakeFile, FakeFolder, type HostGlobals } from "./es3-runtime.js";
 import { encodePng } from "./png.js";
@@ -201,8 +201,23 @@ export class FakeComp {
     this.#layers = options.layers.map((layer, index) => new FakeLayer(layer.name, index + 1));
   }
 
+  /** The viewer's resolution; a real `saveFrameToPng` renders at it. */
+  resolutionFactor: [number, number] = [1, 1];
+  /** Every frame `saveFrameToPng` wrote, in order. */
+  readonly renders: RenderCall[] = [];
+  #saveFailure: string | undefined;
+
+  /** Make the next `saveFrameToPng` fail the way AE reports it. */
+  failNextSaveFrame(message = "Operation failed with error code: 790"): void {
+    this.#saveFailure = message;
+  }
+
   get numLayers(): number {
     return this.#layers.length;
+  }
+
+  get frameDuration(): number {
+    return 1 / this.frameRate;
   }
 
   layer(selector: string | number): FakeLayer | undefined {
@@ -210,6 +225,75 @@ export class FakeComp {
       return this.#layers[selector - 1];
     }
     return this.#layers.find((layer) => layer.name === selector);
+  }
+
+  /**
+   * `CompItem.saveFrameToPng(time, file)` as AE 26.5x89 behaves: it returns
+   * at once with a pending result, and the file is complete only after
+   * `wait()`. A failure (observed: a missing directory) does not throw from
+   * the call; `wait()` throws and the result carries the cause.
+   *
+   * The pixels are a pure function of the layer/effect state, so a parameter
+   * write shows up in them.
+   */
+  saveFrameToPng(time: number, file: FakeFile): FakePendingFrame {
+    const pending = new FakePendingFrame();
+    const width = Math.round(this.width / this.resolutionFactor[0]);
+    const height = Math.round(this.height / this.resolutionFactor[1]);
+    const failure = this.#saveFailure;
+    this.#saveFailure = undefined;
+    pending._run = () => {
+      if (failure !== undefined) {
+        throw new Error(failure);
+      }
+      if (!existsSync(dirname(file.fsName))) {
+        throw new Error("Operation failed with error code: 790");
+      }
+      const layer = this.layer(1);
+      let factor = 1;
+      if (layer !== undefined) {
+        for (const leaf of layer.effects.leaves()) {
+          factor *= 1 - Math.min(Math.max(leaf.value, 0), 100) / 100;
+        }
+      }
+      const value = Math.round(255 * Math.max(0, Math.min(1, factor)));
+      const shade: readonly [number, number, number] = [value, value, value];
+      writeFileSync(file.fsName, encodePng(width, height, () => shade));
+      this.renders.push({
+        comp: this.name,
+        frame: Math.round(time * this.frameRate),
+        path: file.fsName,
+        width,
+        height,
+      });
+    };
+    return pending;
+  }
+}
+
+/** What a real `saveFrameToPng` returns: a result that is ready after `wait()`. */
+export class FakePendingFrame {
+  _isReady = false;
+  _hasException = false;
+  _exception: string | undefined = undefined;
+  /** @internal */
+  _run: () => void = () => {};
+
+  wait(): string {
+    if (!this._isReady) {
+      this._isReady = true;
+      try {
+        this._run();
+      } catch (caught) {
+        this._hasException = true;
+        this._exception = caught instanceof Error ? caught.message : String(caught);
+      }
+    }
+    if (this._hasException) {
+      // Real AE throws a message-less error here; the cause is on the result.
+      throw new Error("undefined");
+    }
+    return "";
   }
 }
 
@@ -221,130 +305,8 @@ export type RenderCall = {
   readonly height: number;
 };
 
-export class FakeRenderQueue {
-  readonly #items: FakeRenderQueueItem[] = [];
-  readonly calls: RenderCall[] = [];
-
-  purge(): void {
-    this.#items.length = 0;
-  }
-
-  add(item: FakeRenderQueueItem): FakeRenderQueueItem {
-    item._bind(this);
-    this.#items.push(item);
-    return item;
-  }
-
-  render(item: FakeRenderQueueItem, comp: FakeComp, frame: number): RenderCall {
-    // The render is a pure function of the layer/effect state, so a parameter
-    // write shows up in the pixels. That is what makes an assertion about
-    // "the plugin was configured" meaningful.
-    const layer = comp.layer(1);
-    let factor = 1;
-    if (layer !== undefined) {
-      for (const leaf of layer.effects.leaves()) {
-        factor *= 1 - Math.min(Math.max(leaf.value, 0), 100) / 100;
-      }
-    }
-    const value = Math.round(255 * Math.max(0, Math.min(1, factor)));
-    const shade: readonly [number, number, number] = [value, value, value];
-
-    const path = join(
-      item.outputModule.outputDirectory,
-      `${comp.name}.${String(frame).padStart(5, "0")}.png`,
-    );
-    writeFileSync(path, encodePng(comp.width, comp.height, () => shade));
-
-    const call: RenderCall = {
-      comp: comp.name,
-      frame,
-      path,
-      width: comp.width,
-      height: comp.height,
-    };
-    this.calls.push(call);
-    return call;
-  }
-}
-
-/** The `FileFormat` an `OutputModule` hands back from `module(name)`. */
-export class FakeFileFormat {
-  file: unknown = null;
-  colorDepth = 8;
-  colorMode = 0;
-}
-
-export class FakeOutputModule {
-  readonly #target: FakeFile;
-  readonly #settings = new FakeFileFormat();
-  file: unknown = null;
-  colorDepth = 8;
-  colorMode = 0;
-
-  constructor(target: FakeFile) {
-    this.#target = target;
-  }
-
-  module(name: string): FakeFileFormat {
-    if (name !== "PNG Sequence") {
-      throw aeError(5025, `unsupported output format: ${name}`);
-    }
-    return this.#settings;
-  }
-
-  applySettings(settings: FakeFileFormat): void {
-    this.file = settings.file;
-    this.colorDepth = settings.colorDepth;
-    this.colorMode = settings.colorMode;
-  }
-
-  renderSettings = {
-    useSolidColor: false,
-    solidColor: [0, 0, 0] as number[],
-    changeComp: (_comp: FakeComp, _change: boolean): void => {},
-  };
-
-  get outputDirectory(): string {
-    if (this.file instanceof FakeFolder) {
-      return this.file.fsName;
-    }
-    if (typeof this.file === "string") {
-      return this.file;
-    }
-    return this.#target.parent.fsName;
-  }
-}
-
-export class FakeRenderQueueItem {
-  startTime = 0;
-  endTime = 0;
-  readonly outputModule: FakeOutputModule;
-  #queue: FakeRenderQueue | undefined;
-  #comp: FakeComp | undefined;
-
-  constructor(comp: FakeComp, outputModule: FakeOutputModule) {
-    this.#comp = comp;
-    this.outputModule = outputModule;
-  }
-
-  _bind(queue: FakeRenderQueue): void {
-    this.#queue = queue;
-  }
-
-  render(): void {
-    if (this.#queue === undefined || this.#comp === undefined) {
-      throw aeError(5026, "render queue item is not bound to a queue");
-    }
-    if (this.startTime !== this.endTime) {
-      throw aeError(5027, "fake renders are single-frame only");
-    }
-    this.#queue.render(this, this.#comp, this.startTime);
-  }
-}
-
 export class FakeProject {
   file: FakeFile | null = null;
-  readonly renderQueue = new FakeRenderQueue();
   #items: FakeComp[] = [];
 
   get numItems(): number {
@@ -364,10 +326,6 @@ export class FakeProject {
     return this.#items[index - 1];
   }
 
-  itemByName(name: string): FakeComp | undefined {
-    return this.#items.find((item) => item.name === name);
-  }
-
   close(closeOptions: number): void {
     if (closeOptions !== CloseOptions.DO_NOT_SAVE_CHANGES && this.file !== null) {
       throw new Error("fake projects cannot be saved");
@@ -379,7 +337,8 @@ export class FakeProject {
 
 export class FakeApplication {
   version = "26.0.0";
-  build = "0";
+  // Real AE has `buildNumber` and no `build` (observed on 26.5x89).
+  buildNumber = 0;
   project = new FakeProject();
   #quitCount = 0;
   /** Every project the fake has opened, in order. */
@@ -418,7 +377,5 @@ export function createFakeGlobals(app: FakeApplication): HostGlobals {
     Folder: FakeFolder,
     CloseOptions,
     CompItem: FakeComp,
-    OutputModule: FakeOutputModule,
-    RenderQueueItem: FakeRenderQueueItem,
   };
 }

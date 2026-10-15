@@ -88,6 +88,21 @@ describe("the documented flow", () => {
 });
 
 describe("typed errors", () => {
+  it("reports a host failure during comp lookup as itself, not as not-found", async () => {
+    // The host once called `project.itemByName`, which a real AE does not
+    // have; the API turned that ReferenceError into "composition not found".
+    const ae = await launch();
+    const project = await openedProject(ae);
+    (transport.app as { project: unknown }).project = null;
+
+    const error = await project.comp("Main").then(
+      () => null,
+      (caught: unknown) => caught,
+    );
+    expect(error).not.toBeInstanceOf(EntityNotFoundError);
+    expect(error).toMatchObject({ name: "AfterEffectsError", message: expect.stringMatching(/no project is open/) });
+  });
+
   it("reports an unknown composition as EntityNotFoundError", async () => {
     const ae = await launch();
     const project = await openedProject(ae);
