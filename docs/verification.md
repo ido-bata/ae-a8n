@@ -133,6 +133,20 @@ What this does and does not show:
   usual. Cause not established.
 - Windows: not run.
 
+## Per-call budgets and `ae.project()` (#22), 2026-10-16
+
+macOS 27.0.1 arm64, AE 26.5x89 (ja), session `timeoutMs: 400`, disposable
+copy of a fixture (closed with discard):
+
+| step | result |
+| --- | --- |
+| `openProject(copy, { timeoutMs: 100 })` | `TimeoutError` at 142 ms; the host finished the open in 494 ms (`ok`) |
+| `ae.project({ timeoutMs: 5000 })` | answered at 1296 ms (waited for the open); `info().file` = the copy |
+| `project.open` requests sent | 1 |
+| `set(50)`, comp/layer/effect lookups at the 400 ms default | all `ok`, 92–104 ms |
+| `renderFrame(0, { timeoutMs: 1 })` | `TimeoutError` at 3 ms; the host rendered it anyway (`ok`, 31 ms), once; the PNG is byte-identical to the same frame rendered with a 10 s budget |
+| state afterwards | Tint value 50 (one write), effects unchanged, AE quit (owned) |
+
 ## What is verified, in detail
 
 | Area | Level | How |

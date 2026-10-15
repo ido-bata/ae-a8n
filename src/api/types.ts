@@ -53,7 +53,22 @@ export type RenderedFrame = {
   readonly height: number;
 };
 
-export type RenderOptions = {
+/**
+ * A budget for one operation, overriding the session's `timeoutMs` for that
+ * call only. As with the session budget, it ends the wait, not the work: a
+ * script that is still running in After Effects at the deadline runs to
+ * completion, and the next call waits for it.
+ */
+export type OperationOptions = {
+  readonly timeoutMs?: number;
+};
+
+export type OpenProjectOptions = OperationOptions & {
+  /** `"discard"` drops the open project's unsaved changes; default refuses. */
+  readonly unsavedChanges?: "refuse" | "discard";
+};
+
+export type RenderOptions = OperationOptions & {
   /** Subdirectory of the session's artifact directory. Defaults to the root. */
   readonly subdirectory?: string;
   /** Filename stem. Defaults to the composition name. */

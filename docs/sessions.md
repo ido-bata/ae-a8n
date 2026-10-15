@@ -60,6 +60,18 @@ an ExtendScript cannot be interrupted from outside. So a timeout ends the
   `created: false`), `effect.setParameter` writes an absolute value, and
   `comp.renderFrame` overwrites its file. Anything a caller builds on top
   that is not repeatable has to read the state back before retrying.
+- **A per-call budget.** `openProject`, `renderFrame` and `project` take
+  `{ timeoutMs }`, which replaces the session's budget for that call only.
+  It changes how long the caller waits, nothing else: a script that is past
+  its deadline still runs to completion, and the next call still waits for
+  it.
+- **After a timed-out `openProject`**, AE usually finishes the open, but the
+  caller has no `Project`. `ae.project()` returns one for whatever project
+  is open now: it asks the host (`project.info`), so it waits for the open
+  script first, and it opens, closes and edits nothing. On AE 26.5x89 with
+  a 400 ms session budget: an open given 100 ms timed out, the host took
+  494 ms to finish it, `ae.project()` answered after it with the opened
+  file, and exactly one `project.open` request had been sent.
 - **`close()`** sends `app.quit` the same way: it waits for a script still
   running, within the quit's 10 s budget. If that runs out, `close()` rejects
   with `TimeoutError`, AE is left running, and the quit was never sent.

@@ -37,6 +37,8 @@ import type {
   EffectInfo,
   LaunchOptions,
   LayerInfo,
+  OpenProjectOptions,
+  OperationOptions,
   ProjectInfo,
   PropertyInfo,
   RenderOptions,
@@ -60,13 +62,32 @@ class Session {
     });
   }
 
-  async call<T>(op: string, method: string, params: Record<string, unknown> = {}): Promise<T> {
+  async call<T>(
+    op: string,
+    method: string,
+    params: Record<string, unknown> = {},
+    options: OperationOptions = {},
+  ): Promise<T> {
+    const timeoutMs = optionalTimeout(options.timeoutMs);
     try {
-      return (await this.driver.call(method, params, { opName: op }));
+      return (await this.driver.call(method, params, {
+        opName: op,
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      }));
     } catch (error) {
       contextualise(op, error);
     }
   }
+}
+
+function optionalTimeout(value: unknown): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new TypeError("timeoutMs must be a positive number");
+  }
+  return value;
 }
 
 function requireString(value: unknown, field: string): string {
@@ -140,14 +161,31 @@ export class AfterEffects {
   /**
    * Opens a project, replacing the open one. Refuses with
    * UnsavedChangesError if that would discard unsaved changes, unless
-   * `unsavedChanges` is "discard".
+   * `unsavedChanges` is "discard". `timeoutMs` overrides the session budget
+   * for this call only.
+   *
+   * If this times out, After Effects usually still finishes the open; get a
+   * handle with `project()` instead of opening again.
    */
-  async openProject(path: string, options: { unsavedChanges?: "refuse" | "discard" } = {}): Promise<Project> {
+  async openProject(path: string, options: OpenProjectOptions = {}): Promise<Project> {
     const projectPath = requireString(path, "path");
-    await this.#session.call("project.open", "project.open", {
-      path: projectPath,
-      discardUnsavedChanges: options.unsavedChanges === "discard",
-    });
+    await this.#session.call(
+      "project.open",
+      "project.open",
+      { path: projectPath, discardUnsavedChanges: options.unsavedChanges === "discard" },
+      options,
+    );
+    return new Project(this.#session);
+  }
+
+  /**
+   * A handle to the project open in After Effects now, without opening
+   * anything. Asks the host first, so it waits for a script still running
+   * from a timed-out call (an `openProject`, say) and fails if no project is
+   * reachable. Check `info().file` to see which project it is.
+   */
+  async project(options: OperationOptions = {}): Promise<Project> {
+    await this.#session.call<ProjectInfo>("project.info", "project.info", {}, options);
     return new Project(this.#session);
   }
 
@@ -290,12 +328,17 @@ export class Comp {
     const base = this.#session.driver.artifactsDir;
     const outputDir =
       options.subdirectory === undefined ? base : join(base, options.subdirectory);
-    return this.#session.call<RenderedFrame>("comp.renderFrame", "comp.renderFrame", {
-      comp: this.name,
-      frame,
-      outputDir,
-      ...(options.prefix === undefined ? {} : { prefix: options.prefix }),
-    });
+    return this.#session.call<RenderedFrame>(
+      "comp.renderFrame",
+      "comp.renderFrame",
+      {
+        comp: this.name,
+        frame,
+        outputDir,
+        ...(options.prefix === undefined ? {} : { prefix: options.prefix }),
+      },
+      options,
+    );
   }
 }
 
