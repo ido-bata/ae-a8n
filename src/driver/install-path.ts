@@ -161,8 +161,12 @@ function resolveWindows(root: string, registryLocations: () => readonly string[]
       continue;
     }
     seen.add(key);
-    const here = windowsInstallAt(location);
-    found.push(...(here === null ? windowsInstallsUnder(location) : [here]));
+    // Versioned installs under the location win over the location itself: an
+    // Adobe root can hold a stray `Support Files` from an older release
+    // (AfterFX.exe 25.6.4 beside 26.5 on the machine this was found on).
+    const under = windowsInstallsUnder(location);
+    const here = under.length > 0 ? null : windowsInstallAt(location);
+    found.push(...under, ...(here === null ? [] : [here]));
   }
   return (
     found.sort((a, b) => compareVersionSuffixes(versionSuffix(a.versionName), versionSuffix(b.versionName))).at(-1) ??

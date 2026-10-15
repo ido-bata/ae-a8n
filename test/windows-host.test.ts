@@ -16,7 +16,7 @@
  */
 
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -107,6 +107,18 @@ describe("Windows install discovery", () => {
       const real = windowsInstall(join(root, "elsewhere"), "2026");
       expect(
         resolveInstall("win32", { root: join(root, "none"), registryLocations: () => [real] }).executable,
+      ).toBe(join(real, "Support Files", "AfterFX.exe"));
+    });
+
+    it("prefers versioned installs under a recorded root over a stray Support Files at that root", () => {
+      // Seen on a real machine: `<adobe root>\Support Files\AfterFX.exe` was a
+      // 25.6.4 leftover next to `Adobe After Effects 2026` (26.5).
+      const adobeRoot = join(root, "apps", "adobe");
+      const real = windowsInstall(adobeRoot, "2026");
+      mkdirSync(join(adobeRoot, "Support Files"), { recursive: true });
+      writeFileSync(join(adobeRoot, "Support Files", "AfterFX.exe"), "");
+      expect(
+        resolveInstall("win32", { root: join(root, "none"), registryLocations: () => [adobeRoot] }).executable,
       ).toBe(join(real, "Support Files", "AfterFX.exe"));
     });
 
@@ -265,9 +277,9 @@ describe("Windows invoke", () => {
     expect(calls[0]?.args).toEqual(["-r", "C:\\sessions\\x\\entry.jsx"]);
   });
 
-  it("passes the entry path as one argument, with spaces and Japanese intact", async () => {
+  it("passes the entry path as one argument, Japanese intact (whitespace is handled below)", async () => {
     const { spawnLauncher, calls } = launcher();
-    const entry = "C:\\Users\\山田 太郎\\a8n sessions\\entry.jsx";
+    const entry = "C:\\Users\\山田太郎\\a8n-sessions\\entry.jsx";
     await winTransport(spawnLauncher).invoke(entry);
     expect(calls[0]?.args).toEqual(["-r", entry]);
   });
@@ -282,6 +294,104 @@ describe("Windows invoke", () => {
   it("rejects when the executable cannot be started", async () => {
     const { spawnLauncher } = launcher((child) => child.emit("error", new Error("spawn EACCES")));
     await expect(winTransport(spawnLauncher).invoke("entry.jsx")).rejects.toThrow(/cannot start .*EACCES/);
+  });
+});
+
+/**
+ * `AfterFX.exe -r "<path with a space>"` exits 0 and runs nothing, with no
+ * dialog (observed on AE 26.5x89, Windows 11; the same file runs from
+ * File > Scripts > Run Script File, and a space-free or Japanese path runs).
+ */
+describe("Windows script paths with whitespace", () => {
+  const SPACED = "C:\\Users\\山田 太郎\\AppData\\Local\\Temp\\ae-a8n-x\\inbox\\entry.jsx";
+
+  function withShortPath(shortPath: (directory: string) => string | null) {
+    const { spawnLauncher, calls } = launcher();
+    const transport = new ScriptInvocationTransport({
+      platform: "win32",
+      install: { executable: EXE, versionName: "x", renderExecutable: null },
+      spawnLauncher,
+      shortPath,
+    });
+    return { transport, calls };
+  }
+
+  it("leaves a path without whitespace alone, Japanese included, and never asks for a short name", async () => {
+    const { transport, calls } = withShortPath(() => {
+      throw new Error("must not be consulted");
+    });
+    await transport.invoke("C:\\Users\\山田\\Temp\\ae-a8n\\entry.jsx");
+    expect(calls[0]?.args).toEqual(["-r", "C:\\Users\\山田\\Temp\\ae-a8n\\entry.jsx"]);
+  });
+
+  it("gives -r the short name of a directory that has a space, keeping the file name", async () => {
+    const asked: string[] = [];
+    const { transport, calls } = withShortPath((directory) => {
+      asked.push(directory);
+      return "C:\\Users\\4E71~1\\AppData\\Local\\Temp\\AE-A8N~1\\inbox";
+    });
+    await transport.invoke(SPACED);
+    expect(asked).toEqual(["C:\\Users\\山田 太郎\\AppData\\Local\\Temp\\ae-a8n-x\\inbox"]);
+    expect(calls[0]?.args).toEqual(["-r", "C:\\Users\\4E71~1\\AppData\\Local\\Temp\\AE-A8N~1\\inbox\\entry.jsx"]);
+  });
+
+  it("asks for a directory's short name once", async () => {
+    let asked = 0;
+    const { transport, calls } = withShortPath(() => {
+      asked += 1;
+      return "C:\\SHORT~1\\inbox";
+    });
+    await transport.invoke(SPACED);
+    await transport.invoke(SPACED.replace("entry.jsx", "second.jsx"));
+    expect(asked).toBe(1);
+    expect(calls.map((call) => call.args[1])).toEqual(["C:\\SHORT~1\\inbox\\entry.jsx", "C:\\SHORT~1\\inbox\\second.jsx"]);
+  });
+
+  // Asks Windows for real. A kana short name was once garbled by reading
+  // PowerShell's CP932 output as UTF-8, which produced a path that did not exist.
+  it.runIf(process.platform === "win32")(
+    "gets a short name that exists for a directory with Japanese and a space",
+    async () => {
+      const directory = join(root, "セッション with space");
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(join(directory, "entry.jsx"), "");
+      const { spawnLauncher, calls } = launcher();
+      const transport = new ScriptInvocationTransport({
+        platform: "win32",
+        install: { executable: EXE, versionName: "x", renderExecutable: null },
+        spawnLauncher,
+      });
+      await transport.invoke(join(directory, "entry.jsx"));
+      const given = calls[0]?.args[1] ?? "";
+      expect(given).not.toMatch(/\s/);
+      expect(existsSync(given)).toBe(true);
+    },
+  );
+
+  it("refuses before launching, saying why, when the directory has no short name", async () => {
+    const { transport, calls } = withShortPath(() => null);
+    const error = await transport.invoke(SPACED).then(
+      () => null,
+      (caught: unknown) => caught as Error,
+    );
+    expect(error?.name).toBe("UnsupportedScriptPathError");
+    expect(error?.message).toContain("whitespace");
+    expect(error?.message).toContain("sessionRoot");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a short name that still has whitespace", async () => {
+    const { transport, calls } = withShortPath(() => "C:\\Still Spaced\\inbox");
+    await expect(transport.invoke(SPACED)).rejects.toMatchObject({ name: "UnsupportedScriptPathError" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses a file name with whitespace, which a directory short name cannot fix", async () => {
+    const { transport, calls } = withShortPath(() => "C:\\SHORT~1");
+    await expect(transport.invoke("C:\\Temp dir\\my entry.jsx")).rejects.toMatchObject({
+      name: "UnsupportedScriptPathError",
+    });
+    expect(calls).toHaveLength(0);
   });
 });
 

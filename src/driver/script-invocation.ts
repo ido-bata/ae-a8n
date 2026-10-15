@@ -21,7 +21,7 @@ import { execFileSync, spawn } from "node:child_process";
 import type { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 
 import { macAppBundle, resolveInstall, type AfterEffectsInstall } from "./install-path.js";
 import type { HostOwnership, HostTransport, InvokeOptions } from "./transport.js";
@@ -42,7 +42,59 @@ export type ScriptInvocationOptions = {
   readonly now?: () => number;
   /** Starts the Windows launcher. Mainly a test seam. */
   readonly spawnLauncher?: SpawnLauncher;
+  /**
+   * The 8.3 short form of a Windows directory, or null if it has none. Mainly a
+   * test seam; defaults to asking Windows.
+   */
+  readonly shortPath?: (directory: string) => string | null;
 };
+
+/**
+ * The 8.3 short name of an existing directory, via Windows itself. Null when
+ * the volume has no short names (8.3 creation can be disabled) or the lookup
+ * fails.
+ */
+function windowsShortPath(directory: string): string | null {
+  try {
+    const out = execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        // UTF-8 explicitly: PowerShell otherwise answers in the console code
+        // page (CP932 on a Japanese system), which garbles a kana short name.
+        "[Console]::OutputEncoding=[Text.Encoding]::UTF8;" +
+          "(New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:A8N_DIR).ShortPath",
+      ],
+      {
+        encoding: "utf-8",
+        timeout: 15_000,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "ignore"],
+        env: { ...process.env, A8N_DIR: directory },
+      },
+    ).trim();
+    return out.length > 0 ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Thrown before launching: `AfterFX.exe -r` would silently ignore this path. */
+export class UnsupportedScriptPathError extends Error {
+  readonly path: string;
+
+  constructor(path: string) {
+    super(
+      `After Effects cannot be given a script path that contains whitespace (\`AfterFX.exe -r\` drops it ` +
+        `without an error), and no 8.3 short name is available for it: ${path}. ` +
+        "Use a session directory whose path has no spaces, for example through the sessionRoot option.",
+    );
+    this.name = "UnsupportedScriptPathError";
+    this.path = path;
+  }
+}
 
 /** What the Windows launcher needs from a child process. */
 export interface LauncherChild extends Pick<EventEmitter, "on"> {
@@ -183,6 +235,9 @@ export class ScriptInvocationTransport implements HostTransport {
   readonly #processes: () => readonly HostProcess[];
   readonly #now: () => number;
   readonly #spawnLauncher: SpawnLauncher;
+  readonly #shortPath: (directory: string) => string | null;
+  /** Directory → the form of it `-r` can be given. */
+  readonly #argumentDirs = new Map<string, string>();
   /** Host processes already running when launch() began. */
   #preexisting: readonly HostProcess[] | null = null;
   #launchBegan = 0;
@@ -201,6 +256,7 @@ export class ScriptInvocationTransport implements HostTransport {
     this.#processes = options.processes ?? psProcesses;
     this.#now = options.now ?? Date.now;
     this.#spawnLauncher = options.spawnLauncher ?? spawn;
+    this.#shortPath = options.shortPath ?? windowsShortPath;
     this.#install =
       options.install ??
       resolveInstall(platform, {
@@ -316,7 +372,7 @@ export class ScriptInvocationTransport implements HostTransport {
       // and when AE is already running it hands the script over and exits with
       // a status that says nothing about the script. The result file is the
       // authority, and the driver's deadline covers it.
-      await this.#startWindows(["-r", entryScriptPath]);
+      await this.#startWindows(["-r", this.#windowsArgumentPath(entryScriptPath)]);
       return;
     }
     if (this.#platform === "darwin") {
@@ -383,6 +439,33 @@ export class ScriptInvocationTransport implements HostTransport {
       }
       await new Promise((resolve) => setTimeout(resolve, EXIT_POLL_MS));
     }
+  }
+
+  /**
+   * The path to give `-r`. After Effects drops a script path that contains
+   * whitespace without any error (observed on 26.5x89: the process exits 0 and
+   * nothing runs; the same file runs from File > Scripts > Run Script File), so
+   * a directory with a space is replaced by its 8.3 short name, and a path that
+   * cannot be made whitespace-free is refused up front instead of timing out.
+   */
+  #windowsArgumentPath(entry: string): string {
+    if (!/\s/.test(entry)) {
+      return entry;
+    }
+    const directory = win32.dirname(entry);
+    const name = win32.basename(entry);
+    let usable = this.#argumentDirs.get(directory);
+    if (usable === undefined) {
+      const short = /\s/.test(directory) ? this.#shortPath(directory) : directory;
+      if (short === null || /\s/.test(short) || /\s/.test(name)) {
+        throw new UnsupportedScriptPathError(entry);
+      }
+      usable = short;
+      this.#argumentDirs.set(directory, usable);
+    } else if (/\s/.test(name)) {
+      throw new UnsupportedScriptPathError(entry);
+    }
+    return win32.join(usable, name);
   }
 
   /**
