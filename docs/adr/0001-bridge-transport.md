@@ -121,7 +121,7 @@ script, so the guarantee is exercised rather than asserted.
 | ES3 JSON codec equals Node `JSON` | **automated test**, differential |
 | `AfterFX.exe -r <jsx>` executes a script in AE | **not verified here** — `AfterFX.exe` is not installed on this machine |
 | `osascript … DoScript` executes a script in AE | **not verified here** — no macOS host |
-| `RenderQueue` PNG-sequence settings | **not verified here** — written to the documented API |
+| One-frame PNG render | the render queue cannot be told to write PNG on a localised AE (26.5x89 ja); the host uses `CompItem.saveFrameToPng` |
 | `ADBE Effect Parade` match-name lookup for third-party effects | **not verified here** — needs a real plugin installed |
 
 The first two rows are proven. The rest are unproven, and the unproven set is

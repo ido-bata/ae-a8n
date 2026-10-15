@@ -415,82 +415,72 @@
 
   methods["comp.renderFrame"] = function (params) {
     var comp = findComp(String(requireParam(params, "comp")));
-    var frame = requireParam(params, "frame");
+    var frame = Number(requireParam(params, "frame"));
     var outputDir = String(requireParam(params, "outputDir"));
     var namePrefix = String(optionalParam(params, "prefix", comp.name));
-    var width = Number(optionalParam(params, "width", 0));
-    var height = Number(optionalParam(params, "height", 0));
 
     var folder = new Folder(outputDir);
-    if (!folder.exists) {
-      folder.create();
+    if (!folder.exists && !folder.create()) {
+      throw new Error("cannot create output directory: " + outputDir);
     }
-
-    var project = getProject();
-    var queue = project.renderQueue;
-    queue.purge();
-
-    // PNG Sequence writes one file per frame; the frame number is appended, so
-    // the caller needs the concrete name rather than a directory.
     var target = new File(folder.fsName + "/" + namePrefix + "." + zeroPad(frame, 5) + ".png");
-    var settings = new OutputModule(target).module("PNG Sequence");
-    settings.file = new Folder(folder.fsName + "/");
-    settings.colorDepth = 16;
-    settings.colorMode = settings.colorMode || 0;
-
-    var item = queue.add(new RenderQueueItem(comp, new OutputModule(target)));
-    item.outputModule.applySettings(settings);
-
-    var renderSettings = item.outputModule.renderSettings;
-    if (width > 0 && height > 0) {
-      renderSettings.changeComp(comp, true);
+    if (target.exists) {
+      target.remove();
     }
-    // Compositing over a fixed matte keeps the render deterministic and
-    // independent of the user's project background colour.
-    renderSettings.useSolidColor = true;
-    renderSettings.solidColor = [0, 0, 0];
 
-    item.startTime = frame;
-    item.endTime = frame;
-    item.render();
+    // `saveFrameToPng`, not the render queue: a localised AE has no output
+    // module template named "PNG Sequence" (ja 26.5x89 lists none) and an
+    // output module's "Format" is read-only to setSettings, so the queue
+    // cannot be told to write PNG. `saveFrameToPng` renders at the viewer's
+    // resolution, so full resolution is forced for the frame and restored.
+    var previousResolution = comp.resolutionFactor;
+    comp.resolutionFactor = [1, 1];
+    try {
+      var pending = comp.saveFrameToPng(frame * comp.frameDuration, target);
+      // It returns before the file is written (observed: 0 bytes at first);
+      // `wait()` blocks until it is, and throws if it failed.
+      try {
+        pending.wait();
+      } catch (waitError) {
+        var cause = pending._exception !== undefined && pending._exception !== null
+          ? String(pending._exception)
+          : String(waitError.message);
+        throw new Error("frame " + frame + " of '" + comp.name + "' was not rendered: " + cause);
+      }
+    } finally {
+      comp.resolutionFactor = previousResolution;
+    }
 
-    var rendered = findRenderedFile(folder, namePrefix, frame);
-    queue.purge();
-
+    var size = readPngSize(target);
     return {
-      path: rendered === null ? String(target.fsName) : rendered,
+      path: String(target.fsName),
       frame: frame,
-      width: comp.width,
-      height: comp.height
+      width: size.width,
+      height: size.height
     };
   };
 
-  /**
-   * Locate the file AE actually wrote.
-   *
-   * PNG Sequence naming is Adobe's to decide, and it has varied between
-   * versions and locales; reconstructing it from the requested name is a
-   * guess. Reading the directory back is not.
-   */
-  function findRenderedFile(folder, prefix, frame) {
-    var entries = folder.getFiles();
-    var frameText = zeroPad(frame, 5);
-    var best = null;
-    for (var i = 0; i < entries.length; i++) {
-      var entry = entries[i];
-      if (entry instanceof File) {
-        var name = entry.name;
-        if (name.length > 4 && name.substring(name.length - 4).toLowerCase() === ".png") {
-          var stem = name.substring(0, name.length - 4);
-          if (stem.indexOf(prefix) === 0 && stem.indexOf(frameText) !== -1) {
-            if (best === null || entry.modified > best.modified) {
-              best = entry;
-            }
-          }
-        }
-      }
+  /** Width and height from a PNG's IHDR: what was written, not what was asked for. */
+  function readPngSize(file) {
+    if (!file.exists) {
+      throw new Error("rendered frame is missing: " + file.fsName);
     }
-    return best === null ? null : String(best.fsName);
+    file.encoding = "BINARY";
+    if (!file.open("r")) {
+      throw new Error("cannot open rendered frame: " + file.fsName);
+    }
+    var head = file.read(24);
+    file.close();
+    if (head.length < 24 || head.substring(12, 16) !== "IHDR") {
+      throw new Error("rendered frame is not a PNG: " + file.fsName);
+    }
+    function u32(offset) {
+      return head.charCodeAt(offset) * 16777216 +
+        head.charCodeAt(offset + 1) * 65536 +
+        head.charCodeAt(offset + 2) * 256 +
+        head.charCodeAt(offset + 3);
+    }
+    return { width: u32(16), height: u32(20) };
   }
 
   // ----------------------------------------------------------- dispatch ---

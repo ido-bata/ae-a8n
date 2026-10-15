@@ -34,7 +34,7 @@ Not confirmed
   Real project            a real .aep, not a placeholder
   Real plugin             match-name and parameter discovery, and what
                          happens when a plugin fails to load
-  Real RenderQueue        output module selection, PNG sequence behaviour
+  Real frame render       CompItem.saveFrameToPng: completion, resolution
   AE failure behaviour    crash, hang, and whether either is distinguishable
                          from a timeout
   Cross-platform paths    temp directories and path representation on
@@ -73,7 +73,7 @@ yet. Treat the count as a measure of remaining work, not a formality.
 | --- | --- |
 | `AfterFX.exe -r <jsx>` executing a script in AE | `AfterFX.exe` is not installed anywhere this was run |
 | `osascript … DoScript` on macOS | no macOS host |
-| `RenderQueue` PNG-sequence output settings | written to the documented API, never observed running |
+| One-frame PNG render | the render queue cannot write PNG on a localised AE (no "PNG Sequence" template; "Format" read-only); the host uses `CompItem.saveFrameToPng` — see below |
 | `ADBE Effect Parade` match-name lookup for a third-party plugin | needs a real plugin installed |
 | `File`/`Folder` behaviour matching ExtendScript's | approximated by the fake, not verified against the real implementation |
 | Windows and macOS platform branches of `ScriptInvocationTransport` | only Linux was available |
@@ -153,9 +153,10 @@ Each step is a question that only a real host can answer. Stop at the first fail
    or does not.
 4. **Does a parameter read back what was written?** A plugin that silently
    coerces or clamps the value will show up here.
-5. **Does `RenderQueue` produce the file the host claims it did?** The host reads
-   the output directory back rather than reconstructing the filename, so a
-   mismatch here is a real mismatch, not a naming guess.
+5. **Does a rendered frame land where the host says, at the size it says?**
+   The host renders with `CompItem.saveFrameToPng`, waits on the result it
+   returns (the file is written after the call returns), forces full
+   resolution for the frame, and reports the size from the PNG header.
 
 ### What to record
 

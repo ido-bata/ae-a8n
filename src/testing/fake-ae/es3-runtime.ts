@@ -76,12 +76,17 @@ export class FakeFolder {
       .filter((file) => file.exists && !file.isDirectory);
   }
 
+  /** ExtendScript reports failure by returning false, not by throwing. */
   create(): boolean {
     if (this.exists) {
       return true;
     }
-    mkdirSync(this.fsName, { recursive: true });
-    return true;
+    try {
+      mkdirSync(this.fsName, { recursive: true });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -89,6 +94,7 @@ export class FakeFile {
   readonly fsName: string;
   encoding = "UTF-8";
   #handle: "r" | "w" | null = null;
+  #position = 0;
 
   constructor(fsName: string) {
     this.fsName = fsName;
@@ -130,14 +136,38 @@ export class FakeFile {
       return false;
     }
     this.#handle = mode;
+    this.#position = 0;
     return true;
   }
 
-  read(): string {
+  /** Size in bytes, as ExtendScript's `File.length`. */
+  get length(): number {
+    try {
+      return statSync(this.fsName).size;
+    } catch {
+      return -1;
+    }
+  }
+
+  seek(position: number, mode = 0): boolean {
+    const base = mode === 1 ? this.#position : mode === 2 ? this.length : 0;
+    this.#position = Math.max(0, base + position);
+    return true;
+  }
+
+  /**
+   * Reads from the current position. With `encoding = "BINARY"` each byte is
+   * one character, as in ExtendScript; otherwise the text is UTF-8.
+   */
+  read(count?: number): string {
     if (this.#handle !== "r") {
       throw new Error("file is not open for reading: " + this.fsName);
     }
-    return readFileSync(this.fsName, "utf-8");
+    const bytes = readFileSync(this.fsName);
+    const end = count === undefined ? bytes.length : Math.min(bytes.length, this.#position + count);
+    const slice = bytes.subarray(this.#position, end);
+    this.#position = end;
+    return this.encoding === "BINARY" ? slice.toString("latin1") : slice.toString("utf-8");
   }
 
   write(text: string): void {
