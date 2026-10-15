@@ -73,13 +73,14 @@ unsaved edit in someone's open project is still their work.
 | `project.comp(name)` → `Comp` | `comp.info()`, `comp.layers()`, `comp.layer(name)` |
 | `comp.renderFrame(frame, { subdirectory?, prefix?, timeoutMs? })` | one PNG under `ae.artifactsDir`; size read from the file |
 | `layer.effects.all()`, `.apply(id)`, `.get(id)` | `id` is a match name (stable) or display name (localised) |
-| `effect.parameters()`, `effect.parameter(id).get()` / `.set(n)` / `.info()` | numeric parameters; every property is listed with a `kind` (`value`, `no-value`, `custom-value`, `group`) and has `value` only when `kind` is `"value"` |
+| `effect.parameters()`, `effect.parameter(id).get()` / `.set(v)` / `.info()` | every property is listed with a `kind` (`value`, `no-value`, `custom-value`, `group`) and its `valueType`; it has a `value` only when `kind` is `"value"`: a number (`OneD`, `LAYER_INDEX`, `MASK_INDEX`), `[x, y]` (`TwoD*`), `[x, y, z]` (`ThreeD*`) or `[r, g, b, a]` (`COLOR`). `set` takes the same shapes |
 | `ae.close({ unsavedChanges? })` | → `{ quit, ownership, reason? }` |
 | `ae.tracePath`, `ae.traceEvents`, `ae.artifactsDir` | evidence |
 
 Errors: `EntityNotFoundError` (with `kind`), `UnsavedChangesError`,
 `PropertyHasNoValueError` (a `get`/`set` on a property without a value; nothing
-is written),
+is written), `ParameterValueError` (a `set` whose shape does not fit the
+property's `valueType`; nothing is written),
 `AfterEffectsError` (AE's own message; `cause` holds the protocol-level
 error), `AfterEffectsNotInstalledError`. Lower-level pieces (`AeDriver`,
 `ScriptInvocationTransport`, `resolveInstall`) are exported for tooling.

@@ -28,6 +28,7 @@ import {
   AfterEffectsError,
   EntityNotFoundError,
   HostError,
+  ParameterValueError,
   PropertyHasNoValueError,
   contextualise,
 } from "./errors.js";
@@ -45,6 +46,7 @@ import type {
   LayerInfo,
   OpenProjectOptions,
   OperationOptions,
+  ParameterValue,
   ProjectInfo,
   PropertyInfo,
   PropertyKind,
@@ -95,6 +97,14 @@ function optionalTimeout(value: unknown): number | undefined {
     throw new TypeError("timeoutMs must be a positive number");
   }
   return value;
+}
+
+/** A finite number, or an array of finite numbers; the host checks the shape. */
+function requireParameterValue(value: unknown): asserts value is ParameterValue {
+  const finite = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+  if (!(finite(value) || (Array.isArray(value) && value.every(finite)))) {
+    throw new TypeError("parameter value must be a finite number or an array of finite numbers");
+  }
 }
 
 function isNoValueKind(kind: unknown): kind is Exclude<PropertyKind, "value"> {
@@ -480,11 +490,12 @@ export class Parameter {
   }
 
   /**
-   * Reads the value. A property without one (`kind` other than `"value"`)
-   * rejects with `PropertyHasNoValueError`; use `info()` to describe any
-   * property without failing.
+   * Reads the value: a number, or an array of numbers for points and colours
+   * (see `ValueProperty`). A property without one (`kind` other than
+   * `"value"`) rejects with `PropertyHasNoValueError`; use `info()` to
+   * describe any property without failing.
    */
-  async get(): Promise<number> {
+  async get(): Promise<ParameterValue> {
     const info = await this.info();
     if (info.kind !== "value") {
       throw new PropertyHasNoValueError(info.kind, this.name, "effect.getParameter");
@@ -493,14 +504,15 @@ export class Parameter {
   }
 
   /**
-   * Sets the value and returns what the host reports back afterwards. A
-   * property without a value rejects with `PropertyHasNoValueError` and is
-   * left untouched: the host refuses before writing.
+   * Writes the value and returns what the host reports back afterwards
+   * (After Effects stores floats in single precision and may fill in a
+   * missing z or alpha). The shape must fit the property's `valueType`, or it
+   * rejects with `ParameterValueError`; a property without a value rejects
+   * with `PropertyHasNoValueError`. Either way the host refuses before
+   * writing.
    */
-  async set(value: number): Promise<number> {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-      throw new TypeError("parameter value must be a finite number");
-    }
+  async set(value: ParameterValue): Promise<ParameterValue> {
+    requireParameterValue(value);
     const info = await this.info(value);
     if (info.kind !== "value") {
       throw new PropertyHasNoValueError(info.kind, this.name, "effect.setParameter");
@@ -509,10 +521,10 @@ export class Parameter {
   }
 
   /**
-   * Describes the property (`kind`, and `value` when it has one). With a
-   * `value`, writes it first, as `set` does.
+   * Describes the property (`kind`, `valueType`, and `value` when it has
+   * one). With a `value`, writes it first, as `set` does.
    */
-  async info(value?: number): Promise<PropertyInfo> {
+  async info(value?: ParameterValue): Promise<PropertyInfo> {
     const params = {
       comp: this.#comp,
       layer: this.#layer,
@@ -523,12 +535,18 @@ export class Parameter {
     if (value === undefined) {
       return this.#session.call<PropertyInfo>("effect.getParameter", "effect.getParameter", params);
     }
+    requireParameterValue(value);
     try {
       return await this.#session.call<PropertyInfo>("effect.setParameter", "effect.setParameter", params);
     } catch (error) {
       const cause = error instanceof AfterEffectsError ? error.cause : undefined;
       if (cause instanceof HostError && cause.name === "NoValueError" && isNoValueKind(cause.kind)) {
         throw new PropertyHasNoValueError(cause.kind, this.name, "effect.setParameter", { cause });
+      }
+      if (cause instanceof HostError && cause.name === "ValueShapeError") {
+        throw new ParameterValueError(cause.kind ?? "unknown", this.name, "effect.setParameter", cause.message, {
+          cause,
+        });
       }
       throw error;
     }

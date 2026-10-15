@@ -170,6 +170,29 @@ copy of a fixture (closed with discard):
 | `renderFrame(0, { timeoutMs: 1 })` | `TimeoutError` at 3 ms; the host rendered it anyway (`ok`, 31 ms), once; the PNG is byte-identical to the same frame rendered with a 10 s budget |
 | state afterwards | Tint value 50 (one write), effects unchanged, AE quit (owned) |
 
+## Value types (#21), 2026-10-16
+
+macOS 27.0.1 arm64, AE 26.5x89 (ja). A plain-JSX probe over the expression
+controls, Fill, Tint and Gradient Ramp: `OneD`, `LAYER_INDEX` (6421) and
+`MASK_INDEX` (6422) read as numbers; `TwoD_SPATIAL` (6415) as 2 numbers;
+`ThreeD_SPATIAL` (6413) as 3; `COLOR` (6418) as 4. `setValue` takes exactly 2
+for `TwoD_SPATIAL`, 2–3 for `ThreeD_SPATIAL` (z → 0), 3–4 for `COLOR`
+(alpha → 1), and an unsigned integer in range for `LAYER_INDEX` /
+`MASK_INDEX`; for a `OneD` property it **stores 0 when given `[]`**. `TwoD`
+and `ThreeD` (non-spatial) were not found on any effect probed.
+
+The same script against `main` (`ca299c4`) and the change:
+
+| | before | after |
+| --- | --- | --- |
+| `info()` | `value` only | `valueType` and `value` (e.g. `COLOR`, `[1,0,0,1]`) |
+| `set([100, 200])` on a point, `[0.2, 0.4, 0.6]` on a colour | `TypeError` (numbers only) | written; colour reads back `[0.2…, 0.4…, 0.6…, 1]` |
+| `set([1, 2])` on a 3D point | `TypeError` | `[1, 2, 0]` |
+| `set(5)` on a point or colour | AE's localised error | `ParameterValueError` (`TwoD_SPATIAL` / `COLOR`) |
+| `set([])` / `set([1, 2])` on a slider | `TypeError` | `ParameterValueError` (`OneD`); value unchanged |
+| numeric `set(70)` on Tint, `set(2)` on a Layer control | ok | ok |
+| Fill colour `[0, 1, 0, 1]`, then render | not writable | the Card's centre pixel is `[0, 255, 0, 255]` |
+
 ## What is verified, in detail
 
 | Area | Level | How |

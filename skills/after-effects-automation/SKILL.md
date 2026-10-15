@@ -82,7 +82,7 @@ await blur.get();         // read back; plugins may clamp
   (Gaussian Blur's "Blurriness" is "ブラー" in a Japanese UI); match names are
   not. Find them from what AE reports:
   `await layer.effects.all()` → `{ name, matchName }[]`,
-  `await effect.parameters()` → `{ name, matchName, kind, value? }[]`.
+  `await effect.parameters()` → `{ name, matchName, kind, valueType?, value? }[]`.
 - Every property has a `kind`, and a `value` only when `kind` is `"value"`.
   The others have nothing a script can read or write: `"no-value"` (e.g.
   Tint's nameless `ADBE Tint-0004`), `"custom-value"` (Levels' histogram,
@@ -91,9 +91,14 @@ await blur.get();         // read back; plugins may clamp
   which) and write nothing; `info()` describes them without failing. (In
   0.1.0-alpha.0 such a property made `parameters()` fail for the whole
   effect.)
-- A `"value"` property's `value` is a number for sliders and checkboxes but
-  an array for colours (`[r, g, b, a]`) and points, even though the types
-  say `number` (#21). `set()` takes numbers only.
+- A `"value"` property's `valueType` says what its `value` is: a number for
+  `OneD` (sliders, checkboxes, angles, dropdowns), `LAYER_INDEX` and
+  `MASK_INDEX`; `[x, y]` for `TwoD_SPATIAL` (points); `[x, y, z]` for
+  `ThreeD_SPATIAL`; `[r, g, b, a]` (0–1) for `COLOR`. `set()` takes the same
+  shapes (a 3D point also takes `[x, y]`, a colour also `[r, g, b]`); any
+  other shape rejects with `ParameterValueError` and writes nothing. (After
+  Effects itself would store 0 for `[]` on a number.) Values come back in
+  single precision: `0.2` reads back as `0.20000000298023`.
 - A parameter identifier the effect does not have fails with "parameter not
   found", an `AfterEffectsError` rather than `EntityNotFoundError` (#24).
 - To use an effect that should already be on the layer, look it up with
@@ -154,6 +159,7 @@ const result = await ae.close({ unsavedChanges: "discard" }); // only for your o
 | Error | Meaning | Do |
 | --- | --- | --- |
 | `EntityNotFoundError` (`kind`) | comp/layer/effect name not in the project | list with `comps()`, `layers()`, `effects.all()` |
+| `ParameterValueError` (`valueType`) | `set()` value of the wrong shape for the property; nothing was written | check `valueType` in `info()` and pass that shape |
 | `PropertyHasNoValueError` (`kind`) | get/set on a property without a value; nothing was written | pick a `kind: "value"` property from `parameters()` |
 | `UnsavedChangesError` | would discard unsaved work | if it is yours, retry with `discard`; else stop |
 | `AfterEffectsError` | AE reported a failure; message has AE's text | read `error.message` and `error.cause` |

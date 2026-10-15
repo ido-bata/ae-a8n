@@ -36,15 +36,34 @@ export const PropertyType = {
 } as const;
 
 export const PropertyValueType = {
+  // Observed on AE 26.5x89: 6412, 6413, 6415, 6417, 6418, 6419, 6421, 6422.
+  // The rest follow Adobe's consecutive numbering and were not observed.
   NO_VALUE: 6412,
+  ThreeD_SPATIAL: 6413,
+  ThreeD: 6414,
   TwoD_SPATIAL: 6415,
+  TwoD: 6416,
   OneD: 6417,
   COLOR: 6418,
   CUSTOM_VALUE: 6419,
+  MARKER: 6420,
+  LAYER_INDEX: 6421,
+  MASK_INDEX: 6422,
+  SHAPE: 6423,
+  TEXT_DOCUMENT: 6424,
 } as const;
 
-/** Value types the fake models: numbers, and the two AE cannot script. */
-export type FakeValueType = "OneD" | "NO_VALUE" | "CUSTOM_VALUE";
+/** Value types the fake models. */
+export type FakeValueType =
+  | "OneD"
+  | "TwoD_SPATIAL"
+  | "ThreeD_SPATIAL"
+  | "COLOR"
+  | "LAYER_INDEX"
+  | "NO_VALUE"
+  | "CUSTOM_VALUE";
+
+export type FakeValue = number | readonly number[];
 
 export type FakeEffectSpec = {
   readonly matchName: string;
@@ -52,7 +71,7 @@ export type FakeEffectSpec = {
   readonly parameters: ReadonlyArray<{
     readonly name: string;
     readonly matchName: string;
-    readonly defaultValue: number;
+    readonly defaultValue: FakeValue;
     /** Defaults to `OneD`. */
     readonly valueType?: FakeValueType;
   }>;
@@ -99,6 +118,19 @@ export const FAKE_EFFECTS: readonly FakeEffectSpec[] = [
       { name: "Gamma", matchName: "ADBE Fake Levels-0002", defaultValue: 1 },
     ],
   },
+  {
+    // One property per value type the API carries, shaped like AE 26.5x89's
+    // expression controls (Slider, Point, 3D Point, Color, Layer).
+    matchName: "ADBE Fake Controls",
+    displayName: "AE Fake Controls",
+    parameters: [
+      { name: "Slider", matchName: "ADBE Fake Controls-0001", defaultValue: 0 },
+      { name: "Point", matchName: "ADBE Fake Controls-0002", defaultValue: [32, 32], valueType: "TwoD_SPATIAL" },
+      { name: "3D Point", matchName: "ADBE Fake Controls-0003", defaultValue: [32, 32, 0], valueType: "ThreeD_SPATIAL" },
+      { name: "Color", matchName: "ADBE Fake Controls-0004", defaultValue: [1, 0, 0, 1], valueType: "COLOR" },
+      { name: "Layer", matchName: "ADBE Fake Controls-0005", defaultValue: 0, valueType: "LAYER_INDEX" },
+    ],
+  },
 ];
 
 function findEffectSpec(identifier: string): FakeEffectSpec | undefined {
@@ -123,16 +155,23 @@ function unscriptableValue(matchName: string, valueType: FakeValueType): Error {
   );
 }
 
+/** The array lengths `setValue` accepts per type on AE 26.5x89, and what it fills in. */
+const ARRAY_SHAPES: Partial<Record<FakeValueType, { min: number; max: number; pad: readonly number[] }>> = {
+  TwoD_SPATIAL: { min: 2, max: 2, pad: [] },
+  ThreeD_SPATIAL: { min: 2, max: 3, pad: [0] },
+  COLOR: { min: 3, max: 4, pad: [1] },
+};
+
 export class FakeProperty {
   readonly name: string;
   readonly matchName: string;
   readonly propertyType = PropertyType.PROPERTY;
   readonly #valueType: FakeValueType;
-  #value: number;
+  #value: FakeValue;
   /** @internal */
   _touch: Touch = untouched;
 
-  constructor(name: string, matchName: string, value: number, valueType: FakeValueType = "OneD") {
+  constructor(name: string, matchName: string, value: FakeValue, valueType: FakeValueType = "OneD") {
     this.name = name;
     this.matchName = matchName;
     this.#value = value;
@@ -145,27 +184,48 @@ export class FakeProperty {
 
   /** Whether a script can read and write this property's value. */
   get scriptable(): boolean {
+    return this.#valueType !== "NO_VALUE" && this.#valueType !== "CUSTOM_VALUE";
+  }
+
+  /** A single number (OneD), as the fake renderer uses. */
+  get isScalar(): boolean {
     return this.#valueType === "OneD";
   }
 
-  get value(): number {
+  get value(): FakeValue {
     if (!this.scriptable) {
       throw unscriptableValue(this.matchName, this.#valueType);
     }
-    return this.#value;
+    return Array.isArray(this.#value) ? [...(this.#value as number[])] : this.#value;
   }
 
+  /** As AE 26.5x89 takes a value, including what it coerces (observed). */
   setValue(value: unknown): void {
     if (!this.scriptable) {
       throw unscriptableValue(this.matchName, this.#valueType);
     }
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-      throw aeError(
-        5024,
-        `property "${this.name}" expects a finite number, got ${JSON.stringify(value)}`,
-      );
+    const shape = ARRAY_SHAPES[this.#valueType];
+    if (shape !== undefined) {
+      if (!Array.isArray(value)) {
+        throw aeError(5024, `can't call setValue for parameter 1: the value is not an array`);
+      }
+      if (value.length < shape.min || value.length > shape.max) {
+        throw aeError(5024, `can't call setValue for parameter 1: the array does not have ${shape.min}–${shape.max} elements`);
+      }
+      if (!value.every((v) => typeof v === "number" && Number.isFinite(v))) {
+        throw aeError(5024, `can't call setValue for parameter 1: an element is not a valid floating point value`);
+      }
+      this.#value = [...(value as number[]), ...shape.pad].slice(0, shape.max);
+    } else if (Array.isArray(value) && value.length === 0 && this.#valueType === "OneD") {
+      // AE takes an empty array for a OneD property and stores 0.
+      this.#value = 0;
+    } else if (typeof value !== "number" || !Number.isFinite(value)) {
+      throw aeError(5024, `can't call setValue for parameter 1: ${JSON.stringify(value)} is not a number`);
+    } else if (this.#valueType === "LAYER_INDEX" && (!Number.isInteger(value) || value < 0)) {
+      throw aeError(5024, `can't call setValue for parameter 1: ${value} is not an unsigned integer`);
+    } else {
+      this.#value = value;
     }
-    this.#value = value;
     this._touch();
   }
 }
@@ -248,7 +308,7 @@ export class FakePropertyGroup {
         continue;
       }
       for (const child of effect.#children) {
-        if (child instanceof FakeProperty && child.scriptable) {
+        if (child instanceof FakeProperty && child.scriptable && child.isScalar) {
           yield child;
         }
       }
@@ -384,7 +444,7 @@ export class FakeComp {
       let factor = 1;
       if (layer !== undefined) {
         for (const leaf of layer.effects.leaves()) {
-          factor *= 1 - Math.min(Math.max(leaf.value, 0), 100) / 100;
+          factor *= 1 - Math.min(Math.max(leaf.value as number, 0), 100) / 100;
         }
       }
       const value = Math.round(255 * Math.max(0, Math.min(1, factor)));
