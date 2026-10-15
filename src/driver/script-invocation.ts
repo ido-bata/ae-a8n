@@ -23,7 +23,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { macAppBundle, resolveInstall, type AfterEffectsInstall } from "./install-path.js";
-import type { HostTransport } from "./transport.js";
+import type { HostTransport, InvokeOptions } from "./transport.js";
 
 export type ScriptInvocationOptions = {
   /** Explicit install directory; skips discovery. */
@@ -149,12 +149,14 @@ export class ScriptInvocationTransport implements HostTransport {
     await this.#run(join(this.#install.executable, ".."), this.#install.executable, []);
   }
 
-  async invoke(entryScriptPath: string): Promise<void> {
+  async invoke(entryScriptPath: string, options: InvokeOptions = {}): Promise<void> {
     if (this.#platform === "win32") {
-      await this.#run(join(this.#install.executable, ".."), this.#install.executable, [
-        "-r",
-        entryScriptPath,
-      ]);
+      await this.#run(
+        join(this.#install.executable, ".."),
+        this.#install.executable,
+        ["-r", entryScriptPath],
+        options.signal,
+      );
       return;
     }
     if (this.#platform === "darwin") {
@@ -164,11 +166,16 @@ export class ScriptInvocationTransport implements HostTransport {
           `cannot address After Effects by AppleScript: ${this.#install.executable} is not inside an .app bundle`,
         );
       }
-      await this.#run("/", "osascript", [
-        ...MAC_DO_SCRIPT_FILE.flatMap((line) => ["-e", line]),
-        bundle,
-        entryScriptPath,
-      ]);
+      // DoScriptFile returns only when the script has finished, so a hung or
+      // slow script would hold the call well past its deadline. On abort the
+      // osascript process is stopped; AE finishes the script on its own and
+      // its late result is never read.
+      await this.#run(
+        "/",
+        "osascript",
+        [...MAC_DO_SCRIPT_FILE.flatMap((line) => ["-e", line]), bundle, entryScriptPath],
+        options.signal,
+      );
       return;
     }
     throw new Error(
@@ -206,12 +213,18 @@ export class ScriptInvocationTransport implements HostTransport {
    * Runs a process and resolves when it exits. Errors are surfaced, except
    * where noted in `invoke` for Windows.
    */
-  #run(cwd: string, command: string, args: readonly string[]): Promise<void> {
+  #run(
+    cwd: string,
+    command: string,
+    args: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const child = spawn(command, [...args], {
         cwd,
         stdio: ["ignore", "ignore", "pipe"],
         windowsHide: true,
+        ...(signal === undefined ? {} : { signal }),
       });
       // Only the head is kept: a runaway process must not grow this without
       // bound, and the cause of a launcher failure is in the first lines.

@@ -14,12 +14,12 @@
  * a `JSON` polyfill the host preferred. These tests pin each link.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { AeDriver } from "../src/driver/driver.js";
+import { AeDriver, TimeoutError } from "../src/driver/driver.js";
 import { HostError } from "../src/protocol/envelope.js";
 import { FakeAfterEffectsTransport } from "../src/testing/fake-transport.js";
 import { runHostScript } from "../src/testing/fake-ae/es3-runtime.js";
@@ -155,5 +155,65 @@ describe("an exception that escapes the host", () => {
     const literal = JSON.stringify(message).replace(/\u2028/g, "\\u2028");
     const error = await failureFrom(`throw new Error(${literal});\n`);
     expect(error.message).toBe(`host script raised past its own handler: ${message}`);
+  });
+});
+
+describe("a call's deadline covers the invocation itself", () => {
+  // macOS DoScriptFile returns only when the script has finished. A deadline
+  // started after invoke never fired: a 2 s call answered after 9.9 s on a
+  // real AE. This transport blocks the way a slow script does.
+  function blockingTransport(inner: FakeAfterEffectsTransport, blockMs: number) {
+    const seen: { aborted: boolean } = { aborted: false };
+    let calls = 0;
+    const transport = {
+      kind: "blocking",
+      available: () => inner.available(),
+      launch: () => inner.launch(),
+      close: () => inner.close(),
+      invoke(entry: string, options: { signal?: AbortSignal } = {}): Promise<void> {
+        calls += 1;
+        // The readiness probe goes through untouched.
+        if (calls === 1) return inner.invoke(entry);
+        return new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            inner.invoke(entry).then(resolve, reject);
+          }, blockMs);
+          options.signal?.addEventListener("abort", () => {
+            seen.aborted = true;
+            clearTimeout(timer);
+            reject(new Error("aborted"));
+          });
+        });
+      },
+    };
+    return { transport, seen };
+  }
+
+  it("times out a call whose script is still running, and stops waiting on it", async () => {
+    const { transport, seen } = blockingTransport(new FakeAfterEffectsTransport(), 5_000);
+    const d = new AeDriver({
+      transport,
+      sessionRoot: join(dir, "session"),
+      trace: new TraceRecorder({ file: join(dir, "trace.jsonl") }),
+    });
+    await d.start();
+    const began = Date.now();
+    await expect(d.call("app.info", {}, { timeoutMs: 200 })).rejects.toBeInstanceOf(TimeoutError);
+    expect(Date.now() - began).toBeLessThan(2_000);
+    expect(seen.aborted).toBe(true);
+    const trace = readFileSync(join(dir, "trace.jsonl"), "utf-8");
+    expect(trace).toContain('"status":"timeout"');
+  });
+
+  it("still answers a call whose script finishes inside the budget", async () => {
+    const { transport, seen } = blockingTransport(new FakeAfterEffectsTransport(), 50);
+    const d = new AeDriver({
+      transport,
+      sessionRoot: join(dir, "session"),
+      trace: new TraceRecorder({ file: join(dir, "trace.jsonl") }),
+    });
+    await d.start();
+    await expect(d.call("app.info", {}, { timeoutMs: 2_000 })).resolves.toMatchObject({ version: "26.0.0" });
+    expect(seen.aborted).toBe(false);
   });
 });
