@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    // Examples import the package by name, as a consumer does. Type-checked
+    // against the source so they cannot drift from the public types.
+    "paths": { "@ido-bata/ae-a8n": ["../src/index.ts"] }
+  },
+  "include": ["*.ts"]
+}

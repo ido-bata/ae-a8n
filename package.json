@@ -1,7 +1,7 @@
 {
   "name": "@ido-bata/ae-a8n",
-  "version": "0.0.0",
-  "description": "Programmatic automation runtime and API for Adobe After Effects",
+  "version": "0.1.0-alpha.0",
+  "description": "Drive Adobe After Effects from Node: open projects, apply effects, set parameters, render frames. macOS-verified alpha.",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -17,7 +17,8 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "tag": "next",
+    "provenance": false
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -33,12 +34,15 @@
   },
   "files": [
     "dist",
-    "host"
+    "host",
+    "skills",
+    "examples/*.ts",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src test --no-error-on-unmatched-pattern",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p examples/tsconfig.json",
+    "lint": "eslint src test examples --no-error-on-unmatched-pattern",
     "test": "vitest run",
     "check": "npm run typecheck && npm run lint && npm run test"
   },
@@ -50,5 +54,13 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.4",
     "vitest": "^3.2.4"
-  }
+  },
+  "keywords": [
+    "after-effects",
+    "adobe",
+    "extendscript",
+    "automation",
+    "testing",
+    "jsx"
+  ]
 }

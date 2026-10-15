@@ -47,4 +47,4 @@ export {
   type AfterEffectsInstall,
 } from "./driver/install-path.js";
 
-export const A8N_VERSION = "0.0.0";
+export const A8N_VERSION = "0.1.0-alpha.0";
