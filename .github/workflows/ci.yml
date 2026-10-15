@@ -82,7 +82,12 @@ jobs:
       - name: Confirm the checkout is CRLF
         shell: bash
         run: |
-          git ls-files --eol README.md .github/workflows/publish.yml | tee /dev/stderr | grep -q 'w/crlf'
+          eol=$(git ls-files --eol README.md .github/workflows/publish.yml)
+          echo "$eol"
+          if [ "$(echo "$eol" | grep -c 'w/crlf')" != 2 ]; then
+            echo "::error::the working tree is not CRLF; this job would not reproduce #16"
+            exit 1
+          fi
 
       - uses: actions/setup-node@v5
         with:
