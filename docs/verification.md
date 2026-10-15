@@ -104,6 +104,35 @@ Open, not fixed here:
 - ~~`close()` quits an AE it did not start~~ — fixed after `6de80c5`; see
   [sessions.md](sessions.md).
 
+## Session safety and repeatability, 2026-10-15
+
+Code `bb4c197` (ae-a8n) with ae-test `1261f77`, same host and fixture as
+above. "Ty Plus" is a third-party CEP extension installed on the test machine;
+it was disabled by moving its folders out of the CEP extensions directory, and
+restored afterwards.
+
+| Check | Ty Plus disabled | Ty Plus enabled |
+| --- | --- | --- |
+| Session safety on the real host (attached / owned / replaced process / timeouts) | pass | not run |
+| P2 → P3 → P4 → P5 in fresh sessions, 10 iterations | 10 / 10 | 10 / 10 |
+| Alert-sized AE windows seen during the campaign | none | none |
+
+What this does and does not show:
+
+- Ten in a row is the provisional bar for catching the earlier failure again,
+  not a proof of stability.
+- The stall seen once at `6de80c5` (an ae-test run stuck at `app.quit`) did
+  not recur in 20 iterations in either environment. **Its cause is not
+  established.**
+- The Ty Plus alert was reproduced once before (a `$.sleep` in our script let
+  its `evalScript` re-enter; stack sample and window capture), and not during
+  either campaign, whose scripts are short. Long-running scripts with such an
+  extension installed remain a known hazard.
+- One cold launch in the disabled campaign took 171 s to answer the readiness
+  probe (budget 180 s); the rest of that iteration was also 2–3× slower than
+  usual. Cause not established.
+- Windows: not run.
+
 ## What is verified, in detail
 
 | Area | Level | How |
