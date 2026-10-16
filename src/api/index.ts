@@ -111,6 +111,31 @@ function isNoValueKind(kind: unknown): kind is Exclude<PropertyKind, "value"> {
   return kind === "no-value" || kind === "custom-value" || kind === "group";
 }
 
+/**
+ * Whether a path is absolute in the host's terms, decided from the text
+ * alone so it does not depend on the caller's OS (a transport may run After
+ * Effects on another machine). Absolute: POSIX `/…`; Windows `C:\…` or
+ * `C:/…`; UNC `\\server\share\…` (and `\\?\…`). Everything else is
+ * resolved by After Effects against *its own* working directory, which is
+ * not the caller's: `copy.aep`, `./x`, `../x`, `~/x`, drive-relative `C:x`,
+ * and rooted-without-drive `\x`.
+ */
+export function isAbsoluteProjectPath(path: string): boolean {
+  return /^\//.test(path) || /^[A-Za-z]:[\\/]/.test(path) || /^\\\\[^\\]/.test(path);
+}
+
+/** Rejects a relative project path before anything is sent; never resolves it. */
+function requireAbsoluteProjectPath(value: unknown): string {
+  const path = requireString(value, "path");
+  if (!isAbsoluteProjectPath(path)) {
+    throw new TypeError(
+      `project path must be absolute, got ${JSON.stringify(path)}: After Effects would resolve it against its own ` +
+        `working directory, not yours. Resolve it first, e.g. path.resolve(${JSON.stringify(path)}).`,
+    );
+  }
+  return path;
+}
+
 function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new TypeError(`${field} must be a non-empty string`);
@@ -189,7 +214,7 @@ export class AfterEffects {
    * handle with `project()` instead of opening again.
    */
   async openProject(path: string, options: OpenProjectOptions = {}): Promise<Project> {
-    const projectPath = requireString(path, "path");
+    const projectPath = requireAbsoluteProjectPath(path);
     await this.#session.call(
       "project.open",
       "project.open",

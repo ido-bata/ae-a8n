@@ -78,6 +78,11 @@ await blur.set(60);       // returns the value AE now holds
 await blur.get();         // read back; plugins may clamp
 ```
 
+- **Project paths must be absolute** (`/…`, `C:\…`, `\\server\share\…`).
+  After Effects resolves a relative path against its own working directory,
+  not yours, so `openProject` rejects one with a `TypeError` before sending
+  anything. Resolve it yourself: `path.resolve("copy.aep")`, or `"$PWD/copy.aep"`
+  in a shell.
 - **Use match names**, not display names. Display names are localised
   (Gaussian Blur's "Blurriness" is "ブラー" in a Japanese UI); match names are
   not. Find them from what AE reports:
@@ -225,6 +230,6 @@ into your own directory first, then run them with a Node that executes
 TypeScript directly (Node 24 does):
 
 ```bash
-node examples/render-compare.ts copy.aep Main "Solid 1" \
+node examples/render-compare.ts "$PWD/copy.aep" Main "Solid 1" \
   "ADBE Gaussian Blur 2" "ADBE Gaussian Blur 2-0001" 0 100 "ADBE Gaussian Blur 2-0003=0"
 ```

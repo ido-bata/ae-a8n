@@ -6,8 +6,10 @@
   *     <project.aep> <comp> <layer> <effect match name> <parameter match name> <before> <after> \
  *     [<other parameter match name>=<value> ...]
  *
- * e.g. copy.aep Main "Solid 1" "ADBE Gaussian Blur 2" "ADBE Gaussian Blur 2-0001" 0 100 \
+ * e.g. "$PWD/copy.aep" Main "Solid 1" "ADBE Gaussian Blur 2" "ADBE Gaussian Blur 2-0001" 0 100 \
  *      "ADBE Gaussian Blur 2-0003=0"
+ * The project path must be absolute (After Effects resolves a relative one
+ * against its own working directory); openProject rejects anything else.
  * (Gaussian Blur's Repeat Edge Pixels, 2-0003, defaults on and keeps the blur
  * inside the layer's bounds; turning it off lets the change spread past them.)
  *

@@ -67,7 +67,7 @@ unsaved edit in someone's open project is still their work.
 | `AfterEffects.launch(options?)` | `{ sessionRoot?, installDir?, timeoutMs?, transport? }`; `timeoutMs` is the per-call default, which `openProject`, `project` and `renderFrame` can override for one call; waits for a readiness probe (180 s budget) |
 | `ae.info()`, `ae.version()` | version from the probe / live |
 | `ae.ownership()` | `{ kind: "owned" \| "attached" \| "unknown", evidence }` |
-| `ae.openProject(path, { unsavedChanges?, timeoutMs? })` | → `Project` |
+| `ae.openProject(path, { unsavedChanges?, timeoutMs? })` | → `Project`; `path` must be absolute (`/…`, `C:\…`, `\\server\…`), otherwise `TypeError` before anything is sent |
 | `ae.project({ timeoutMs? })` | → `Project` for the project open now, without opening anything (e.g. after `openProject` timed out) |
 | `ae.comps()`, `project.comps()`, `project.info()` | listings |
 | `project.comp(name)` → `Comp` | `comp.info()`, `comp.layers()`, `comp.layer(name)` |

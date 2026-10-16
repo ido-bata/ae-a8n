@@ -20,7 +20,10 @@ const SOURCE = ["src/api/index.ts", "src/api/errors.ts", "src/driver/install-pat
 const NOT_OURS = new Set(["log", "error", "exit", "slice", "map", "push", "join", "toString", "digest", "update", "createHash"]);
 
 function codeBlocks(markdown: string): string[] {
-  return [...markdown.matchAll(/```(?:ts|typescript)\n([\s\S]*?)```/g)].map((match) => match[1] as string);
+  // As checked out: Git for Windows defaults to core.autocrlf=true, and the
+  // patterns here are written with \n.
+  const lf = markdown.replace(/\r\n/g, "\n");
+  return [...lf.matchAll(/```(?:ts|typescript)\n([\s\S]*?)```/g)].map((match) => match[1] as string);
 }
 
 describe.each(DOCS)("%s", (doc) => {
@@ -28,6 +31,11 @@ describe.each(DOCS)("%s", (doc) => {
 
   it("has TypeScript examples to check", () => {
     expect(blocks.length).toBeGreaterThan(0);
+  });
+
+  it("finds the same examples in a CRLF checkout", () => {
+    const lf = read(doc).replace(/\r\n/g, "\n");
+    expect(codeBlocks(lf.replace(/\n/g, "\r\n"))).toEqual(codeBlocks(lf));
   });
 
   it("imports only names the package exports", () => {

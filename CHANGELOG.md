@@ -26,6 +26,12 @@ re-run after it (`docs/verification.md`).
   own error (or, for `[]` on a single-number property, instead of AE
   silently storing 0) (#21).
 
+- `openProject` rejects a relative path with a `TypeError` before sending
+  anything (#34); it used to reach After Effects, which resolved it against
+  its own working directory and failed with `AfterEffectsError` "project
+  file not found" even with the file in the caller's directory. Paths are
+  not resolved for you.
+
 ### Added
 
 - `effect.parameters()` lists every property, including ones without a
@@ -41,9 +47,11 @@ re-run after it (`docs/verification.md`).
   `OperationOptions`, `OpenProjectOptions` (#22).
 - Bridge: a failure payload may carry `kind` (additive).
 
+
 ### Docs
 
 - Skill and README corrected from the Mac agent lab (#27).
+- Example commands use absolute project paths (#34).
 
 ## 0.1.0-alpha.0
 

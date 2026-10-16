@@ -33,7 +33,7 @@
  * against someone with write access who edits this workflow on a branch and
  * tags it. On this plan nothing server-side can; see docs/releasing.md.
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
@@ -104,31 +104,55 @@ export function decide(facts) {
   return { action: "publish", reason: `${version} is approved, on main, and not yet on npm` };
 }
 
+/** The registry the gate asks: npm's `registry` setting when npm passes it on, else the public one. */
+export const DEFAULT_REGISTRY = "https://registry.npmjs.org/";
+
 /**
+ * Asks the registry for one version's manifest over HTTP, as `npm view
+ * <name>@<version> dist.shasum` does, without starting a child process: a
+ * spawned `npm` is `npm.cmd` on Windows, which Node will not start without a
+ * shell, so the gate could never see the registry there.
+ *
  * @param {string} name
  * @param {string} version
- * @returns {RegistryState}
+ * @param {string} [registry]
+ * @param {number} [timeoutMs] how long to wait for an answer; then the state is unknown
+ * @returns {Promise<RegistryState>}
  */
-export function registryState(name, version) {
-  const result = spawnSync("npm", ["view", `${name}@${version}`, "dist.shasum", "--json"], { encoding: "utf-8" });
-  const out = result.stdout.trim();
-  if (result.status === 0) {
-    const shasum = out === "" ? undefined : JSON.parse(out);
-    return typeof shasum === "string" && shasum !== "" ? { state: "present", shasum } : { state: "unknown", error: `npm view printed ${JSON.stringify(out)}` };
-  }
-  // npm answers E404 both for an unknown package and an unknown version.
-  // (It also does for a private package it may not see; npm publish itself is
-  // the last word there.)
+export async function registryState(
+  name,
+  version,
+  registry = process.env.npm_config_registry || DEFAULT_REGISTRY,
+  timeoutMs = 30_000,
+) {
+  // Scoped names keep the `@` and escape the `/`: /@scope%2fname/<version>.
+  const url = new URL(`${name.replace("/", "%2f")}/${encodeURIComponent(version)}`, registry.endsWith("/") ? registry : `${registry}/`);
+  let response;
   try {
-    const code = JSON.parse(out)?.error?.code;
-    if (code === "E404") return { state: "absent" };
-    return { state: "unknown", error: `npm view failed with ${code ?? "no code"}` };
-  } catch {
-    return { state: "unknown", error: `npm view exited ${result.status}: ${result.stderr.trim().split("\n")[0] ?? ""}` };
+    response = await fetch(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (error) {
+    const cause = /** @type {{ cause?: { code?: string }, name?: string, message?: string }} */ (error);
+    return { state: "unknown", error: `GET ${url} failed: ${cause.cause?.code ?? cause.name ?? cause.message}` };
   }
+  // The registry answers 404 both for an unknown package and an unknown
+  // version. (It also does for a private package it may not show; npm
+  // publish itself is the last word there.)
+  if (response.status === 404) return { state: "absent" };
+  if (!response.ok) return { state: "unknown", error: `GET ${url} answered ${response.status}` };
+  /** @type {unknown} */
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    return { state: "unknown", error: `GET ${url} answered ${response.status} with a body that is not JSON` };
+  }
+  const shasum = /** @type {{ dist?: { shasum?: unknown } } | null} */ (body)?.dist?.shasum;
+  return typeof shasum === "string" && shasum !== ""
+    ? { state: "present", shasum }
+    : { state: "unknown", error: `GET ${url} answered without dist.shasum` };
 }
 
-function main() {
+async function main() {
   const tarball = process.argv[2];
   if (tarball === undefined) {
     console.error("usage: publish-gate.js <packed-tarball.tgz>");
@@ -160,7 +184,7 @@ function main() {
     version: manifest.version,
     approvedVersion: (process.env.NPM_PUBLISH_VERSION ?? "").trim(),
     onMain,
-    registry: registryState(manifest.name, manifest.version),
+    registry: await registryState(manifest.name, manifest.version),
     packedShasum,
   };
   const decision = decide(facts);
@@ -178,5 +202,5 @@ function main() {
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  main();
+  await main();
 }
