@@ -16,7 +16,7 @@ const frame = await (await project.comp("Main")).renderFrame(0); // { path, widt
 await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to throw away
 ```
 
-> **Alpha.** `0.1.0-alpha.0` is published under the `next` dist-tag. The API
+> **Alpha.** `0.1.0-alpha.1` is published under the `next` dist-tag. The API
 > may change before 0.1.0.
 
 ## Status
