@@ -4,13 +4,17 @@
  * The repository has no server-side gate (GitHub Free, private: no required
  * reviewers, no tag rules), so scripts/publish-gate.js is the gate. `decide`
  * is checked case by case; the CLI is run for real against a throwaway git
- * repository and a stand-in `npm` on PATH, because the wiring (ancestry,
+ * repository and a local HTTP registry, because the wiring (ancestry,
  * registry parsing, $GITHUB_OUTPUT, exit code) is where a gate quietly opens.
+ * Nothing here needs a POSIX shell: the gate asks the registry over HTTP and
+ * the registry is a server in this process, so it runs the same on Windows.
  */
 
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -35,6 +39,7 @@ interface Decision {
 const gatePath = fileURLToPath(new URL("../scripts/publish-gate.js", import.meta.url));
 const gate = (await import(pathToFileURL(gatePath).href)) as {
   decide: (facts: Facts) => Decision;
+  registryState: (name: string, version: string, registry?: string, timeoutMs?: number) => Promise<RegistryState>;
   MANUAL_FIRST_PUBLISH: string;
 };
 
@@ -129,12 +134,103 @@ describe("decide", () => {
   });
 });
 
+/**
+ * A registry in this process. It answers GET /<name>/<version> as
+ * registry.npmjs.org does: 404 for a version it does not have, the version's
+ * manifest (with dist.shasum) for one it does, or whatever a test sets.
+ */
+class FakeRegistry {
+  server: Server = createServer((req, res) => {
+    this.requests.push(req.url ?? "");
+    const a = this.answer;
+    if (a === "hang") {
+      // Accepts the request and never answers; closed when the server stops.
+      this.hanging.push(res);
+      return;
+    }
+    if (a === "absent") {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end('{"error":"version not found"}');
+    } else if ("shasum" in a) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ name: "@ido-bata/ae-a8n", version: NEXT, dist: { shasum: a.shasum } }));
+    } else {
+      res.writeHead(a.status, { "content-type": "application/json" });
+      res.end(a.body);
+    }
+  });
+  answer: "absent" | "hang" | { shasum: string } | { status: number; body: string } = "absent";
+  requests: string[] = [];
+  hanging: ServerResponse[] = [];
+  url = "";
+
+  async start(): Promise<void> {
+    await new Promise<void>((resolve) => this.server.listen(0, "127.0.0.1", resolve));
+    this.url = `http://127.0.0.1:${(this.server.address() as AddressInfo).port}/`;
+  }
+
+  async stop(): Promise<void> {
+    for (const res of this.hanging.splice(0)) res.destroy();
+    this.server.closeAllConnections();
+    await new Promise<void>((resolve) => this.server.close(() => resolve()));
+  }
+}
+
+describe("registryState", () => {
+  const registry = new FakeRegistry();
+  beforeEach(async () => {
+    registry.requests = [];
+    await registry.start();
+  });
+  afterEach(async () => {
+    await registry.stop();
+  });
+
+  it("asks for the scoped version the way the registry names it", async () => {
+    await gate.registryState("@ido-bata/ae-a8n", NEXT, registry.url);
+    expect(registry.requests).toEqual([`/@ido-bata%2fae-a8n/${NEXT}`]);
+  });
+
+  it("reads 404 as absent and a manifest as present with its shasum", async () => {
+    registry.answer = "absent";
+    expect(await gate.registryState("@ido-bata/ae-a8n", NEXT, registry.url)).toEqual({ state: "absent" });
+    registry.answer = { shasum: SHA };
+    expect(await gate.registryState("@ido-bata/ae-a8n", NEXT, registry.url)).toEqual({ state: "present", shasum: SHA });
+  });
+
+  it.each([
+    ["a refusal (403)", { status: 403, body: '{"error":"Forbidden"}' }],
+    ["rate limiting (429)", { status: 429, body: '{"error":"Too Many Requests"}' }],
+    ["a server error", { status: 503, body: "{}" }],
+    ["another server error", { status: 500, body: "{}" }],
+    ["a body that is not JSON", { status: 200, body: "<html>" }],
+    ["a manifest without dist.shasum", { status: 200, body: '{"dist":{}}' }],
+  ])("reads %s as unknown", async (_label, answer) => {
+    registry.answer = answer;
+    expect((await gate.registryState("@ido-bata/ae-a8n", NEXT, registry.url)).state).toBe("unknown");
+  });
+
+  it("reads a registry that does not answer in time as unknown", async () => {
+    registry.answer = "hang";
+    const state = await gate.registryState("@ido-bata/ae-a8n", NEXT, registry.url, 200);
+    expect(state.state).toBe("unknown");
+    expect(state).toMatchObject({ error: expect.stringContaining("TimeoutError") });
+  });
+
+  it("reads a registry nobody answers on as unknown", async () => {
+    const closed = registry.url;
+    await registry.stop();
+    expect((await gate.registryState("@ido-bata/ae-a8n", NEXT, closed)).state).toBe("unknown");
+    await registry.start();
+  });
+});
+
 describe("the gate as the workflow runs it", () => {
   let dir: string;
   let repo: string;
-  let bin: string;
   let tarball: string;
   let output: string;
+  const registry = new FakeRegistry();
 
   function git(...args: string[]): string {
     const result = spawnSync("git", args, { cwd: repo, encoding: "utf-8" });
@@ -142,31 +238,36 @@ describe("the gate as the workflow runs it", () => {
     return result.stdout.trim();
   }
 
-  /** A stand-in `npm` whose `view` answers as the registry would. */
-  function registryAnswers(answer: "absent" | { shasum: string } | "down"): void {
-    const body =
-      answer === "absent"
-        ? `echo '{"error":{"code":"E404","summary":"Not Found"}}'; exit 1`
-        : answer === "down"
-          ? `echo '{"error":{"code":"ETIMEDOUT"}}'; exit 1`
-          : `echo '"${answer.shasum}"'; exit 0`;
-    writeFileSync(join(bin, "npm"), `#!/bin/sh\n${body}\n`);
-    chmodSync(join(bin, "npm"), 0o755);
-  }
-
-  function run(env: Record<string, string>): { status: number | null; outputs: Record<string, string>; stderr: string } {
+  /**
+   * Runs the gate as a separate process. Asynchronously: the registry is a
+   * server in this process, and a synchronous spawn would stop it answering.
+   */
+  async function run(
+    env: Record<string, string>,
+  ): Promise<{ status: number | null; outputs: Record<string, string>; stderr: string }> {
     writeFileSync(output, "");
-    const result = spawnSync(process.execPath, [gatePath, tarball], {
-      cwd: repo,
-      encoding: "utf-8",
-      env: {
-        PATH: `${bin}:${process.env.PATH ?? ""}`,
-        GITHUB_OUTPUT: output,
-        GITHUB_EVENT_NAME: "push",
-        GITHUB_REF_TYPE: "tag",
-        GITHUB_REF_NAME: `v${NEXT}`,
-        ...env,
-      },
+    const result = await new Promise<{ status: number | null; stderr: string }>((resolve) => {
+      execFile(
+        process.execPath,
+        [gatePath, tarball],
+        {
+          cwd: repo,
+          encoding: "utf-8",
+          env: {
+            ...process.env,
+            npm_config_registry: registry.url,
+            NPM_PUBLISH_VERSION: "",
+            GITHUB_OUTPUT: output,
+            GITHUB_EVENT_NAME: "push",
+            GITHUB_REF_TYPE: "tag",
+            GITHUB_REF_NAME: `v${NEXT}`,
+            ...env,
+          },
+        },
+        (error, _stdout, stderr) => {
+          resolve({ status: error === null ? 0 : typeof error.code === "number" ? error.code : null, stderr });
+        },
+      );
     });
     const outputs = Object.fromEntries(
       readFileSync(output, "utf-8")
@@ -174,15 +275,13 @@ describe("the gate as the workflow runs it", () => {
         .filter((line) => line !== "")
         .map((line) => line.split("=") as [string, string]),
     );
-    return { status: result.status, outputs, stderr: result.stderr };
+    return { ...result, outputs };
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), "a8n-gate-"));
     repo = join(dir, "repo");
-    bin = join(dir, "bin");
     mkdirSync(repo);
-    mkdirSync(bin);
     tarball = join(dir, "package.tgz");
     writeFileSync(tarball, "not really a tarball, but the shasum is all the gate reads");
     output = join(dir, "github-output");
@@ -190,67 +289,86 @@ describe("the gate as the workflow runs it", () => {
     writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "@ido-bata/ae-a8n", version: NEXT }));
     git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "release");
     git("update-ref", "refs/remotes/origin/main", "HEAD");
+    registry.answer = "absent";
+    await registry.start();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await registry.stop();
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("writes its decision, the tarball shasum and the registry state for the workflow", () => {
-    registryAnswers("absent");
-    const result = run({ GITHUB_EVENT_NAME: "pull_request", GITHUB_REF_TYPE: "branch", GITHUB_REF_NAME: "1/merge" });
+  it("writes its decision, the tarball shasum and the registry state for the workflow", async () => {
+    registry.answer = "absent";
+    const result = await run({ GITHUB_EVENT_NAME: "pull_request", GITHUB_REF_TYPE: "branch", GITHUB_REF_NAME: "1/merge" });
     expect(result.status).toBe(0);
     expect(result.outputs.publish).toBe("false");
     expect(result.outputs.registry).toBe("absent");
     expect(result.outputs.shasum).toBe(createHash("sha1").update(readFileSync(tarball)).digest("hex"));
   });
 
-  it("skips a tag pushed for a version npm already has, built from the same tarball", () => {
-    registryAnswers("absent");
-    const { outputs } = run({});
-    registryAnswers({ shasum: outputs.shasum ?? "" });
-    const result = run({});
+  it("skips a tag pushed for a version npm already has, built from the same tarball", async () => {
+    registry.answer = "absent";
+    const { outputs } = await run({});
+    registry.answer = { shasum: outputs.shasum ?? "" };
+    const result = await run({});
     expect(result.status).toBe(0);
     expect(result.outputs.publish).toBe("false");
     expect(result.outputs.registry).toBe("present");
   });
 
-  it("fails a tag pushed for a published version whose contents differ", () => {
-    registryAnswers({ shasum: "1".repeat(40) });
-    const result = run({});
+  it("fails a tag pushed for a published version whose contents differ", async () => {
+    registry.answer = { shasum: "1".repeat(40) };
+    const result = await run({});
     expect(result.status).toBe(1);
     expect(result.outputs.publish).toBe("false");
     expect(result.stderr).toContain("does not point at what was published");
   });
 
-  it("fails an approved version when the registry is unreachable", () => {
-    registryAnswers("down");
-    const result = run({ NPM_PUBLISH_VERSION: NEXT });
+  it.each([
+    ["403", { status: 403, body: "{}" }],
+    ["429", { status: 429, body: "{}" }],
+    ["503", { status: 503, body: "{}" }],
+    ["a body that is not JSON", { status: 200, body: "<html>" }],
+    ["a manifest without dist.shasum", { status: 200, body: '{"dist":{}}' }],
+  ])("fails an approved version, and does not publish, when the registry answers %s", async (_label, answer) => {
+    registry.answer = answer;
+    const result = await run({ NPM_PUBLISH_VERSION: NEXT });
     expect(result.status).toBe(1);
+    expect(result.outputs.publish).toBe("false");
+    expect(result.outputs.registry).toBe("unknown");
+    expect(result.stderr).toContain("cannot tell whether");
+  });
+
+  it("does not publish an unapproved version whose registry state is unknown", async () => {
+    registry.answer = { status: 503, body: "{}" };
+    const result = await run({});
+    expect(result.status).toBe(0);
+    expect(result.outputs.publish).toBe("false");
     expect(result.outputs.registry).toBe("unknown");
   });
 
-  it("publishes an approved version tagged on main", () => {
-    registryAnswers("absent");
-    const result = run({ NPM_PUBLISH_VERSION: NEXT });
+  it("publishes an approved version tagged on main", async () => {
+    registry.answer = "absent";
+    const result = await run({ NPM_PUBLISH_VERSION: NEXT });
     expect(result.status).toBe(0);
     expect(result.outputs.publish).toBe("true");
   });
 
-  it("checks ancestry against origin/main for real", () => {
-    registryAnswers("absent");
+  it("checks ancestry against origin/main for real", async () => {
+    registry.answer = "absent";
     git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty", "-m", "unreviewed");
-    const result = run({ NPM_PUBLISH_VERSION: NEXT });
+    const result = await run({ NPM_PUBLISH_VERSION: NEXT });
     expect(result.status).toBe(1);
     expect(result.outputs.publish).toBe("false");
     expect(result.stderr).toContain("not on main");
   });
 
-  it("refuses the first version from CI with this repository's real package.json", () => {
-    registryAnswers("absent");
+  it("refuses the first version from CI with this repository's real package.json", async () => {
+    registry.answer = "absent";
     const real = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")) as { version: string };
     writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "@ido-bata/ae-a8n", version: real.version }));
-    const result = run({ GITHUB_REF_NAME: `v${real.version}`, NPM_PUBLISH_VERSION: real.version });
+    const result = await run({ GITHUB_REF_NAME: `v${real.version}`, NPM_PUBLISH_VERSION: real.version });
     expect(real.version).toBe(gate.MANUAL_FIRST_PUBLISH);
     expect(result.status).toBe(1);
     expect(result.outputs.publish).toBe("false");
@@ -258,8 +376,16 @@ describe("the gate as the workflow runs it", () => {
   });
 });
 
+/**
+ * The workflow as checked out, with \n line ends: Git for Windows defaults to
+ * core.autocrlf=true, and the patterns below are written with \n.
+ */
+function lf(text: string): string {
+  return text.replace(/\r\n/g, "\n");
+}
+
 describe("the publish workflow", () => {
-  const workflow = readFileSync(new URL("../.github/workflows/publish.yml", import.meta.url), "utf-8");
+  const workflow = lf(readFileSync(new URL("../.github/workflows/publish.yml", import.meta.url), "utf-8"));
   const publishJob = workflow.slice(workflow.indexOf("\n  publish:"));
 
   it("publishes only on the gate's word", () => {
@@ -282,6 +408,10 @@ describe("the publish workflow", () => {
 
   it("has the history the ancestry check needs", () => {
     expect(workflow).toMatch(/fetch-depth: 0/);
+  });
+
+  it("reads a CRLF checkout of the workflow as the same text", () => {
+    expect(lf(workflow.replace(/\n/g, "\r\n"))).toBe(workflow);
   });
 
   it("does not dry-run over a published version, which npm refuses", () => {
