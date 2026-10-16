@@ -10,7 +10,7 @@
 
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { TimeoutError } from "../src/driver/driver.js";
@@ -68,7 +68,7 @@ class SlowScriptsTransport implements HostTransport {
 
 function methodOf(entry: string): string {
   // <root>/staging/<id>.entry.jsx → <root>/inbox/<id>.request.json
-  const id = entry.split("/").pop()!.replace(/\.entry\.jsx$/, "");
+  const id = basename(entry).replace(/\.entry\.jsx$/, "");
   const request = join(entry, "..", "..", "inbox", `${id}.request.json`);
   return existsSync(request) ? (JSON.parse(readFileSync(request, "utf-8")) as { method: string }).method : "?";
 }
