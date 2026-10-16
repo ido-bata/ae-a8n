@@ -97,7 +97,7 @@ jobs:
         run: npm ci
 
       - name: Release tooling tests
-        run: npx vitest run test/publish-gate.test.ts test/docs-api.test.ts test/doc-snippets.test.ts
+        run: npx vitest run test/publish-gate.test.ts test/stage-publish.test.ts test/docs-api.test.ts test/doc-snippets.test.ts
 
       - name: Check documented JSX snippets are ES3
         run: node scripts/check-doc-snippets.js docs/verification.md

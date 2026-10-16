@@ -2,8 +2,8 @@
 
 `@ido-bata/ae-a8n` is published under the `next` dist-tag. The first version
 (`0.1.0-alpha.0`) is published by a person with 2FA. From `0.1.0-alpha.1` on,
-the `publish` workflow publishes with npm Trusted Publishing (OIDC), and no
-npm token exists anywhere.
+the `publish` workflow *stages* each version with npm Trusted Publishing
+(OIDC) and a person approves it with 2FA; no npm token exists anywhere.
 
 ## What stops an accidental or double publish
 
@@ -28,10 +28,11 @@ environment, and the conditions live in
 | The version is not `0.1.0-alpha.0` | fail — that one is published by hand |
 | The tagged commit is an ancestor of `main` | fail |
 | npm could be asked | fail (when approved) |
-| The tarball `publish` uploads has the shasum the gate checked | fail |
+| The tarball `stage` uploads has the shasum the gate checked | fail |
 
-So a release takes two separate, deliberate acts — setting the variable to the
-exact version and pushing the tag — and neither alone publishes anything.
+So a release takes three separate, deliberate acts — setting the variable to
+the exact version, pushing the tag, and approving the staged version with
+2FA on npm — and no one of them publishes anything alone.
 
 **What this does not protect against.** The gate runs inside the workflow.
 Someone with write access can edit the workflow on a branch, tag that, and
@@ -100,32 +101,79 @@ member with publish rights and 2FA on. Everything up to step 4 is merged.
 The tag comes **after** the publish, so the tag always means "this is what is
 on npm".
 
-## 0.1.0-alpha.1 and later: Trusted Publishing
+## 0.1.0-alpha.1 and later: staged, then approved with 2FA
+
+From `0.1.0-alpha.1` the workflow never publishes. It **stages** the verified
+tarball with `npm stage publish` through Trusted Publishing, and a maintainer
+publishes it by approving the staged version with 2FA
+([staged publishing][npm-staged], [`npm stage`][npm-stage]). An OIDC token
+cannot approve. The trusted publisher is configured **stage-only**, so the
+registry refuses a plain `npm publish` from this workflow too.
+
+Pinned and checked by `scripts/stage-publish.js` (tested against a recording
+registry with the real npm CLI in `test/stage-publish.test.ts`):
+
+- npm CLI `NPM_CLI_VERSION` in `publish.yml` (11.19.1), installed in both
+  jobs and compared exactly. `npm stage` needs 11.15.0 or later.
+- Dist-tag `next`, passed explicitly. A staged package's tag cannot be
+  changed later. Without the flag, npm 11.19.1 still sends `next` (from
+  `publishConfig.tag`), but its log line says "latest".
+- The uploaded tarball is the one `verify` built and the gate checked (sha1
+  before sending, and again from npm's report).
+- A version already on npm is not staged (the gate), and the registry
+  refuses a version that is already staged or published ("Staged packages
+  share the same semver version unique index as published packages"). npm's
+  own client-side "cannot publish over" check ignores prerelease versions
+  (npm 11.19.1 `lib/commands/publish.js`), so for alphas it is the gate and
+  the registry that stop a duplicate, not the CLI.
+
+Steps:
 
 1. A pull request to `main` that bumps `package.json` `version`, the
    `A8N_VERSION` constant in `src/index.ts` (a test keeps them equal), and
    `CHANGELOG.md`. That merge commit is the release commit.
-2. On npmjs.com → the package → Settings → Trusted publishing → GitHub
-   Actions: organisation `ido-bata`, repository `ae-a8n`, workflow
-   `publish.yml`, **environment empty**. A configuration that is not used
-   within 2 days expires ([npm][npm-tp]), so do this when the release is
-   ready, not ahead of time. `repository.url` in `package.json` must match
-   the repository.
-3. Repository → Settings → Secrets and variables → Actions → Variables:
-   `NPM_PUBLISH_VERSION` = `0.1.0-alpha.1`.
+2. Trusted publisher, stage-only, with 2FA (npm ≥ 11.15.0):
+
+   ```bash
+   npm trust github @ido-bata/ae-a8n --file publish.yml \
+     --repository ido-bata/ae-a8n --allow-stage-publish
+   ```
+
+   (or npmjs.com → package → Settings → Trusted publishing, with only
+   "stage publish" allowed). No environment: see above. A configuration
+   not used within 2 days expires ([npm][npm-tp]), so do this when the
+   release is ready. `repository.url` in `package.json` must match the
+   repository.
+3. Repository variable `NPM_PUBLISH_VERSION` = `0.1.0-alpha.1`.
 4. Tag the release commit on `main` and push the tag:
    `git tag -a v0.1.0-alpha.1 <sha> -m "0.1.0-alpha.1" && git push origin v0.1.0-alpha.1`.
-5. The workflow verifies, the gate approves, `publish` publishes with OIDC.
-   Check with `npm view @ido-bata/ae-a8n@next version`.
-6. Delete `NPM_PUBLISH_VERSION` (or leave it: the gate will not publish that
-   version again, and fails loudly if its tag is pushed while it is still
-   set).
-7. After the first trusted publish succeeds: package Settings → Publishing
-   access → **Require two-factor authentication and disallow tokens**.
+5. The workflow verifies, the gate approves, `stage` stages. The run summary
+   gives the stage id and shasum.
+6. Review and approve, with 2FA:
 
-If the publish job fails after the gate approved, nothing was published
-unless `npm view` says so. Fix the cause, then re-run the failed jobs of that
-same run; do not move the tag to another commit — that is a new version.
+   ```bash
+   npm stage view <stage-id>         # version 0.1.0-alpha.1, tag next
+   npm stage download <stage-id>     # prints the shasum: must equal the run's
+   npm stage approve <stage-id>      # 2FA; publishes to next
+   ```
+
+   If anything is off: `npm stage reject <stage-id>` (2FA). The version
+   number stays taken while staged; after a rejection, check `npm stage
+   list` before reusing it.
+7. Check: `npm view @ido-bata/ae-a8n@next version` and
+   `npm view @ido-bata/ae-a8n@0.1.0-alpha.1 dist.shasum`.
+8. Delete `NPM_PUBLISH_VERSION`.
+9. Once staging has worked: package Settings → Publishing access →
+   **Require two-factor authentication and disallow tokens**.
+
+If `stage` fails after the gate approved, check `npm stage list
+@ido-bata/ae-a8n` before anything else: a version that did get staged
+cannot be staged again. Re-run the failed job of that same run; do not move
+the tag to another commit — that is a new version.
+
+Not verified before the first real use: staging through OIDC against the
+real registry, what `npm stage view` shows, and how long a staged version
+waits (npm's documentation does not say).
 
 ## Not here yet
 
@@ -137,4 +185,6 @@ same run; do not move the tag to another commit — that is a new version.
 [gh-env]: https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments
 [gh-manage]: https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments
 [npm-tp]: https://docs.npmjs.com/trusted-publishers
+[npm-staged]: https://docs.npmjs.com/staged-publishing
+[npm-stage]: https://docs.npmjs.com/cli/v11/commands/npm-stage
 [gh-prov]: https://github.blog/changelog/2023-07-26-publishing-with-npm-provenance-from-private-source-repositories-is-no-longer-supported/
