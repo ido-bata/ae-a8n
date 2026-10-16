@@ -23,12 +23,13 @@ describe("public types", () => {
     const open: OpenProjectOptions = { unsavedChanges: "refuse", ...budget };
     const render: RenderOptions = { prefix: "frame", ...budget };
     const listed: PropertyInfo[] = [
-      { name: "Amount", kind: "value", value: 1 },
-      { name: "", kind: "no-value" },
+      { name: "Amount", kind: "value", valueType: "OneD", value: 1 },
+      { name: "Point", kind: "value", valueType: "TwoD_SPATIAL", value: [1, 2] },
+      { name: "", kind: "no-value", valueType: "NO_VALUE" },
     ];
     expect(kinds).toHaveLength(4);
     expect([open.timeoutMs, render.timeoutMs]).toEqual([1_000, 1_000]);
-    expect(listed.map((p) => p.kind)).toEqual(["value", "no-value"]);
+    expect(listed.map((p) => p.kind)).toEqual(["value", "value", "no-value"]);
   });
 
   it("exports the error and the methods those types belong to", () => {
