@@ -284,3 +284,22 @@ AE not the one spawned, started before launch, other path, unreadable path, died
 before the check, unreadable list, PID reuse (same pid, other start time), a
 second instance appearing later, and a close that waits for exit or reports that
 it did not. PID reuse and "two AEs at start" were not produced on the real host.
+
+### P5 again, without the shim (on this branch)
+
+Unmodified `@ido-bata/ae-test@0.1.0-alpha.0` from npm, with `@ido-bata/ae-a8n`
+pointing at this branch's build (a directory junction in a temporary project; no
+change to ae-test or its lockfile, no ownership override anywhere):
+
+| Check | Result |
+| --- | --- |
+| ae-test starts a new Windows AE, ownership `owned` | yes (otherwise `HostNotOwnedError`) |
+| apply `ADBE Gaussian Blur 2`, set `Blur` 0 → 100, render two PNGs | yes |
+| snapshot compare | matched a baseline recorded in an earlier, separate AE session |
+| a passing assertion and a typed `EntityNotFoundError` assertion | pass |
+| a deliberately false `toBe` | fails with `expected 999, received 3`, as intended |
+| AE processes after the run | 0, both runs (2 runs, 3 specs each, 3 cold starts each) |
+| teardown after the failing test | `app.quit` quit AE; the next test started its own |
+
+Not exercised: a launch that fails before a session exists (the readiness gate
+timing out) under ae-test. The "persistent dialog" is #41.
