@@ -9,7 +9,8 @@
  *
  * Order, first hit wins; nothing falls back to a shell or a bare "npm":
  *   1. NPM_CLI_JS — set explicitly (the publish workflow sets it from
- *      `npm root -g` right after pinning the CLI);
+ *      `npm root -g` right after pinning the CLI); if set but not an existing
+ *      npm-cli.js, resolution fails instead of trying anything else;
  *   2. npm_execpath — set by npm itself under `npm run` / `npm exec`, when it
  *      names npm-cli.js (npx sets it to npx-cli.js, which is skipped);
  *   3. each PATH directory holding an `npm` launcher (PATHEXT on Windows):
@@ -55,7 +56,13 @@ export function resolveNpmCli(options) {
       ? [p.join(dir, "node_modules", "npm", "bin", "npm-cli.js")]
       : [p.join(dir, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js")];
 
-  if (usable(env.NPM_CLI_JS)) return { cliJs: /** @type {string} */ (env.NPM_CLI_JS), source: "NPM_CLI_JS" };
+  // An explicit NPM_CLI_JS is a decision, not a hint: if it is wrong, fail
+  // rather than quietly pick another npm (possibly the same version from a
+  // different install, which the version check would not catch).
+  if (env.NPM_CLI_JS !== undefined && env.NPM_CLI_JS !== "") {
+    if (usable(env.NPM_CLI_JS)) return { cliJs: env.NPM_CLI_JS, source: "NPM_CLI_JS" };
+    throw new Error(`NPM_CLI_JS is set to ${env.NPM_CLI_JS}, which is not an existing npm-cli.js`);
+  }
   if (usable(env.npm_execpath)) return { cliJs: /** @type {string} */ (env.npm_execpath), source: "npm_execpath" };
 
   const pathValue = env.PATH ?? env.Path ?? "";

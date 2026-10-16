@@ -113,8 +113,18 @@ describe("resolveNpmCli", () => {
   });
 
   it("fails, naming what it tried, instead of guessing", () => {
-    expect(() => npmCli.resolveNpmCli({ env: { NPM_CLI_JS: "/gone/npm-cli.js", PATH: "/empty" }, platform: "linux", execPath: "/n/bin/node", exists: () => false }))
-      .toThrow(/tried: \/gone\/npm-cli\.js, \/n\/lib\/node_modules\/npm\/bin\/npm-cli\.js/);
+    expect(() => npmCli.resolveNpmCli({ env: { PATH: "/empty" }, platform: "linux", execPath: "/n/bin/node", exists: () => false }))
+      .toThrow(/tried: \/n\/lib\/node_modules\/npm\/bin\/npm-cli\.js/);
+  });
+
+  it("fails on a wrong NPM_CLI_JS instead of falling through to another npm", () => {
+    const exists = files("/usr/local/bin/npm", "/usr/local/lib/node_modules/npm/bin/npm-cli.js");
+    expect(() =>
+      npmCli.resolveNpmCli({ env: { NPM_CLI_JS: "/gone/npm-cli.js", PATH: "/usr/local/bin" }, platform: "linux", execPath: "/x/node", exists }),
+    ).toThrow(/NPM_CLI_JS is set to \/gone\/npm-cli\.js/);
+    expect(() =>
+      npmCli.resolveNpmCli({ env: { NPM_CLI_JS: "/usr/local/bin/npm", PATH: "/usr/local/bin" }, platform: "linux", execPath: "/x/node", exists }),
+    ).toThrow(/not an existing npm-cli\.js/);
   });
 
   it("is what stage-publish.js uses: no shell, no bare npm", () => {
@@ -307,6 +317,33 @@ describe("staging with the real npm CLI", () => {
     expect(result.code).toBe(1);
     expect(result.output).toBe("");
     expect(result.summary).toBe("");
+  });
+
+  it("sends nothing through an impostor npm-cli.js that only claims the pinned version", async () => {
+    const fake = join(dir, "impostor", "npm-cli.js");
+    mkdirSync(join(dir, "impostor"));
+    writeFileSync(fake, 'if (process.argv.includes("--version")) console.log("11.19.1");\n');
+    const result = await stageIt([], { NPM_CLI_JS: fake, NPM_CLI_VERSION: "11.19.1" });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("did not report staging");
+    expect(uploads).toEqual([]);
+  });
+
+  it("fails clearly when the npm CLI does not run", async () => {
+    const broken = join(dir, "broken", "npm-cli.js");
+    mkdirSync(join(dir, "broken"));
+    writeFileSync(broken, "process.exit(3);\n");
+    const result = await stageIt([], { NPM_CLI_JS: broken });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("could not run the npm CLI");
+    expect(uploads).toEqual([]);
+  });
+
+  it("fails when NPM_CLI_JS points nowhere, before sending anything", async () => {
+    const result = await stageIt([], { NPM_CLI_JS: join(dir, "nowhere", "npm-cli.js") });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("NPM_CLI_JS is set to");
+    expect(uploads).toEqual([]);
   });
 
   it("fails when the registry gives no stage id", async () => {
