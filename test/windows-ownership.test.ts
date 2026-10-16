@@ -12,7 +12,13 @@
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
 
-import { ScriptInvocationTransport, type HostProcess, type SpawnLauncher } from "../src/driver/script-invocation.js";
+import {
+  ScriptInvocationTransport,
+  parseWindowsProcessList,
+  windowsProcesses,
+  type HostProcess,
+  type SpawnLauncher,
+} from "../src/driver/script-invocation.js";
 
 const EXE = "C:\\Adobe\\Adobe After Effects 2026\\Support Files\\AfterFX.exe";
 const install = { executable: EXE, versionName: "x", renderExecutable: null };
@@ -170,5 +176,69 @@ describe("Windows close", () => {
     await t.close();
     expect(t.ownership().kind).toBe("attached");
     expect(consulted).toBe(false);
+  });
+});
+
+describe("Windows ownership fails closed", () => {
+  it("is unknown when the launcher reported no pid, even for a single AfterFX.exe", async () => {
+    const t = await started(transportSeeing(undefined, [], [ae(42)], [ae(42)]));
+    expect(t.ownership().kind).toBe("unknown");
+    expect(t.ownership().evidence).toMatch(/no pid/);
+  });
+
+  it("does not accept a creation time that is merely close (pid reused within a second)", async () => {
+    const t = await started(transportSeeing(42, [], [ae(42)], [ae(42, T0 + 1_000 + 500)]));
+    expect(t.ownership().kind).toBe("unknown");
+  });
+
+  it("accepts the same creation time", async () => {
+    const t = await started(transportSeeing(42, [], [ae(42)], [ae(42, T0 + 1_000)]));
+    expect(t.ownership().kind).toBe("owned");
+  });
+});
+
+describe("the Windows process list", () => {
+  const doc = (processes: unknown[], v: unknown = 1) => JSON.stringify({ v, processes });
+  const one = { pid: 42, started: "2026-10-16T10:00:01.0000000Z", path: EXE };
+
+  it("reads an empty list as 'none running', which is an answer", () => {
+    expect(parseWindowsProcessList(doc([]))).toEqual([]);
+  });
+
+  it("reads a good entry, and tolerates a byte order mark", () => {
+    expect(parseWindowsProcessList("\uFEFF" + doc([one]))).toEqual([
+      { pid: 42, startedAt: Date.parse("2026-10-16T10:00:01Z"), executable: EXE },
+    ]);
+  });
+
+  it("keeps an unreadable path as an empty string, not a guess", () => {
+    expect(parseWindowsProcessList(doc([{ ...one, path: "" }]))[0]?.executable).toBe("");
+  });
+
+  it.each([
+    ["not JSON", "42|2026-10-16T10:00:01Z|C:\\x"],
+    ["empty output", ""],
+    ["wrong version", doc([one], 2)],
+    ["no processes member", JSON.stringify({ v: 1 })],
+    ["a non-object entry", doc(["42"])],
+    ["a string pid", doc([{ ...one, pid: "42" }])],
+    ["a zero pid", doc([{ ...one, pid: 0 }])],
+    ["a fractional pid", doc([{ ...one, pid: 4.5 }])],
+    ["a missing creation time", doc([{ pid: 42, path: EXE }])],
+    ["an invalid creation time", doc([{ ...one, started: "yesterday" }])],
+    ["a missing path field", doc([{ pid: 42, started: one.started }])],
+    ["a repeated pid", doc([one, { ...one, path: "" }])],
+    ["a good entry beside a bad one", doc([one, { pid: "x", started: one.started, path: EXE }])],
+  ])("throws on %s", (_label, text) => {
+    expect(() => parseWindowsProcessList(text)).toThrow();
+  });
+
+  it.runIf(process.platform === "win32")("is readable from this machine's real PowerShell", () => {
+    const list = windowsProcesses();
+    expect(Array.isArray(list)).toBe(true);
+    for (const p of list) {
+      expect(Number.isInteger(p.pid)).toBe(true);
+      expect(Number.isNaN(p.startedAt)).toBe(false);
+    }
   });
 });

@@ -190,29 +190,66 @@ function psProcesses(): HostProcess[] {
  * Every `AfterFX.exe` on Windows, with the process creation time and the path
  * of its image ("" when Windows will not say, as for an elevated process).
  * Not filtered by path: any AfterFX.exe might be what a `-r` is handed to.
- * Throws when the list cannot be read; the caller then claims nothing.
+ *
+ * Fail-closed. PowerShell returns one JSON document, `{"v":1,"processes":[...]}`,
+ * and this validates every entry. An empty list is a real answer ("none running");
+ * a command that failed, output that is not that document, a missing or invalid
+ * pid or creation time, or a duplicate pid throws, so the caller claims nothing
+ * instead of reasoning from the part of a list it could read.
  */
-function windowsProcesses(): HostProcess[] {
-  const script =
-    "Get-CimInstance Win32_Process -Filter \"Name='AfterFX.exe'\" | ForEach-Object { " +
-    "[string]$_.ProcessId + '|' + $_.CreationDate.ToUniversalTime().ToString('o') + '|' + [string]$_.ExecutablePath }; exit 0";
+export function windowsProcesses(): HostProcess[] {
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "$list = @(Get-CimInstance Win32_Process -Filter \"Name='AfterFX.exe'\" | ForEach-Object {",
+    "  if ($null -eq $_.CreationDate) { throw 'process without a creation time' }",
+    "  [pscustomobject]@{ pid = [int]$_.ProcessId; started = $_.CreationDate.ToUniversalTime().ToString('o'); path = [string]$_.ExecutablePath }",
+    "})",
+    "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
+    "ConvertTo-Json -InputObject ([pscustomobject]@{ v = 1; processes = $list }) -Compress -Depth 4",
+  ].join("\n");
   const out = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
     encoding: "utf-8",
     timeout: 30_000,
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
   });
-  const processes: HostProcess[] = [];
-  for (const line of out.split("\n")) {
-    const match = /^(\d+)\|([^|]+)\|(.*)$/.exec(line.trim());
-    if (match === null) continue;
-    const startedAt = Date.parse(match[2] as string);
-    if (Number.isNaN(startedAt)) {
-      throw new Error(`unreadable start time in process list: ${line.trim()}`);
-    }
-    processes.push({ pid: Number(match[1]), startedAt, executable: (match[3] as string).trim() });
+  return parseWindowsProcessList(out);
+}
+
+/** Validates `windowsProcesses`' document; exported for tests. Throws on anything doubtful. */
+export function parseWindowsProcessList(text: string): HostProcess[] {
+  let document: unknown;
+  try {
+    document = JSON.parse(text.replace(/^\uFEFF/, ""));
+  } catch {
+    throw new Error(`process list is not JSON: ${text.slice(0, 80)}`);
   }
-  return processes;
+  const entries = (document as { v?: unknown; processes?: unknown } | null)?.processes;
+  if ((document as { v?: unknown } | null)?.v !== 1 || !Array.isArray(entries)) {
+    throw new Error(`process list is not the expected document: ${text.slice(0, 80)}`);
+  }
+  const seen = new Set<number>();
+  return entries.map((entry: unknown) => {
+    const e = entry as { pid?: unknown; started?: unknown; path?: unknown } | null;
+    if (e === null || typeof e !== "object") {
+      throw new Error("process list entry is not an object");
+    }
+    if (typeof e.pid !== "number" || !Number.isInteger(e.pid) || e.pid <= 0) {
+      throw new Error(`process list has an invalid pid: ${JSON.stringify(e.pid)}`);
+    }
+    if (seen.has(e.pid)) {
+      throw new Error(`process list repeats pid ${e.pid}`);
+    }
+    seen.add(e.pid);
+    const startedAt = typeof e.started === "string" ? Date.parse(e.started) : Number.NaN;
+    if (Number.isNaN(startedAt)) {
+      throw new Error(`process list has no valid creation time for pid ${e.pid}: ${JSON.stringify(e.started)}`);
+    }
+    if (typeof e.path !== "string") {
+      throw new Error(`process list has no path field for pid ${e.pid}`);
+    }
+    return { pid: e.pid, startedAt, executable: e.path.trim() };
+  });
 }
 
 /** Whether two Windows image paths name the same file, as far as text can tell. */
@@ -467,7 +504,16 @@ export class ScriptInvocationTransport implements HostTransport {
         };
         return;
       }
-      if (this.#spawnedPid !== undefined && this.#spawnedPid !== only.pid) {
+      // Without the pid of the process this transport spawned, "the only
+      // AfterFX.exe" could be anyone's, so nothing is claimed.
+      if (this.#spawnedPid === undefined) {
+        this.#ownershipAtLaunch = {
+          kind: "unknown",
+          evidence: `the launcher reported no pid, so the only AfterFX.exe (pid ${only.pid}) cannot be tied to this session`,
+        };
+        return;
+      }
+      if (this.#spawnedPid !== only.pid) {
         this.#ownershipAtLaunch = {
           kind: "unknown",
           evidence: `the only AfterFX.exe is pid ${only.pid}, not pid ${this.#spawnedPid}, which this session started`,
@@ -506,7 +552,11 @@ export class ScriptInvocationTransport implements HostTransport {
         evidence: `could not re-check processes: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
-    const same = now.filter((p) => p.pid === owned.pid && Math.abs(p.startedAt - owned.startedAt) < 1_000);
+    // Windows creation times are 100 ns kernel values, identical on every read
+    // of the same process (checked), so they must match exactly: a looser
+    // match could only ever accept a reused pid. `ps` on macOS is whole seconds.
+    const tolerance = this.#platform === "win32" ? 0 : 1_000;
+    const same = now.filter((p) => p.pid === owned.pid && Math.abs(p.startedAt - owned.startedAt) <= tolerance);
     if (same.length === 1 && now.length === 1) {
       return { kind: "owned", evidence: `pid ${owned.pid} is still the only instance` };
     }

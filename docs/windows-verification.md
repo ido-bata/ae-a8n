@@ -303,3 +303,36 @@ change to ae-test or its lockfile, no ownership override anywhere):
 
 Not exercised: a launch that fails before a session exists (the readiness gate
 timing out) under ae-test. The "persistent dialog" is #41.
+
+### Hardening after review (still #40)
+
+- **No pid, no ownership.** If the launcher reports no pid, a single `AfterFX.exe`
+  is not tied to this session: `unknown`.
+- **Fail-closed process list.** PowerShell returns one JSON document; Node
+  validates every entry. A failed command, output that is not that document, a
+  bad or repeated pid, a missing or invalid creation time or path field all
+  throw, so nothing is claimed from the readable part. An empty list is a real
+  answer ("none running"); an unreadable list is not (`parseWindowsProcessList`,
+  tested case by case, plus a test against this machine's real PowerShell).
+- **Exact creation times.** `Win32_Process.CreationDate` is a 100 ns kernel value;
+  five reads of one process gave one value, so the old 1 s tolerance (needed for
+  macOS `ps`, whole seconds) is 0 on Windows. A pid with a start time 500 ms off
+  is `unknown`. (`Get-Process.StartTime` differs from CIM in the last digit; only
+  CIM is used.)
+- Regression tests that fail on the previous commit: no-pid and near-time pid
+  reuse. The parser tests have no old counterpart: the old reader skipped lines it
+  could not parse.
+- Destination of `AfterFX.exe -r` vs ownership: measured and written up in #43
+  (a `-r` launcher shows as a second `AfterFX.exe` for 0.3-0.7 s; a `-r` during
+  startup starts a second full instance). Re-checking narrows the window, it does
+  not guarantee the destination.
+
+Re-verified on the real host with the hardened build: cold launch `owned`, unsaved
+edit refused, `close(discard)` quits (0 AE); existing AE `attached` and the same
+pid still alive after `close()`; owned AE ended from outside `unknown` with
+`close()` quitting nothing. ae-test (unmodified npm package, **this branch's local
+build**, not a published ae-a8n): 3 runs x 3 specs clean (snapshot recorded then
+compared, typed error, deliberate failure, AE 0 after each run). Two other runs on
+this build hit the persistent "second script" dialog at the first `project.open`
+(#41); each was force-killed by PID after evidence was saved and is not counted
+as a pass.
