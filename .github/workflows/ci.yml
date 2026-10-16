@@ -13,6 +13,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v5
 
@@ -73,6 +75,8 @@ jobs:
   release-tooling-windows:
     runs-on: windows-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Check out with CRLF line ends
         run: git config --global core.autocrlf true
@@ -97,7 +101,7 @@ jobs:
         run: npm ci
 
       - name: Release tooling tests
-        run: npx vitest run test/publish-gate.test.ts test/stage-publish.test.ts test/docs-api.test.ts test/doc-snippets.test.ts
+        run: npx vitest run test/publish-gate.test.ts test/stage-publish.test.ts test/docs-api.test.ts test/doc-snippets.test.ts test/github-rulesets.test.ts
 
       - name: Check documented JSX snippets are ES3
         run: node scripts/check-doc-snippets.js docs/verification.md
