@@ -24,7 +24,14 @@ import { join, resolve } from "node:path";
 import { AeDriver } from "../driver/driver.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
 import { TraceRecorder, type TraceEvent } from "../trace/trace.js";
-import { AfterEffectsError, EntityNotFoundError, HostError, contextualise } from "./errors.js";
+import {
+  AfterEffectsError,
+  EntityNotFoundError,
+  HostError,
+  ParameterValueError,
+  PropertyHasNoValueError,
+  contextualise,
+} from "./errors.js";
 import type { StopResult } from "../driver/driver.js";
 import type { HostOwnership } from "../driver/transport.js";
 
@@ -37,8 +44,12 @@ import type {
   EffectInfo,
   LaunchOptions,
   LayerInfo,
+  OpenProjectOptions,
+  OperationOptions,
+  ParameterValue,
   ProjectInfo,
   PropertyInfo,
+  PropertyKind,
   RenderOptions,
   RenderedFrame,
 } from "./types.js";
@@ -60,13 +71,69 @@ class Session {
     });
   }
 
-  async call<T>(op: string, method: string, params: Record<string, unknown> = {}): Promise<T> {
+  async call<T>(
+    op: string,
+    method: string,
+    params: Record<string, unknown> = {},
+    options: OperationOptions = {},
+  ): Promise<T> {
+    const timeoutMs = optionalTimeout(options.timeoutMs);
     try {
-      return (await this.driver.call(method, params, { opName: op }));
+      return (await this.driver.call(method, params, {
+        opName: op,
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      }));
     } catch (error) {
       contextualise(op, error);
     }
   }
+}
+
+function optionalTimeout(value: unknown): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new TypeError("timeoutMs must be a positive number");
+  }
+  return value;
+}
+
+/** A finite number, or an array of finite numbers; the host checks the shape. */
+function requireParameterValue(value: unknown): asserts value is ParameterValue {
+  const finite = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+  if (!(finite(value) || (Array.isArray(value) && value.every(finite)))) {
+    throw new TypeError("parameter value must be a finite number or an array of finite numbers");
+  }
+}
+
+function isNoValueKind(kind: unknown): kind is Exclude<PropertyKind, "value"> {
+  return kind === "no-value" || kind === "custom-value" || kind === "group";
+}
+
+/**
+ * Whether a path is absolute in the host's terms, decided from the text
+ * alone so it does not depend on the caller's OS (a transport may run After
+ * Effects on another machine). Absolute: POSIX `/…`; Windows `C:\…` or
+ * `C:/…`; UNC `\\server\share\…` (and `\\?\…`). Everything else is
+ * resolved by After Effects against *its own* working directory, which is
+ * not the caller's: `copy.aep`, `./x`, `../x`, `~/x`, drive-relative `C:x`,
+ * and rooted-without-drive `\x`.
+ */
+export function isAbsoluteProjectPath(path: string): boolean {
+  return /^\//.test(path) || /^[A-Za-z]:[\\/]/.test(path) || /^\\\\[^\\]/.test(path);
+}
+
+/** Rejects a relative project path before anything is sent; never resolves it. */
+function requireAbsoluteProjectPath(value: unknown): string {
+  const path = requireString(value, "path");
+  if (!isAbsoluteProjectPath(path)) {
+    throw new TypeError(
+      `project path must be absolute, got ${JSON.stringify(path)}: After Effects would resolve it against its own ` +
+        `working directory, not yours. Resolve it first, e.g. path.resolve(${JSON.stringify(path)}).`,
+    );
+  }
+  return path;
 }
 
 function requireString(value: unknown, field: string): string {
@@ -142,16 +209,31 @@ export class AfterEffects {
   /**
    * Opens a project, replacing the open one. Refuses with
    * UnsavedChangesError if that would discard unsaved changes, unless
-   * `unsavedChanges` is "discard".
+   * `unsavedChanges` is "discard". `timeoutMs` overrides the session budget
+   * for this call only.
+   *
+   * If this times out, After Effects usually still finishes the open; get a
+   * handle with `project()` instead of opening again.
    */
-  async openProject(path: string, options: { unsavedChanges?: "refuse" | "discard" } = {}): Promise<Project> {
-    // Absolute for the same reason as the session root: AE resolves a relative
-    // path against its own working directory.
-    const projectPath = resolve(requireString(path, "path"));
-    await this.#session.call("project.open", "project.open", {
-      path: projectPath,
-      discardUnsavedChanges: options.unsavedChanges === "discard",
-    });
+  async openProject(path: string, options: OpenProjectOptions = {}): Promise<Project> {
+    const projectPath = requireAbsoluteProjectPath(path);
+    await this.#session.call(
+      "project.open",
+      "project.open",
+      { path: projectPath, discardUnsavedChanges: options.unsavedChanges === "discard" },
+      options,
+    );
+    return new Project(this.#session);
+  }
+
+  /**
+   * A handle to the project open in After Effects now, without opening
+   * anything. Asks the host first, so it waits for a script still running
+   * from a timed-out call (an `openProject`, say) and fails if no project is
+   * reachable. Check `info().file` to see which project it is.
+   */
+  async project(options: OperationOptions = {}): Promise<Project> {
+    await this.#session.call<ProjectInfo>("project.info", "project.info", {}, options);
     return new Project(this.#session);
   }
 
@@ -294,12 +376,17 @@ export class Comp {
     const base = this.#session.driver.artifactsDir;
     const outputDir =
       options.subdirectory === undefined ? base : join(base, options.subdirectory);
-    return this.#session.call<RenderedFrame>("comp.renderFrame", "comp.renderFrame", {
-      comp: this.name,
-      frame,
-      outputDir,
-      ...(options.prefix === undefined ? {} : { prefix: options.prefix }),
-    });
+    return this.#session.call<RenderedFrame>(
+      "comp.renderFrame",
+      "comp.renderFrame",
+      {
+        comp: this.name,
+        frame,
+        outputDir,
+        ...(options.prefix === undefined ? {} : { prefix: options.prefix }),
+      },
+      options,
+    );
   }
 }
 
@@ -429,21 +516,42 @@ export class Parameter {
     this.name = name;
   }
 
-  async get(): Promise<number> {
+  /**
+   * Reads the value: a number, or an array of numbers for points and colours
+   * (see `ValueProperty`). A property without one (`kind` other than
+   * `"value"`) rejects with `PropertyHasNoValueError`; use `info()` to
+   * describe any property without failing.
+   */
+  async get(): Promise<ParameterValue> {
     const info = await this.info();
-    return info.value;
-  }
-
-  /** Sets the value and returns what the host reports back afterwards. */
-  async set(value: number): Promise<number> {
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-      throw new TypeError("parameter value must be a finite number");
+    if (info.kind !== "value") {
+      throw new PropertyHasNoValueError(info.kind, this.name, "effect.getParameter");
     }
-    const info = await this.info(value);
     return info.value;
   }
 
-  async info(value?: number): Promise<PropertyInfo> {
+  /**
+   * Writes the value and returns what the host reports back afterwards
+   * (After Effects stores floats in single precision and may fill in a
+   * missing z or alpha). The shape must fit the property's `valueType`, or it
+   * rejects with `ParameterValueError`; a property without a value rejects
+   * with `PropertyHasNoValueError`. Either way the host refuses before
+   * writing.
+   */
+  async set(value: ParameterValue): Promise<ParameterValue> {
+    requireParameterValue(value);
+    const info = await this.info(value);
+    if (info.kind !== "value") {
+      throw new PropertyHasNoValueError(info.kind, this.name, "effect.setParameter");
+    }
+    return info.value;
+  }
+
+  /**
+   * Describes the property (`kind`, `valueType`, and `value` when it has
+   * one). With a `value`, writes it first, as `set` does.
+   */
+  async info(value?: ParameterValue): Promise<PropertyInfo> {
     const params = {
       comp: this.#comp,
       layer: this.#layer,
@@ -451,8 +559,23 @@ export class Parameter {
       parameter: this.name,
       ...(value === undefined ? {} : { value }),
     };
-    return value === undefined
-      ? this.#session.call<PropertyInfo>("effect.getParameter", "effect.getParameter", params)
-      : this.#session.call<PropertyInfo>("effect.setParameter", "effect.setParameter", params);
+    if (value === undefined) {
+      return this.#session.call<PropertyInfo>("effect.getParameter", "effect.getParameter", params);
+    }
+    requireParameterValue(value);
+    try {
+      return await this.#session.call<PropertyInfo>("effect.setParameter", "effect.setParameter", params);
+    } catch (error) {
+      const cause = error instanceof AfterEffectsError ? error.cause : undefined;
+      if (cause instanceof HostError && cause.name === "NoValueError" && isNoValueKind(cause.kind)) {
+        throw new PropertyHasNoValueError(cause.kind, this.name, "effect.setParameter", { cause });
+      }
+      if (cause instanceof HostError && cause.name === "ValueShapeError") {
+        throw new ParameterValueError(cause.kind ?? "unknown", this.name, "effect.setParameter", cause.message, {
+          cause,
+        });
+      }
+      throw error;
+    }
   }
 }

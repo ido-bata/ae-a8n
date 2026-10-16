@@ -96,6 +96,10 @@
     if (error.errorNumber !== undefined && typeof error.errorNumber === "number") {
       payload.aeError = error.errorNumber;
     }
+    // Set by the host's own typed errors (NoValueError) for the API to branch on.
+    if (typeof error.kind === "string") {
+      payload.kind = error.kind;
+    }
     if (error.matchName !== undefined && error.matchName !== null) {
       payload.message = payload.message + " (matchName: " + String(error.matchName) + ")";
     }
@@ -233,15 +237,128 @@
     return null;
   }
 
+  // PropertyValueType member names, in Adobe's order. Looked up on the live
+  // enum, so the numbers come from the host, not from here.
+  var VALUE_TYPE_NAMES = [
+    "NO_VALUE", "ThreeD_SPATIAL", "ThreeD", "TwoD_SPATIAL", "TwoD", "OneD",
+    "COLOR", "CUSTOM_VALUE", "MARKER", "LAYER_INDEX", "MASK_INDEX", "SHAPE",
+    "TEXT_DOCUMENT"
+  ];
+
+  function valueTypeName(property) {
+    var type = property.propertyValueType;
+    for (var i = 0; i < VALUE_TYPE_NAMES.length; i++) {
+      // Constant keys, not request data: a plain lookup is safe here, and
+      // AE's enums are host objects that need not report own properties.
+      var member = PropertyValueType[VALUE_TYPE_NAMES[i]];
+      if (member !== undefined && member === type) {
+        return VALUE_TYPE_NAMES[i];
+      }
+    }
+    return String(type);
+  }
+
+  /**
+   * The value shapes this API carries, by value type: `min`/`max` array
+   * lengths that `setValue` accepts on AE 26.5x89, or 0/0 for a single
+   * number. ThreeD takes 2 (z becomes 0) and COLOR 3 (alpha becomes 1).
+   * Anything else (MARKER, SHAPE, TEXT_DOCUMENT) is not carried.
+   */
+  function valueShape(name) {
+    if (name === "OneD" || name === "LAYER_INDEX" || name === "MASK_INDEX") {
+      return { min: 0, max: 0, text: "a number" };
+    }
+    if (name === "TwoD" || name === "TwoD_SPATIAL") {
+      return { min: 2, max: 2, text: "an array of 2 numbers" };
+    }
+    if (name === "ThreeD" || name === "ThreeD_SPATIAL") {
+      return { min: 2, max: 3, text: "an array of 2 or 3 numbers" };
+    }
+    if (name === "COLOR") {
+      return { min: 3, max: 4, text: "an array of 3 or 4 numbers" };
+    }
+    return null;
+  }
+
+  /**
+   * Whether a script can read this property's value, without reading it.
+   * On AE 26.5x89 reading `value` throws for PropertyValueType.NO_VALUE
+   * (e.g. ADBE Tint-0004, ADBE Ramp-0008) and CUSTOM_VALUE (Levels'
+   * histogram, Curves), and a group (Compositing Options) has no value.
+   * Value types this API does not carry count as "custom-value".
+   */
+  function propertyKind(property) {
+    if (property.propertyType !== PropertyType.PROPERTY) {
+      return "group";
+    }
+    var name = valueTypeName(property);
+    if (name === "NO_VALUE") {
+      return "no-value";
+    }
+    return valueShape(name) === null ? "custom-value" : "value";
+  }
+
   function describeProperty(property) {
-    var out = { name: property.name };
+    var kind = propertyKind(property);
+    var out = { name: property.name, kind: kind };
     if (property.matchName !== undefined && property.matchName !== null) {
       out.matchName = property.matchName;
     }
-    if (property.value !== undefined) {
+    if (kind !== "group") {
+      out.valueType = valueTypeName(property);
+    }
+    if (kind === "value") {
       out.value = property.value;
     }
     return out;
+  }
+
+  function isFiniteNumber(value) {
+    return typeof value === "number" && isFinite(value);
+  }
+
+  // Not `instanceof Array`: request values come from the codec, which may run
+  // in another realm (as a8n-json.js notes for its own check).
+  function isArray(value) {
+    return Object.prototype.toString.call(value) === "[object Array]";
+  }
+
+  /**
+   * Refuses, before touching the property, a write it cannot take: a
+   * property without a value (NoValueError), or a value of the wrong shape
+   * for its type (ValueShapeError). AE itself would coerce some of these
+   * (observed: `[]` written to a OneD property becomes 0).
+   */
+  function requireWritableValue(property, value) {
+    var kind = propertyKind(property);
+    var error;
+    if (kind !== "value") {
+      error = new Error(
+        "property has no value to write (" + kind + "): " + property.matchName
+      );
+      error.name = "NoValueError";
+      error.kind = kind;
+      throw error;
+    }
+    var name = valueTypeName(property);
+    var shape = valueShape(name);
+    var fits;
+    if (shape.max === 0) {
+      fits = isFiniteNumber(value);
+    } else {
+      fits = isArray(value) && value.length >= shape.min && value.length <= shape.max;
+      for (var i = 0; fits && i < value.length; i++) {
+        fits = isFiniteNumber(value[i]);
+      }
+    }
+    if (!fits) {
+      error = new Error(
+        property.matchName + " (" + name + ") takes " + shape.text
+      );
+      error.name = "ValueShapeError";
+      error.kind = name;
+      throw error;
+    }
   }
 
   function zeroPad(value, width) {
@@ -423,7 +540,9 @@
   methods["effect.setParameter"] = function (params) {
     var effect = resolveEffect(params);
     var property = requireProperty(effect, String(requireParam(params, "parameter")));
-    property.setValue(requireParam(params, "value"));
+    var value = requireParam(params, "value");
+    requireWritableValue(property, value);
+    property.setValue(value);
     return describeProperty(property);
   };
 

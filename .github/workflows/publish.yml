@@ -6,15 +6,21 @@ name: publish
 # - `verify` needs no credentials and runs on pull requests that touch the
 #   release surface, on manual dispatch, and on version tags. It runs the
 #   quality gate, checks the packed tarball is usable, checks the release
-#   preconditions, and does `npm publish --dry-run`.
+#   preconditions, and does `npm stage publish --dry-run`.
 # - `verify` ends with scripts/publish-gate.js, which decides whether this
 #   run may publish: only a pushed tag `v<version>` of a commit on main, only
 #   when the repository variable NPM_PUBLISH_VERSION equals that version,
 #   never a version already on npm, and never the first version (published by
 #   hand with 2FA). Manual dispatch and pull requests never publish.
-# - `publish` runs only when the gate says so. It publishes the exact tarball
-#   `verify` built and checked (same shasum), with npm Trusted Publishing
-#   (OIDC): no NPM_TOKEN exists to leak.
+# - `stage` runs only when the gate says so. It *stages* the exact tarball
+#   `verify` built and checked (same shasum) with `npm stage publish`, through
+#   npm Trusted Publishing (OIDC; no NPM_TOKEN exists to leak). Nothing is
+#   installable until a maintainer approves the staged version with 2FA
+#   (`npm stage approve`); an OIDC token cannot approve. The trusted publisher
+#   on npm is stage-only (`--allow-stage-publish`), so a plain `npm publish`
+#   from this workflow would be refused by the registry as well.
+# - The npm CLI is pinned (NPM_CLI_VERSION) in both jobs: `npm stage` needs
+#   11.15.0 or later, and the CLI that stages is the CLI that dry-ran.
 #
 # There is no `environment:` with required reviewers: on GitHub Free those are
 # not available to private repositories, and a job naming an environment that
@@ -36,6 +42,9 @@ on:
       - "scripts/**"
 
 permissions: {}
+
+env:
+  NPM_CLI_VERSION: "11.19.1"
 
 concurrency:
   group: publish-${{ github.ref }}
@@ -62,6 +71,25 @@ jobs:
         with:
           version: 2026.9.12
           install: true
+
+      - name: Pin the npm CLI
+        run: |
+          mise exec -- npm install -g "npm@$NPM_CLI_VERSION"
+          actual=$(mise exec -- npm --version)
+          if [ "$actual" != "$NPM_CLI_VERSION" ]; then
+            echo "::error::npm is $actual after installing $NPM_CLI_VERSION"
+            exit 1
+          fi
+          # stage-publish.js runs npm as `node <npm-cli.js>`, no shell; name
+          # the one just pinned rather than leaving it to PATH lookup.
+          cli="$(mise exec -- npm root -g)/npm/bin/npm-cli.js"
+          test -f "$cli" || { echo "::error::no npm-cli.js at $cli"; exit 1; }
+          via=$(mise exec -- node "$cli" --version)
+          if [ "$via" != "$NPM_CLI_VERSION" ]; then
+            echo "::error::$cli is npm $via, not the pinned $NPM_CLI_VERSION"
+            exit 1
+          fi
+          echo "NPM_CLI_JS=$cli" >> "$GITHUB_ENV"
 
       - name: Quality gate
         run: |
@@ -94,11 +122,15 @@ jobs:
           NPM_PUBLISH_VERSION: ${{ vars.NPM_PUBLISH_VERSION }}
         run: mise exec -- node scripts/publish-gate.js "$RUNNER_TEMP"/package/*.tgz
 
-      # npm refuses even a dry run over a published version; for one, the gate
-      # has already compared the tarball with the registry's.
-      - name: Publish (dry run)
+      # For a published version the gate has already compared the tarball with
+      # the registry's, and the registry would refuse it: nothing to rehearse.
+      # (npm's own client-side "cannot publish over" check skips prerelease
+      # versions, so it would not stop an alpha; the gate and the registry do.)
+      - name: Stage (dry run)
         if: steps.gate.outputs.registry != 'present'
-        run: mise exec -- npm publish "$RUNNER_TEMP"/package/*.tgz --dry-run --tag next --access public --provenance=false
+        env:
+          EXPECTED_SHASUM: ${{ steps.gate.outputs.shasum }}
+        run: mise exec -- node scripts/stage-publish.js "$RUNNER_TEMP"/package/*.tgz --expect-shasum "$EXPECTED_SHASUM" --dry-run
 
       - uses: actions/upload-artifact@v4
         with:
@@ -107,7 +139,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  publish:
+  stage:
     needs: verify
     if: needs.verify.outputs.publish == 'true'
     runs-on: ubuntu-latest
@@ -115,8 +147,7 @@ jobs:
     permissions:
       contents: read
       # Trusted Publishing: the registry accepts this workflow's OIDC token
-      # instead of a stored secret. Needs npm >= 11.5.1 (the toolchain's Node 24
-      # ships 11.x).
+      # instead of a stored secret, for staging only.
       id-token: write
     steps:
       - uses: actions/checkout@v5
@@ -129,21 +160,32 @@ jobs:
           version: 2026.9.12
           install: true
 
+      - name: Pin the npm CLI
+        run: |
+          mise exec -- npm install -g "npm@$NPM_CLI_VERSION"
+          actual=$(mise exec -- npm --version)
+          if [ "$actual" != "$NPM_CLI_VERSION" ]; then
+            echo "::error::npm is $actual after installing $NPM_CLI_VERSION"
+            exit 1
+          fi
+          # stage-publish.js runs npm as `node <npm-cli.js>`, no shell; name
+          # the one just pinned rather than leaving it to PATH lookup.
+          cli="$(mise exec -- npm root -g)/npm/bin/npm-cli.js"
+          test -f "$cli" || { echo "::error::no npm-cli.js at $cli"; exit 1; }
+          via=$(mise exec -- node "$cli" --version)
+          if [ "$via" != "$NPM_CLI_VERSION" ]; then
+            echo "::error::$cli is npm $via, not the pinned $NPM_CLI_VERSION"
+            exit 1
+          fi
+          echo "NPM_CLI_JS=$cli" >> "$GITHUB_ENV"
+
       - uses: actions/download-artifact@v4
         with:
           name: package
           path: ${{ runner.temp }}/package
 
-      - name: Publish to next
+      - name: Stage for approval (dist-tag next)
+        id: stage
         env:
           EXPECTED_SHASUM: ${{ needs.verify.outputs.shasum }}
-        run: |
-          tarball=$(ls "$RUNNER_TEMP"/package/*.tgz)
-          actual=$(sha1sum "$tarball" | cut -d' ' -f1)
-          if [ "$actual" != "$EXPECTED_SHASUM" ]; then
-            echo "::error::downloaded tarball $actual is not the one the gate checked ($EXPECTED_SHASUM)"
-            exit 1
-          fi
-          # Trusted Publishing needs npm >= 11.5.1.
-          mise exec -- node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); if (a<11||(a===11&&(b<5||(b===5&&c<1)))) { console.error("::error::npm "+process.argv[1]+" cannot use Trusted Publishing"); process.exit(1) }' "$(mise exec -- npm --version)"
-          mise exec -- npm publish "$tarball" --tag next --access public --provenance=false
+        run: mise exec -- node scripts/stage-publish.js "$RUNNER_TEMP"/package/*.tgz --expect-shasum "$EXPECTED_SHASUM"

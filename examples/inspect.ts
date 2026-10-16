@@ -3,7 +3,7 @@
  * project contains. Safe to run against an After Effects someone is using —
  * it opens nothing unless you pass a project, and never discards changes.
  *
- *   node examples/inspect.ts [project.aep]
+ *   node examples/inspect.ts ["$PWD/project.aep"]   # an absolute path
  */
 import { AfterEffects, AfterEffectsNotInstalledError, UnsavedChangesError, resolveInstall } from "@ido-bata/ae-a8n";
 

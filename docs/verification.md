@@ -133,6 +133,66 @@ What this does and does not show:
   usual. Cause not established.
 - Windows: not run.
 
+## Properties without a value (#18), 2026-10-16
+
+macOS 27.0.1 arm64, AE 26.5x89 (ja). On this host reading `value` throws for
+`PropertyValueType.NO_VALUE` (6412: `ADBE Tint-0004`, `ADBE Ramp-0008`) and
+`CUSTOM_VALUE` (6419: `ADBE Easy Levels2-0002`, `ADBE CurvesCustom-0001`);
+every effect ends with the group `ADBE Effect Built In Params` (`propertyType`
+6213) whose `value` is `undefined`. Groups are told apart by `propertyType`
+(`PROPERTY` 6212), the others by `propertyValueType`, without reading `value`.
+
+The same script against the released code and the fix, on a disposable copy
+of a fixture with Tint, Gaussian Blur, Levels, Curves and Gradient Ramp:
+
+| | before | after |
+| --- | --- | --- |
+| `parameters()` on Tint, Levels, Curves, Ramp | fails for the whole effect | lists every property with `kind` |
+| `info()` on a NO_VALUE property | AE's localised error | `{ kind: "no-value" }`, no `value` |
+| `get()` / `set()` on NO_VALUE, CUSTOM_VALUE | `AfterEffectsError` with AE's text | `PropertyHasNoValueError` (`kind`); the host refuses before `setValue` |
+| `get()` on the group | resolved `undefined` | `PropertyHasNoValueError` (`group`) |
+| `set()` on the group | "property.setValue is undefined" | `PropertyHasNoValueError` (`group`) |
+| numeric parameters (Tint-0003, Gaussian Blur, Levels-0003) | read/write | unchanged |
+
+Colour and point parameters report `kind: "value"` with an array `value`;
+their typing is #21.
+## Per-call budgets and `ae.project()` (#22), 2026-10-16
+
+macOS 27.0.1 arm64, AE 26.5x89 (ja), session `timeoutMs: 400`, disposable
+copy of a fixture (closed with discard):
+
+| step | result |
+| --- | --- |
+| `openProject(copy, { timeoutMs: 100 })` | `TimeoutError` at 142 ms; the host finished the open in 494 ms (`ok`) |
+| `ae.project({ timeoutMs: 5000 })` | answered at 1296 ms (waited for the open); `info().file` = the copy |
+| `project.open` requests sent | 1 |
+| `set(50)`, comp/layer/effect lookups at the 400 ms default | all `ok`, 92–104 ms |
+| `renderFrame(0, { timeoutMs: 1 })` | `TimeoutError` at 3 ms; the host rendered it anyway (`ok`, 31 ms), once; the PNG is byte-identical to the same frame rendered with a 10 s budget |
+| state afterwards | Tint value 50 (one write), effects unchanged, AE quit (owned) |
+
+## Value types (#21), 2026-10-16
+
+macOS 27.0.1 arm64, AE 26.5x89 (ja). A plain-JSX probe over the expression
+controls, Fill, Tint and Gradient Ramp: `OneD`, `LAYER_INDEX` (6421) and
+`MASK_INDEX` (6422) read as numbers; `TwoD_SPATIAL` (6415) as 2 numbers;
+`ThreeD_SPATIAL` (6413) as 3; `COLOR` (6418) as 4. `setValue` takes exactly 2
+for `TwoD_SPATIAL`, 2–3 for `ThreeD_SPATIAL` (z → 0), 3–4 for `COLOR`
+(alpha → 1), and an unsigned integer in range for `LAYER_INDEX` /
+`MASK_INDEX`; for a `OneD` property it **stores 0 when given `[]`**. `TwoD`
+and `ThreeD` (non-spatial) were not found on any effect probed.
+
+The same script against `main` (`ca299c4`) and the change:
+
+| | before | after |
+| --- | --- | --- |
+| `info()` | `value` only | `valueType` and `value` (e.g. `COLOR`, `[1,0,0,1]`) |
+| `set([100, 200])` on a point, `[0.2, 0.4, 0.6]` on a colour | `TypeError` (numbers only) | written; colour reads back `[0.2…, 0.4…, 0.6…, 1]` |
+| `set([1, 2])` on a 3D point | `TypeError` | `[1, 2, 0]` |
+| `set(5)` on a point or colour | AE's localised error | `ParameterValueError` (`TwoD_SPATIAL` / `COLOR`) |
+| `set([])` / `set([1, 2])` on a slider | `TypeError` | `ParameterValueError` (`OneD`); value unchanged |
+| numeric `set(70)` on Tint, `set(2)` on a Layer control | ok | ok |
+| Fill colour `[0, 1, 0, 1]`, then render | not writable | the Card's centre pixel is `[0, 255, 0, 255]` |
+
 ## What is verified, in detail
 
 | Area | Level | How |

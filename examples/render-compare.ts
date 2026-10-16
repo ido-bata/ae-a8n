@@ -6,8 +6,10 @@
   *     <project.aep> <comp> <layer> <effect match name> <parameter match name> <before> <after> \
  *     [<other parameter match name>=<value> ...]
  *
- * e.g. copy.aep Main "Solid 1" "ADBE Gaussian Blur 2" "ADBE Gaussian Blur 2-0001" 0 100 \
+ * e.g. "$PWD/copy.aep" Main "Solid 1" "ADBE Gaussian Blur 2" "ADBE Gaussian Blur 2-0001" 0 100 \
  *      "ADBE Gaussian Blur 2-0003=0"
+ * The project path must be absolute (After Effects resolves a relative one
+ * against its own working directory); openProject rejects anything else.
  * (Gaussian Blur's Repeat Edge Pixels, 2-0003, defaults on and keeps the blur
  * inside the layer's bounds; turning it off lets the change spread past them.)
  *
@@ -46,13 +48,13 @@ try {
   for (const setting of extra) {
     const at = setting.lastIndexOf("=");
     const id = setting.slice(0, at);
-    console.log(`set ${id} = ${await effect.parameter(id).set(Number(setting.slice(at + 1)))}`);
+    console.log(`set ${id} = ${JSON.stringify(await effect.parameter(id).set(Number(setting.slice(at + 1))))}`);
   }
   const parameter = effect.parameter(parameterId);
 
-  console.log(`set ${parameterId} = ${await parameter.set(Number(beforeText))}`);
+  console.log(`set ${parameterId} = ${JSON.stringify(await parameter.set(Number(beforeText)))}`);
   const before = await comp.renderFrame(0, { subdirectory: "before" });
-  console.log(`set ${parameterId} = ${await parameter.set(Number(afterText))}`);
+  console.log(`set ${parameterId} = ${JSON.stringify(await parameter.set(Number(afterText)))}`);
   const after = await comp.renderFrame(0, { subdirectory: "after" });
 
   const changed = countChangedPixels(readPng(before.path), readPng(after.path));
