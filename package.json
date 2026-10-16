@@ -1,6 +1,6 @@
 {
   "name": "@ido-bata/ae-a8n",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Drive Adobe After Effects from Node: open projects, apply effects, set parameters, render frames. macOS-verified alpha.",
   "type": "module",
   "license": "MIT",

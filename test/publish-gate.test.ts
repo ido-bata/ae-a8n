@@ -369,15 +369,16 @@ describe("the gate as the workflow runs it", () => {
     expect(result.stderr).toContain("not on main");
   });
 
-  it("refuses the first version from CI with this repository's real package.json", async () => {
+  it("lets this repository's real version through from CI once approved, and it is not the hand-published one", async () => {
     registry.answer = "absent";
     const real = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")) as { version: string };
     writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "@ido-bata/ae-a8n", version: real.version }));
-    const result = await run({ GITHUB_REF_NAME: `v${real.version}`, NPM_PUBLISH_VERSION: real.version });
-    expect(real.version).toBe(gate.MANUAL_FIRST_PUBLISH);
-    expect(result.status).toBe(1);
-    expect(result.outputs.publish).toBe("false");
-    expect(result.stderr).toContain("by hand");
+    expect(real.version).not.toBe(gate.MANUAL_FIRST_PUBLISH);
+    const unapproved = await run({ GITHUB_REF_NAME: `v${real.version}` });
+    expect(unapproved.outputs.publish).toBe("false");
+    const approved = await run({ GITHUB_REF_NAME: `v${real.version}`, NPM_PUBLISH_VERSION: real.version });
+    expect(approved.status).toBe(0);
+    expect(approved.outputs.publish).toBe("true");
   });
 });
 
