@@ -22,11 +22,11 @@ a claim that Windows "works": the table says which gate was reached.
 | --- | --- | --- | --- |
 | P0 environment, safe dedicated session | **pass** | real host | No AE process before the run, no unsaved user project; AE started by the supervisor for the run. |
 | P1 independent JSX | **pass for space-free paths; `-r` fails for paths with whitespace** | real host | See "P1". |
-| P2 launch, readiness, `app.info`, result file | **pass, attached to a running AE only** | real host | `launch()` + probe 0.92 s; `info()` = `{version:"26.5x89", build:"89"}`; `close()` left AE running. **Cold start through ae-a8n not run.** Session roots with a space, with Japanese, and with both reached the probe in ~0.4-0.5 s after #17. |
+| P2 launch, readiness, `app.info`, result file | **pass, including a cold start through ae-a8n** (after a fix) | real host | Attach: probe 0.9 s. **Cold:** no AE running, then `AfterEffects.launch()`, ready in 7.4-8.8 s, then `version()`, `openProject`, `project.info`, `comp`, `comp.info`, `layers`, `close()`; 8/8 sequences, no modal. Before the fix the cold start failed 2/2 (below). `close()` leaves AE running: ownership is `unknown`. |
 | P3 real `.aep`, comp/layer, write and read back | **pass on a clean AE** (blocked earlier, cause found: see "The modal") | real host | open → info → comps → comp → layers → layer → effect apply → parameter set/get, every call ~0.3-0.7 s, no modal. The earlier block was a global AE object left by *another* script, not ae-a8n. |
 | P4 effect + PNG, pixels changed | **pass** | real host | Two 1920x1080 PNGs; Gaussian Blur 0 → 100 changed 453,574 pixels, identical in every run. |
-| P5 ae-test real-host | **not run** | - | ae-test is not in this environment. |
-| P6 fresh-session repeats, exceptions, cleanup | **10/10 pass (attach mode)** | real host | Ten sequential `launch → … → close` sessions against one AE, no modal. One unexplained modal in an earlier run (below). Cold start through ae-a8n still not run; `close()` never quits AE here. |
+| P5 ae-test real-host | **partial: the runner works; ae-test refuses the Windows session by design** | real host + fake | See "P5". Unmodified ae-test cannot run against a real AE here because ownership is `unknown`. With a verification-only ownership shim outside both packages: a real blur spec passed, the snapshot compared equal on a second cold start, a typed-error spec passed, a deliberately false assertion failed as intended, and teardown quit AE every time. |
+| P6 fresh-session repeats, exceptions, cleanup | **repeats pass (10/10 attach, 8/8 cold); overlap understood; one modal unexplained** | real host | See "P6". |
 
 Gate durations (wall clock): AE cold start to a usable GUI ~75 s (two
 splash-like dialogs for ~60 s, then the main window); `-r` against a running AE
@@ -112,50 +112,118 @@ candidate follow-up. **Not done**: that is a diagnostic change, not a fix.
 The first occurrence (before this was understood) followed `mkfixture.jsx` and
 `savefixture.jsx`, both of which had top-level `var comp`.
 
-### A second modal, not explained
+### Overlapping `-r`: "Attempt was made to run a second script while another script was already running"
 
-Once, in the run that followed two refused `openProject` calls (the previous
-session's unsaved changes), AE showed a different dialog: "After Effects
-warning: Attempt was made to ... another script was already running ...
-launching AE with the -ro or -so flag" (the dialog was partly off-screen; the
-middle of the sentence was not readable). The request in `inbox/` was not
-answered. It did **not** reproduce: the same sequence a second time, and ten
-sequential sessions, produced no modal. Evidence: `evidence-rep3` (kept in the
-session scratch directory). Whether two `-r` launches overlapping a still-running
-script can produce it is a hypothesis, not a finding.
+Full text, read from the dialog: *"After Effects warning: Attempt was made to run
+a second script while another script was already running. Second script was not
+run. Try launching AE with the -ro or -so flag to override this behavior."*
 
-### A relative `sessionRoot` or project path (found and fixed, #17)
+- **Mechanism, reproduced without ae-a8n:** `-r long.jsx` (a 6 s `$.sleep`), then
+  `-r quick.jsx` 1.5 s later. The dialog appears while the first runs; when the
+  first ends the dialog is gone and `quick.jsx` *did* run, despite the text. The
+  same happened with `-ro` for the second. So in that case an overlap is a
+  transient dialog, not a lost script.
+- ae-a8n alone does not overlap in practice: after a call times out, the next
+  `-r` is spawned more than 0.3 s later, by which time a 0.4-0.6 s script (open,
+  render) has finished (3 tries, no dialog). A longer abandoned script (a long
+  render) would overlap; that was **not** tested with ae-a8n.
+- **Not explained:** twice (once after two refused `openProject` calls, once at
+  the first call after a cold start through the ae-test shim) the dialog
+  appeared and *stayed* for minutes, with the call and `app.quit` timing out
+  behind it. Whatever script AE believed was running never ended. Startup
+  scripts and third-party ScriptUI panels exist on this machine; **no cause was
+  found, and extensions were not disabled**. Two occurrences in about 35
+  sessions; not reproduced on purpose. Evidence: `evidence-rep3`, `evidence-c1`
+  (kept in the verification scratch directory).
+- Decision: no serialisation was added. Overlap is not shown to cause the
+  persistent case, and the transient case needs no fix. A sleep or a retry would
+  hide the persistent one.
+
+### A cold start that never answers (found and fixed, #17)
+
+Before the fix `launch()` on a cold start failed 2/2: AE was up, healthy and idle
+a minute later, but the one probe `-r` sent at launch had been dropped, and the
+probe waited out its 180 s. Re-sending the probe every 5 s (tried, reverted) was
+worse: a `-r` sent while AE was starting produced *"Unable to execute script. The
+Scripting plugin is not installed."*, which blocked the start, and a second
+`AfterFX.exe` instance was left running. The fix sends no script until AE's main
+window is visible (`AE_CApplication*` plus `IsWindowVisible`; AE creates it
+hidden and shows it after the plug-ins load; the class name does not depend on
+the UI language). A probe sent the moment the window became visible worked every
+time (10/10). The gate is `HostTransport.awaitScriptable`; if no window appears
+within the readiness budget the error says no script was sent and why (a crash
+recovery dialog, for instance). Unit tests: `test/windows-host.test.ts`.
+
+### A relative `sessionRoot` (found and fixed, #17)
 
 `AfterEffects.launch({ sessionRoot: "rel/dir" })` made `-r` receive a relative
 entry path. AE resolves it against its own working directory, ignores it
-silently, and `launch` waits out its timeout (180 s) with no error. A relative
-project path made `openProject` fail with "project file not found". Both are now
-resolved to absolute paths in the API; regression tests are in
-`test/api.test.ts`.
+silently, and `launch` waited out its timeout (180 s) with no error. The root is
+now resolved to an absolute path in `launch`. A relative *project* path is
+rejected with a `TypeError` by main's `isAbsoluteProjectPath` contract (#34);
+this branch does not resolve it. Tests: `test/api.test.ts` (the root) and main's
+`test/project-path.test.ts` (drive, UNC, Japanese, space, relative forms).
+
+## P5: ae-test
+
+`@ido-bata/ae-test@0.1.0-alpha.0` installed from npm into an empty directory,
+with its README's blur spec. Four things are separate:
+
+| Question | Result |
+| --- | --- |
+| Does ae-test itself run on native Windows? | **Yes**, with `--fake-host`: spec load, fixtures, assertions, snapshot record and compare, `report.json`, exit codes. Fake level only; the fake host has `ADBE Fake Gaussian Blur`, not the real effect. |
+| Does it accept a real Windows AE? | **No.** Unmodified ae-test with the local ae-a8n: AE cold-started and answered in 8.8 s, then `HostNotOwnedError: ... unknown ownership (no process ownership check on win32)`. The AE it started was **left running** (`close()` correctly does not quit an unowned host); it was closed by hand. |
+| Do ae-a8n's Windows driver and ae-test's assertions, renders, snapshots and artifacts work on the real AE? | **Yes**, through a verification-only shim (`owned-run.mjs`, in neither package) that reports ownership by the macOS rule: no AfterFX.exe before launch, exactly one after; pid and process start time kept. Three specs, a cold start each: the blur snapshot was recorded and then matched on a second run (same SHA-256 on a fresh AE), a typed `EntityNotFoundError` was asserted, and a deliberately false `toBe` failed with the right message. Traces and PNGs were collected. |
+| Teardown and recovery | With the shim, `close()` sent `app.quit` and the process was gone after every test. Without it, ae-test leaves AE running. See the ownership issue. |
+
+One earlier run of the shim hit the persistent "second script" dialog at its
+first `project.open`; the test timed out, teardown's `app.quit` also timed out,
+and the test AE was force-killed by PID after the evidence was saved. A rerun
+passed.
+
+## P6: repeats and recovery
+
+- 10 sequential sessions against one running AE: 10/10, no modal (see P3/P4).
+- 8 cold starts through ae-a8n, each followed by open / info / comp / layers and
+  a normal UI quit between: 8/8.
+- A new `launch` against the same AE (session recreation): covered by the 10.
+- Timeout continuation: an `openProject` or `renderFrame` abandoned after 20-30
+  ms still finished in AE, and the next call answered, no modal.
+- Recovery: a forced kill (by PID) was needed only for blocked test AEs, never
+  for a passing run. An unclean AE exit makes the next start show Crash Repair
+  Options; the gate waits for it (and fails with a clear message after the
+  budget) rather than sending a script into it.
+
+## Test infrastructure: do not leave AE objects in globals
+
+Every `-r` script shares one engine (`$.engineName` is `main`). A fixture-building
+JSX with a top-level `var comp = ...`, followed by anything that switches
+projects, makes AE show "Object is invalid" and keep showing it (see above).
+Wrap fixture scripts in an IIFE, or set the variable to `null` before the
+script ends. `#targetengine` does not help (condition F).
 
 ## Not verified
 
-- A cold start of AE by `AfterEffects.launch()` (this run attached to an AE the
-  supervisor had started); whether `-r` sent while AE is still starting up is
-  delivered.
-- `windowsHide` removal: no observable difference was recorded.
-- Timeout continuation and serialisation on Windows: `-r` returns immediately,
-  so the macOS "next call waits for the in-flight script" does not exist here.
 - Process ownership: not implemented; `close()` never quits AE on Windows.
-- ae-test, snapshot, behaviour with the CEP panels off and in Safe Mode.
+- A long abandoned script followed by another call through ae-a8n.
+- The persistent "second script" dialog: cause unknown; behaviour with the CEP
+  and ScriptUI panels off, and in Safe Mode.
+- `windowsHide` removal: no observable difference was recorded.
 - Whether a project built *by ae-a8n itself* (not the AE-generated fixture)
   works; the fixture here was created by AE through plain JSX.
+- macOS: the shared files were touched (`driver.ts`, `transport.ts`,
+  `script-invocation.ts`, `api/index.ts`); the macOS tests pass on Windows
+  against fakes, and the macOS real-host path was not re-run.
 
 ## Unit tests
 
-`npm run check` on native Windows: `tsc` and `eslint` clean; `vitest` 9 failures
-that are not about this work, all in `publish-gate` / `docs-api` (see #16; three
-are the CRLF checkout, six are a harness that cannot run on Windows). The
-Windows launcher and discovery are covered by `test/windows-host.test.ts`
-against a fake launcher, plus one test that asks Windows for a real short name.
-
-On Windows, clone with `core.autocrlf=false` (or add an `.gitattributes`) or
-three unrelated tests fail on line endings.
+`npm run check` on native Windows, on the branch merged with main (`e8ade6f`):
+`tsc` and `eslint` clean, `vitest` 22 files, 379 passed, 1 skipped, 0 failed.
+The Windows launcher, discovery, readiness gate and relative `sessionRoot` are
+covered by `test/windows-host.test.ts`, `test/api.test.ts` and
+`test/entry-script.test.ts`. The failures that #16 tracked are fixed on main.
+The merge also needed one test fix: `operation-timeouts.test.ts` split an entry
+path on `/`, which never matched on Windows, so its delays never applied.
 
 ## Repeating this
 
@@ -177,7 +245,8 @@ start: choose **Continue**, never Reset Preferences.
 
 ## macOS regression risk
 
-`ScriptInvocationTransport` still takes the same `darwin` branches; the only
-shared edits are the removal of a Windows-only branch from `#run` and a new
-constructor option. `macos-host.test.ts` passes unmodified on Windows (it runs
-against fakes). The macOS real-host path was not re-run.
+The shared edits are `HostTransport.awaitScriptable` (optional; only the
+script-invocation transport implements it, and it returns at once off Windows),
+the driver's use of it, the removal of a Windows-only branch from `#run`, and
+new constructor options. `macos-host.test.ts` passes unmodified on Windows (it
+runs against fakes). The macOS real-host path was not re-run.
