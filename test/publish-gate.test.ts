@@ -418,6 +418,8 @@ describe("the publish workflow", () => {
     expect(pinned).toBeDefined();
     expect(stage.versionAtLeast(pinned ?? "0.0.0", stage.MINIMUM_NPM)).toBe(true);
     expect(workflow.match(/- name: Pin the npm CLI/g)).toHaveLength(2);
+    // ...and both hand stage-publish.js the npm-cli.js of the CLI they pinned.
+    expect(workflow.match(/echo "NPM_CLI_JS=\$cli" >> "\$GITHUB_ENV"/g)).toHaveLength(2);
     expect(workflow.indexOf("Pin the npm CLI", workflow.indexOf("\n  stage:"))).toBeLessThan(
       workflow.indexOf("stage-publish.js", workflow.indexOf("\n  stage:")),
     );

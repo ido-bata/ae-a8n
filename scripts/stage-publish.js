@@ -5,7 +5,8 @@
  *
  *   node scripts/stage-publish.js <tarball.tgz> --expect-shasum <sha1> [--dry-run] [npm args...]
  *
- * Run from the package root. Before anything is sent it checks:
+ * Run from the package root. npm is started as `node <npm-cli.js>`, never
+ * through a shell (scripts/npm-cli.js). Before anything is sent it checks:
  * - the npm CLI is the pinned one (NPM_CLI_VERSION, when set) and new enough
  *   for `npm stage` (11.15.0);
  * - the tarball is the one the gate checked (sha1);
@@ -23,6 +24,8 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
+
+import { npmCommand } from "./npm-cli.js";
 
 export const DIST_TAG = "next";
 export const MINIMUM_NPM = "11.15.0";
@@ -58,7 +61,18 @@ function main() {
   args.splice(expectIndex, 2);
   const dryRun = args.includes("--dry-run");
 
-  const npmVersion = spawnSync("npm", ["--version"], { encoding: "utf-8" }).stdout.trim();
+  // npm runs as `node <npm-cli.js>`, never through a shell (scripts/npm-cli.js).
+  let npm;
+  try {
+    npm = npmCommand();
+  } catch (error) {
+    fail(/** @type {Error} */ (error).message);
+  }
+  const probe = spawnSync(npm.command, [...npm.args, "--version"], { encoding: "utf-8" });
+  if (probe.status !== 0 || typeof probe.stdout !== "string" || probe.stdout.trim() === "") {
+    fail(`could not run the npm CLI at ${npm.args[0]}: ${probe.error?.message ?? probe.stderr ?? `exit ${probe.status}`}`);
+  }
+  const npmVersion = probe.stdout.trim();
   const pinned = process.env.NPM_CLI_VERSION;
   if (pinned !== undefined && pinned !== "" && npmVersion !== pinned) {
     fail(`npm is ${npmVersion}, the workflow pins ${pinned}`);
@@ -78,11 +92,11 @@ function main() {
   }
 
   const result = spawnSync(
-    "npm",
-    ["stage", "publish", tarball, "--tag", DIST_TAG, "--access", "public", "--provenance=false", "--json", ...args],
+    npm.command,
+    [...npm.args, "stage", "publish", tarball, "--tag", DIST_TAG, "--access", "public", "--provenance=false", "--json", ...args],
     { encoding: "utf-8" },
   );
-  process.stderr.write(result.stderr);
+  process.stderr.write(result.stderr ?? "");
   if (result.status !== 0) {
     fail(`npm stage publish exited ${result.status}`);
   }

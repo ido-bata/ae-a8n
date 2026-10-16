@@ -80,6 +80,11 @@ jobs:
             echo "::error::npm is $actual after installing $NPM_CLI_VERSION"
             exit 1
           fi
+          # stage-publish.js runs npm as `node <npm-cli.js>`, no shell; name
+          # the one just pinned rather than leaving it to PATH lookup.
+          cli="$(mise exec -- npm root -g)/npm/bin/npm-cli.js"
+          test -f "$cli" || { echo "::error::no npm-cli.js at $cli"; exit 1; }
+          echo "NPM_CLI_JS=$cli" >> "$GITHUB_ENV"
 
       - name: Quality gate
         run: |
@@ -158,6 +163,11 @@ jobs:
             echo "::error::npm is $actual after installing $NPM_CLI_VERSION"
             exit 1
           fi
+          # stage-publish.js runs npm as `node <npm-cli.js>`, no shell; name
+          # the one just pinned rather than leaving it to PATH lookup.
+          cli="$(mise exec -- npm root -g)/npm/bin/npm-cli.js"
+          test -f "$cli" || { echo "::error::no npm-cli.js at $cli"; exit 1; }
+          echo "NPM_CLI_JS=$cli" >> "$GITHUB_ENV"
 
       - uses: actions/download-artifact@v4
         with:
