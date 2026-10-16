@@ -42,26 +42,72 @@ export type EffectInfo = {
 /**
  * What a property holds, as far as scripting can tell without reading it.
  *
- * - `value`: a value a script can read and write; `value` is present.
+ * - `value`: a value a script can read and write; `value` is present, shaped
+ *   by `valueType`.
  * - `no-value`: `PropertyValueType.NO_VALUE`, nothing to read or write
  *   (e.g. Tint's `ADBE Tint-0004`, Gradient Ramp's `ADBE Ramp-0008`).
- * - `custom-value`: `PropertyValueType.CUSTOM_VALUE`, data After Effects does
- *   not expose to scripts (Levels' histogram, Curves).
+ * - `custom-value`: a value this API does not carry: `CUSTOM_VALUE` (Levels'
+ *   histogram, Curves), which After Effects does not expose to scripts, and
+ *   `MARKER`, `SHAPE`, `TEXT_DOCUMENT`.
  * - `group`: a property group, such as every effect's Compositing Options
  *   (`ADBE Effect Built In Params`).
  */
 export type PropertyKind = "value" | "no-value" | "custom-value" | "group";
 
 /**
+ * The `PropertyValueType` of a property this API reads and writes, by its
+ * After Effects enum name.
+ */
+export type ValueType =
+  | "OneD"
+  | "TwoD"
+  | "TwoD_SPATIAL"
+  | "ThreeD"
+  | "ThreeD_SPATIAL"
+  | "COLOR"
+  | "LAYER_INDEX"
+  | "MASK_INDEX";
+
+/** A value as read or written: a number, or an array of numbers. */
+export type ParameterValue = number | readonly number[];
+
+/**
+ * A readable property's `valueType` and the `value` it reads as, observed on
+ * AE 26.5x89. Writes take the same shape, except that `ThreeD*` also takes 2
+ * numbers (z becomes 0) and `COLOR` 3 (alpha becomes 1).
+ */
+export type ValueProperty =
+  | { readonly kind: "value"; readonly valueType: "OneD" | "LAYER_INDEX" | "MASK_INDEX"; readonly value: number }
+  | { readonly kind: "value"; readonly valueType: "TwoD" | "TwoD_SPATIAL"; readonly value: readonly [number, number] }
+  | {
+      readonly kind: "value";
+      readonly valueType: "ThreeD" | "ThreeD_SPATIAL";
+      readonly value: readonly [number, number, number];
+    }
+  | {
+      readonly kind: "value";
+      readonly valueType: "COLOR";
+      /** `[r, g, b, a]`, each normally 0–1. */
+      readonly value: readonly [number, number, number, number];
+    };
+
+/**
  * One property of an effect. `value` is present exactly when `kind` is
- * `"value"`; narrow on `kind` to read it.
+ * `"value"`; narrow on `kind`, then on `valueType`, to read it.
  */
 export type PropertyInfo = {
   readonly name: string;
   readonly matchName?: string;
 } & (
-  | { readonly kind: "value"; readonly value: number }
-  | { readonly kind: Exclude<PropertyKind, "value">; readonly value?: undefined }
+  | ValueProperty
+  | { readonly kind: "no-value"; readonly valueType: "NO_VALUE"; readonly value?: undefined }
+  | {
+      readonly kind: "custom-value";
+      /** `CUSTOM_VALUE`, `MARKER`, `SHAPE` or `TEXT_DOCUMENT`. */
+      readonly valueType: string;
+      readonly value?: undefined;
+    }
+  | { readonly kind: "group"; readonly valueType?: undefined; readonly value?: undefined }
 );
 
 export type RenderedFrame = {

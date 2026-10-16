@@ -69,6 +69,25 @@ export class PropertyHasNoValueError extends AfterEffectsError {
   }
 }
 
+/**
+ * A value of the wrong shape for the property's type: a number for a point
+ * or colour, an array for a single number, the wrong number of elements, or
+ * a non-finite element. The host refuses before writing; nothing changed.
+ */
+export class ParameterValueError extends AfterEffectsError {
+  /** The property's value type, e.g. `COLOR`. */
+  readonly valueType: string;
+  /** The parameter identifier the caller used. */
+  readonly property: string;
+
+  constructor(valueType: string, property: string, op: string, message: string, options?: { cause?: unknown }) {
+    super(`${op} refused: ${message}`, op, options);
+    this.name = "ParameterValueError";
+    this.valueType = valueType;
+    this.property = property;
+  }
+}
+
 export { HostError };
 
 /**

@@ -46,13 +46,13 @@ try {
   for (const setting of extra) {
     const at = setting.lastIndexOf("=");
     const id = setting.slice(0, at);
-    console.log(`set ${id} = ${await effect.parameter(id).set(Number(setting.slice(at + 1)))}`);
+    console.log(`set ${id} = ${JSON.stringify(await effect.parameter(id).set(Number(setting.slice(at + 1))))}`);
   }
   const parameter = effect.parameter(parameterId);
 
-  console.log(`set ${parameterId} = ${await parameter.set(Number(beforeText))}`);
+  console.log(`set ${parameterId} = ${JSON.stringify(await parameter.set(Number(beforeText)))}`);
   const before = await comp.renderFrame(0, { subdirectory: "before" });
-  console.log(`set ${parameterId} = ${await parameter.set(Number(afterText))}`);
+  console.log(`set ${parameterId} = ${JSON.stringify(await parameter.set(Number(afterText)))}`);
   const after = await comp.renderFrame(0, { subdirectory: "after" });
 
   const changed = countChangedPixels(readPng(before.path), readPng(after.path));
