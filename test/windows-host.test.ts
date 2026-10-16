@@ -207,6 +207,8 @@ function winTransport(spawnLauncher: SpawnLauncher): ScriptInvocationTransport {
     platform: "win32",
     install: { executable: EXE, versionName: "x", renderExecutable: null },
     spawnLauncher,
+    // AE's window is up; the real check asks Windows.
+    mainWindowVisible: () => true,
   });
 }
 
@@ -409,6 +411,64 @@ describe("Windows session start", () => {
     const began = Date.now();
     await expect(driver.start()).rejects.toMatchObject({ name: "TimeoutError" });
     expect(Date.now() - began).toBeLessThan(5_000);
+  });
+
+  it("sends no script until AE's main window is visible, then probes once", async () => {
+    // A `-r` sent while AE is still starting is dropped, or answered with a
+    // "Scripting plugin is not installed" dialog that blocks the start.
+    const { spawnLauncher, calls } = launcher();
+    let polls = 0;
+    const transport = new ScriptInvocationTransport({
+      platform: "win32",
+      install: { executable: EXE, versionName: "x", renderExecutable: null },
+      spawnLauncher,
+      shortPath: (dir) => dir,
+      readyPollMs: 5,
+      mainWindowVisible: () => ++polls > 3,
+    });
+    const driver = new AeDriver({
+      transport,
+      sessionRoot: root,
+      trace: new TraceRecorder({ file: join(root, "trace.jsonl") }),
+      readinessTimeoutMs: 600,
+    });
+    await expect(driver.start()).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(polls).toBeGreaterThan(3);
+    // One launch with no arguments, then exactly one `-r`.
+    expect(calls.map((c) => c.args[0])).toEqual([undefined, "-r"]);
+  });
+
+  it("sends nothing and says why when the main window never appears", async () => {
+    const { spawnLauncher, calls } = launcher();
+    const transport = new ScriptInvocationTransport({
+      platform: "win32",
+      install: { executable: EXE, versionName: "x", renderExecutable: null },
+      spawnLauncher,
+      readyPollMs: 5,
+      mainWindowVisible: () => false,
+    });
+    const driver = new AeDriver({
+      transport,
+      sessionRoot: root,
+      trace: new TraceRecorder({ file: join(root, "trace.jsonl") }),
+      readinessTimeoutMs: 100,
+    });
+    await expect(driver.start()).rejects.toMatchObject({
+      name: "HostUnavailableError",
+      message: expect.stringContaining("no script was sent"),
+    });
+    expect(calls.map((c) => c.args[0])).toEqual([undefined]);
+  });
+
+  it("does not wait for a window on other platforms", async () => {
+    const mac = new ScriptInvocationTransport({
+      platform: "darwin",
+      install: { executable: "/Applications/Adobe After Effects 2026/x", versionName: "x", renderExecutable: null },
+      mainWindowVisible: () => {
+        throw new Error("must not be asked");
+      },
+    });
+    await expect(mac.awaitScriptable(10)).resolves.toBe(true);
   });
 
   it("does not claim ownership of a process it cannot prove it started", async () => {

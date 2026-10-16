@@ -47,7 +47,54 @@ export type ScriptInvocationOptions = {
    * test seam; defaults to asking Windows.
    */
   readonly shortPath?: (directory: string) => string | null;
+  /**
+   * Whether After Effects has shown its main window (Windows). Mainly a test
+   * seam; defaults to asking Windows.
+   */
+  readonly mainWindowVisible?: () => boolean;
+  /** How often that is asked while waiting. Mainly a test seam. */
+  readonly readyPollMs?: number;
 };
+
+/**
+ * Whether a top-level window of class `AE_CApplication*` is visible. AE creates
+ * it hidden at start-up and shows it once its plug-ins, the scripting engine
+ * among them, are loaded; a crash-recovery or other start-up dialog keeps it
+ * hidden. The class name does not depend on the UI language.
+ */
+function windowsMainWindowVisible(): boolean {
+  const script = [
+    "Add-Type -TypeDefinition @'",
+    "using System; using System.Text; using System.Runtime.InteropServices;",
+    "public class A8nW {",
+    "  public delegate bool EnumProc(IntPtr h, IntPtr l);",
+    '  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc p, IntPtr l);',
+    '  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);',
+    '  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);',
+    "  public static bool Any() {",
+    "    bool found = false;",
+    "    EnumWindows(delegate(IntPtr h, IntPtr l) {",
+    "      var c = new StringBuilder(256); GetClassName(h, c, 256);",
+    '      if (c.ToString().StartsWith("AE_CApplication") && IsWindowVisible(h)) { found = true; }',
+    "      return true; }, IntPtr.Zero);",
+    "    return found;",
+    "  }",
+    "}",
+    "'@",
+    "if ([A8nW]::Any()) { 'yes' } else { 'no' }",
+  ].join("\n");
+  try {
+    const out = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+      encoding: "utf-8",
+      timeout: 15_000,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return out.trim() === "yes";
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The 8.3 short name of an existing directory, via Windows itself. Null when
@@ -236,6 +283,8 @@ export class ScriptInvocationTransport implements HostTransport {
   readonly #now: () => number;
   readonly #spawnLauncher: SpawnLauncher;
   readonly #shortPath: (directory: string) => string | null;
+  readonly #mainWindowVisible: () => boolean;
+  readonly #readyPollMs: number;
   /** Directory → the form of it `-r` can be given. */
   readonly #argumentDirs = new Map<string, string>();
   /** Host processes already running when launch() began. */
@@ -257,6 +306,8 @@ export class ScriptInvocationTransport implements HostTransport {
     this.#now = options.now ?? Date.now;
     this.#spawnLauncher = options.spawnLauncher ?? spawn;
     this.#shortPath = options.shortPath ?? windowsShortPath;
+    this.#mainWindowVisible = options.mainWindowVisible ?? windowsMainWindowVisible;
+    this.#readyPollMs = options.readyPollMs ?? 500;
     this.#install =
       options.install ??
       resolveInstall(platform, {
@@ -303,6 +354,28 @@ export class ScriptInvocationTransport implements HostTransport {
     // Waiting for it to exit would hold the session until AE quit and the
     // readiness probe would never run, so only the start is awaited.
     await this.#startWindows([]);
+  }
+
+  /**
+   * Windows: waits for AE's main window to be visible before any `-r` is sent.
+   * Sending one earlier is no use (see `HostTransport.awaitScriptable`), and
+   * re-sending it while waiting made things worse: each `-r` is a process, and
+   * one started a second AE instance. Elsewhere there is nothing to wait for.
+   */
+  async awaitScriptable(timeoutMs: number): Promise<boolean> {
+    if (this.#platform !== "win32") {
+      return true;
+    }
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if (this.#mainWindowVisible()) {
+        return true;
+      }
+      if (Date.now() >= deadline) {
+        return false;
+      }
+      await new Promise((done) => setTimeout(done, this.#readyPollMs));
+    }
   }
 
   confirmLaunched(): void {
