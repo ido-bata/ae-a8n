@@ -420,6 +420,7 @@ describe("the publish workflow", () => {
     expect(workflow.match(/- name: Pin the npm CLI/g)).toHaveLength(2);
     // ...and both hand stage-publish.js the npm-cli.js of the CLI they pinned.
     expect(workflow.match(/echo "NPM_CLI_JS=\$cli" >> "\$GITHUB_ENV"/g)).toHaveLength(2);
+    expect(workflow.match(/via=\$\(mise exec -- node "\$cli" --version\)/g)).toHaveLength(2);
     expect(workflow.indexOf("Pin the npm CLI", workflow.indexOf("\n  stage:"))).toBeLessThan(
       workflow.indexOf("stage-publish.js", workflow.indexOf("\n  stage:")),
     );
