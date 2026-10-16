@@ -146,6 +146,8 @@ export class UnsupportedScriptPathError extends Error {
 /** What the Windows launcher needs from a child process. */
 export interface LauncherChild extends Pick<EventEmitter, "on"> {
   unref(): void;
+  /** The launcher's process id. On a cold start it *is* After Effects. */
+  readonly pid?: number | undefined;
 }
 
 export type SpawnLauncher = (
@@ -182,6 +184,41 @@ function psProcesses(): HostProcess[] {
     });
   }
   return out;
+}
+
+/**
+ * Every `AfterFX.exe` on Windows, with the process creation time and the path
+ * of its image ("" when Windows will not say, as for an elevated process).
+ * Not filtered by path: any AfterFX.exe might be what a `-r` is handed to.
+ * Throws when the list cannot be read; the caller then claims nothing.
+ */
+function windowsProcesses(): HostProcess[] {
+  const script =
+    "Get-CimInstance Win32_Process -Filter \"Name='AfterFX.exe'\" | ForEach-Object { " +
+    "[string]$_.ProcessId + '|' + $_.CreationDate.ToUniversalTime().ToString('o') + '|' + [string]$_.ExecutablePath }; exit 0";
+  const out = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    encoding: "utf-8",
+    timeout: 30_000,
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const processes: HostProcess[] = [];
+  for (const line of out.split("\n")) {
+    const match = /^(\d+)\|([^|]+)\|(.*)$/.exec(line.trim());
+    if (match === null) continue;
+    const startedAt = Date.parse(match[2] as string);
+    if (Number.isNaN(startedAt)) {
+      throw new Error(`unreadable start time in process list: ${line.trim()}`);
+    }
+    processes.push({ pid: Number(match[1]), startedAt, executable: (match[3] as string).trim() });
+  }
+  return processes;
+}
+
+/** Whether two Windows image paths name the same file, as far as text can tell. */
+function sameWindowsPath(a: string, b: string): boolean {
+  const norm = (p: string) => p.replace(/\//g, "\\").toLowerCase();
+  return a.length > 0 && norm(a) === norm(b);
 }
 
 /** `ps` reports start times to the second, and clocks round. */
@@ -294,6 +331,8 @@ export class ScriptInvocationTransport implements HostTransport {
   #owned: HostProcess | null = null;
   #ownershipAtLaunch: HostOwnership = { kind: "unknown", evidence: "not launched" };
   #launched = false;
+  /** The pid of the `AfterFX.exe` this transport itself started, if the launcher said. */
+  #spawnedPid: number | undefined;
   #confirmed = false;
   /** The DoScriptFile still waiting on AE, if a call gave up on it. */
   #inFlight: Promise<void> | null = null;
@@ -302,7 +341,7 @@ export class ScriptInvocationTransport implements HostTransport {
     const platform = options.platform ?? process.platform;
     this.#platform = platform;
     this.#exitTimeoutMs = options.exitTimeoutMs ?? EXIT_TIMEOUT_MS;
-    this.#processes = options.processes ?? psProcesses;
+    this.#processes = options.processes ?? (platform === "win32" ? windowsProcesses : psProcesses);
     this.#now = options.now ?? Date.now;
     this.#spawnLauncher = options.spawnLauncher ?? spawn;
     this.#shortPath = options.shortPath ?? windowsShortPath;
@@ -341,6 +380,15 @@ export class ScriptInvocationTransport implements HostTransport {
     }
     this.#launched = true;
     this.#launchBegan = this.#now();
+    if (this.#platform === "win32") {
+      // Before anything is started: whatever is running now is not ours. A
+      // list that cannot be read leaves ownership unproven, never assumed.
+      try {
+        this.#preexisting = this.#hostProcesses();
+      } catch {
+        this.#preexisting = null;
+      }
+    }
     if (this.#platform === "darwin") {
       // Whatever is running now was not started by this session.
       this.#preexisting = this.#hostProcesses();
@@ -353,7 +401,7 @@ export class ScriptInvocationTransport implements HostTransport {
     // No arguments: this is After Effects itself, not a command that finishes.
     // Waiting for it to exit would hold the session until AE quit and the
     // readiness probe would never run, so only the start is awaited.
-    await this.#startWindows([]);
+    this.#spawnedPid = await this.#startWindows([]);
   }
 
   /**
@@ -383,7 +431,7 @@ export class ScriptInvocationTransport implements HostTransport {
       return;
     }
     this.#confirmed = true;
-    if (this.#platform !== "darwin" || this.#preexisting === null) {
+    if ((this.#platform !== "darwin" && this.#platform !== "win32") || this.#preexisting === null) {
       this.#ownershipAtLaunch = {
         kind: "unknown",
         evidence: `no process ownership check on ${this.#platform}`,
@@ -397,8 +445,36 @@ export class ScriptInvocationTransport implements HostTransport {
       };
       return;
     }
-    const now = this.#hostProcesses();
+    let now: HostProcess[];
+    try {
+      now = this.#hostProcesses();
+    } catch (error) {
+      this.#ownershipAtLaunch = {
+        kind: "unknown",
+        evidence: `could not list processes: ${error instanceof Error ? error.message : String(error)}`,
+      };
+      return;
+    }
     const started = now.filter((p) => p.startedAt >= this.#launchBegan - START_SLACK_MS);
+    if (this.#platform === "win32" && now.length === 1 && started.length === 1) {
+      // Windows proves more than "the only one": it must be this install's
+      // image, and the very process this transport spawned.
+      const only = started[0] as HostProcess;
+      if (!sameWindowsPath(only.executable, this.#install.executable)) {
+        this.#ownershipAtLaunch = {
+          kind: "unknown",
+          evidence: `the only AfterFX.exe (pid ${only.pid}) is ${only.executable || "of unreadable path"}, not ${this.#install.executable}`,
+        };
+        return;
+      }
+      if (this.#spawnedPid !== undefined && this.#spawnedPid !== only.pid) {
+        this.#ownershipAtLaunch = {
+          kind: "unknown",
+          evidence: `the only AfterFX.exe is pid ${only.pid}, not pid ${this.#spawnedPid}, which this session started`,
+        };
+        return;
+      }
+    }
     if (now.length === 1 && started.length === 1) {
       this.#owned = started[0] as HostProcess;
       this.#ownershipAtLaunch = {
@@ -421,7 +497,15 @@ export class ScriptInvocationTransport implements HostTransport {
     // Re-checked at the moment it matters: the process must still be the one
     // this session started (same pid *and* start time, so a reused pid does
     // not count) and the only instance of this install.
-    const now = this.#hostProcesses();
+    let now: HostProcess[];
+    try {
+      now = this.#hostProcesses();
+    } catch (error) {
+      return {
+        kind: "unknown",
+        evidence: `could not re-check processes: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
     const same = now.filter((p) => p.pid === owned.pid && Math.abs(p.startedAt - owned.startedAt) < 1_000);
     if (same.length === 1 && now.length === 1) {
       return { kind: "owned", evidence: `pid ${owned.pid} is still the only instance` };
@@ -436,7 +520,9 @@ export class ScriptInvocationTransport implements HostTransport {
   }
 
   #hostProcesses(): HostProcess[] {
-    return this.#processes().filter((p) => p.executable === this.#install.executable);
+    const all = this.#processes();
+    // Windows: any AfterFX.exe counts, whatever its path (see windowsProcesses).
+    return this.#platform === "win32" ? [...all] : all.filter((p) => p.executable === this.#install.executable);
   }
 
   async invoke(entryScriptPath: string, options: InvokeOptions = {}): Promise<void> {
@@ -499,7 +585,7 @@ export class ScriptInvocationTransport implements HostTransport {
    * next launch stop at the crash-recovery dialog.
    */
   async close(): Promise<void> {
-    if (this.#platform !== "darwin") {
+    if (this.#platform !== "darwin" && this.#platform !== "win32") {
       return;
     }
     const deadline = Date.now() + this.#exitTimeoutMs;
@@ -549,7 +635,7 @@ export class ScriptInvocationTransport implements HostTransport {
    * exits early (a hand-off to a running AE) is normal, and this transport has
    * no evidence about which process it would be killing.
    */
-  #startWindows(args: readonly string[]): Promise<void> {
+  #startWindows(args: readonly string[]): Promise<number | undefined> {
     const executable = this.#install.executable;
     return new Promise((resolve, reject) => {
       const child = this.#spawnLauncher(executable, args, {
@@ -566,7 +652,7 @@ export class ScriptInvocationTransport implements HostTransport {
       });
       child.on("spawn", () => {
         child.unref();
-        resolve();
+        resolve(child.pid);
       });
     });
   }

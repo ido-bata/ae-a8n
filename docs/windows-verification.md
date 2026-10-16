@@ -250,3 +250,37 @@ script-invocation transport implements it, and it returns at once off Windows),
 the driver's use of it, the removal of a Windows-only branch from `#run`, and
 new constructor options. `macos-host.test.ts` passes unmodified on Windows (it
 runs against fakes). The macOS real-host path was not re-run.
+
+## Process ownership (#39)
+
+`ownership()` on Windows is `owned` only on proof, by the macOS rule made stricter
+(`windowsProcesses()` lists every `AfterFX.exe` with PID, creation time and image
+path through CIM; no path filter, because any instance might receive a `-r`):
+
+- nothing was running before `launch()`; otherwise `attached`, never quit;
+- exactly one `AfterFX.exe` after the probe, created after launch began, whose
+  image is this install's (case and slash insensitive; an unreadable path is not
+  accepted), and whose PID is the one this transport spawned;
+- re-checked in `ownership()` (so at `close()`): same PID **and** creation time
+  (PID reuse), still the only instance; a list that cannot be read is `unknown`.
+
+`close()` quits only an `owned` host, through `app.quit` (which refuses while the
+project has unsaved changes unless `unsavedChanges: "discard"`), then waits for
+that process to exit. Nothing in the library signals or terminates a process.
+
+Real host (Windows 11, AE 26.5x89), by `own.mjs` against the dist build:
+
+| Case | Result |
+| --- | --- |
+| no AE, cold launch | `owned` (pid shown in the evidence) |
+| owned, unsaved edit, `close()` | refused (`UnsavedChangesError`), AE still running |
+| owned, `close({unsavedChanges:"discard"})` | `quit: true`, 0 AE processes |
+| AE already running, `launch()` | `attached` |
+| attached, `close()` | `quit: false`, AE still running (same pid) |
+| owned AE ended from outside mid-session | `unknown` ("pid ... is gone"), `close()` does not throw and quits nothing |
+
+Fake process lists (`test/windows-ownership.test.ts`): two AEs at start, the only
+AE not the one spawned, started before launch, other path, unreadable path, died
+before the check, unreadable list, PID reuse (same pid, other start time), a
+second instance appearing later, and a close that waits for exit or reports that
+it did not. PID reuse and "two AEs at start" were not produced on the real host.
