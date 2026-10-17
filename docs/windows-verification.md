@@ -112,32 +112,35 @@ candidate follow-up. **Not done**: that is a diagnostic change, not a fix.
 The first occurrence (before this was understood) followed `mkfixture.jsx` and
 `savefixture.jsx`, both of which had top-level `var comp`.
 
-### Overlapping `-r`: "Attempt was made to run a second script while another script was already running"
+### The "second script" dialog (corrected; see ae-a8n#41)
 
 Full text, read from the dialog: *"After Effects warning: Attempt was made to run
 a second script while another script was already running. Second script was not
 run. Try launching AE with the -ro or -so flag to override this behavior."*
 
-- **Mechanism, reproduced without ae-a8n:** `-r long.jsx` (a 6 s `$.sleep`), then
-  `-r quick.jsx` 1.5 s later. The dialog appears while the first runs; when the
-  first ends the dialog is gone and `quick.jsx` *did* run, despite the text. The
-  same happened with `-ro` for the second. So in that case an overlap is a
-  transient dialog, not a lost script.
-- ae-a8n alone does not overlap in practice: after a call times out, the next
-  `-r` is spawned more than 0.3 s later, by which time a 0.4-0.6 s script (open,
-  render) has finished (3 tries, no dialog). A longer abandoned script (a long
-  render) would overlap; that was **not** tested with ae-a8n.
-- **Not explained:** twice (once after two refused `openProject` calls, once at
-  the first call after a cold start through the ae-test shim) the dialog
-  appeared and *stayed* for minutes, with the call and `app.quit` timing out
-  behind it. Whatever script AE believed was running never ended. Startup
-  scripts and third-party ScriptUI panels exist on this machine; **no cause was
-  found, and extensions were not disabled**. Two occurrences in about 35
-  sessions; not reproduced on purpose. Evidence: `evidence-rep3`, `evidence-c1`
-  (kept in the verification scratch directory).
-- Decision: no serialisation was added. Overlap is not shown to cause the
-  persistent case, and the transient case needs no fix. A sleep or a retry would
-  hide the persistent one.
+**Correction.** An earlier version of this document said that two overlapping `-r`
+scripts reproduce this dialog and that it is then transient. That was wrong: the
+dialog seen in that test was AE's own progress window, *"Executing Script long.jsx...
+Script execution time 0 minutes 3 seconds. [Cancel]"*, which AE shows for any script
+that runs longer than about a second (also for a lone `-r`). Two overlapping `-r`
+are simply queued: the second runs when the first ends, with no warning.
+
+What is known:
+
+- The "second script" dialog has only been seen in the persistent cases (four so
+  far, text read in full each time), at the first `project.open` after a launch,
+  ~1 s after the probe answered. AE was responsive and idle behind it; the call and
+  a later `app.quit` timed out; one OK click did not clear it and a fresh `-r` ran
+  nothing.
+- ae-a8n's own calls do not overlap in practice (the next `-r` is spawned >0.3 s
+  after a 0.4-0.6 s script).
+- It is rare: 4 in about 150 sessions through ae-a8n, 0 in 47 plain `-r` JSX
+  trials with a probe-then-open sequence (0 in 25 more under heavy CPU load).
+- Safe Mode cannot be used to rule third-party code out: it does not load the
+  Scripting plugin at all ("Unable to execute script. The Scripting plugin is not
+  installed.").
+- No sleep, resend, retry or serialisation was added; nothing here shows one would
+  address it. See #41 for the experiments and their counts.
 
 ### A cold start that never answers (found and fixed, #17)
 
