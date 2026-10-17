@@ -266,7 +266,7 @@ describe("closing a session", () => {
     await expect(transport.close()).rejects.toThrow(/did not exit within 300 ms/);
   });
 
-  it("does not wait on Windows, where the existing behaviour is kept", async () => {
+  it("does not wait for, or consult, processes on Windows when it owns none", async () => {
     const transport = new ScriptInvocationTransport({
       platform: "win32",
       install: { executable: "C:\\AE\\Support Files\\AfterFX.exe", versionName: "x", renderExecutable: null },
@@ -350,7 +350,7 @@ describe("who owns the After Effects process", () => {
     expect(t.ownership().kind).toBe("owned");
   });
 
-  it("does not claim ownership on Windows, where it is not checked", () => {
+  it("claims nothing on Windows before launch() has recorded a baseline (see windows-ownership.test.ts)", () => {
     const t = new ScriptInvocationTransport({
       platform: "win32",
       install: { executable: "C:\\AE\\Support Files\\AfterFX.exe", versionName: "x", renderExecutable: null },
