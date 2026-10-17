@@ -12,12 +12,24 @@
 
 export const PROTOCOL_VERSION = 1;
 
+/**
+ * Proof of where a script was delivered (#43). `adopt`: the instance that runs
+ * this request remembers `id`. `require`: run only if it remembers `id`, or fail
+ * without doing anything. Absent on transports that can aim their deliveries.
+ */
+export type SessionMarker = {
+  readonly id: string;
+  readonly adopt?: boolean;
+  readonly require?: boolean;
+};
+
 export type RequestEnvelope = {
   readonly v: number;
   readonly id: string;
   readonly method: string;
   readonly params: Readonly<Record<string, unknown>>;
   readonly timeoutMs: number;
+  readonly session?: SessionMarker;
 };
 
 export type HostErrorPayload = {
@@ -110,12 +122,25 @@ export function parseRequestEnvelope(raw: unknown): RequestEnvelope {
   if (!isRecord(params)) {
     throw new ProtocolError('field "params" must be an object');
   }
+  const session = raw["session"];
+  let marker: SessionMarker | undefined;
+  if (session !== undefined) {
+    if (!isRecord(session)) {
+      throw new ProtocolError('field "session" must be an object');
+    }
+    marker = {
+      id: readString(session, "id"),
+      ...(session["adopt"] === true ? { adopt: true } : {}),
+      ...(session["require"] === true ? { require: true } : {}),
+    };
+  }
   return {
     v,
     id: readString(raw, "id"),
     method: readString(raw, "method"),
     params,
     timeoutMs: readNumber(raw, "timeoutMs"),
+    ...(marker === undefined ? {} : { session: marker }),
   };
 }
 
