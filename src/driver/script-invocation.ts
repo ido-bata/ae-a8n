@@ -47,6 +47,8 @@ export type ScriptInvocationOptions = {
    * test seam; defaults to asking Windows.
    */
   readonly shortPath?: (directory: string) => string | null;
+  /** This process's id, as the parent of the launchers it spawns. Mainly a test seam. */
+  readonly selfPid?: number;
   /**
    * Whether After Effects has shown its main window (Windows). Mainly a test
    * seam; defaults to asking Windows.
@@ -166,6 +168,8 @@ export type HostProcess = {
    * has lost everything below a millisecond, so identity is judged on this.
    */
   readonly identity?: string;
+  /** Windows: the parent process id, to tell the `-r` launchers this process spawned from other instances. */
+  readonly parentPid?: number;
 };
 
 /** AE saves preferences and tears down plugins on quit; that takes seconds. */
@@ -207,7 +211,7 @@ export function windowsProcesses(): HostProcess[] {
     "$ErrorActionPreference = 'Stop'",
     "$list = @(Get-CimInstance Win32_Process -Filter \"Name='AfterFX.exe'\" | ForEach-Object {",
     "  if ($null -eq $_.CreationDate) { throw 'process without a creation time' }",
-    "  [pscustomobject]@{ pid = [int]$_.ProcessId; started = $_.CreationDate.ToUniversalTime().ToString('o'); path = [string]$_.ExecutablePath }",
+    "  [pscustomobject]@{ pid = [int]$_.ProcessId; ppid = [int]$_.ParentProcessId; started = $_.CreationDate.ToUniversalTime().ToString('o'); path = [string]$_.ExecutablePath }",
     "})",
     "[Console]::OutputEncoding = [Text.Encoding]::UTF8",
     "ConvertTo-Json -InputObject ([pscustomobject]@{ v = 1; processes = $list }) -Compress -Depth 4",
@@ -235,7 +239,7 @@ export function parseWindowsProcessList(text: string): HostProcess[] {
   }
   const seen = new Set<number>();
   return entries.map((entry: unknown) => {
-    const e = entry as { pid?: unknown; started?: unknown; path?: unknown } | null;
+    const e = entry as { pid?: unknown; ppid?: unknown; started?: unknown; path?: unknown } | null;
     if (e === null || typeof e !== "object") {
       throw new Error("process list entry is not an object");
     }
@@ -254,7 +258,10 @@ export function parseWindowsProcessList(text: string): HostProcess[] {
     if (typeof e.path !== "string") {
       throw new Error(`process list has no path field for pid ${e.pid}`);
     }
-    return { pid: e.pid, startedAt, executable: e.path.trim(), identity };
+    if (typeof e.ppid !== "number" || !Number.isInteger(e.ppid) || e.ppid < 0) {
+      throw new Error(`process list has no valid parent pid for pid ${e.pid}: ${JSON.stringify(e.ppid)}`);
+    }
+    return { pid: e.pid, startedAt, executable: e.path.trim(), identity, parentPid: e.ppid };
   });
 }
 
@@ -379,6 +386,9 @@ export class ScriptInvocationTransport implements HostTransport {
   readonly #spawnLauncher: SpawnLauncher;
   readonly #shortPath: (directory: string) => string | null;
   readonly #mainWindowVisible: () => boolean;
+  readonly #selfPid: number;
+  /** Pids of the `AfterFX.exe -r` launchers this transport spawned. Each is a second AfterFX.exe for under a second. */
+  readonly #launcherPids = new Set<number>();
   readonly #readyPollMs: number;
   /** Directory → the form of it `-r` can be given. */
   readonly #argumentDirs = new Map<string, string>();
@@ -404,6 +414,7 @@ export class ScriptInvocationTransport implements HostTransport {
     this.#spawnLauncher = options.spawnLauncher ?? spawn;
     this.#shortPath = options.shortPath ?? windowsShortPath;
     this.#mainWindowVisible = options.mainWindowVisible ?? windowsMainWindowVisible;
+    this.#selfPid = options.selfPid ?? process.pid;
     this.#readyPollMs = options.readyPollMs ?? 500;
     this.#install =
       options.install ??
@@ -599,7 +610,15 @@ export class ScriptInvocationTransport implements HostTransport {
   #hostProcesses(): HostProcess[] {
     const all = this.#processes();
     // Windows: any AfterFX.exe counts, whatever its path (see windowsProcesses).
-    return this.#platform === "win32" ? [...all] : all.filter((p) => p.executable === this.#install.executable);
+    if (this.#platform !== "win32") {
+      return all.filter((p) => p.executable === this.#install.executable);
+    }
+    // A `-r` launcher shows as a second AfterFX.exe for 0.3-0.7 s (measured) and
+    // would make a quit right after a call look like "two instances". Only a
+    // process this one spawned (known pid) and that is still its child is left
+    // out; the AE this transport started is never one of them, and a stranger
+    // that merely reuses a launcher's pid has another parent and still counts.
+    return all.filter((p) => !(p.parentPid === this.#selfPid && this.#launcherPids.has(p.pid)));
   }
 
   async invoke(entryScriptPath: string, options: InvokeOptions = {}): Promise<void> {
@@ -608,7 +627,10 @@ export class ScriptInvocationTransport implements HostTransport {
       // and when AE is already running it hands the script over and exits with
       // a status that says nothing about the script. The result file is the
       // authority, and the driver's deadline covers it.
-      await this.#startWindows(["-r", this.#windowsArgumentPath(entryScriptPath)]);
+      const launcherPid = await this.#startWindows(["-r", this.#windowsArgumentPath(entryScriptPath)]);
+      if (launcherPid !== undefined && launcherPid !== this.#spawnedPid) {
+        this.#launcherPids.add(launcherPid);
+      }
       return;
     }
     if (this.#platform === "darwin") {
