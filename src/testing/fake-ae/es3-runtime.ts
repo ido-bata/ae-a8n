@@ -262,6 +262,12 @@ export type RunHostOptions = {
    * present only after startup), so the host must not depend on it.
    */
   readonly foreignJson?: unknown;
+  /**
+   * What `$.global` is. A real engine's global object outlives every script run
+   * in it; the fake's per-run sandbox does not, so a transport that wants state
+   * to persist passes the same object each time.
+   */
+  readonly engineGlobal?: Record<string, unknown>;
 };
 
 export type RunHostResult =
@@ -334,7 +340,9 @@ export function runHostScript(
     evalFile: (target: string | FakeFile) => unknown;
     fileName: string;
     sleep: (ms: number) => void;
+    global: Record<string, unknown>;
   } = {
+    global: options.engineGlobal ?? {},
     evalFile: (target: string | FakeFile): unknown => {
       const path = typeof target === "string" ? target : target.fsName;
       const included = readFileSync(path, "utf-8");
