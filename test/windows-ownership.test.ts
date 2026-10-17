@@ -24,7 +24,13 @@ const EXE = "C:\\Adobe\\Adobe After Effects 2026\\Support Files\\AfterFX.exe";
 const install = { executable: EXE, versionName: "x", renderExecutable: null };
 const T0 = Date.parse("2026-10-16T10:00:00Z");
 
-const ae = (pid: number, startedAt = T0 + 1_000, executable = EXE): HostProcess => ({ pid, startedAt, executable });
+/** `identity` is Windows' full creation time (100 ns); by default it follows `startedAt`. */
+const ae = (pid: number, startedAt = T0 + 1_000, executable = EXE, identity = `t${startedAt}`): HostProcess => ({
+  pid,
+  startedAt,
+  executable,
+  identity,
+});
 
 /** A launcher whose child has `pid` (or none). */
 function launcherWith(pid: number | undefined): SpawnLauncher {
@@ -159,6 +165,30 @@ describe("Windows close", () => {
     await expect(t.close()).rejects.toThrow(/did not exit within 300 ms/);
   });
 
+  it("treats a pid that now belongs to a different process as the original having exited", async () => {
+    const reused = ae(42, T0 + 1_000, EXE, "reused-process");
+    const t = await started(transportSeeing(42, [], [ae(42)], [ae(42)], [reused]));
+    await expect(t.close()).resolves.toBeUndefined();
+  });
+
+  it("does not take an unreadable process list for 'it exited'", async () => {
+    let calls = 0;
+    const t = new ScriptInvocationTransport({
+      platform: "win32",
+      install,
+      now: () => T0,
+      spawnLauncher: launcherWith(42),
+      exitTimeoutMs: 300,
+      processes: () => {
+        calls += 1;
+        if (calls <= 2) return calls === 1 ? [] : [ae(42)];
+        throw new Error("powershell failed");
+      },
+    });
+    await started(t);
+    await expect(t.close()).rejects.toThrow(/powershell failed/);
+  });
+
   it("does not wait for, or consult, an AE it does not own", async () => {
     let consulted = false;
     const t = new ScriptInvocationTransport({
@@ -191,6 +221,20 @@ describe("Windows ownership fails closed", () => {
     expect(t.ownership().kind).toBe("unknown");
   });
 
+  it("does not accept a creation time that differs only below a millisecond (pid reused)", async () => {
+    // Same pid, the same millisecond, 100 ns apart: only the full identifier tells them apart.
+    const first = ae(42, T0 + 1_000, EXE, "2026-10-16T10:00:01.0000000Z");
+    const reused = ae(42, T0 + 1_000, EXE, "2026-10-16T10:00:01.0000001Z");
+    const t = await started(transportSeeing(42, [], [first], [reused]));
+    expect(t.ownership().kind).toBe("unknown");
+  });
+
+  it("is unknown when the process list gives no full creation identifier", async () => {
+    const bare = { pid: 42, startedAt: T0 + 1_000, executable: EXE } as HostProcess;
+    const t = await started(transportSeeing(42, [], [bare], [bare]));
+    expect(t.ownership().kind).toBe("unknown");
+  });
+
   it("accepts the same creation time", async () => {
     const t = await started(transportSeeing(42, [], [ae(42)], [ae(42, T0 + 1_000)]));
     expect(t.ownership().kind).toBe("owned");
@@ -207,7 +251,7 @@ describe("the Windows process list", () => {
 
   it("reads a good entry, and tolerates a byte order mark", () => {
     expect(parseWindowsProcessList("\uFEFF" + doc([one]))).toEqual([
-      { pid: 42, startedAt: Date.parse("2026-10-16T10:00:01Z"), executable: EXE },
+      { pid: 42, startedAt: Date.parse("2026-10-16T10:00:01Z"), executable: EXE, identity: "2026-10-16T10:00:01.0000000Z" },
     ]);
   });
 
@@ -226,6 +270,7 @@ describe("the Windows process list", () => {
     ["a fractional pid", doc([{ ...one, pid: 4.5 }])],
     ["a missing creation time", doc([{ pid: 42, path: EXE }])],
     ["an invalid creation time", doc([{ ...one, started: "yesterday" }])],
+    ["a creation time with less than 100 ns precision", doc([{ ...one, started: "2026-10-16T10:00:01Z" }])],
     ["a missing path field", doc([{ pid: 42, started: one.started }])],
     ["a repeated pid", doc([one, { ...one, path: "" }])],
     ["a good entry beside a bad one", doc([one, { pid: "x", started: one.started, path: EXE }])],

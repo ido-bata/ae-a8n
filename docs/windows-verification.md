@@ -336,3 +336,20 @@ compared, typed error, deliberate failure, AE 0 after each run). Two other runs 
 this build hit the persistent "second script" dialog at the first `project.open`
 (#41); each was force-killed by PID after evidence was saved and is not counted
 as a pass.
+
+### Full creation identifier, and waiting for exit (final #40 fixes)
+
+- `HostProcess.identity` keeps Windows' creation time as given (ISO, exactly 7
+  fractional digits = 100 ns); `startedAt` (ms) remains only for "started after
+  launch began". Windows identity = same pid **and** identical `identity`; an entry
+  without one never matches and is never adopted as owned. macOS keeps its
+  whole-second tolerance. Test: same pid, same millisecond, 100 ns apart -> unknown
+  (it would have been `owned` when only milliseconds were compared).
+- `close()` waits for *that process* to exit (pid + identity). A pid taken over by
+  another process counts as the original having exited; a process list that cannot
+  be read makes `close()` throw instead of concluding it exited. Nothing signals a
+  process.
+- Before/after: against the previous commit the new tests fail (sub-millisecond
+  reuse, no identifier, reused pid in `close()`, a creation time with fewer than
+  seven digits); with the change 42 tests in `windows-ownership.test.ts` pass and
+  the whole suite is 421 passed, 1 skipped, 0 failed.

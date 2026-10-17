@@ -161,6 +161,11 @@ export type HostProcess = {
   /** Start time, ms since the epoch (`ps` reports it to the second). */
   readonly startedAt: number;
   readonly executable: string;
+  /**
+   * Windows: the creation time exactly as the OS gave it (ISO, 100 ns). `startedAt`
+   * has lost everything below a millisecond, so identity is judged on this.
+   */
+  readonly identity?: string;
 };
 
 /** AE saves preferences and tears down plugins on quit; that takes seconds. */
@@ -241,15 +246,31 @@ export function parseWindowsProcessList(text: string): HostProcess[] {
       throw new Error(`process list repeats pid ${e.pid}`);
     }
     seen.add(e.pid);
-    const startedAt = typeof e.started === "string" ? Date.parse(e.started) : Number.NaN;
-    if (Number.isNaN(startedAt)) {
+    const identity = typeof e.started === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{7}Z$/.test(e.started) ? e.started : null;
+    const startedAt = identity === null ? Number.NaN : Date.parse(identity);
+    if (identity === null || Number.isNaN(startedAt)) {
       throw new Error(`process list has no valid creation time for pid ${e.pid}: ${JSON.stringify(e.started)}`);
     }
     if (typeof e.path !== "string") {
       throw new Error(`process list has no path field for pid ${e.pid}`);
     }
-    return { pid: e.pid, startedAt, executable: e.path.trim() };
+    return { pid: e.pid, startedAt, executable: e.path.trim(), identity };
   });
+}
+
+/**
+ * Whether `candidate` is the very process `known` was. Windows: same pid and the
+ * identical full creation time (100 ns); a list entry without one never matches.
+ * macOS: same pid and a start time within `ps`' whole second.
+ */
+function sameProcess(platform: NodeJS.Platform, candidate: HostProcess, known: HostProcess): boolean {
+  if (candidate.pid !== known.pid) {
+    return false;
+  }
+  if (platform === "win32") {
+    return candidate.identity !== undefined && candidate.identity === known.identity;
+  }
+  return Math.abs(candidate.startedAt - known.startedAt) <= 1_000;
 }
 
 /** Whether two Windows image paths name the same file, as far as text can tell. */
@@ -497,6 +518,13 @@ export class ScriptInvocationTransport implements HostTransport {
       // Windows proves more than "the only one": it must be this install's
       // image, and the very process this transport spawned.
       const only = started[0] as HostProcess;
+      if (only.identity === undefined) {
+        this.#ownershipAtLaunch = {
+          kind: "unknown",
+          evidence: `the process list gave no full creation time for pid ${only.pid}`,
+        };
+        return;
+      }
       if (!sameWindowsPath(only.executable, this.#install.executable)) {
         this.#ownershipAtLaunch = {
           kind: "unknown",
@@ -553,10 +581,9 @@ export class ScriptInvocationTransport implements HostTransport {
       };
     }
     // Windows creation times are 100 ns kernel values, identical on every read
-    // of the same process (checked), so they must match exactly: a looser
+    // of the same process (checked), so the full value must match: a looser
     // match could only ever accept a reused pid. `ps` on macOS is whole seconds.
-    const tolerance = this.#platform === "win32" ? 0 : 1_000;
-    const same = now.filter((p) => p.pid === owned.pid && Math.abs(p.startedAt - owned.startedAt) <= tolerance);
+    const same = now.filter((p) => sameProcess(this.#platform, p, owned));
     if (same.length === 1 && now.length === 1) {
       return { kind: "owned", evidence: `pid ${owned.pid} is still the only instance` };
     }
@@ -640,7 +667,10 @@ export class ScriptInvocationTransport implements HostTransport {
     }
     const deadline = Date.now() + this.#exitTimeoutMs;
     const owned = this.#owned;
-    while (owned !== null && this.#hostProcesses().some((p) => p.pid === owned.pid)) {
+    // The exact process, not the pid: a pid reused by another process means the
+    // original is gone. A list that cannot be read throws out of here, so "could
+    // not look" is never taken for "it exited".
+    while (owned !== null && this.#hostProcesses().some((p) => sameProcess(this.#platform, p, owned))) {
       if (Date.now() >= deadline) {
         throw new Error(
           `After Effects did not exit within ${this.#exitTimeoutMs} ms of app.quit; it was left running`,
