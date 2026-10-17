@@ -397,3 +397,19 @@ path): a quit mis-delivered to the other instance refuses and quits nothing in
 either; a restarted engine refuses; distinct random ids and two sessions on one
 instance; only the probe adopts and only the quit requires; the engine holds only
 booleans; and a transport without `verifiesDestination` sends no `session` at all.
+
+### A `-r` launcher is not a second instance (found by the #41 loop)
+
+In an interleaved experiment, one `close()` returned `quit: false` ("2 instances
+running") and the test AE was left running. The second `AfterFX.exe` was the `-r`
+launcher of the call made half a second earlier: a launcher is listed next to the
+running AE for 0.3-0.7 s (measured 6/6) and `close()` re-checks ownership right
+after the last call. That is the safe direction (nothing was quit) but it breaks
+teardown. Fix: the transport remembers the pids of the `-r` launchers it spawned,
+the process list carries each process's parent pid, and a listed process is left
+out of the instance count only if its pid is one of those **and** its parent is
+this process. The AE this transport started is never left out; a stranger that
+reuses a launcher's pid has another parent and still counts. Tests (fail before,
+pass after): a spawned launcher beside the owned AE keeps it `owned`; the same pid
+with another parent, and a child of this process that was never spawned, make it
+`unknown`. Real host: 30 cold open / info / close runs, `close()` quit every one.

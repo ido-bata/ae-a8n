@@ -25,18 +25,34 @@ const install = { executable: EXE, versionName: "x", renderExecutable: null };
 const T0 = Date.parse("2026-10-16T10:00:00Z");
 
 /** `identity` is Windows' full creation time (100 ns); by default it follows `startedAt`. */
-const ae = (pid: number, startedAt = T0 + 1_000, executable = EXE, identity = `t${startedAt}`): HostProcess => ({
-  pid,
-  startedAt,
-  executable,
-  identity,
-});
+/** This test process, as the parent of the launchers it spawns. */
+const SELF = 4242;
+const ae = (
+  pid: number,
+  startedAt = T0 + 1_000,
+  executable = EXE,
+  identity = `t${startedAt}`,
+  parentPid = 1,
+): HostProcess => ({ pid, startedAt, executable, identity, parentPid });
 
 /** A launcher whose child has `pid` (or none). */
 function launcherWith(pid: number | undefined): SpawnLauncher {
   return () => {
     const child = new EventEmitter() as EventEmitter & { unref(): void; pid?: number };
     child.unref = () => undefined;
+    if (pid !== undefined) child.pid = pid;
+    queueMicrotask(() => child.emit("spawn"));
+    return child;
+  };
+}
+
+/** Hands out `pids` in turn to successive launches (the first is the AE itself, later ones are `-r` launchers). */
+function launcherSequence(pids: number[]): SpawnLauncher {
+  let i = 0;
+  return () => {
+    const child = new EventEmitter() as EventEmitter & { unref(): void; pid?: number };
+    child.unref = () => undefined;
+    const pid = pids[Math.min(i++, pids.length - 1)];
     if (pid !== undefined) child.pid = pid;
     queueMicrotask(() => child.emit("spawn"));
     return child;
@@ -53,6 +69,7 @@ function transportSeeing(spawnedPid: number | undefined, ...lists: HostProcess[]
     spawnLauncher: launcherWith(spawnedPid),
     processes: () => lists[Math.min(i++, lists.length - 1)] as HostProcess[],
     exitTimeoutMs: 300,
+    selfPid: SELF,
   });
 }
 
@@ -153,6 +170,53 @@ describe("Windows ownership", () => {
   });
 });
 
+describe("a -r launcher is not a second AfterFX.exe", () => {
+  /** Owned AE 42, then a `-r` (pid 77) is spawned; the list then shows the AE plus whatever `later` says. */
+  async function afterARun(...later: HostProcess[][]): Promise<ScriptInvocationTransport> {
+    let i = 0;
+    const lists: HostProcess[][] = [[], [ae(42)], ...later];
+    const t = new ScriptInvocationTransport({
+      platform: "win32",
+      install,
+      now: () => T0,
+      spawnLauncher: launcherSequence([42, 77]),
+      processes: () => lists[Math.min(i++, lists.length - 1)] as HostProcess[],
+      selfPid: SELF,
+    });
+    await t.launch();
+    t.confirmLaunched();
+    await t.invoke("C:\\x\\entry.jsx"); // spawns the `-r` launcher, pid 77
+    return t;
+  }
+
+  it("is left out when it is a launcher this process spawned, so close() can still quit", async () => {
+    const launcher = ae(77, T0 + 5_000, EXE, "launcher", SELF);
+    const t = await afterARun([ae(42), launcher]);
+    expect(t.ownership().kind).toBe("owned");
+  });
+
+  it("is counted when the same pid belongs to something this process did not spawn", async () => {
+    const stranger = ae(77, T0 + 5_000, EXE, "stranger", 999);
+    const t = await afterARun([ae(42), stranger]);
+    expect(t.ownership().kind).toBe("unknown");
+  });
+
+  it("is counted when its parent is this process but this process never spawned that pid", async () => {
+    const unknownChild = ae(88, T0 + 5_000, EXE, "child", SELF);
+    const t = await afterARun([ae(42), unknownChild]);
+    expect(t.ownership().kind).toBe("unknown");
+  });
+
+  it("never hides the AE this transport itself started", async () => {
+    // Its parent is also this process; it must still be what is judged.
+    const self = ae(42, T0 + 1_000, EXE, "t" + (T0 + 1_000), SELF);
+    const t = await started(transportSeeing(42, [], [self], [self]));
+    expect(t.ownership().kind).toBe("owned");
+    const t2 = await started(transportSeeing(42, [], [self], []));
+    expect(t2.ownership().kind).toBe("unknown");
+  });
+});
+
 describe("Windows close", () => {
   it("waits for the AE it owns to exit", async () => {
     // launch, confirm, ownership() inside close's own checks aside: then gone.
@@ -243,7 +307,7 @@ describe("Windows ownership fails closed", () => {
 
 describe("the Windows process list", () => {
   const doc = (processes: unknown[], v: unknown = 1) => JSON.stringify({ v, processes });
-  const one = { pid: 42, started: "2026-10-16T10:00:01.0000000Z", path: EXE };
+  const one = { pid: 42, started: "2026-10-16T10:00:01.0000000Z", path: EXE, ppid: 1 };
 
   it("reads an empty list as 'none running', which is an answer", () => {
     expect(parseWindowsProcessList(doc([]))).toEqual([]);
@@ -251,7 +315,13 @@ describe("the Windows process list", () => {
 
   it("reads a good entry, and tolerates a byte order mark", () => {
     expect(parseWindowsProcessList("\uFEFF" + doc([one]))).toEqual([
-      { pid: 42, startedAt: Date.parse("2026-10-16T10:00:01Z"), executable: EXE, identity: "2026-10-16T10:00:01.0000000Z" },
+      {
+        pid: 42,
+        startedAt: Date.parse("2026-10-16T10:00:01Z"),
+        executable: EXE,
+        identity: "2026-10-16T10:00:01.0000000Z",
+        parentPid: 1,
+      },
     ]);
   });
 
@@ -272,6 +342,8 @@ describe("the Windows process list", () => {
     ["an invalid creation time", doc([{ ...one, started: "yesterday" }])],
     ["a creation time with less than 100 ns precision", doc([{ ...one, started: "2026-10-16T10:00:01Z" }])],
     ["a missing path field", doc([{ pid: 42, started: one.started }])],
+    ["a missing parent pid", doc([{ pid: 42, started: one.started, path: EXE }])],
+    ["a negative parent pid", doc([{ ...one, ppid: -1 }])],
     ["a repeated pid", doc([one, { ...one, path: "" }])],
     ["a good entry beside a bad one", doc([one, { pid: "x", started: one.started, path: EXE }])],
   ])("throws on %s", (_label, text) => {
