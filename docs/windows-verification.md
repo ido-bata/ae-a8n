@@ -353,3 +353,44 @@ as a pass.
   reuse, no identifier, reused pid in `close()`, a creation time with fewer than
   seven digits); with the change 42 tests in `windows-ownership.test.ts` pass and
   the whole suite is 421 passed, 1 skipped, 0 failed.
+
+## Session marker (#43): proof of where a quit was delivered
+
+Ownership (#40) proves which *process* this session started. `AfterFX.exe -r`
+cannot be aimed at a process, so it does not prove which *instance* a quit reaches
+(ae-a8n#43: a launcher is a second `AfterFX.exe` for 0.3-0.7 s; a `-r` during
+startup starts a second instance). The marker proves the destination:
+
+1. **A random id per driver** (`randomUUID()`), never reused, never logged as a secret
+   (it is not one).
+2. **The probe adopts it.** The probe request carries `session: {id, adopt: true}`;
+   after the probe's method has run, the host stores `sessions[id] = true` in
+   `$.global.__a8nSessions`. Whoever answered the probe, and only that engine,
+   knows the id. This ties the marker to the instance that really processed it,
+   not to a process id.
+3. **The quit requires it.** `app.quit` carries `session: {id, require: true}`; the
+   host checks the store *before* doing anything. No match: it throws
+   `SessionMismatch` and does nothing (no project is closed, nothing is quit).
+4. **Fail closed.** The driver turns `SessionMismatch` into
+   `{quit: false, reason: "quit refused: it reached a different After Effects
+   instance ..."}` and leaves every process alone. The same happens if the answering
+   instance restarted (a fresh engine has no marker).
+5. **Nothing from After Effects is kept.** The store is a plain object whose values
+   are the boolean `true`. No item, comp, layer or project ever lands in the
+   persistent engine (the "Object is invalid" lesson).
+6. **Several sessions share an instance**: the store is a map by id, so a second
+   probe does not erase the first session's marker.
+7. **macOS is unchanged.** Only a transport that sets `verifiesDestination` gets a
+   `session` field at all; `ScriptInvocationTransport` does so on win32 only.
+   `DoScriptFile` addresses the application by bundle, so it keeps its behaviour.
+
+What it does *not* do: it does not make the *probe* safe against a mis-delivery (the
+probe is read-only), it does not prove ownership of the process (that is #40), and a
+second ae-a8n session probing the same instance can quit it if that session also
+owns it (it cannot own it: ownership requires the only instance, started by it).
+
+Tests (`test/session-marker.test.ts`, two fake After Effects behind one delivery
+path): a quit mis-delivered to the other instance refuses and quits nothing in
+either; a restarted engine refuses; distinct random ids and two sessions on one
+instance; only the probe adopts and only the quit requires; the engine holds only
+booleans; and a transport without `verifiesDestination` sends no `session` at all.
