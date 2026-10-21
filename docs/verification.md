@@ -236,7 +236,7 @@ call can only time out); localised built-in menu text other than ja.
 ## Menu commands, `hostEnvironment`, ownership on Windows (#47), 2026-10-21
 
 Windows 11 Home Insider 10.0.29683, AE 26.5x89 (en) installed under
-`D:_appsdobe`, on `main` with #17, #40 and #44 merged. Real host.
+`D:\4_apps\adobe`, on `main` with #17, #40 and #44 merged. Real host.
 
 - `examples/menu-command.ts` (AE's own Layer › Create Shapes from Text, **id
   3781 on Windows too**): from the empty untitled project, `createComp` →
