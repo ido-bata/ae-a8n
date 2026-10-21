@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+Verified on macOS against After Effects 2026 (26.5x89, ja) on 2026-10-21;
+Windows not run (`docs/verification.md`).
+
+### Added
+
+- Menu commands (#45): `ae.menuCommand(nameOrId)` → `MenuCommand.execute()`,
+  `ae.undo()`, `ae.redo()`. A run reports the active composition's layers
+  before and after, with `added` / `removed` by layer id, and records the
+  change in the trace (`menu.execute.scene`). Commands an AEGP plugin
+  registers run synchronously through `app.executeCommand`. Only a numeric
+  id is sent; no script text. Owned sessions only (`HostNotOwnedError`).
+- `LaunchOptions.hostEnvironment`: process-scoped variables set inside AE
+  (`$.setenv`) for native plugins to read with `getenv` (#45). Owned
+  sessions only.
+- Building a scene for a test: `project.createComp()`, `comp.addTextLayer()`,
+  `comp.openInViewer()`, `comp.selectLayers()`, `layer.setEnabled()`,
+  `layer.transform()`, `layer.shapePaths()` (#45).
+- The fake host models text and shape layers, layer ids and selection, the
+  active item, registered menu commands with undo/redo, and `$.getenv` /
+  `$.setenv`.
+
+### Changed
+
+- `LayerInfo` carries `id`, `enabled`, `selected` and `type`, from
+  `comp.layers()` too (part of #23); `enabled` is no longer optional.
+- `@ido-bata/ae-a8n/testing` (unstable): `FakeLayer` takes `(name, position)`
+  and numbers itself from its comp; `FakeProject.items` is an item collection
+  with `addComp`, not an array.
+
 ## 0.1.0-alpha.1
 
 Changes since 0.1.0-alpha.0. Verified on macOS against After Effects 2026
