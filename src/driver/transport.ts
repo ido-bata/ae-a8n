@@ -59,6 +59,16 @@ export interface HostTransport {
    */
   ownership?(): HostOwnership;
 
+  /**
+   * Resolves true once the host will accept a script, false if it still would
+   * not when `timeoutMs` ran out. Optional; a transport without it is probed
+   * straight away. After Effects on Windows needs it: a `-r` sent while AE is
+   * still starting is either dropped without a trace or answered with an
+   * "Unable to execute script. The Scripting plugin is not installed." dialog
+   * that then blocks the start (both observed on 26.5x89).
+   */
+  awaitScriptable?(timeoutMs: number): Promise<boolean>;
+
   /** Wait for a host this session quit to go away. */
   close(): Promise<void>;
 }

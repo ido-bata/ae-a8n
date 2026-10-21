@@ -18,9 +18,10 @@
  */
 
 import { execFileSync, spawn } from "node:child_process";
+import type { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 
 import { macAppBundle, resolveInstall, type AfterEffectsInstall } from "./install-path.js";
 import type { HostOwnership, HostTransport, InvokeOptions } from "./transport.js";
@@ -39,7 +40,129 @@ export type ScriptInvocationOptions = {
   readonly processes?: () => readonly HostProcess[];
   /** The clock ownership is judged against. Mainly a test seam. */
   readonly now?: () => number;
+  /** Starts the Windows launcher. Mainly a test seam. */
+  readonly spawnLauncher?: SpawnLauncher;
+  /**
+   * The 8.3 short form of a Windows directory, or null if it has none. Mainly a
+   * test seam; defaults to asking Windows.
+   */
+  readonly shortPath?: (directory: string) => string | null;
+  /**
+   * Whether the After Effects at `executable` has shown its main window
+   * (Windows). Mainly a test seam; defaults to asking Windows.
+   */
+  readonly mainWindowVisible?: (executable: string) => boolean;
+  /** How often that is asked while waiting. Mainly a test seam. */
+  readonly readyPollMs?: number;
 };
+
+/**
+ * Whether a visible top-level `AE_CApplication*` window belongs to a process
+ * running `executable`. A window of another installed version that is already
+ * open does not count: it says nothing about the one that is starting. AE creates
+ * it hidden at start-up and shows it once its plug-ins, the scripting engine
+ * among them, are loaded; a crash-recovery or other start-up dialog keeps it
+ * hidden. The class name does not depend on the UI language.
+ */
+export function windowsMainWindowVisible(executable: string): boolean {
+  const script = [
+    "Add-Type -TypeDefinition @'",
+    "using System; using System.Text; using System.Runtime.InteropServices;",
+    "public class A8nW {",
+    "  public delegate bool EnumProc(IntPtr h, IntPtr l);",
+    '  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc p, IntPtr l);',
+    '  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);',
+    '  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);',
+    '  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);',
+    "  public static System.Collections.Generic.List<uint> Pids() {",
+    "    var found = new System.Collections.Generic.List<uint>();",
+    "    EnumWindows(delegate(IntPtr h, IntPtr l) {",
+    "      var c = new StringBuilder(256); GetClassName(h, c, 256);",
+    '      if (c.ToString().StartsWith("AE_CApplication") && IsWindowVisible(h)) { uint p; GetWindowThreadProcessId(h, out p); found.Add(p); }',
+    "      return true; }, IntPtr.Zero);",
+    "    return found;",
+    "  }",
+    "}",
+    "'@",
+    "$want = $env:A8N_AE_EXECUTABLE.Replace('/', '\\').ToLowerInvariant()",
+    "$hit = $false",
+    "foreach ($p in [A8nW]::Pids()) {",
+    '  $path = (Get-CimInstance Win32_Process -Filter "ProcessId=$p" -ErrorAction SilentlyContinue).ExecutablePath',
+    "  if ($path -and $path.Replace('/', '\\').ToLowerInvariant() -eq $want) { $hit = $true }",
+    "}",
+    "if ($hit) { 'yes' } else { 'no' }",
+  ].join("\n");
+  try {
+    const out = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+      encoding: "utf-8",
+      timeout: 15_000,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "ignore"],
+      env: { ...process.env, A8N_AE_EXECUTABLE: executable },
+    });
+    return out.trim() === "yes";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The 8.3 short name of an existing directory, via Windows itself. Null when
+ * the volume has no short names (8.3 creation can be disabled) or the lookup
+ * fails.
+ */
+function windowsShortPath(directory: string): string | null {
+  try {
+    const out = execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        // UTF-8 explicitly: PowerShell otherwise answers in the console code
+        // page (CP932 on a Japanese system), which garbles a kana short name.
+        "[Console]::OutputEncoding=[Text.Encoding]::UTF8;" +
+          "(New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:A8N_DIR).ShortPath",
+      ],
+      {
+        encoding: "utf-8",
+        timeout: 15_000,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "ignore"],
+        env: { ...process.env, A8N_DIR: directory },
+      },
+    ).trim();
+    return out.length > 0 ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Thrown before launching: `AfterFX.exe -r` would silently ignore this path. */
+export class UnsupportedScriptPathError extends Error {
+  readonly path: string;
+
+  constructor(path: string) {
+    super(
+      `After Effects cannot be given a script path that contains whitespace (\`AfterFX.exe -r\` drops it ` +
+        `without an error), and no 8.3 short name is available for it: ${path}. ` +
+        "Use a session directory whose path has no spaces, for example through the sessionRoot option.",
+    );
+    this.name = "UnsupportedScriptPathError";
+    this.path = path;
+  }
+}
+
+/** What the Windows launcher needs from a child process. */
+export interface LauncherChild extends Pick<EventEmitter, "on"> {
+  unref(): void;
+}
+
+export type SpawnLauncher = (
+  command: string,
+  args: readonly string[],
+  options: { readonly cwd: string; readonly detached: boolean; readonly stdio: "ignore"; readonly windowsHide: boolean },
+) => LauncherChild;
 
 export type HostProcess = {
   readonly pid: number;
@@ -168,6 +291,12 @@ export class ScriptInvocationTransport implements HostTransport {
   readonly #exitTimeoutMs: number;
   readonly #processes: () => readonly HostProcess[];
   readonly #now: () => number;
+  readonly #spawnLauncher: SpawnLauncher;
+  readonly #shortPath: (directory: string) => string | null;
+  readonly #mainWindowVisible: (executable: string) => boolean;
+  readonly #readyPollMs: number;
+  /** Directory → the form of it `-r` can be given. */
+  readonly #argumentDirs = new Map<string, string>();
   /** Host processes already running when launch() began. */
   #preexisting: readonly HostProcess[] | null = null;
   #launchBegan = 0;
@@ -185,6 +314,10 @@ export class ScriptInvocationTransport implements HostTransport {
     this.#exitTimeoutMs = options.exitTimeoutMs ?? EXIT_TIMEOUT_MS;
     this.#processes = options.processes ?? psProcesses;
     this.#now = options.now ?? Date.now;
+    this.#spawnLauncher = options.spawnLauncher ?? spawn;
+    this.#shortPath = options.shortPath ?? windowsShortPath;
+    this.#mainWindowVisible = options.mainWindowVisible ?? windowsMainWindowVisible;
+    this.#readyPollMs = options.readyPollMs ?? 500;
     this.#install =
       options.install ??
       resolveInstall(platform, {
@@ -227,7 +360,32 @@ export class ScriptInvocationTransport implements HostTransport {
     if (this.#platform !== "win32") {
       return;
     }
-    await this.#run(join(this.#install.executable, ".."), this.#install.executable, []);
+    // No arguments: this is After Effects itself, not a command that finishes.
+    // Waiting for it to exit would hold the session until AE quit and the
+    // readiness probe would never run, so only the start is awaited.
+    await this.#startWindows([]);
+  }
+
+  /**
+   * Windows: waits for AE's main window to be visible before any `-r` is sent.
+   * Sending one earlier is no use (see `HostTransport.awaitScriptable`), and
+   * re-sending it while waiting made things worse: each `-r` is a process, and
+   * one started a second AE instance. Elsewhere there is nothing to wait for.
+   */
+  async awaitScriptable(timeoutMs: number): Promise<boolean> {
+    if (this.#platform !== "win32") {
+      return true;
+    }
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if (this.#mainWindowVisible(this.#install.executable)) {
+        return true;
+      }
+      if (Date.now() >= deadline) {
+        return false;
+      }
+      await new Promise((done) => setTimeout(done, this.#readyPollMs));
+    }
   }
 
   confirmLaunched(): void {
@@ -293,12 +451,11 @@ export class ScriptInvocationTransport implements HostTransport {
 
   async invoke(entryScriptPath: string, options: InvokeOptions = {}): Promise<void> {
     if (this.#platform === "win32") {
-      // No signal: on a cold start `AfterFX.exe -r` *is* After Effects, and
-      // the process returns without waiting for the script anyway.
-      await this.#run(join(this.#install.executable, ".."), this.#install.executable, [
-        "-r",
-        entryScriptPath,
-      ]);
+      // Not waited on: on a cold start `AfterFX.exe -r` *is* After Effects,
+      // and when AE is already running it hands the script over and exits with
+      // a status that says nothing about the script. The result file is the
+      // authority, and the driver's deadline covers it.
+      await this.#startWindows(["-r", this.#windowsArgumentPath(entryScriptPath)]);
       return;
     }
     if (this.#platform === "darwin") {
@@ -368,9 +525,63 @@ export class ScriptInvocationTransport implements HostTransport {
   }
 
   /**
-   * Runs a process and resolves when it exits. Errors are surfaced, except
-   * where noted in `invoke` for Windows.
+   * The path to give `-r`. After Effects drops a script path that contains
+   * whitespace without any error (observed on 26.5x89: the process exits 0 and
+   * nothing runs; the same file runs from File > Scripts > Run Script File), so
+   * a directory with a space is replaced by its 8.3 short name, and a path that
+   * cannot be made whitespace-free is refused up front instead of timing out.
    */
+  #windowsArgumentPath(entry: string): string {
+    if (!/\s/.test(entry)) {
+      return entry;
+    }
+    const directory = win32.dirname(entry);
+    const name = win32.basename(entry);
+    let usable = this.#argumentDirs.get(directory);
+    if (usable === undefined) {
+      const short = /\s/.test(directory) ? this.#shortPath(directory) : directory;
+      if (short === null || /\s/.test(short) || /\s/.test(name)) {
+        throw new UnsupportedScriptPathError(entry);
+      }
+      usable = short;
+      this.#argumentDirs.set(directory, usable);
+    } else if (/\s/.test(name)) {
+      throw new UnsupportedScriptPathError(entry);
+    }
+    return win32.join(usable, name);
+  }
+
+  /**
+   * Starts `AfterFX.exe` and resolves once the process exists, not when it
+   * exits. Rejects if it cannot be started at all (missing executable, access
+   * denied). The child is detached and unreferenced so it neither keeps this
+   * process alive nor dies with it, and it is never signalled: a launcher that
+   * exits early (a hand-off to a running AE) is normal, and this transport has
+   * no evidence about which process it would be killing.
+   */
+  #startWindows(args: readonly string[]): Promise<void> {
+    const executable = this.#install.executable;
+    return new Promise((resolve, reject) => {
+      const child = this.#spawnLauncher(executable, args, {
+        cwd: join(executable, ".."),
+        detached: true,
+        stdio: "ignore",
+        // AfterFX.exe is a GUI application; hiding it would also hide any
+        // dialog it raises.
+        windowsHide: false,
+      });
+      // `on`, not `once`: an error after the spawn must still be handled.
+      child.on("error", (error: Error) => {
+        reject(new Error(`cannot start ${executable}: ${error.message}`, { cause: error }));
+      });
+      child.on("spawn", () => {
+        child.unref();
+        resolve();
+      });
+    });
+  }
+
+  /** Runs a process and resolves when it exits. A non-zero exit is an error. */
   #run(cwd: string, command: string, args: readonly string[]): Promise<void> {
     return new Promise((resolve, reject) => {
       const child = spawn(command, [...args], {
@@ -389,14 +600,7 @@ export class ScriptInvocationTransport implements HostTransport {
       });
       child.on("error", reject);
       child.on("close", (code) => {
-        // Windows reports a non-zero exit from `AfterFX.exe -r` even when the
-        // script ran correctly, because the process hands off to an existing
-        // instance. The result file is the authority there, not the exit code.
-        if (this.#platform === "win32" && code !== 0 && args.length > 0) {
-          resolve();
-          return;
-        }
-        if (code === 0) {
+          if (code === 0) {
           resolve();
           return;
         }

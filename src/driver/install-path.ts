@@ -6,6 +6,7 @@
  * highest version present wins.
  */
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
@@ -68,6 +69,12 @@ export type ResolveOptions = {
   readonly installDir?: string;
   /** Adobe root to scan. Defaults per platform; mainly a test seam. */
   readonly root?: string;
+  /**
+   * Where Windows says After Effects was installed (Uninstall registry
+   * `InstallLocation`). Consulted only when the scanned root holds no usable
+   * install. Mainly a test seam; defaults to asking the registry.
+   */
+  readonly registryLocations?: () => readonly string[];
 };
 
 export class AfterEffectsNotInstalledError extends Error {
@@ -80,15 +87,9 @@ export class AfterEffectsNotInstalledError extends Error {
   }
 }
 
-function resolveWindows(root: string): AfterEffectsInstall | null {
-  if (!existsSync(root)) {
-    return null;
-  }
-  const newest = newestAeDirectory(readdirSync(root));
-  if (newest === null) {
-    return null;
-  }
-  const supportFiles = join(root, newest, "Support Files");
+/** An install at `<dir>\Support Files\AfterFX.exe`, or null when `dir` has no executable. */
+function windowsInstallAt(dir: string): AfterEffectsInstall | null {
+  const supportFiles = join(dir, "Support Files");
   const executable = join(supportFiles, "AfterFX.exe");
   if (!existsSync(executable)) {
     return null;
@@ -96,9 +97,85 @@ function resolveWindows(root: string): AfterEffectsInstall | null {
   const render = join(supportFiles, "aerender.exe");
   return {
     executable,
-    versionName: newest,
+    versionName: dir.split(/[\\/]/).at(-1) ?? dir,
     renderExecutable: existsSync(render) ? render : null,
   };
+}
+
+/**
+ * Every usable install under `root`, newest first. An uninstall can leave a
+ * version directory behind with no executable in it (a 17-file leftover was
+ * seen next to the real install on Windows 11), so the newest *usable* install
+ * wins rather than the newest name.
+ */
+function windowsInstallsUnder(root: string): AfterEffectsInstall[] {
+  if (!existsSync(root)) {
+    return [];
+  }
+  return aeDirectoriesNewestFirst(readdirSync(root))
+    .map((name) => windowsInstallAt(join(root, name)))
+    .filter((found): found is AfterEffectsInstall => found !== null);
+}
+
+/**
+ * `InstallLocation` of every "Adobe After Effects" Uninstall entry. Adobe
+ * records the Adobe root there (for example `D:\Adobe`), wherever the user chose to
+ * install, so nothing machine-specific is assumed. Returns [] off Windows or
+ * when the registry cannot be read.
+ */
+function registryInstallLocations(): string[] {
+  const script =
+    "[Console]::OutputEncoding=[Text.Encoding]::UTF8;" +
+    "Get-ItemProperty 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'," +
+    "'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' " +
+    "-ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Adobe After Effects*' } | " +
+    "ForEach-Object { $_.InstallLocation }";
+  try {
+    const out = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+      encoding: "utf-8",
+      timeout: 15_000,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return out
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function resolveWindows(root: string, registryLocations: () => readonly string[]): AfterEffectsInstall | null {
+  const direct = windowsInstallsUnder(root)[0];
+  if (direct !== undefined) {
+    return direct;
+  }
+  // Nothing under the default root: ask where the installer put it. The
+  // location is the Adobe root, or, for some installers, the install itself.
+  const seen = new Set<string>();
+  const found: AfterEffectsInstall[] = [];
+  for (const location of registryLocations()) {
+    const key = location.replace(/[\\/]+$/, "").toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    // Versioned installs under the location win over the location itself: an
+    // Adobe root can hold a stray `Support Files` from an older release
+    // (AfterFX.exe 25.6.4 beside 26.5 on the machine this was found on).
+    const under = windowsInstallsUnder(location);
+    const here = under.length > 0 ? null : windowsInstallAt(location);
+    found.push(...under, ...(here === null ? [] : [here]));
+  }
+  return (
+    found.sort((a, b) => compareVersionSuffixes(versionSuffix(a.versionName), versionSuffix(b.versionName))).at(-1) ??
+    null
+  );
+}
+
+function versionSuffix(versionName: string): string {
+  return AE_DIR_PATTERN.exec(versionName)?.[1] ?? versionName;
 }
 
 /**
@@ -189,6 +266,18 @@ export function macAppBundle(executable: string): string | null {
   return bundle;
 }
 
+/**
+ * Where to look when the Adobe root holds nothing. A root the caller named is
+ * theirs to be exact about: if it holds no install that is an error, not a cue
+ * to use some other install on the machine. Only the default root falls back.
+ */
+function windowsFallbackLocations(platform: NodeJS.Platform, options: ResolveOptions): () => readonly string[] {
+  if (options.root !== undefined && options.registryLocations === undefined) {
+    return () => [];
+  }
+  return options.registryLocations ?? (platform === "win32" ? registryInstallLocations : () => []);
+}
+
 export function resolveInstall(
   platform: NodeJS.Platform = process.platform,
   options: ResolveOptions = {},
@@ -197,7 +286,10 @@ export function resolveInstall(
     return explicitInstall(platform, options.installDir);
   }
   const root = options.root ?? (platform === "darwin" ? MAC_APPLICATIONS_ROOT : ADOBE_WINDOWS_ROOT);
-  const found = platform === "darwin" ? resolveMac(root) : resolveWindows(root);
+  const found =
+    platform === "darwin"
+      ? resolveMac(root)
+      : resolveWindows(root, windowsFallbackLocations(platform, options));
   if (found === null) {
     throw new AfterEffectsNotInstalledError([root]);
   }
@@ -212,14 +304,9 @@ function explicitInstall(platform: NodeJS.Platform, dir: string): AfterEffectsIn
     }
     return found;
   }
-  const executable = join(dir, "Support Files", "AfterFX.exe");
-  if (!existsSync(executable)) {
+  const found = windowsInstallAt(dir);
+  if (found === null) {
     throw new AfterEffectsNotInstalledError([dir]);
   }
-  const render = join(dir, "Support Files", "aerender.exe");
-  return {
-    executable,
-    versionName: dir.split(/[\\/]/).at(-1) ?? dir,
-    renderExecutable: existsSync(render) ? render : null,
-  };
+  return found;
 }

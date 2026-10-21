@@ -86,6 +86,8 @@ export type CallOptions = {
 };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+/** Least time the probe gets once the host has said it is ready. */
+const PROBE_AFTER_READY_MS = 10_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((done) => setTimeout(done, ms));
@@ -145,11 +147,24 @@ export class AeDriver {
     const began = Date.now();
     try {
       await this.#transport.launch();
+      if (this.#transport.awaitScriptable !== undefined) {
+        const scriptable = await this.#transport.awaitScriptable(this.#readinessTimeoutMs);
+        if (!scriptable) {
+          throw new HostUnavailableError(
+            `After Effects did not become ready to run scripts within ${this.#readinessTimeoutMs}ms ` +
+              `(a dialog may be open in it, such as crash recovery); no script was sent`,
+          );
+        }
+      }
       // The probe and the teardown quit are lifecycle detail, not operations
       // the caller issued; naming them keeps the trace readable without
       // dropping the record.
       const info = (await this.#call("app.info", {}, {
-        timeoutMs: this.#readinessTimeoutMs,
+        // Waiting for the host to be ready has used some of the budget, but
+        // the probe itself only needs the answer time of one script.
+        timeoutMs: this.#transport.awaitScriptable === undefined
+          ? this.#readinessTimeoutMs
+          : Math.max(Math.min(PROBE_AFTER_READY_MS, this.#readinessTimeoutMs), this.#readinessTimeoutMs - (Date.now() - began)),
         opName: "session.probe",
       })) as {
         version: string;
