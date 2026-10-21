@@ -210,6 +210,9 @@ function winTransport(spawnLauncher: SpawnLauncher): ScriptInvocationTransport {
     spawnLauncher,
     // AE's window is up; the real check asks Windows.
     mainWindowVisible: () => true,
+    // No real process list: these tests must not depend on whether this machine
+    // happens to be running After Effects (ownership has its own tests).
+    processes: () => [],
   });
 }
 

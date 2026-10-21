@@ -112,32 +112,35 @@ candidate follow-up. **Not done**: that is a diagnostic change, not a fix.
 The first occurrence (before this was understood) followed `mkfixture.jsx` and
 `savefixture.jsx`, both of which had top-level `var comp`.
 
-### Overlapping `-r`: "Attempt was made to run a second script while another script was already running"
+### The "second script" dialog (corrected; see ae-a8n#41)
 
 Full text, read from the dialog: *"After Effects warning: Attempt was made to run
 a second script while another script was already running. Second script was not
 run. Try launching AE with the -ro or -so flag to override this behavior."*
 
-- **Mechanism, reproduced without ae-a8n:** `-r long.jsx` (a 6 s `$.sleep`), then
-  `-r quick.jsx` 1.5 s later. The dialog appears while the first runs; when the
-  first ends the dialog is gone and `quick.jsx` *did* run, despite the text. The
-  same happened with `-ro` for the second. So in that case an overlap is a
-  transient dialog, not a lost script.
-- ae-a8n alone does not overlap in practice: after a call times out, the next
-  `-r` is spawned more than 0.3 s later, by which time a 0.4-0.6 s script (open,
-  render) has finished (3 tries, no dialog). A longer abandoned script (a long
-  render) would overlap; that was **not** tested with ae-a8n.
-- **Not explained:** twice (once after two refused `openProject` calls, once at
-  the first call after a cold start through the ae-test shim) the dialog
-  appeared and *stayed* for minutes, with the call and `app.quit` timing out
-  behind it. Whatever script AE believed was running never ended. Startup
-  scripts and third-party ScriptUI panels exist on this machine; **no cause was
-  found, and extensions were not disabled**. Two occurrences in about 35
-  sessions; not reproduced on purpose. Evidence: `evidence-rep3`, `evidence-c1`
-  (kept in the verification scratch directory).
-- Decision: no serialisation was added. Overlap is not shown to cause the
-  persistent case, and the transient case needs no fix. A sleep or a retry would
-  hide the persistent one.
+**Correction.** An earlier version of this document said that two overlapping `-r`
+scripts reproduce this dialog and that it is then transient. That was wrong: the
+dialog seen in that test was AE's own progress window, *"Executing Script long.jsx...
+Script execution time 0 minutes 3 seconds. [Cancel]"*, which AE shows for any script
+that runs longer than about a second (also for a lone `-r`). Two overlapping `-r`
+are simply queued: the second runs when the first ends, with no warning.
+
+What is known:
+
+- The "second script" dialog has only been seen in the persistent cases (four so
+  far, text read in full each time), at the first `project.open` after a launch,
+  ~1 s after the probe answered. AE was responsive and idle behind it; the call and
+  a later `app.quit` timed out; one OK click did not clear it and a fresh `-r` ran
+  nothing.
+- ae-a8n's own calls do not overlap in practice (the next `-r` is spawned >0.3 s
+  after a 0.4-0.6 s script).
+- It is rare: 4 in about 150 sessions through ae-a8n, 0 in 47 plain `-r` JSX
+  trials with a probe-then-open sequence (0 in 25 more under heavy CPU load).
+- Safe Mode cannot be used to rule third-party code out: it does not load the
+  Scripting plugin at all ("Unable to execute script. The Scripting plugin is not
+  installed.").
+- No sleep, resend, retry or serialisation was added; nothing here shows one would
+  address it. See #41 for the experiments and their counts.
 
 ### A cold start that never answers (found and fixed, #17)
 
@@ -250,3 +253,122 @@ script-invocation transport implements it, and it returns at once off Windows),
 the driver's use of it, the removal of a Windows-only branch from `#run`, and
 new constructor options. `macos-host.test.ts` passes unmodified on Windows (it
 runs against fakes). The macOS real-host path was not re-run.
+
+## Process ownership (#39)
+
+`ownership()` on Windows is `owned` only on proof, by the macOS rule made stricter
+(`windowsProcesses()` lists every `AfterFX.exe` with PID, creation time and image
+path through CIM; no path filter, because any instance might receive a `-r`):
+
+- nothing was running before `launch()`; otherwise `attached`, never quit;
+- exactly one `AfterFX.exe` after the probe, created after launch began, whose
+  image is this install's (case and slash insensitive; an unreadable path is not
+  accepted), and whose PID is the one this transport spawned;
+- re-checked in `ownership()` (so at `close()`): same PID **and** creation time
+  (PID reuse), still the only instance; a list that cannot be read is `unknown`.
+
+`close()` quits only an `owned` host, through `app.quit` (which refuses while the
+project has unsaved changes unless `unsavedChanges: "discard"`), then waits for
+that process to exit. Nothing in the library signals or terminates a process.
+
+Real host (Windows 11, AE 26.5x89), by `own.mjs` against the dist build:
+
+| Case | Result |
+| --- | --- |
+| no AE, cold launch | `owned` (pid shown in the evidence) |
+| owned, unsaved edit, `close()` | refused (`UnsavedChangesError`), AE still running |
+| owned, `close({unsavedChanges:"discard"})` | `quit: true`, 0 AE processes |
+| AE already running, `launch()` | `attached` |
+| attached, `close()` | `quit: false`, AE still running (same pid) |
+| owned AE ended from outside mid-session | `unknown` ("pid ... is gone"), `close()` does not throw and quits nothing |
+
+Fake process lists (`test/windows-ownership.test.ts`): two AEs at start, the only
+AE not the one spawned, started before launch, other path, unreadable path, died
+before the check, unreadable list, PID reuse (same pid, other start time), a
+second instance appearing later, and a close that waits for exit or reports that
+it did not. PID reuse and "two AEs at start" were not produced on the real host.
+
+### P5 again, without the shim (on this branch)
+
+Unmodified `@ido-bata/ae-test@0.1.0-alpha.0` from npm, with `@ido-bata/ae-a8n`
+pointing at this branch's build (a directory junction in a temporary project; no
+change to ae-test or its lockfile, no ownership override anywhere):
+
+| Check | Result |
+| --- | --- |
+| ae-test starts a new Windows AE, ownership `owned` | yes (otherwise `HostNotOwnedError`) |
+| apply `ADBE Gaussian Blur 2`, set `Blur` 0 → 100, render two PNGs | yes |
+| snapshot compare | matched a baseline recorded in an earlier, separate AE session |
+| a passing assertion and a typed `EntityNotFoundError` assertion | pass |
+| a deliberately false `toBe` | fails with `expected 999, received 3`, as intended |
+| AE processes after the run | 0, both runs (2 runs, 3 specs each, 3 cold starts each) |
+| teardown after the failing test | `app.quit` quit AE; the next test started its own |
+
+Not exercised: a launch that fails before a session exists (the readiness gate
+timing out) under ae-test. The "persistent dialog" is #41.
+
+### Hardening after review (still #40)
+
+- **No pid, no ownership.** If the launcher reports no pid, a single `AfterFX.exe`
+  is not tied to this session: `unknown`.
+- **Fail-closed process list.** PowerShell returns one JSON document; Node
+  validates every entry. A failed command, output that is not that document, a
+  bad or repeated pid, a missing or invalid creation time or path field all
+  throw, so nothing is claimed from the readable part. An empty list is a real
+  answer ("none running"); an unreadable list is not (`parseWindowsProcessList`,
+  tested case by case, plus a test against this machine's real PowerShell).
+- **Exact creation times.** `Win32_Process.CreationDate` is a 100 ns kernel value;
+  five reads of one process gave one value, so the old 1 s tolerance (needed for
+  macOS `ps`, whole seconds) is 0 on Windows. A pid with a start time 500 ms off
+  is `unknown`. (`Get-Process.StartTime` differs from CIM in the last digit; only
+  CIM is used.)
+- Regression tests that fail on the previous commit: no-pid and near-time pid
+  reuse. The parser tests have no old counterpart: the old reader skipped lines it
+  could not parse.
+- Destination of `AfterFX.exe -r` vs ownership: measured and written up in #43
+  (a `-r` launcher shows as a second `AfterFX.exe` for 0.3-0.7 s; a `-r` during
+  startup starts a second full instance). Re-checking narrows the window, it does
+  not guarantee the destination.
+
+Re-verified on the real host with the hardened build: cold launch `owned`, unsaved
+edit refused, `close(discard)` quits (0 AE); existing AE `attached` and the same
+pid still alive after `close()`; owned AE ended from outside `unknown` with
+`close()` quitting nothing. ae-test (unmodified npm package, **this branch's local
+build**, not a published ae-a8n): 3 runs x 3 specs clean (snapshot recorded then
+compared, typed error, deliberate failure, AE 0 after each run). Two other runs on
+this build hit the persistent "second script" dialog at the first `project.open`
+(#41); each was force-killed by PID after evidence was saved and is not counted
+as a pass.
+
+### Full creation identifier, and waiting for exit (final #40 fixes)
+
+- `HostProcess.identity` keeps Windows' creation time as given (ISO, exactly 7
+  fractional digits = 100 ns); `startedAt` (ms) remains only for "started after
+  launch began". Windows identity = same pid **and** identical `identity`; an entry
+  without one never matches and is never adopted as owned. macOS keeps its
+  whole-second tolerance. Test: same pid, same millisecond, 100 ns apart -> unknown
+  (it would have been `owned` when only milliseconds were compared).
+- `close()` waits for *that process* to exit (pid + identity). A pid taken over by
+  another process counts as the original having exited; a process list that cannot
+  be read makes `close()` throw instead of concluding it exited. Nothing signals a
+  process.
+- Before/after: against the previous commit the new tests fail (sub-millisecond
+  reuse, no identifier, reused pid in `close()`, a creation time with fewer than
+  seven digits); with the change 42 tests in `windows-ownership.test.ts` pass and
+  the whole suite is 421 passed, 1 skipped, 0 failed.
+
+### A `-r` launcher is not a second instance (found by the #41 loop)
+
+In an interleaved experiment, one `close()` returned `quit: false` ("2 instances
+running") and the test AE was left running. The second `AfterFX.exe` was the `-r`
+launcher of the call made half a second earlier: a launcher is listed next to the
+running AE for 0.3-0.7 s (measured 6/6) and `close()` re-checks ownership right
+after the last call. That is the safe direction (nothing was quit) but it breaks
+teardown. Fix: the transport remembers the pids of the `-r` launchers it spawned,
+the process list carries each process's parent pid, and a listed process is left
+out of the instance count only if its pid is one of those **and** its parent is
+this process. The AE this transport started is never left out; a stranger that
+reuses a launcher's pid has another parent and still counts. Tests (fail before,
+pass after): a spawned launcher beside the owned AE keeps it `owned`; the same pid
+with another parent, and a child of this process that was never spawned, make it
+`unknown`. Real host: 30 cold open / info / close runs, `close()` quit every one.
