@@ -223,6 +223,13 @@ then through the API (`examples/menu-command.ts`):
   alone rendered identically to the text layer alone (0 of 120000 pixels
   differ); AE quit (`quit=true`). `RESULT PASS`.
 
+- Through this API, end to end: Ae_Restro (rebuildup/Ae_Restro#16) `mise run test:ae`
+  launches an owned session with `hostEnvironment`, builds a comp and text
+  layers, runs `Ae_Restro: Decompose` and `Ae_Restro: Merge` by name, reads the
+  plug-in's own records against `added`, checks `shapePaths` against the
+  rendered glyph, renders, undoes and redoes, and quits: 32 / 32 checks, four
+  consecutive runs on 2026-10-21.
+
 Not covered: Windows; a command that opens its own dialog (it blocks, and the
 call can only time out); localised built-in menu text other than ja.
 
