@@ -79,7 +79,9 @@ describe("driver against the fake host", () => {
     await driver.start();
 
     const layers = await driver.call<Array<{ name: string }>>("comp.layers", { name: "Main" });
-    expect(layers).toEqual([{ name: "Solid 1", index: 1 }]);
+    expect(layers).toEqual([
+      { id: expect.any(Number), name: "Solid 1", index: 1, enabled: true, selected: false, type: "av" },
+    ]);
 
     const applied = await driver.call<{ name: string; matchName: string; created: boolean }>(
       "layer.applyEffect",

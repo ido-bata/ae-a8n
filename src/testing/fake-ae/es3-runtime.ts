@@ -268,6 +268,12 @@ export type RunHostOptions = {
    * to persist passes the same object each time.
    */
   readonly engineGlobal?: Record<string, unknown>;
+  /**
+   * The process environment behind `$.getenv` / `$.setenv`. Pass the same
+   * map to every invocation so a variable outlives the script that set it, as
+   * it does in a real AE process. Defaults to an empty one per run.
+   */
+  readonly environment?: Map<string, string>;
 };
 
 export type RunHostResult =
@@ -317,6 +323,7 @@ export function runHostScript(
   const sandbox: Record<string, unknown> = { ...globals };
   const context = vm.createContext(sandbox);
   let includeDepth = 0;
+  const environment = options.environment ?? new Map<string, string>();
 
   const removeJson = (target: vm.Context): void => {
     if (options.nativeJson !== true) {
@@ -341,6 +348,8 @@ export function runHostScript(
     fileName: string;
     sleep: (ms: number) => void;
     global: Record<string, unknown>;
+    getenv: (name: string) => string | null;
+    setenv: (name: string, value: string) => void;
   } = {
     global: options.engineGlobal ?? {},
     evalFile: (target: string | FakeFile): unknown => {
@@ -369,6 +378,11 @@ export function runHostScript(
         // what ExtendScript's `$.sleep` is.
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
       }
+    },
+    // ExtendScript answers null for an unset variable (observed on 26.5x89).
+    getenv: (name: string): string | null => environment.get(String(name)) ?? null,
+    setenv: (name: string, value: string): void => {
+      environment.set(String(name), String(value));
     },
   };
 
