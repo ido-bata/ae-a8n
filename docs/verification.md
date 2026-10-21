@@ -233,6 +233,44 @@ then through the API (`examples/menu-command.ts`):
 Not covered: Windows; a command that opens its own dialog (it blocks, and the
 call can only time out); localised built-in menu text other than ja.
 
+## Menu commands, `hostEnvironment`, ownership on Windows (#47), 2026-10-21
+
+Windows 11 Home Insider 10.0.29683, AE 26.5x89 (en) installed under
+`D:\4_apps\adobe`, on `main` with #17, #40 and #44 merged. Real host.
+
+- `examples/menu-command.ts` (AE's own Layer › Create Shapes from Text, **id
+  3781 on Windows too**): from the empty untitled project, `createComp` →
+  `addTextLayer` ("H", ArialMT 200) → `openInViewer` → `selectLayers` →
+  `execute` added one shape layer (`H Outlines`, 1 closed path, 12 vertices,
+  79 ms); `undo` removed exactly it and `redo` restored it (**Edit › Undo is 16
+  and Redo 2035 on Windows**); the shape layer alone rendered identically to
+  the text (0 of 120000 pixels differ); `quit=true`, 0 `AfterFX.exe` after.
+  `RESULT PASS`.
+- Ownership: the session was `owned` ("pid N is still the only instance"),
+  which both `menuCommand().execute()` and `hostEnvironment` require. Both
+  entry points ran, so they are no longer refused with `HostNotOwnedError` on
+  Windows.
+- `app.findMenuCommandId` / `app.executeCommand` reach an **AEGP plugin's**
+  command hook synchronously when the script arrives through `AfterFX.exe -r`:
+  Ae_Restro's `Ae_Restro: Decompose` (id 5006 in that session) added its layers
+  before `execute()` returned (120 ms), and `Ae_Restro: Merge` likewise.
+- `hostEnvironment` (`$.setenv`): the plugin read `RESTRO_AUTOMATION_OUT` with
+  the **unmodified CRT `getenv`**. Commands wrote their records to the file and
+  opened no dialog. The suspected gap (CRT environment copy vs Win32 block)
+  did not show up: a build using `GetEnvironmentVariableA` was tried first and
+  was not needed.
+- Through this API, end to end: Ae_Restro `node scripts/test-ae.ts` on Windows
+  (rebuildup/Ae_Restro#17) launches an owned session with `hostEnvironment`,
+  builds a comp and text layers, runs Decompose and Merge by name, compares the
+  plugin's records with `added`, checks `shapePaths` against the rendered glyph,
+  undoes and redoes, runs the failure paths and a shape-layer input, and quits:
+  **33 / 33 checks, three consecutive runs**, plus the plugin's native self-test
+  each time. No AE process was left, and the temporary plugin was removed.
+
+Not covered: a command that opens its own dialog; localised menu text (the AE
+here is English); several AE versions installed at once besides the one used;
+ARM64.
+
 ## What is verified, in detail
 
 | Area | Level | How |
@@ -252,12 +290,12 @@ call can only time out); localised built-in menu text other than ja.
 
 | Area | Why |
 | --- | --- |
-| `AfterFX.exe -r <jsx>` executing a script in AE | `AfterFX.exe` is not installed anywhere this was run |
-| `osascript … DoScript` on macOS | no macOS host |
+| `AfterFX.exe -r <jsx>` on a long-running or abandoned script | verified for ordinary calls on Windows (see the Windows sections and `windows-verification.md`); a long script left running by a timed-out call followed by another call was not tested |
+| `osascript … DoScript` on macOS | verified on macOS (see the macOS sections above); not re-run after the Windows changes to the shared files |
 | One-frame PNG render | the render queue cannot write PNG on a localised AE (no "PNG Sequence" template; "Format" read-only); the host uses `CompItem.saveFrameToPng` — see below |
 | `ADBE Effect Parade` match-name lookup for a third-party plugin | needs a real plugin installed |
 | `File`/`Folder` behaviour matching ExtendScript's | approximated by the fake, not verified against the real implementation |
-| Windows and macOS platform branches of `ScriptInvocationTransport` | only Linux was available |
+| ARM64 Windows, non-English Windows UI, several AE versions running at once | not run; the platform branches were exercised on x64 Windows (en) and on macOS (ja) only |
 
 ## Closing the gap
 
