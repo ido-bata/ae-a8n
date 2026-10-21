@@ -24,7 +24,7 @@ await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to th
 | | |
 | --- | --- |
 | macOS | Verified against After Effects 2026 (26.5x89, Japanese UI) on macOS 27, arm64: launch, project/comp/layer lookup, effects by match name, parameter write/read, one-frame PNG render, typed failures, timeouts, session ownership; 20 consecutive fresh-session runs |
-| Windows | **Not run. No behaviour is claimed.** The launcher path exists (`AfterFX.exe -r`) but has never executed. A Windows session never quits After Effects for you |
+| Windows | Verified against After Effects 2026 (26.5x89, English UI) on Windows 11 x64: cold launch, install discovery, process ownership and quit-only-what-this-session-started, menu commands, `hostEnvironment`, scene building, Undo/Redo, and Ae_Restro's 33-check E2E through this API (3 runs). See [docs/windows-verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/windows-verification.md) and [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md). ARM64 and non-English UIs not run |
 | Node | 22 or later (developed on 24) |
 
 What has been checked, and how, is in [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md).
@@ -47,7 +47,7 @@ follows ([docs/sessions.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/se
 
 - **Ownership.** `ae.ownership()` is `owned` only if this session started After
   Effects and it is still that process; `attached` if AE was already running;
-  `unknown` if neither can be established (always, on Windows). `close()`
+  `unknown` if neither can be established (for example when the Windows process list cannot be read). `close()`
   quits AE **only when owned**, and otherwise returns `{ quit: false, reason }`.
 - **Unsaved changes are never discarded by default.** `close()` and
   `openProject()` reject with `UnsavedChangesError` instead. Pass

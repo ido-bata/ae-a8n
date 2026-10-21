@@ -2,8 +2,11 @@
 
 ## Unreleased
 
-Verified on macOS against After Effects 2026 (26.5x89, ja) on 2026-10-21;
-Windows not run (`docs/verification.md`).
+Verified on macOS against After Effects 2026 (26.5x89, ja) and on Windows 11
+(26.5x89, en) on 2026-10-21 (`docs/verification.md`, `docs/windows-verification.md`).
+Windows: launch/install discovery (#17), process ownership (#40) and the session
+marker (#44) are merged; menu commands, `hostEnvironment` and Undo/Redo were run
+on a real host (#47).
 
 ### Added
 
