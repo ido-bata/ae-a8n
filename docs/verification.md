@@ -290,12 +290,12 @@ ARM64.
 
 | Area | Why |
 | --- | --- |
-| `AfterFX.exe -r <jsx>` executing a script in AE | `AfterFX.exe` is not installed anywhere this was run |
-| `osascript … DoScript` on macOS | no macOS host |
+| `AfterFX.exe -r <jsx>` on a long-running or abandoned script | verified for ordinary calls on Windows (see the Windows sections and `windows-verification.md`); a long script left running by a timed-out call followed by another call was not tested |
+| `osascript … DoScript` on macOS | verified on macOS (see the macOS sections above); not re-run after the Windows changes to the shared files |
 | One-frame PNG render | the render queue cannot write PNG on a localised AE (no "PNG Sequence" template; "Format" read-only); the host uses `CompItem.saveFrameToPng` — see below |
 | `ADBE Effect Parade` match-name lookup for a third-party plugin | needs a real plugin installed |
 | `File`/`Folder` behaviour matching ExtendScript's | approximated by the fake, not verified against the real implementation |
-| Windows and macOS platform branches of `ScriptInvocationTransport` | only Linux was available |
+| ARM64 Windows, non-English Windows UI, several AE versions running at once | not run; the platform branches were exercised on x64 Windows (en) and on macOS (ja) only |
 
 ## Closing the gap
 
