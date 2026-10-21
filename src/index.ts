@@ -9,12 +9,24 @@
  * separate entry point on purpose: it is a test surface, not automation.
  */
 
-export { AfterEffects, Comp, Effects, Effect, Layer, Parameter, Project } from "./api/index.js";
+export {
+  AfterEffects,
+  Comp,
+  Effects,
+  Effect,
+  Layer,
+  MenuCommand,
+  Parameter,
+  Project,
+  REDO_COMMAND_ID,
+  UNDO_COMMAND_ID,
+} from "./api/index.js";
 
 export {
   AfterEffectsError,
   EntityNotFoundError,
   HostError,
+  HostNotOwnedError,
   HostUnavailableError,
   ParameterValueError,
   PropertyHasNoValueError,
@@ -26,10 +38,18 @@ export type { CloseResult } from "./api/index.js";
 
 export type {
   ApplicationInfo,
+  CommandExecution,
   CompInfo,
+  CreateCompOptions,
   EffectInfo,
   LaunchOptions,
   LayerInfo,
+  LayerTransform,
+  LayerType,
+  SceneSnapshot,
+  ShapePath,
+  TextLayerInfo,
+  TextLayerOptions,
   OpenProjectOptions,
   OperationOptions,
   ParameterValue,
