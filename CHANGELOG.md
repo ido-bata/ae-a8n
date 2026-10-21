@@ -27,6 +27,9 @@ Windows not run (`docs/verification.md`).
 
 - `LayerInfo` carries `id`, `enabled`, `selected` and `type`, from
   `comp.layers()` too (part of #23); `enabled` is no longer optional.
+- `@ido-bata/ae-a8n/testing` (unstable): `FakeLayer` takes `(name, position)`
+  and numbers itself from its comp; `FakeProject.items` is an item collection
+  with `addComp`, not an array.
 
 ## 0.1.0-alpha.1
 
