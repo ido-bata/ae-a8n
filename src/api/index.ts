@@ -28,6 +28,7 @@ import {
   AfterEffectsError,
   EntityNotFoundError,
   HostError,
+  HostNotOwnedError,
   ParameterValueError,
   PropertyHasNoValueError,
   contextualise,
@@ -40,7 +41,14 @@ export type CloseResult = StopResult;
 export type { HostOwnership };
 import type {
   ApplicationInfo,
+  CommandExecution,
   CompInfo,
+  CreateCompOptions,
+  LayerTransform,
+  SceneSnapshot,
+  ShapePath,
+  TextLayerInfo,
+  TextLayerOptions,
   EffectInfo,
   LaunchOptions,
   LayerInfo,
@@ -136,6 +144,53 @@ function requireAbsoluteProjectPath(value: unknown): string {
   return path;
 }
 
+/** Edit › Undo and Edit › Redo, as AE 26.5x89 numbers them. */
+export const UNDO_COMMAND_ID = 16;
+export const REDO_COMMAND_ID = 2035;
+
+const ENVIRONMENT_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function requireEnvironment(value: unknown): Record<string, string> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("hostEnvironment must be an object of string values");
+  }
+  const out: Record<string, string> = {};
+  for (const [name, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!ENVIRONMENT_NAME.test(name)) {
+      throw new TypeError(`hostEnvironment name is not a portable variable name: ${JSON.stringify(name)}`);
+    }
+    if (typeof entry !== "string") {
+      throw new TypeError(`hostEnvironment.${name} must be a string`);
+    }
+    out[name] = entry;
+  }
+  return out;
+}
+
+function requirePositive(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new TypeError(`${field} must be a positive number`);
+  }
+  return value;
+}
+
+/** Refuses an operation that only the session that started AE may perform. */
+function requireOwned(session: Session, op: string): void {
+  const ownership = session.driver.ownership();
+  if (ownership.kind !== "owned") {
+    throw new HostNotOwnedError(op, ownership.kind, ownership.evidence);
+  }
+}
+
+/** Layers in `after` and not in `before`, compared by id. */
+function layerDifference(
+  from: SceneSnapshot["layers"],
+  to: SceneSnapshot["layers"],
+): SceneSnapshot["layers"] {
+  const ids = new Set(from.map((layer) => layer.id));
+  return to.filter((layer) => !ids.has(layer.id));
+}
+
 function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new TypeError(`${field} must be a non-empty string`);
@@ -183,11 +238,18 @@ export class AfterEffects {
     // trace file record the same operations. Subscribing afterwards would make
     // `traceEvents` quietly disagree with `tracePath`.
     const session = new Session(driver, trace);
+    const environment =
+      options.hostEnvironment === undefined ? undefined : requireEnvironment(options.hostEnvironment);
     let probe: ApplicationInfo;
     try {
       probe = await driver.start();
     } catch (error) {
       contextualise("session.launch", error);
+    }
+    if (environment !== undefined) {
+      // Never change the environment of an AE someone else is running.
+      requireOwned(session, "session.hostEnvironment");
+      await session.call("session.hostEnvironment", "app.setEnvironment", { variables: environment });
     }
     return new AfterEffects(session, probe);
   }
@@ -244,6 +306,43 @@ export class AfterEffects {
    */
   ownership(): HostOwnership {
     return this.#session.driver.ownership();
+  }
+
+  /**
+   * A menu command, looked up by its menu text (as AE shows it, so
+   * localised for built-in commands; a plugin's own name for one an AEGP
+   * plugin registered) or taken by id. A name AE does not know rejects with
+   * EntityNotFoundError (`kind: "menu-command"`). Only an id crosses to
+   * After Effects: no script text is ever sent.
+   */
+  async menuCommand(nameOrId: string | number): Promise<MenuCommand> {
+    if (typeof nameOrId === "number") {
+      if (!Number.isInteger(nameOrId) || nameOrId <= 0) {
+        throw new TypeError("menu command id must be a positive integer");
+      }
+      return new MenuCommand(this.#session, nameOrId);
+    }
+    const name = requireString(nameOrId, "menu command name");
+    try {
+      const found = await this.#session.call<{ id: number }>("menu.find", "menu.find", { name });
+      return new MenuCommand(this.#session, found.id, name);
+    } catch (error) {
+      const cause = error instanceof AfterEffectsError ? error.cause : undefined;
+      if (cause instanceof HostError && cause.name === "NotFoundError") {
+        throw new EntityNotFoundError("menu-command", name, "menu.find");
+      }
+      throw error;
+    }
+  }
+
+  /** Edit › Undo: one step of AE's undo history. Owned sessions only. */
+  async undo(options: OperationOptions = {}): Promise<CommandExecution> {
+    return new MenuCommand(this.#session, UNDO_COMMAND_ID, "Undo").execute(options);
+  }
+
+  /** Edit › Redo. Owned sessions only. */
+  async redo(options: OperationOptions = {}): Promise<CommandExecution> {
+    return new MenuCommand(this.#session, REDO_COMMAND_ID, "Redo").execute(options);
   }
 
   /** Compositions in the currently open project. */
@@ -315,6 +414,23 @@ export class Project {
   }
 
   /**
+   * Creates a composition. Comps are addressed by name, so a name any
+   * project item already has is refused.
+   */
+  async createComp(options: CreateCompOptions): Promise<Comp> {
+    const params = {
+      name: requireString(options.name, "comp name"),
+      width: requirePositive(options.width, "width"),
+      height: requirePositive(options.height, "height"),
+      duration: requirePositive(options.duration, "duration"),
+      frameRate: requirePositive(options.frameRate, "frameRate"),
+      pixelAspect: requirePositive(options.pixelAspect ?? 1, "pixelAspect"),
+    };
+    const info = await this.#session.call<CompInfo>("project.createComp", "project.createComp", params);
+    return new Comp(this.#session, info.name);
+  }
+
+  /**
    * Resolves a composition by name, verifying it exists.
    *
    * Only the host's own "not found" becomes EntityNotFoundError. Translating
@@ -364,6 +480,44 @@ export class Comp {
   }
 
   /**
+   * Opens the composition in a viewer, which makes it the active item: what
+   * menu commands that act on "the active composition" act on.
+   */
+  async openInViewer(): Promise<void> {
+    const result = await this.#session.call<{ active: boolean }>("comp.openInViewer", "comp.openInViewer", {
+      name: this.name,
+    });
+    if (!result.active) {
+      throw new AfterEffectsError(`"${this.name}" was opened but is not the active item`, "comp.openInViewer");
+    }
+  }
+
+  /** Adds a text layer on top of the stack and returns it with what AE applied. */
+  async addTextLayer(options: TextLayerOptions): Promise<{ layer: Layer; info: TextLayerInfo }> {
+    const params: Record<string, unknown> = { comp: this.name, text: requireString(options.text, "text") };
+    if (options.name !== undefined) params["name"] = requireString(options.name, "layer name");
+    if (options.font !== undefined) params["font"] = requireString(options.font, "font");
+    if (options.fontSize !== undefined) params["fontSize"] = requirePositive(options.fontSize, "fontSize");
+    if (options.fillColor !== undefined) params["fillColor"] = [...options.fillColor];
+    if (options.position !== undefined) params["position"] = [...options.position];
+    const info = await this.#session.call<TextLayerInfo>("comp.addTextLayer", "comp.addText", params);
+    return { layer: new Layer(this.#session, this.name, info.name), info };
+  }
+
+  /**
+   * Selects exactly the named layers (and deselects the rest); returns the
+   * names now selected, top first.
+   */
+  async selectLayers(names: readonly string[]): Promise<string[]> {
+    const layers = names.map((name) => requireString(name, "layer name"));
+    const result = await this.#session.call<{ selected: string[] }>("comp.selectLayers", "comp.selectLayers", {
+      comp: this.name,
+      layers,
+    });
+    return result.selected;
+  }
+
+  /**
    * Renders a single frame to PNG and returns where it landed.
    *
    * Output goes under the session's artifact directory so a caller can collect
@@ -408,6 +562,87 @@ export class Layer {
       comp: this.compName,
       layer: this.name,
     });
+  }
+
+  /** Turns the layer's video switch on or off; returns the layer afterwards. */
+  async setEnabled(enabled: boolean): Promise<LayerInfo> {
+    if (typeof enabled !== "boolean") {
+      throw new TypeError("enabled must be a boolean");
+    }
+    return this.#session.call<LayerInfo>("layer.setEnabled", "layer.setEnabled", {
+      comp: this.compName,
+      layer: this.name,
+      enabled,
+    });
+  }
+
+  async transform(): Promise<LayerTransform> {
+    return this.#session.call<LayerTransform>("layer.transform", "layer.transform", {
+      comp: this.compName,
+      layer: this.name,
+    });
+  }
+
+  /** Every path of a shape layer, in layer space; rejects for any other layer. */
+  async shapePaths(): Promise<ShapePath[]> {
+    return this.#session.call<ShapePath[]>("layer.shapePaths", "layer.shapePaths", {
+      comp: this.compName,
+      layer: this.name,
+    });
+  }
+}
+
+/**
+ * A menu command of the running After Effects, by id. Running one is an edit
+ * like any other — it can change or discard the user's work — so it is only
+ * allowed on a host this session started (`ownership().kind === "owned"`).
+ */
+export class MenuCommand {
+  readonly #session: Session;
+  readonly id: number;
+  readonly name: string | undefined;
+
+  constructor(session: Session, id: number, name?: string) {
+    this.#session = session;
+    this.id = id;
+    this.name = name;
+  }
+
+  /**
+   * Runs the command and reports the active composition's layers before and
+   * after. Synchronous in AE: when this resolves, the command has finished,
+   * including a plugin's command hook. A command that opens a modal dialog
+   * blocks AE until a person dismisses it, and this then times out.
+   */
+  async execute(options: OperationOptions = {}): Promise<CommandExecution> {
+    requireOwned(this.#session, "menu.execute");
+    const raw = await this.#session.call<Omit<CommandExecution, "added" | "removed" | "name">>(
+      "menu.execute",
+      "menu.execute",
+      { id: this.id },
+      options,
+    );
+    const execution: CommandExecution = {
+      ...raw,
+      ...(this.name === undefined ? {} : { name: this.name }),
+      added: layerDifference(raw.before.layers, raw.after.layers),
+      removed: layerDifference(raw.after.layers, raw.before.layers),
+    };
+    // The call's own record summarises the result to its top level; the
+    // scene change is what a reader of the trace needs, so record it too.
+    this.#session.trace.record("menu.execute.scene", "ok", 0, {
+      args: { id: this.id, ...(this.name === undefined ? {} : { name: this.name }) },
+      result: {
+        comp: execution.after.comp,
+        itemsBefore: execution.before.itemCount,
+        itemsAfter: execution.after.itemCount,
+        layersBefore: execution.before.layers.map((layer) => `${layer.id} ${layer.name}`),
+        layersAfter: execution.after.layers.map((layer) => `${layer.id} ${layer.name}`),
+        added: execution.added.map((layer) => layer.id),
+        removed: execution.removed.map((layer) => layer.id),
+      },
+    });
+    return execution;
   }
 }
 

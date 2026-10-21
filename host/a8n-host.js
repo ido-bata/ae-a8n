@@ -473,22 +473,14 @@
   };
 
   methods["comp.info"] = function (params) {
-    var comp = findComp(String(requireParam(params, "name")));
-    return {
-      name: comp.name,
-      width: comp.width,
-      height: comp.height,
-      duration: comp.duration,
-      frameRate: comp.frameRate,
-      layerCount: comp.numLayers
-    };
+    return compInfo(findComp(String(requireParam(params, "name"))));
   };
 
   methods["comp.layers"] = function (params) {
     var comp = findComp(String(requireParam(params, "name")));
     var out = [];
     for (var i = 1; i <= comp.numLayers; i++) {
-      out.push({ name: comp.layer(i).name, index: comp.layer(i).index });
+      out.push(layerInfo(comp.layer(i)));
     }
     return out;
   };
@@ -496,7 +488,7 @@
   methods["comp.layer"] = function (params) {
     var comp = findComp(String(requireParam(params, "comp")));
     var layer = findLayer(comp, String(requireParam(params, "layer")));
-    return { name: layer.name, index: layer.index, enabled: layer.enabled };
+    return layerInfo(layer);
   };
 
   methods["layer.effects"] = function (params) {
@@ -633,6 +625,275 @@
     }
     return { width: u32(16), height: u32(20) };
   }
+
+
+  // -------------------------------------------------- scene construction ---
+
+  function layerType(layer) {
+    // Most specific first: a ShapeLayer and a TextLayer are also AVLayers.
+    if (typeof TextLayer !== "undefined" && layer instanceof TextLayer) {
+      return "text";
+    }
+    if (typeof ShapeLayer !== "undefined" && layer instanceof ShapeLayer) {
+      return "shape";
+    }
+    if (typeof AVLayer !== "undefined" && layer instanceof AVLayer) {
+      return "av";
+    }
+    return "other";
+  }
+
+  function layerInfo(layer) {
+    return {
+      id: layer.id,
+      name: layer.name,
+      index: layer.index,
+      enabled: layer.enabled,
+      selected: layer.selected,
+      type: layerType(layer)
+    };
+  }
+
+  function compInfo(comp) {
+    return {
+      name: comp.name,
+      width: comp.width,
+      height: comp.height,
+      duration: comp.duration,
+      frameRate: comp.frameRate,
+      layerCount: comp.numLayers
+    };
+  }
+
+  function requireNumber(params, name, min) {
+    var value = requireParam(params, name);
+    if (!isFiniteNumber(value) || value < min) {
+      throw new Error(name + " must be a number >= " + min);
+    }
+    return value;
+  }
+
+  function requireNumbers(value, name, length) {
+    if (!isArray(value) || value.length !== length) {
+      throw new Error(name + " must be an array of " + length + " numbers");
+    }
+    for (var i = 0; i < value.length; i++) {
+      if (!isFiniteNumber(value[i])) {
+        throw new Error(name + " must be an array of " + length + " numbers");
+      }
+    }
+    return value;
+  }
+
+  methods["project.createComp"] = function (params) {
+    var project = getProject();
+    var name = String(requireParam(params, "name"));
+    // Comps are addressed by name, so a second comp with the name could never
+    // be reached; refuse instead of creating it.
+    for (var i = 1; i <= project.numItems; i++) {
+      if (project.item(i).name === name) {
+        throw new Error("an item named '" + name + "' already exists");
+      }
+    }
+    var comp = project.items.addComp(
+      name,
+      requireNumber(params, "width", 4),
+      requireNumber(params, "height", 4),
+      optionalParam(params, "pixelAspect", 1),
+      requireNumber(params, "duration", 0.001),
+      requireNumber(params, "frameRate", 1)
+    );
+    return compInfo(comp);
+  };
+
+  methods["comp.openInViewer"] = function (params) {
+    var comp = findComp(String(requireParam(params, "name")));
+    comp.openInViewer();
+    return { name: comp.name, active: app.project.activeItem === comp };
+  };
+
+  methods["comp.addText"] = function (params) {
+    var comp = findComp(String(requireParam(params, "comp")));
+    var text = String(requireParam(params, "text"));
+    var layer = comp.layers.addText(text);
+    var name = optionalParam(params, "name", null);
+    if (name !== null) {
+      layer.name = String(name);
+    }
+    var source = layer.property("ADBE Text Properties").property("ADBE Text Document");
+    var doc = source.value;
+    var font = optionalParam(params, "font", null);
+    if (font !== null) {
+      doc.font = String(font);
+    }
+    var fontSize = optionalParam(params, "fontSize", null);
+    if (fontSize !== null) {
+      doc.fontSize = requireNumber(params, "fontSize", 1);
+    }
+    var fillColor = optionalParam(params, "fillColor", null);
+    if (fillColor !== null) {
+      doc.applyFill = true;
+      doc.fillColor = requireNumbers(fillColor, "fillColor", 3);
+    }
+    doc.applyStroke = false;
+    source.setValue(doc);
+    var position = optionalParam(params, "position", null);
+    if (position !== null) {
+      layer.property("ADBE Transform Group").property("ADBE Position")
+        .setValue(requireNumbers(position, "position", 2));
+    }
+    var applied = source.value;
+    var info = layerInfo(layer);
+    // What AE settled on, not what was asked for: an unknown font falls back.
+    info.font = String(applied.font);
+    info.fontSize = applied.fontSize;
+    return info;
+  };
+
+  methods["comp.selectLayers"] = function (params) {
+    var comp = findComp(String(requireParam(params, "comp")));
+    var names = requireParam(params, "layers");
+    if (!isArray(names)) {
+      throw new Error("layers must be an array of layer names");
+    }
+    var wanted = [];
+    for (var i = 0; i < names.length; i++) {
+      wanted.push(findLayer(comp, String(names[i])));
+    }
+    // Exactly the named layers: deselect everything else first.
+    for (var j = 1; j <= comp.numLayers; j++) {
+      comp.layer(j).selected = false;
+    }
+    for (var k = 0; k < wanted.length; k++) {
+      wanted[k].selected = true;
+    }
+    var selected = [];
+    for (var n = 1; n <= comp.numLayers; n++) {
+      if (comp.layer(n).selected) {
+        selected.push(comp.layer(n).name);
+      }
+    }
+    return { selected: selected };
+  };
+
+  methods["layer.setEnabled"] = function (params) {
+    var comp = findComp(String(requireParam(params, "comp")));
+    var layer = findLayer(comp, String(requireParam(params, "layer")));
+    var enabled = requireParam(params, "enabled");
+    if (enabled !== true && enabled !== false) {
+      throw new Error("enabled must be a boolean");
+    }
+    layer.enabled = enabled;
+    return layerInfo(layer);
+  };
+
+  methods["layer.transform"] = function (params) {
+    var comp = findComp(String(requireParam(params, "comp")));
+    var layer = findLayer(comp, String(requireParam(params, "layer")));
+    var group = layer.property("ADBE Transform Group");
+    return {
+      anchorPoint: group.property("ADBE Anchor Point").value,
+      position: group.property("ADBE Position").value,
+      scale: group.property("ADBE Scale").value,
+      rotation: group.property("ADBE Rotate Z").value,
+      opacity: group.property("ADBE Opacity").value
+    };
+  };
+
+  function collectShapePaths(group, groups, out) {
+    for (var i = 1; i <= group.numProperties; i++) {
+      var child = group.property(i);
+      if (child.matchName === "ADBE Vector Group") {
+        var nested = groups.slice(0);
+        nested.push(child.name);
+        collectShapePaths(child.property("ADBE Vectors Group"), nested, out);
+      } else if (child.matchName === "ADBE Vector Shape - Group") {
+        var shape = child.property("ADBE Vector Shape").value;
+        out.push({
+          groups: groups,
+          name: child.name,
+          closed: shape.closed,
+          vertices: shape.vertices,
+          inTangents: shape.inTangents,
+          outTangents: shape.outTangents
+        });
+      }
+    }
+  }
+
+  methods["layer.shapePaths"] = function (params) {
+    var comp = findComp(String(requireParam(params, "comp")));
+    var layer = findLayer(comp, String(requireParam(params, "layer")));
+    if (layerType(layer) !== "shape") {
+      throw new Error("not a shape layer: " + layer.name);
+    }
+    var out = [];
+    collectShapePaths(layer.property("ADBE Root Vectors Group"), [], out);
+    return out;
+  };
+
+  // ------------------------------------------------------- menu commands ---
+
+  methods["app.setEnvironment"] = function (params) {
+    var variables = requireParam(params, "variables");
+    var names = [];
+    for (var key in variables) {
+      if (has(variables, key)) {
+        // Process-scoped: the variable lives in this AE process only and is
+        // gone when it exits. Nothing is persisted to preferences.
+        $.setenv(key, String(variables[key]));
+        names.push(key);
+      }
+    }
+    return { names: names };
+  };
+
+  methods["menu.find"] = function (params) {
+    var name = String(requireParam(params, "name"));
+    var id = app.findMenuCommandId(name);
+    if (!isFiniteNumber(id) || id <= 0) {
+      var missing = new Error("menu command not found: " + name);
+      missing.name = "NotFoundError";
+      throw missing;
+    }
+    return { id: id, name: name };
+  };
+
+  function sceneSnapshot() {
+    var project = app.project;
+    var active = project === null || project === undefined ? null : project.activeItem;
+    var snapshot = {
+      itemCount: project === null || project === undefined ? 0 : project.numItems,
+      comp: null,
+      layers: []
+    };
+    if (active !== null && active !== undefined && active instanceof CompItem) {
+      snapshot.comp = active.name;
+      for (var i = 1; i <= active.numLayers; i++) {
+        snapshot.layers.push(layerInfo(active.layer(i)));
+      }
+    }
+    return snapshot;
+  }
+
+  methods["menu.execute"] = function (params) {
+    var id = requireParam(params, "id");
+    if (!isFiniteNumber(id) || id <= 0 || Math.floor(id) !== id) {
+      throw new Error("menu command id must be a positive integer");
+    }
+    var before = sceneSnapshot();
+    var started = new Date().getTime();
+    // Synchronous on AE 26.5x89, including commands an AEGP plugin registers:
+    // the plugin's command hook has returned when this does.
+    app.executeCommand(id);
+    var durationMs = new Date().getTime() - started;
+    return {
+      id: id,
+      durationMs: durationMs,
+      before: before,
+      after: sceneSnapshot()
+    };
+  };
 
   // ----------------------------------------------------------- dispatch ---
 

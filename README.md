@@ -64,7 +64,7 @@ unsaved edit in someone's open project is still their work.
 
 | | |
 | --- | --- |
-| `AfterEffects.launch(options?)` | `{ sessionRoot?, installDir?, timeoutMs?, transport? }`; `timeoutMs` is the per-call default, which `openProject`, `project` and `renderFrame` can override for one call; waits for a readiness probe (180 s budget) |
+| `AfterEffects.launch(options?)` | `{ sessionRoot?, installDir?, timeoutMs?, transport?, hostEnvironment? }`; `hostEnvironment` is set inside an owned AE process (`$.setenv`) for native plugins; `timeoutMs` is the per-call default, which `openProject`, `project` and `renderFrame` can override for one call; waits for a readiness probe (180 s budget) |
 | `ae.info()`, `ae.version()` | version from the probe / live |
 | `ae.ownership()` | `{ kind: "owned" \| "attached" \| "unknown", evidence }` |
 | `ae.openProject(path, { unsavedChanges?, timeoutMs? })` | → `Project`; `path` must be absolute (`/…`, `C:\…`, `\\server\…`), otherwise `TypeError` before anything is sent |
@@ -74,6 +74,12 @@ unsaved edit in someone's open project is still their work.
 | `comp.renderFrame(frame, { subdirectory?, prefix?, timeoutMs? })` | one PNG under `ae.artifactsDir`; size read from the file |
 | `layer.effects.all()`, `.apply(id)`, `.get(id)` | `id` is a match name (stable) or display name (localised) |
 | `effect.parameters()`, `effect.parameter(id).get()` / `.set(v)` / `.info()` | every property is listed with a `kind` (`value`, `no-value`, `custom-value`, `group`) and its `valueType`; it has a `value` only when `kind` is `"value"`: a number (`OneD`, `LAYER_INDEX`, `MASK_INDEX`), `[x, y]` (`TwoD*`), `[x, y, z]` (`ThreeD*`) or `[r, g, b, a]` (`COLOR`). `set` takes the same shapes |
+| `ae.menuCommand(nameOrId)` → `MenuCommand` | by menu text (localised for AE's own commands; a plugin's name for its own) or id; `EntityNotFoundError` (`kind: "menu-command"`) when AE has no such item |
+| `command.execute({ timeoutMs? })`, `ae.undo()`, `ae.redo()` | → `{ id, before, after, added, removed, durationMs }`: the active comp's layers around the command, compared by id; also traced as `menu.execute.scene`. **Owned sessions only** (`HostNotOwnedError`) |
+| `project.createComp({ name, width, height, duration, frameRate })` → `Comp` | refuses a name an item already has |
+| `comp.addTextLayer({ text, font?, fontSize?, fillColor?, position? })` | → `{ layer, info }`; `info.font` is what AE applied |
+| `comp.openInViewer()`, `comp.selectLayers(names)` | make the comp active; select exactly these layers |
+| `layer.setEnabled(on)`, `layer.transform()`, `layer.shapePaths()` | video switch; transform values; a shape layer's paths in layer space |
 | `ae.close({ unsavedChanges? })` | → `{ quit, ownership, reason? }` |
 | `ae.tracePath`, `ae.traceEvents`, `ae.artifactsDir` | evidence |
 
@@ -85,8 +91,30 @@ property's `valueType`; nothing is written),
 error), `AfterEffectsNotInstalledError`. Lower-level pieces (`AeDriver`,
 `ScriptInvocationTransport`, `resolveInstall`) are exported for tooling.
 
-Not in this release: saving, creating comps/layers, keyframes, expressions,
+Not in this release: saving, layers other than text, keyframes, expressions,
 render-queue output modules.
+
+### Driving a plugin's menu command
+
+```ts
+import { AfterEffects } from "@ido-bata/ae-a8n";
+
+// The plugin reads PLUGIN_OUT with getenv; AE started by LaunchServices
+// would not inherit it from this process.
+const ae = await AfterEffects.launch({ hostEnvironment: { PLUGIN_OUT: "/tmp/plugin-out" } });
+const comp = await (await ae.project()).createComp({ name: "E2E", width: 400, height: 300, duration: 1, frameRate: 30 });
+const { info } = await comp.addTextLayer({ text: "H", font: "ArialMT", fontSize: 200 });
+await comp.openInViewer();
+await comp.selectLayers([info.name]);
+const run = await (await ae.menuCommand("My Plugin: Run")).execute();
+console.log(run.added); // the layers the plugin created
+await ae.undo();
+await ae.close({ unsavedChanges: "discard" });
+```
+
+A command that opens a modal dialog blocks After Effects until a person
+dismisses it, and the call times out; a plugin driven this way needs a mode
+that reports instead of alerting.
 
 ### `@ido-bata/ae-a8n/testing`
 
