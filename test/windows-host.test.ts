@@ -25,6 +25,7 @@ import { AeDriver } from "../src/driver/driver.js";
 import { resolveInstall } from "../src/driver/install-path.js";
 import {
   ScriptInvocationTransport,
+  windowsMainWindowVisible,
   type LauncherChild,
   type SpawnLauncher,
 } from "../src/driver/script-invocation.js";
@@ -437,6 +438,28 @@ describe("Windows session start", () => {
     // One launch with no arguments, then exactly one `-r`.
     expect(calls.map((c) => c.args[0])).toEqual([undefined, "-r"]);
   });
+
+  it("asks about the window of the selected install, not any AE window", async () => {
+    const asked: string[] = [];
+    const transport = new ScriptInvocationTransport({
+      platform: "win32",
+      install: { executable: EXE, versionName: "x", renderExecutable: null },
+      readyPollMs: 5,
+      mainWindowVisible: (executable) => {
+        asked.push(executable);
+        return true;
+      },
+    });
+    await expect(transport.awaitScriptable(100)).resolves.toBe(true);
+    expect(asked).toEqual([EXE]);
+  });
+
+  it.skipIf(process.platform !== "win32")(
+    "the real window check is false for an executable that owns no AE window",
+    () => {
+      expect(windowsMainWindowVisible("C:\\definitely\\not\\AfterFX.exe")).toBe(false);
+    },
+  );
 
   it("sends nothing and says why when the main window never appears", async () => {
     const { spawnLauncher, calls } = launcher();

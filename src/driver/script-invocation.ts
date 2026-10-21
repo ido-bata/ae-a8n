@@ -48,21 +48,23 @@ export type ScriptInvocationOptions = {
    */
   readonly shortPath?: (directory: string) => string | null;
   /**
-   * Whether After Effects has shown its main window (Windows). Mainly a test
-   * seam; defaults to asking Windows.
+   * Whether the After Effects at `executable` has shown its main window
+   * (Windows). Mainly a test seam; defaults to asking Windows.
    */
-  readonly mainWindowVisible?: () => boolean;
+  readonly mainWindowVisible?: (executable: string) => boolean;
   /** How often that is asked while waiting. Mainly a test seam. */
   readonly readyPollMs?: number;
 };
 
 /**
- * Whether a top-level window of class `AE_CApplication*` is visible. AE creates
+ * Whether a visible top-level `AE_CApplication*` window belongs to a process
+ * running `executable`. A window of another installed version that is already
+ * open does not count: it says nothing about the one that is starting. AE creates
  * it hidden at start-up and shows it once its plug-ins, the scripting engine
  * among them, are loaded; a crash-recovery or other start-up dialog keeps it
  * hidden. The class name does not depend on the UI language.
  */
-function windowsMainWindowVisible(): boolean {
+export function windowsMainWindowVisible(executable: string): boolean {
   const script = [
     "Add-Type -TypeDefinition @'",
     "using System; using System.Text; using System.Runtime.InteropServices;",
@@ -70,18 +72,25 @@ function windowsMainWindowVisible(): boolean {
     "  public delegate bool EnumProc(IntPtr h, IntPtr l);",
     '  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc p, IntPtr l);',
     '  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);',
+    '  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);',
     '  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);',
-    "  public static bool Any() {",
-    "    bool found = false;",
+    "  public static System.Collections.Generic.List<uint> Pids() {",
+    "    var found = new System.Collections.Generic.List<uint>();",
     "    EnumWindows(delegate(IntPtr h, IntPtr l) {",
     "      var c = new StringBuilder(256); GetClassName(h, c, 256);",
-    '      if (c.ToString().StartsWith("AE_CApplication") && IsWindowVisible(h)) { found = true; }',
+    '      if (c.ToString().StartsWith("AE_CApplication") && IsWindowVisible(h)) { uint p; GetWindowThreadProcessId(h, out p); found.Add(p); }',
     "      return true; }, IntPtr.Zero);",
     "    return found;",
     "  }",
     "}",
     "'@",
-    "if ([A8nW]::Any()) { 'yes' } else { 'no' }",
+    "$want = $env:A8N_AE_EXECUTABLE.Replace('/', '\\').ToLowerInvariant()",
+    "$hit = $false",
+    "foreach ($p in [A8nW]::Pids()) {",
+    '  $path = (Get-CimInstance Win32_Process -Filter "ProcessId=$p" -ErrorAction SilentlyContinue).ExecutablePath',
+    "  if ($path -and $path.Replace('/', '\\').ToLowerInvariant() -eq $want) { $hit = $true }",
+    "}",
+    "if ($hit) { 'yes' } else { 'no' }",
   ].join("\n");
   try {
     const out = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
@@ -89,6 +98,7 @@ function windowsMainWindowVisible(): boolean {
       timeout: 15_000,
       windowsHide: true,
       stdio: ["ignore", "pipe", "ignore"],
+      env: { ...process.env, A8N_AE_EXECUTABLE: executable },
     });
     return out.trim() === "yes";
   } catch {
@@ -283,7 +293,7 @@ export class ScriptInvocationTransport implements HostTransport {
   readonly #now: () => number;
   readonly #spawnLauncher: SpawnLauncher;
   readonly #shortPath: (directory: string) => string | null;
-  readonly #mainWindowVisible: () => boolean;
+  readonly #mainWindowVisible: (executable: string) => boolean;
   readonly #readyPollMs: number;
   /** Directory → the form of it `-r` can be given. */
   readonly #argumentDirs = new Map<string, string>();
@@ -368,7 +378,7 @@ export class ScriptInvocationTransport implements HostTransport {
     }
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      if (this.#mainWindowVisible()) {
+      if (this.#mainWindowVisible(this.#install.executable)) {
         return true;
       }
       if (Date.now() >= deadline) {
