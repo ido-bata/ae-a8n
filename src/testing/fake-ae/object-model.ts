@@ -56,6 +56,9 @@ export const PropertyValueType = {
 /** Value types the fake models. */
 export type FakeValueType =
   | "OneD"
+  | "ThreeD"
+  | "SHAPE"
+  | "TEXT_DOCUMENT"
   | "TwoD_SPATIAL"
   | "ThreeD_SPATIAL"
   | "COLOR"
@@ -63,7 +66,33 @@ export type FakeValueType =
   | "NO_VALUE"
   | "CUSTOM_VALUE";
 
-export type FakeValue = number | readonly number[];
+export type FakeValue = number | readonly number[] | FakeShape | FakeTextDocument;
+
+/** A `Shape` as AE 26.5x89 reads it: arrays of `[x, y]`, in layer space. */
+export type FakeShape = {
+  vertices: number[][];
+  inTangents: number[][];
+  outTangents: number[][];
+  closed: boolean;
+};
+
+/** The `TextDocument` fields the host reads and writes. */
+export type FakeTextDocument = {
+  text: string;
+  font: string;
+  fontSize: number;
+  fillColor: number[];
+  applyFill: boolean;
+  applyStroke: boolean;
+};
+
+function isObjectValue(valueType: FakeValueType): boolean {
+  return valueType === "SHAPE" || valueType === "TEXT_DOCUMENT";
+}
+
+function cloneValue(value: FakeValue): FakeValue {
+  return typeof value === "number" ? value : (JSON.parse(JSON.stringify(value)) as FakeValue);
+}
 
 export type FakeEffectSpec = {
   readonly matchName: string;
@@ -159,6 +188,7 @@ function unscriptableValue(matchName: string, valueType: FakeValueType): Error {
 const ARRAY_SHAPES: Partial<Record<FakeValueType, { min: number; max: number; pad: readonly number[] }>> = {
   TwoD_SPATIAL: { min: 2, max: 2, pad: [] },
   ThreeD_SPATIAL: { min: 2, max: 3, pad: [0] },
+  ThreeD: { min: 2, max: 3, pad: [100] },
   COLOR: { min: 3, max: 4, pad: [1] },
 };
 
@@ -196,13 +226,21 @@ export class FakeProperty {
     if (!this.scriptable) {
       throw unscriptableValue(this.matchName, this.#valueType);
     }
-    return Array.isArray(this.#value) ? [...(this.#value as number[])] : this.#value;
+    return cloneValue(this.#value);
   }
 
   /** As AE 26.5x89 takes a value, including what it coerces (observed). */
   setValue(value: unknown): void {
     if (!this.scriptable) {
       throw unscriptableValue(this.matchName, this.#valueType);
+    }
+    if (isObjectValue(this.#valueType)) {
+      if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        throw aeError(5024, `can't call setValue for parameter 1: the value is not a ${this.#valueType}`);
+      }
+      this.#value = cloneValue(value as FakeValue);
+      this._touch();
+      return;
     }
     const shape = ARRAY_SHAPES[this.#valueType];
     if (shape !== undefined) {
@@ -320,20 +358,48 @@ export class FakePropertyGroup {
   }
 }
 
-export class FakeLayer {
-  readonly name: string;
-  readonly index: number;
-  enabled = true;
-  readonly #parade = new FakePropertyGroup("Effects", "ADBE Effect Parade", PropertyType.INDEXED_GROUP);
+let nextLayerId = 1;
 
-  constructor(name: string, index: number) {
+function transformGroup(position: readonly number[]): FakePropertyGroup {
+  const group = new FakePropertyGroup("Transform", "ADBE Transform Group");
+  group.addChild(new FakeProperty("Anchor Point", "ADBE Anchor Point", [0, 0, 0], "ThreeD_SPATIAL"));
+  group.addChild(new FakeProperty("Position", "ADBE Position", [...position, 0], "ThreeD_SPATIAL"));
+  group.addChild(new FakeProperty("Scale", "ADBE Scale", [100, 100, 100], "ThreeD"));
+  group.addChild(new FakeProperty("Rotation", "ADBE Rotate Z", 0));
+  group.addChild(new FakeProperty("Opacity", "ADBE Opacity", 100));
+  return group;
+}
+
+/**
+ * An AV layer. Its `index` is where it sits in its comp now, as in AE, where
+ * adding a layer at the top renumbers the rest.
+ */
+export class FakeLayer {
+  name: string;
+  readonly id: number;
+  enabled = true;
+  selected = false;
+  readonly #parade = new FakePropertyGroup("Effects", "ADBE Effect Parade", PropertyType.INDEXED_GROUP);
+  readonly #groups = new Map<string, FakePropertyGroup>();
+  /** @internal */
+  _indexOf: (layer: FakeLayer) => number = () => 0;
+
+  constructor(name: string, position: readonly number[] = [0, 0]) {
     this.name = name;
-    this.index = index;
+    this.id = nextLayerId++;
+    this.#groups.set("ADBE Transform Group", transformGroup(position));
+  }
+
+  get index(): number {
+    return this._indexOf(this);
   }
 
   property(selector: string | number): unknown {
     if (selector === "ADBE Effect Parade") {
       return this.#parade;
+    }
+    if (typeof selector === "string" && this.#groups.has(selector)) {
+      return this.#groups.get(selector);
     }
     return this.#parade.property(selector);
   }
@@ -343,8 +409,79 @@ export class FakeLayer {
   }
 
   /** @internal */
+  _addGroup(group: FakePropertyGroup): void {
+    this.#groups.set(group.matchName, group);
+  }
+
+  /** @internal */
   _attach(touch: Touch): void {
     this.#parade._touch = touch;
+  }
+}
+
+/** A text layer: `ADBE Text Properties` › `ADBE Text Document`. */
+export class FakeTextLayer extends FakeLayer {
+  constructor(text: string, position: readonly number[]) {
+    super(text, position);
+    const properties = new FakePropertyGroup("Text", "ADBE Text Properties");
+    const document: FakeTextDocument = {
+      text,
+      font: "ArialMT",
+      fontSize: 36,
+      fillColor: [1, 1, 1],
+      applyFill: true,
+      applyStroke: false,
+    };
+    properties.addChild(new FakeProperty("Source Text", "ADBE Text Document", document, "TEXT_DOCUMENT"));
+    this._addGroup(properties);
+  }
+}
+
+/**
+ * A shape layer: `ADBE Root Vectors Group` holding groups (`ADBE Vector
+ * Group` › `ADBE Vectors Group`) and paths (`ADBE Vector Shape - Group` ›
+ * `ADBE Vector Shape`).
+ */
+export class FakeShapeLayer extends FakeLayer {
+  readonly #root = new FakePropertyGroup("Contents", "ADBE Root Vectors Group", PropertyType.INDEXED_GROUP);
+
+  constructor(name: string, position: readonly number[]) {
+    super(name, position);
+    this._addGroup(this.#root);
+  }
+
+  /** Adds one path, inside a group named `group` when given. A test seam. */
+  addPath(shape: FakeShape, group?: string): void {
+    const path = new FakePropertyGroup("Path 1", "ADBE Vector Shape - Group");
+    path.addChild(new FakeProperty("Path", "ADBE Vector Shape", shape, "SHAPE"));
+    if (group === undefined) {
+      this.#root.addChild(path.asProperty());
+      return;
+    }
+    const outer = new FakePropertyGroup(group, "ADBE Vector Group");
+    const contents = new FakePropertyGroup("Contents", "ADBE Vectors Group", PropertyType.INDEXED_GROUP);
+    contents.addChild(path.asProperty());
+    outer.addChild(contents.asProperty());
+    this.#root.addChild(outer.asProperty());
+  }
+}
+
+/** `CompItem.layers`: new layers go on top, as in AE. */
+export class FakeLayerCollection {
+  readonly #comp: FakeComp;
+
+  constructor(comp: FakeComp) {
+    this.#comp = comp;
+  }
+
+  addText(text: string): FakeTextLayer {
+    return this.#comp._insert(new FakeTextLayer(text, [this.#comp.width / 2, this.#comp.height / 2]));
+  }
+
+  addShape(): FakeShapeLayer {
+    return this.#comp._insert(
+      new FakeShapeLayer("Shape Layer 1", [this.#comp.width / 2, this.#comp.height / 2]),
+    );
   }
 }
 
@@ -354,7 +491,8 @@ export class FakeComp {
   readonly height: number;
   readonly duration: number;
   readonly frameRate: number;
-  readonly #layers: FakeLayer[];
+  #layers: FakeLayer[];
+  readonly layers: FakeLayerCollection = new FakeLayerCollection(this);
 
   constructor(
     options: {
@@ -371,11 +509,50 @@ export class FakeComp {
     this.height = options.height;
     this.duration = options.duration;
     this.frameRate = options.frameRate;
-    this.#layers = options.layers.map((layer, index) => new FakeLayer(layer.name, index + 1));
+    this.#layers = [];
+    for (const layer of options.layers) {
+      this.#adopt(new FakeLayer(layer.name, [this.width / 2, this.height / 2]));
+    }
+  }
+
+  #adopt(layer: FakeLayer): void {
+    layer._indexOf = (candidate) => this.#layers.indexOf(candidate) + 1;
+    layer._attach(() => this.#touch());
+    this.#layers.push(layer);
+  }
+
+  /** @internal Puts a new layer on top, as `LayerCollection.add*` does. */
+  _insert<T extends FakeLayer>(layer: T): T {
+    this.#adopt(layer);
+    this.#layers = [layer, ...this.#layers.filter((existing) => existing !== layer)];
+    this.#touch();
+    return layer;
+  }
+
+  /** @internal The layer stack, for undo. */
+  _layerStack(): FakeLayer[] {
+    return [...this.#layers];
+  }
+
+  /** @internal Restores a stack taken by `_layerStack`. */
+  _restoreLayerStack(layers: readonly FakeLayer[]): void {
+    this.#layers = [...layers];
+  }
+
+  /** @internal Set by the project that holds this comp. */
+  _activate: (comp: FakeComp) => void = () => {};
+
+  /** Makes this the active item, as opening it in a viewer does in AE. */
+  openInViewer(): void {
+    this._activate(this);
   }
 
   #resolutionFactor: [number, number] = [1, 1];
-  #touch: Touch = untouched;
+  #onTouch: Touch = untouched;
+
+  #touch(): void {
+    this.#onTouch();
+  }
 
   /** The viewer's resolution; a real `saveFrameToPng` renders at it. Setting it is an edit. */
   get resolutionFactor(): [number, number] {
@@ -389,10 +566,7 @@ export class FakeComp {
 
   /** @internal */
   _attach(touch: Touch): void {
-    this.#touch = touch;
-    for (const layer of this.#layers) {
-      layer._attach(touch);
-    }
+    this.#onTouch = touch;
   }
   /** Every frame `saveFrameToPng` wrote, in order. */
   readonly renders: RenderCall[] = [];
@@ -501,22 +675,54 @@ export class FakeProject {
   /** Unsaved changes, as AE's `Project.dirty`. */
   dirty = false;
   #items: FakeComp[] = [];
+  /** The comp last opened in a viewer, as AE's `Project.activeItem`. */
+  activeItem: FakeComp | null = null;
 
   get numItems(): number {
     return this.#items.length;
   }
 
-  get items(): FakeComp[] {
-    return this.#items;
+  /** `Project.items`: an `ItemCollection`, of which the host uses `addComp`. */
+  get items(): { readonly length: number; addComp: FakeProject["addComp"] } {
+    return { length: this.#items.length, addComp: this.addComp.bind(this) };
   }
 
   load(comp: FakeComp, file: FakeFile | null): void {
-    this.#items = [comp];
+    this.#items = [];
+    this.activeItem = null;
+    this.#adopt(comp);
     this.file = file;
     this.dirty = false;
+  }
+
+  /** As `ItemCollection.addComp(name, width, height, pixelAspect, duration, frameRate)`. */
+  addComp(
+    name: string,
+    width: number,
+    height: number,
+    _pixelAspect: number,
+    duration: number,
+    frameRate: number,
+  ): FakeComp {
+    const comp = new FakeComp({ name, width, height, duration, frameRate, layers: [] });
+    this.#adopt(comp);
+    this.dirty = true;
+    return comp;
+  }
+
+  #adopt(comp: FakeComp): void {
     comp._attach(() => {
       this.dirty = true;
     });
+    comp._activate = (active) => {
+      this.activeItem = active;
+    };
+    this.#items.push(comp);
+  }
+
+  /** @internal Every comp, for undo. */
+  _comps(): readonly FakeComp[] {
+    return this.#items;
   }
 
   item(index: number): FakeComp | undefined {
@@ -528,10 +734,20 @@ export class FakeProject {
       throw new Error("fake projects cannot be saved");
     }
     this.#items = [];
+    this.activeItem = null;
     this.file = null;
     this.dirty = false;
   }
 }
+
+/** Command ids AE 26.5x89 uses for Edit › Undo and Edit › Redo. */
+export const UNDO_COMMAND_ID = 16;
+export const REDO_COMMAND_ID = 2035;
+
+/** What a menu command does to the fake, given the application. */
+export type FakeMenuHandler = (app: FakeApplication) => void;
+
+type SceneState = Map<FakeComp, FakeLayer[]>;
 
 export class FakeApplication {
   version = "26.0.0";
@@ -555,6 +771,78 @@ export class FakeApplication {
   quit(): void {
     this.#quitCount += 1;
   }
+
+  /**
+   * The process environment as `$.getenv` / `$.setenv` see it: this
+   * process only, gone when it exits.
+   */
+  readonly environment = new Map<string, string>();
+
+  readonly #menu = new Map<number, { name: string; run: FakeMenuHandler }>();
+  #nextCommandId = 5000;
+  readonly #undo: Array<{ before: SceneState; after: SceneState }> = [];
+  readonly #redo: Array<{ before: SceneState; after: SceneState }> = [];
+  /** Every id `executeCommand` received, in order. */
+  readonly executedCommands: number[] = [];
+
+  /**
+   * Registers a menu command, as an AEGP plugin's `AEGP_InsertMenuCommand`
+   * does, and returns its id. A test seam: the handler stands in for the
+   * plugin's command hook.
+   */
+  registerMenuCommand(name: string, run: FakeMenuHandler): number {
+    const id = this.#nextCommandId++;
+    this.#menu.set(id, { name, run });
+    return id;
+  }
+
+  /** As AE: the id of a menu item by its (localised) name, or 0. */
+  findMenuCommandId(name: string): number {
+    for (const [id, command] of this.#menu) {
+      if (command.name === name) {
+        return id;
+      }
+    }
+    return 0;
+  }
+
+  /**
+   * As AE: runs the command synchronously. Only registered commands and
+   * undo/redo are modelled; each registered command is one undo step over
+   * the layer stacks of every comp. An unknown id does nothing, as in AE.
+   */
+  executeCommand(id: number): void {
+    this.executedCommands.push(id);
+    if (id === UNDO_COMMAND_ID || id === REDO_COMMAND_ID) {
+      const from = id === UNDO_COMMAND_ID ? this.#undo : this.#redo;
+      const to = id === UNDO_COMMAND_ID ? this.#redo : this.#undo;
+      const step = from.pop();
+      if (step !== undefined) {
+        this.#restore(id === UNDO_COMMAND_ID ? step.before : step.after);
+        to.push(step);
+      }
+      return;
+    }
+    const command = this.#menu.get(id);
+    if (command === undefined) {
+      return;
+    }
+    const before = this.#capture();
+    command.run(this);
+    this.#undo.push({ before, after: this.#capture() });
+    this.#redo.length = 0;
+    this.project.dirty = true;
+  }
+
+  #capture(): SceneState {
+    return new Map(this.project._comps().map((comp) => [comp, comp._layerStack()]));
+  }
+
+  #restore(state: SceneState): void {
+    for (const [comp, layers] of state) {
+      comp._restoreLayerStack(layers);
+    }
+  }
 }
 
 export function createDefaultComp(): FakeComp {
@@ -575,6 +863,9 @@ export function createFakeGlobals(app: FakeApplication): HostGlobals {
     Folder: FakeFolder,
     CloseOptions,
     CompItem: FakeComp,
+    AVLayer: FakeLayer,
+    TextLayer: FakeTextLayer,
+    ShapeLayer: FakeShapeLayer,
     PropertyType,
     PropertyValueType,
   };

@@ -47,6 +47,22 @@ export class UnsavedChangesError extends AfterEffectsError {
 }
 
 /**
+ * The operation changes After Effects in a way only the session that started
+ * it may: running a menu command, or setting the process environment. A host
+ * that was already running, or whose identity cannot be confirmed, belongs to
+ * someone else. `ownership` is what the session saw.
+ */
+export class HostNotOwnedError extends AfterEffectsError {
+  readonly ownership: string;
+
+  constructor(op: string, ownership: string, evidence: string) {
+    super(`${op} refused: this session does not own After Effects (${ownership}: ${evidence})`, op);
+    this.name = "HostNotOwnedError";
+    this.ownership = ownership;
+  }
+}
+
+/**
  * A read or write of a property that has no value a script can use: a
  * NO_VALUE or CUSTOM_VALUE property, or a group. Nothing was written.
  */

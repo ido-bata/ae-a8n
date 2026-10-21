@@ -60,11 +60,10 @@ export class FakeAfterEffectsTransport implements HostTransport {
 
   invoke(entryScriptPath: string): Promise<void> {
     const globals: HostGlobals = createFakeGlobals(this.app);
-    const outcome = runHostScript(
-      entryScriptPath,
-      globals,
-      this.foreignJson === undefined ? {} : { foreignJson: this.foreignJson },
-    );
+    const outcome = runHostScript(entryScriptPath, globals, {
+      environment: this.app.environment,
+      ...(this.foreignJson === undefined ? {} : { foreignJson: this.foreignJson }),
+    });
     if (!outcome.success) {
       // The bootstrap catches everything the host throws, so reaching here
       // means the entry script itself failed. On a real AE that is a modal

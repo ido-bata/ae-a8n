@@ -14,14 +14,25 @@ export {
   FakeApplication,
   FakeComp,
   FakeLayer,
+  FakeLayerCollection,
   FakePendingFrame,
   FakeProject,
   FakeProperty,
   FakePropertyGroup,
+  FakeShapeLayer,
+  FakeTextLayer,
+  REDO_COMMAND_ID,
+  UNDO_COMMAND_ID,
   createDefaultComp,
   createFakeGlobals,
 } from "./fake-ae/object-model.js";
-export type { FakeEffectSpec, RenderCall } from "./fake-ae/object-model.js";
+export type {
+  FakeEffectSpec,
+  FakeMenuHandler,
+  FakeShape,
+  FakeTextDocument,
+  RenderCall,
+} from "./fake-ae/object-model.js";
 
 export {
   CloseOptions,

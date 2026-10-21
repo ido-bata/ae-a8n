@@ -193,6 +193,39 @@ The same script against `main` (`ca299c4`) and the change:
 | numeric `set(70)` on Tint, `set(2)` on a Layer control | ok | ok |
 | Fill colour `[0, 1, 0, 1]`, then render | not writable | the Card's centre pixel is `[0, 255, 0, 255]` |
 
+## Menu commands and scene building (#45), 2026-10-21
+
+macOS 27.0.1 arm64, AE 26.5x89 (ja). Observed first with plain JSX probes,
+then through the API (`examples/menu-command.ts`):
+
+- `app.findMenuCommandId` resolves a command an **AEGP plugin** registered
+  with `AEGP_InsertMenuCommand` by the plugin's own menu text (Ae_Restro:
+  `Ae_Restro: Decompose` → 5064, `Ae_Restro: Merge` → 5065 in that session;
+  ids are per session). An unknown name gives 0.
+- `app.executeCommand(id)` runs the plugin's command hook **synchronously**:
+  the layers it created are in the comp when the call returns (236 ms for a
+  Decompose).
+- `$.setenv(name, value)` inside AE is visible to the plugin's C `getenv`
+  in the same process. AE started through LaunchServices (`osascript`) does
+  not inherit the caller's environment, so this is how a driver configures a
+  native plugin. Nothing is persisted.
+- Edit › Undo is id 16 and Edit › Redo 2035; both act on a plugin command's
+  undo group and on AE's own commands.
+- A script error that escapes a top-level `DoScriptFile` script shows a modal
+  ("行 17 のスクリプトを実行できません…") and blocks AE until dismissed — the
+  reason the entry guard exists, and why a plugin driven this way must not
+  `alert()`.
+- `examples/menu-command.ts` with AE's own Layer › Create Shapes from Text
+  (id 3781): from the empty untitled project, `createComp` → `addTextLayer`
+  ("H", ArialMT 200, applied as asked) → `openInViewer` → `selectLayers` →
+  `execute` added one shape layer (`Hアウトライン`, 1 closed path, 12
+  vertices); `undo` removed exactly it, `redo` restored it; the shape layer
+  alone rendered identically to the text layer alone (0 of 120000 pixels
+  differ); AE quit (`quit=true`). `RESULT PASS`.
+
+Not covered: Windows; a command that opens its own dialog (it blocks, and the
+call can only time out); localised built-in menu text other than ja.
+
 ## What is verified, in detail
 
 | Area | Level | How |
