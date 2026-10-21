@@ -6,6 +6,7 @@
  * the API surface moving.
  */
 
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -83,6 +84,8 @@ export type CallOptions = {
   readonly timeoutMs?: number;
   /** Recorded in the trace but not sent to the host. */
   readonly opName?: string;
+  /** Ask the receiving instance to remember this session, or to prove it does. Only on `verifiesDestination` transports. */
+  readonly marker?: "adopt" | "require";
 };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -102,6 +105,8 @@ export class AeDriver {
   readonly #readinessTimeoutMs: number;
   #started = false;
   #closed = false;
+  /** Random per driver; what the host remembers to tell "my instance" from another. */
+  readonly #sessionId = randomUUID();
 
   constructor(options: DriverOptions) {
     this.#transport = options.transport;
@@ -166,6 +171,7 @@ export class AeDriver {
           ? this.#readinessTimeoutMs
           : Math.max(Math.min(PROBE_AFTER_READY_MS, this.#readinessTimeoutMs), this.#readinessTimeoutMs - (Date.now() - began)),
         opName: "session.probe",
+        ...(this.#transport.verifiesDestination === true ? { marker: "adopt" as const } : {}),
       })) as {
         version: string;
         build?: string;
@@ -219,7 +225,11 @@ export class AeDriver {
         await this.#call(
           "app.quit",
           { discardUnsavedChanges: options.unsavedChanges === "discard" },
-          { timeoutMs: 10_000, opName: "session.quit" },
+          {
+            timeoutMs: 10_000,
+            opName: "session.quit",
+            ...(this.#transport.verifiesDestination === true ? { marker: "require" as const } : {}),
+          },
         );
         await this.#transport.close();
         result = { quit: true, ownership };
@@ -232,6 +242,21 @@ export class AeDriver {
     } catch (error) {
       // Unsaved changes are a decision for the caller, not a dead session.
       const refused = error instanceof HostError && error.name === "UnsavedChangesError";
+      if (error instanceof HostError && error.name === "SessionMismatch") {
+        // The quit reached an instance that never answered this session's probe,
+        // and did nothing. Not an error in the caller's terms: the AE this
+        // session owns is simply still running, and nothing else was touched.
+        this.#closed = true;
+        const result: StopResult = {
+          quit: false,
+          ownership: this.ownership(),
+          reason: `quit refused: it reached a different After Effects instance than the one that answered this session (${error.message})`,
+        };
+        this.#trace.record("session.close", "ok", Date.now() - began, {
+          result: { quit: false, ownership: result.ownership.kind, reason: result.reason ?? "" },
+        });
+        return result;
+      }
       if (!refused) {
         this.#closed = true;
       }
@@ -262,6 +287,9 @@ export class AeDriver {
       method,
       params,
       timeoutMs,
+      ...(options.marker === undefined
+        ? {}
+        : { session: { id: this.#sessionId, ...(options.marker === "adopt" ? { adopt: true } : { require: true }) } }),
     };
 
     try {

@@ -357,6 +357,51 @@ as a pass.
   seven digits); with the change 42 tests in `windows-ownership.test.ts` pass and
   the whole suite is 421 passed, 1 skipped, 0 failed.
 
+## Session marker (#43): proof of where a quit was delivered
+
+Ownership (#40) proves which *process* this session started. `AfterFX.exe -r`
+cannot be aimed at a process, so it does not prove which *instance* a quit reaches
+(ae-a8n#43: a launcher is a second `AfterFX.exe` for 0.3-0.7 s; a `-r` during
+startup starts a second instance). The marker proves the destination:
+
+1. **A random id per driver** (`randomUUID()`), never reused, never logged as a secret
+   (it is not one).
+2. **The probe adopts it.** The probe request carries `session: {id, adopt: true}`;
+   after the probe's method has run, the host stores `sessions[id] = true` in
+   `$.global.__a8nSessions`. Whoever answered the probe, and only that engine,
+   knows the id. This ties the marker to the instance that really processed it,
+   not to a process id.
+3. **The quit requires it.** `app.quit` carries `session: {id, require: true}`; the
+   host checks the store *before* doing anything. No match: it throws
+   `SessionMismatch` and does nothing (no project is closed, nothing is quit).
+4. **Fail closed.** The driver turns `SessionMismatch` into
+   `{quit: false, reason: "quit refused: it reached a different After Effects
+   instance ..."}` and leaves every process alone. The same happens if the answering
+   instance restarted (a fresh engine has no marker).
+5. **Nothing from After Effects is kept.** The store is a plain object whose values
+   are the boolean `true`. No item, comp, layer or project ever lands in the
+   persistent engine (the "Object is invalid" lesson).
+6. **Several sessions share an instance**: the store is a map by id, so a second
+   probe does not erase the first session's marker.
+7. **macOS is unchanged.** Only a transport that sets `verifiesDestination` gets a
+   `session` field at all; `ScriptInvocationTransport` does so on win32 only.
+   `DoScriptFile` addresses the application by bundle, so it keeps its behaviour.
+
+What it does *not* do: it does not make the probe itself safe against a
+mis-delivery (the probe is read-only and only adopts a marker), it does not prove
+ownership of the process (that is #40; the marker is a second, independent
+condition), and it does not protect `project.open` with `unsavedChanges: "discard"`
+against landing in the wrong instance (only `app.quit` requires the marker; extending
+it is a one-line change per method, left out until it is wanted). A restart of the
+instance that answered the probe loses the marker, so a quit then refuses; that is
+the intended direction.
+
+Tests (`test/session-marker.test.ts`, two fake After Effects behind one delivery
+path): a quit mis-delivered to the other instance refuses and quits nothing in
+either; a restarted engine refuses; distinct random ids and two sessions on one
+instance; only the probe adopts and only the quit requires; the engine holds only
+booleans; and a transport without `verifiesDestination` sends no `session` at all.
+
 ### A `-r` launcher is not a second instance (found by the #41 loop)
 
 In an interleaved experiment, one `close()` returned `quit: false` ("2 instances
@@ -372,3 +417,17 @@ reuses a launcher's pid has another parent and still counts. Tests (fail before,
 pass after): a spawned launcher beside the owned AE keeps it `owned`; the same pid
 with another parent, and a child of this process that was never spawned, make it
 `unknown`. Real host: 30 cold open / info / close runs, `close()` quit every one.
+
+Real host (Windows 11, AE 26.5x89), `marker-real.mjs` against this branch's build:
+
+| Step | Result |
+| --- | --- |
+| cold launch through ae-a8n | `owned`; the probe adopted the session id in that AE's engine |
+| a second driver that never probed asks the same AE to quit with `require` | `SessionMismatch: this After Effects instance did not answer the probe of this session, so app.quit was not run`; the AE kept running (same pid) |
+| the owning session's `close()` | marker found, `quit: true`, 0 AE processes |
+
+`$.global.__a8nSessions` works in the real engine (it is the real global object;
+the fake now persists one per instance). ae-test (unmodified npm package, this
+branch's local build): 2 runs x 3 specs, snapshot compared equal to a baseline
+recorded in a much earlier session, typed error and deliberate failure as expected,
+0 AE processes left after each run.

@@ -263,6 +263,12 @@ export type RunHostOptions = {
    */
   readonly foreignJson?: unknown;
   /**
+   * What `$.global` is. A real engine's global object outlives every script run
+   * in it; the fake's per-run sandbox does not, so a transport that wants state
+   * to persist passes the same object each time.
+   */
+  readonly engineGlobal?: Record<string, unknown>;
+  /**
    * The process environment behind `$.getenv` / `$.setenv`. Pass the same
    * map to every invocation so a variable outlives the script that set it, as
    * it does in a real AE process. Defaults to an empty one per run.
@@ -341,9 +347,11 @@ export function runHostScript(
     evalFile: (target: string | FakeFile) => unknown;
     fileName: string;
     sleep: (ms: number) => void;
+    global: Record<string, unknown>;
     getenv: (name: string) => string | null;
     setenv: (name: string, value: string) => void;
   } = {
+    global: options.engineGlobal ?? {},
     evalFile: (target: string | FakeFile): unknown => {
       const path = typeof target === "string" ? target : target.fsName;
       const included = readFileSync(path, "utf-8");

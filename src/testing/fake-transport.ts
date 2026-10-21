@@ -37,6 +37,8 @@ export class FakeAfterEffectsTransport implements HostTransport {
    * host the session launched.
    */
   ownershipKind: HostOwnership["kind"] = "owned";
+  /** The engine's `$.global`: persists across scripts, as in a real After Effects. */
+  #engineGlobal: Record<string, unknown> = {};
   #launched = false;
   #closed = false;
   #nextComp: FakeComp = createDefaultComp();
@@ -62,6 +64,7 @@ export class FakeAfterEffectsTransport implements HostTransport {
     const globals: HostGlobals = createFakeGlobals(this.app);
     const outcome = runHostScript(entryScriptPath, globals, {
       environment: this.app.environment,
+      engineGlobal: this.#engineGlobal,
       ...(this.foreignJson === undefined ? {} : { foreignJson: this.foreignJson }),
     });
     if (!outcome.success) {
@@ -73,6 +76,16 @@ export class FakeAfterEffectsTransport implements HostTransport {
       );
     }
     return Promise.resolve();
+  }
+
+  /** What a script left in the engine's global object. */
+  get engineGlobal(): Readonly<Record<string, unknown>> {
+    return this.#engineGlobal;
+  }
+
+  /** A restarted After Effects: the engine's globals are gone. */
+  resetEngine(): void {
+    this.#engineGlobal = {};
   }
 
   ownership(): HostOwnership {

@@ -505,6 +505,11 @@ export class ScriptInvocationTransport implements HostTransport {
     }
   }
 
+  /** Windows cannot aim `-r` at a process; see `HostTransport.verifiesDestination`. */
+  get verifiesDestination(): boolean {
+    return this.#platform === "win32";
+  }
+
   confirmLaunched(): void {
     if (this.#confirmed) {
       return;

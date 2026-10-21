@@ -54,6 +54,15 @@ export interface HostTransport {
   confirmLaunched?(): void;
 
   /**
+   * True when the transport cannot aim a script at one instance (Windows
+   * `AfterFX.exe -r` has no way to name a process). The driver then has the
+   * probe leave a session marker in the instance that answers it, and has
+   * `app.quit` run only where that marker is found, so a quit that reached some
+   * other instance quits nothing.
+   */
+  readonly verifiesDestination?: boolean | undefined;
+
+  /**
    * Who owns the host *now*. The driver quits the host only on "owned".
    * A transport without this is treated as "unknown".
    */

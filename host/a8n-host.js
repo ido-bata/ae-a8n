@@ -897,6 +897,42 @@
 
   // ----------------------------------------------------------- dispatch ---
 
+  /**
+   * Which sessions this engine has answered, by id. A plain object of booleans:
+   * the engine outlives every script, so nothing from After Effects (no item,
+   * comp or layer) may be kept here, or a later project switch invalidates it.
+   */
+  function sessionStore() {
+    var store = $.global.__a8nSessions;
+    if (store === undefined || store === null) {
+      store = {};
+      $.global.__a8nSessions = store;
+    }
+    return store;
+  }
+
+  /** Refuses before doing anything when the request requires a session this engine never answered. */
+  function checkSession(request) {
+    var session = request.session;
+    if (session === undefined || session === null || session.require !== true) {
+      return;
+    }
+    if (sessionStore()[String(session.id)] !== true) {
+      var mismatch = new Error(
+        "this After Effects instance did not answer the probe of this session, so " + String(request.method) + " was not run"
+      );
+      mismatch.name = "SessionMismatch";
+      throw mismatch;
+    }
+  }
+
+  function rememberSession(request) {
+    var session = request.session;
+    if (session !== undefined && session !== null && session.adopt === true) {
+      sessionStore()[String(session.id)] = true;
+    }
+  }
+
   function dispatch(request) {
     if (request === null || typeof request !== "object") {
       throw new Error("request envelope is not an object");
@@ -905,7 +941,10 @@
     if (method === undefined) {
       throw new Error("unknown method: " + String(request.method));
     }
-    return method(request.params);
+    checkSession(request);
+    var result = method(request.params);
+    rememberSession(request);
+    return result;
   }
 
   function main() {
