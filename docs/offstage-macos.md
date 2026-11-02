@@ -208,10 +208,14 @@ Adobe公式（別OSアカウント × 同一PC）: 追加のデバイスアク�
 node scripts/isolated-session/run-in-isolated-session.mjs \
   --user test \
   --report /Users/Shared/ae-a8n/e2e-report.json \
-  -- node /Users/rebui/work/ae-a8n/scripts/isolated-session/ae-e2e.mjs \
+  -- /Users/Shared/ae-a8n/bin/node \
+       /Users/rebui/work/ae-a8n/scripts/isolated-session/ae-e2e.mjs \
        --pkg /Users/Shared/ae-a8n/pkg \
        --report /Users/Shared/ae-a8n/e2e-report.json
 ```
+
+- **node の置き場所**: `test` ユーザーの PATH に node が無い（実測: `node: command not found`）。既に監査済みの mise 版 node 24.22.1 を **`/Users/Shared/ae-a8n/bin/node` にコピー**して使う（インストールスクリプトは実行していない。`/Users/rebui/.local/...` 上の実体を直接呼んでも動くが、共有置き場の方が他ユーザーのホームに依存しない）。
+- テストユーザーのセッションからリポジトリは**読める**（実測）。
 
 **注意**: このランナーは「どのユーザーでも Ae が起動中なら拒否」する（Adobe の制約）。拒否された場合は AE 69349 を**手で**終了してから走らせる（代理が kill することはしない）。
 
@@ -287,12 +291,14 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 
 | 対象 | 実測 | 意味 |
 | --- | --- | --- |
-| Apple Events → After Effects | `-1712`（タイムアウト） | **届く**。Ae が答えないだけ（§10.3） |
-| Apple Events → System Events | `-1712`（タイムアウト） | **届く**。System Events が応答しない（保留中の TCC プロンプト待ち） |
-| Screen Recording (`screencapture`) | `could not create image from display` | **使えない**。許可が必要 |
-| Accessibility (AX で Ae の窓を読む) | 応答なし（待ち） | **許可が必要** |
+| **DoScriptFile** (`«event miscfile»`) → After Effects | `-1712`（タイムアウト） | **届く**。Ae が答えないだけ（§10.3）。**ae-a8n が使う経路** |
+| 通常の Apple Event (`count documents`) → After Effects | `-1743`（権限がありません） | Automation → Ae が未許可 |
+| Apple Events → System Events | `-1712`（タイムアウト） | **届く**。System Events が応答しない |
+| Accessibility (AX で Ae の窓を読む) | `-1712`（タイムアウト） | **使えない**（許可が必要） |
+| Screen Recording (`screencapture`) | `could not create image from display` | **使えない**（許可が必要） |
 
-- つまり残るのは **Screen Recording と Accessibility の許可**（どちらも Terminal.app に対して）と **Adobe のサインイン**。いずれも人がやる操作（§8）。
+- **重要な区別**: 通常の Apple Event（`count documents` など）は `-1743` で**拒否**されるが、**DoScriptFile（`miscfile` イベント）は `-1712` で届く**。ae-a8n の macOS 輸送は DoScriptFile を使うので、**Automation → Ae の許可は ae-a8n の動作には要らない**。要るのは **Screen Recording と Accessibility（Terminal.app に対して）** と **Adobe のサインイン**。いずれも人がやる操作（§8）。
+- 逆に言えば、`count documents` の `-1743` を「Ae に届いていない証拠」と読むのは誤り。**`-1743` は TCC の拒否、`-1712` は「届いたが答えない」**。この 2 つは意味が違う。
 
 ### 10.7 フォーカスの非干渉（実測）
 
