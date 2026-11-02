@@ -116,6 +116,12 @@ A command that opens a modal dialog blocks After Effects until a person
 dismisses it, and the call times out; a plugin driven this way needs a mode
 that reports instead of alerting.
 
+On macOS, do **not** recover by moving the physical user's cursor or clicking
+through the user's desktop. A separate-user offstage session is being evaluated
+for GUI-only recovery; the [experimental macOS isolation notes](https://github.com/ido-bata/ae-a8n/blob/main/docs/offstage-macos.md)
+explain its safety gates and limitations. It is **not** the default and is not
+verified against real AE yet (see [#49](https://github.com/ido-bata/ae-a8n/issues/49)).
+
 ### `@ido-bata/ae-a8n/testing`
 
 An in-process fake After Effects (`FakeAfterEffectsTransport`) that runs the
