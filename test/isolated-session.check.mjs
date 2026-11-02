@@ -14,6 +14,9 @@ import {
   assertResultSession,
   assertTargetSession,
   parseAeProcesses,
+  parseTerminalResult,
+  shellCommandLine,
+  shellQuote,
 } from "../scripts/isolated-session/session-rules.mjs";
 
 const aqua = { uid: 502, username: "test", asid: 100040, kind: "Aqua" };
@@ -81,4 +84,38 @@ test("a running After Effects stops the run, and nothing is killed", () => {
     /one OS user at a time/,
   );
   assert.doesNotThrow(() => assertNoRunningAfterEffects([]));
+});
+
+test("a plain word needs no quoting", () => {
+  assert.equal(shellQuote("node"), "node");
+  assert.equal(shellQuote("/usr/bin/node"), "/usr/bin/node");
+  assert.equal(shellQuote("e2e-v2.mjs"), "e2e-v2.mjs");
+});
+
+test("a word with a space or a quote stays one word", () => {
+  assert.equal(shellQuote("two words"), "'two words'");
+  assert.equal(shellQuote("it's"), "'it'\\''s'");
+  assert.equal(shellQuote("a;rm -rf /tmp"), "'a;rm -rf /tmp'");
+  assert.equal(shellQuote(""), "''");
+});
+
+test("a command line quotes every word", () => {
+  assert.equal(shellCommandLine(["node", "/tmp/ae e2e.mjs", "--flag"]), "node '/tmp/ae e2e.mjs' --flag");
+});
+
+test("the job's own account of where it ran is read as data", () => {
+  const result = parseTerminalResult(["uid=502", "username=test", "asid=100040", "exit=0"].join("\n") + "\n");
+  assert.deepEqual(result, { uid: 502, username: "test", asid: 100040, exitCode: 0 });
+});
+
+test("a job that wrote nothing is not a result", () => {
+  const result = parseTerminalResult("");
+  assert.equal(result.uid, -1);
+  assert.equal(result.asid, null);
+  assert.equal(result.exitCode, 1);
+});
+
+test("a failed job keeps its exit code", () => {
+  const result = parseTerminalResult("uid=502\nusername=test\nasid=100040\nexit=7\n");
+  assert.equal(result.exitCode, 7);
 });

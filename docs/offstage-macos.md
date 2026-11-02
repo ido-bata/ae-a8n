@@ -84,7 +84,22 @@ exit=69
 
 ## 2. 隔離の設計
 
-### 2.1 offstage を使う経路（既定）
+### 2.1 Terminal 経路（既定）
+
+```
+┌ コンソールセッション（いつものユーザー）        ┌ ヘルパーセッション（別ユーザー）
+│  run-in-isolated-session.mjs                  │  Terminal.app（ログイン済みのAquaセッション）
+│    └ offstage session open --user test       │    └ .command を起動
+│         -- -a Terminal <launcher>            │         └ テストプロセス
+│    └ <results>/<id>.done を読む              │              └ 実行結果と実行したuidを書く
+```
+
+- 起動されるAe・送られるApple Events・撮られる画面・入力されるキーとクリックは、すべて**ヘルパーセッション**の中で起きる。
+- コンソールセッションには何も届かない。
+- **なぜ Terminal なのか**: macOS は権限を *responsible process*（最も内側のアプリバンドル）に帰属させる。`offstage-sessiond` はバンドルを持たないバイナリなので、macOS はこれを属性づけられず**即座に拒否する**（実測: `-1743`）。しかも**プロンプトも出ない**ので、人間が許可する手段が存在しない。Terminal.app はバンドルなので、許可がシステム設定に現れ、テストプロセスに継承される（実測の比較表は §10.2）。
+- ジョブは**自分のセッションを自分で書き記す**（uid / username / asid / exit）。制御側は、依頼したuidと一致しない結果を**信用しない**。
+
+### 2.2 offstage を使う経路
 
 ```
 ┌ コンソールセッション（いつものユーザー）        ┌ ヘルパーセッション（別ユーザー）
@@ -93,14 +108,13 @@ exit=69
 │         └ ジョブを書く / 結果を読む            │    └ ここでコマンドが起動する
 ```
 
-- 起動されるAe・送られるApple Events・撮られる画面・入力されるキーとクリックは、すべて**ヘルパーセッション**の中で起きる。
-- コンソールセッションには何も届かない。
+- 2.1 と同じ隔離。ただし実行主体はバンドル無しのデーモンなので、**Apple Events は -1743 で届く前に落ちる**（§10.2）。daemon 自身の子として screenshot / 窓の題名は取れるので、権限の granting 用途には使える。
 
-### 2.2 ネイティブ経路（グローバルインストールを使わない fallback）
+### 2.3 ネイティブ経路（グローバルインストールを使わない fallback）
 
 `scripts/isolated-session/session-agent.mjs` を**ヘルパーセッションの中で**起動し、`dispatch.mjs` がジョブファイルを書いて結果を読む。グローバルインストール 없이動く fallback であり、GUI操作（screenshot / click / key）は持たない。
 
-### 2.3 どちらの経路でも守られること
+### 2.4 どちらの経路でも守られること
 
 `scripts/isolated-session/session-rules.mjs`（副作用なし・ユニットテスト済み）:
 
@@ -227,26 +241,44 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 ### 10.2 TCC: responsible process が bundle でないと比較定されない
 
 - `offstage-sessiond` は **bundle を持たない Mach-O** なので、System Settings に現れない。launchd を responsible process とするプロンプトは**画面にも設定にも出ない**。
-- そこで、**ヘルパーセッションの中で Terminal.app を responsible process にする**（Terminal は bundle）。これで設定に現れ、許可は子孫（node / osascript / screencapture）に継承される。実測で、テストセッション内に `universalAccessAuthWarn`（pid 15871 / onscreen=1 / 题名 `画面収録`）が存在することを確認した。**ダイアログは出ていた。(test セッションの画面上にあっただけだった)**
-- ただし **Automation（Apple Events）は Accessibility とは別の権限**で、別のプロンプトである。実測: `osascript → System Events` は `-1743`（`System EventsにApple Eventsを送信する権限がありません`）。
+- そこで、**ヘルパーセッションの中で Terminal.app を responsible process にする**（Terminal は bundle）。これで設定に現れ、許可は子孫（node / osascript / screencapture）に継承される。実測で、テストセッション内に `universalAccessAuthWarn`（pid 15871 / onscreen=1 / 题名 `画面収録`）が存在することを確認した。**ダイアログは出ていた（test セッションの画面上にあっただけだった）。**
+- **responsible process が bundle でない場合は即時に `-1743` で拒否される**（プロンプトを出せないため）。実測: `offstage run` の子として `osascript → After Effects` を送ると `-1743`。同じイベントを **Terminal.app の子**から送ると**拒否されない**（届いてタイムアウトになる）。**テストは Terminal.app の子として走らせる必要がある。**
+- ただし **Automation（Apple Events）は Accessibility とは別の権限**で、別のプロンプトである。実測: `osascript → System Events` は daemon の子からも Terminal の子からも `-1743`（`System EventsにApple Eventsを送信する権限がありません`）。
+- 実測した権限の状況（test セッション内）:
 
-### 10.3 テストユーザーは Adobe にサインインしていない
+| 対象 | daemon の子 | Terminal.app の子 |
+| --- | --- | --- |
+| Apple Events → Adobe After Effects | `-1743`（bundle 無しで即拒否） | **届く**（`-1712` タイムアウト） |
+| Apple Events → System Events | `-1743` | `-1743` |
+| Screen Recording (`screencapture`) | **使える** | 使えない（`could not create image from display`） |
+| 窓の題名 (`CGWindowList`) | **見える** | 見えない |
+
+### 10.3 Ae は「起動モーダル」で止まっていて、脚本に答えない
+
+- test セッションの Ae (pid 69349) には `CGWindowList` で layer=8 のモーダルがある（題名 `警告`, 440×262）。メインウィンドウ（`Adobe After Effects 2026 - 名称未設定プロジェクト`）も同時にある。
+- Terminal.app の子から `DoScriptFile` を送ると **`-1712`（AppleEventがタイムアウトしました）**。つまり**イベントは届いているが、Ae が答えない**。Ae 側のモーダルが応答を止めている，符合。
+- なお `tell application "<bundle>" to get version` が 26.5.0 を返すのは **AppleScript が bundle のメタデータから答えている**だけで、Ae に届いている証拠ではない（`count documents` は `-1743`）。**この 2 つを混同しないこと。**
+- 総合すると、阻んでいるのは **TCC ではなく、Ae の起動モーダル**。
+
+### 10.4 テストユーザーは Adobe にサインインしていない
 
 - `/Users/test/Library/Application Support/Adobe/OOBE/logged_out_guid` が存在する = **未サインイン**。
 - Creative Cloud の計測ログ: `ccd.signinWorkflow: SIGN_IN_WORKFLOW` / `ccd.signinErrorState: IMS_NETWORK_ERROR_STATE` / `ccd.network_state: OFFLINE`。
 - 結果として Ae は起動モーダル（`CGWindowList` の layer=8, 题名 `警告`, 440×262）を持って止まり、`app.info` が応答しない。
 - これは**人がやる操作**（Adobe ID でサインイン）。代理は Adobe ID・パスワード・トークンを扱わず、ログにも残さない。別デバイスのライセンスは絶対に自動解放しない。
 
-### 10.4 隔離E2Eの実測（2回）
+### 10.5 隔離E2Eの実測（2回）
 
 | 回 | 時刻 (UTC) | 結果 | 証跡 |
 | --- | --- | --- | --- |
 | 1 | 03:31–03:35 | FAIL。Ae は起動した（pid 69349）が probe が応答せず、GUI 復旧が「ホストプロセス無し」で終了 | `sessions/run-1793590265115/trace.jsonl` |
-| 2 | 04:22:38–04:23:49 | FAIL。**`-1743: Adobe After Effects 2026にApple Eventsを送信する権限がありません`**（Automation 許可が未了） | `sessions/run-1793593358745/trace.jsonl` |
+| 2 | 04:22:38–04:23:49 | FAIL。`-1743: Adobe After Effects 2026にApple Eventsを送信する権限がありません` | `sessions/run-1793593358745/trace.jsonl` |
 
 1 回目で原因が分かった: macOS の `DoScriptFile` は Ae をオンデマンド起動し、`#owned` は probe 成功後の `confirmLaunched()` でしか立たないため、probe が落ちると pid を知れなかった。これを `recoveryTargetPid()` で直した（§4）。所有権の証明自体は緩めていない。
 
-### 10.5 フォーカスの非干渉（実測）
+2 回目は別の壁に当たった。**この 2 つの `-1743` は「TCC が拒否した」のではなく「Ae が答えない」ことを意味する。** 同じイベントを、**起動済みの** Ae に対して Terminal.app の子から送ると **届いて `-1712`（タイムアウト）** になる（§10.3）。つまり壁は**Ae の起動モーダル**で、**人が `警告` を解くまで脚本は一枚も通らない**。
+
+### 10.6 フォーカスの非干渉（実測）
 
 - 観測方法: コンソールセッション（uid 501）で `focus-watch` を動かし、**約 0.2 秒ごとに frontmost アプリ名・pid とポインタ座標**を記録。E2E 実行の前後を覆う区間を取った。
 - 観測区間: epoch 1793593355.83 – 1793593490.64（**134.8 秒**, 652 サンプル）。E2E の実行区間（04:22:38–04:23:49Z）を完全に含む。

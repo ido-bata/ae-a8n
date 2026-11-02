@@ -5,15 +5,26 @@
  *
  *   node run-in-isolated-session.mjs --user test -- node ae-e2e.mjs
  *
- * Two substrates, one contract:
+ * Three substrates, one contract:
  *
- *   offstage (default)  `offstage run --lane session --user <user> -- …`
+ *   terminal (default)  the command runs as a child of Terminal.app inside
+ *                       the target session.
+ *   offstage            `offstage run --lane session --user <user> -- …`
  *                       The helper account owns a second, logged-in Aqua
  *                       session with its own framebuffer and HID stream.
  *                       offstage never falls back to the console session.
  *   native              a job file the session agent (running inside that
  *                       session) picks up. No global install, but the agent
  *                       has to be started in the target session first.
+ *
+ * Why the terminal substrate is the default: macOS decides who may send
+ * Apple Events, take a screenshot or read a window by the *responsible
+ * process* — the nearest enclosing application bundle. The offstage daemon
+ * is a bundle-less binary, so macOS cannot attribute anything to it and
+ * refuses at once (measured: -1743, "no permission to send Apple Events",
+ * with no prompt the human could ever see). Terminal.app is a bundle, so a
+ * grant made to it in the target session appears in System Settings and is
+ * inherited by the node process that runs the test.
  *
  * What this runner does *not* do: it never enters the other user's session by
  * force. There is no `sudo`, no `launchctl asuser`, no TCC database edit.
@@ -26,11 +37,19 @@
  *   - a result that does not name the requested session.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assertNoRunningAfterEffects, assertResultSession, assertTargetSession, parseAeProcesses } from "./session-rules.mjs";
+import {
+  assertNoRunningAfterEffects,
+  assertResultSession,
+  assertTargetSession,
+  parseAeProcesses,
+  parseTerminalResult,
+  shellCommandLine,
+} from "./session-rules.mjs";
 
 const SELF = fileURLToPath(import.meta.url);
 const HERE = resolve(SELF, "..");
@@ -38,7 +57,7 @@ const HERE = resolve(SELF, "..");
 function parseArgs(argv) {
   const options = {
     user: undefined,
-    substrate: "offstage",
+    substrate: "terminal",
     root: "/Users/Shared/ae-a8n",
     timeoutMs: 20 * 60_000,
     report: undefined,
@@ -169,6 +188,110 @@ function runOffstage(options) {
   return child.status ?? 1;
 }
 
+/**
+ * Runs the command as a child of Terminal.app inside the target session.
+ *
+ * Terminal.app is what makes the run possible at all: macOS attributes
+ * permissions to the nearest enclosing application bundle, and the offstage
+ * daemon is a bundle-less binary that macOS therefore refuses at once
+ * (-1743, with no prompt the human could answer). Under Terminal the grant
+ * is visible in System Settings and reaches the test process.
+ *
+ * The job writes down which session it ran in; the controller believes that
+ * account only when it names the session it asked for.
+ */
+function runTerminal(options, targetUid) {
+  const root = resolve(options.root);
+  const jobs = join(root, "jobs");
+  const results = join(root, "results");
+  for (const dir of [jobs, results]) {
+    mkdirSync(dir, { recursive: true, mode: 0o1777 });
+  }
+  const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const commandPath = join(jobs, `${id}.cmd`);
+  const launcherPath = join(jobs, `${id}.command`);
+  const donePath = join(results, `${id}.done`);
+  const outPath = join(results, `${id}.out`);
+  const errPath = join(results, `${id}.err`);
+
+  // The command is written as data and read by a shell in the other session:
+  // every word is quoted, so a path with a space or a quote stays one word.
+  writeFileSync(commandPath, `${shellCommandLine(options.command)}\n`, { mode: 0o755 });
+  writeFileSync(
+    launcherPath,
+    [
+      "#!/bin/sh",
+      "# Runs one job in this session and writes down where it ran.",
+      `ROOT=${JSON.stringify(root)}`,
+      `ID=${JSON.stringify(id)}`,
+      `COMMAND=${JSON.stringify(commandPath)}`,
+      `OUT=${JSON.stringify(outPath)}`,
+      `ERR=${JSON.stringify(errPath)}`,
+      `DONE=${JSON.stringify(donePath)}`,
+      'cd / || exit 127',
+      '/bin/sh "$COMMAND" > "$OUT" 2> "$ERR"',
+      "code=$?",
+      'asid=$(/bin/launchctl print "gui/$(/usr/bin/id -u)" 2>/dev/null | /usr/bin/sed -n "s/.*gui asid = \\([0-9]*\\).*/\\1/p" | /usr/bin/head -1)',
+      "{",
+      '  echo "uid=$(/usr/bin/id -u)"',
+      '  echo "username=$(/usr/bin/id -un)"',
+      '  echo "asid=$asid"',
+      '  echo "exit=$code"',
+      '} > "$DONE"',
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+
+  const opened = spawnSync(
+    "offstage",
+    ["session", "open", "--user", options.user, "--", "-a", "Terminal", launcherPath],
+    { stdio: "inherit", shell: false },
+  );
+  if (opened.error) {
+    throw opened.error;
+  }
+  if (opened.status !== 0) {
+    throw new Error(
+      `could not open Terminal.app in ${options.user}'s session (exit ${opened.status}); nothing ran. ` +
+        "Check `offstage session status`.",
+    );
+  }
+  process.stderr.write(
+    `[ae-a8n] job ${id} opened in Terminal.app in ${options.user}'s session; waiting for it to finish.\n`,
+  );
+
+  const deadline = Date.now() + options.timeoutMs;
+  for (;;) {
+    if (existsSync(donePath)) {
+      const outcome = parseTerminalResult(readFileSync(donePath, "utf-8"));
+      if (outcome.uid !== targetUid) {
+        throw new Error(
+          `the job ran as uid ${outcome.uid}, not ${targetUid}: it did not run in the requested session. ` +
+            "The result is not trusted.",
+        );
+      }
+      const stdout = existsSync(outPath) ? readFileSync(outPath, "utf-8") : "";
+      const stderr = existsSync(errPath) ? readFileSync(errPath, "utf-8") : "";
+      if (stdout.length > 0) {
+        process.stdout.write(stdout);
+      }
+      if (stderr.length > 0) {
+        process.stderr.write(stderr);
+      }
+      process.stderr.write(
+        `[ae-a8n] the job finished in ${outcome.username}'s session (uid ${outcome.uid}, asid ${outcome.asid}), ` +
+          `exit ${outcome.exitCode}\n`,
+      );
+      return outcome.exitCode;
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`the job did not finish within ${options.timeoutMs}ms; no result was produced`);
+    }
+    execFileSync("sleep", ["0.5"]);
+  }
+}
+
 function runNative(options, targetUid) {
   const args = [join(HERE, "dispatch.mjs"), "--root", options.root, "--uid", String(targetUid), "--timeout", String(options.timeoutMs), "--"];
   const child = spawnSync(process.execPath, [...args, ...options.command], { stdio: "inherit", shell: false });
@@ -223,7 +346,11 @@ function main() {
       `Substrate: ${options.substrate}.\n`,
   );
   const status =
-    options.substrate === "native" ? runNative(options, targetUid) : runOffstage(options);
+    options.substrate === "native"
+      ? runNative(options, targetUid)
+      : options.substrate === "terminal"
+        ? runTerminal(options, targetUid)
+        : runOffstage(options);
   if (options.report !== undefined && status === 0) {
     const report = readReport(options.report, targetUid);
     process.stderr.write(

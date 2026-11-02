@@ -107,3 +107,49 @@ export function assertJobSession(job, session) {
   }
   return job;
 }
+
+/**
+ * One shell argument, quoted for `sh`.
+ *
+ * The command that runs in the other session is written into a file that a
+ * shell reads, so its words are data: a path with a space, a quote or a `;`
+ * stays one argument and stays harmless.
+ */
+export function shellQuote(argument) {
+  const text = String(argument);
+  if (text.length > 0 && /^[A-Za-z0-9_@%+=:,./-]+$/.test(text)) {
+    return text;
+  }
+  return `'${text.split("'").join(`'\\''`)}'`;
+}
+
+/** A command as one shell line, with every word quoted as data. */
+export function shellCommandLine(command) {
+  return command.map((word) => shellQuote(word)).join(" ");
+}
+
+/**
+ * What the job that ran in the other session wrote down about itself.
+ *
+ * The lines are written by the job, in the other session, so they are the
+ * job's own account of where it ran — not the controller's guess.
+ */
+export function parseTerminalResult(text) {
+  const fields = new Map();
+  for (const line of String(text).split("\n")) {
+    const match = /^([a-z]+)=(.*)$/.exec(line.trim());
+    if (match !== null) {
+      fields.set(match[1], match[2]);
+    }
+  }
+  const uid = Number(fields.get("uid"));
+  const asid = Number(fields.get("asid"));
+  const exitCode = Number(fields.get("exit"));
+  return {
+    uid: Number.isInteger(uid) ? uid : -1,
+    username: fields.get("username") ?? "unknown",
+    asid: Number.isInteger(asid) ? asid : null,
+    exitCode: Number.isInteger(exitCode) ? exitCode : 1,
+  };
+}
+
