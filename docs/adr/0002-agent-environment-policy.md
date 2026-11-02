@@ -79,7 +79,7 @@ revision は tag で固定した。導入した複製は直接編集せず、`sk
 | `linear-release-control` | Linear を使わない。release planning は GitHub Issue 側で行う（profile からの deviation） |
 | `worktree-workflow` | worktree 運用をしていない。`worktree:*` の task も `.config/wt.toml` も作らない |
 | `herdr-runtime` / `orca-frontend` | Herdr も Orca も使っていない |
-| `sandbox-runtime` | 並行な implementation worker を動かさない。検証用の一時領域は各テストが `mkdtempSync` で個別に持つ |
+| `sandbox-runtime` | 並行な implementation worker を動かさない。検証用の一時領域は各テストが `mkdtempSync` で個別に持つ（下の「残る制約」を参照） |
 | router 群（`using-superpowers`, `ask-matt`, `poteto-mode` ほか） | 入口を握る Skill は root contract のみが持つ。外部 pack は丸ごと入れない |
 | プラットフォーム / framework / デザイン系 | Cloudflare、Vercel、React、office 文書、UI・motion の利用がない |
 
@@ -123,3 +123,8 @@ false green の禁止事項、platform matrix を置いた。stable な entry po
 - Windows 版 After Effects は `docs/windows-verification.md` に実機検証が記録済み。ただし ARM64 と
   英語以外の Windows UI は未実行で、Windows の主張はその範囲に限られる。
 - `release-* → main` の merge には human の明示的な authorization が必要で、agent は merge しない。
+- **共有される mutable state** — 各 test は `mkdtempSync` で自分の session workspace を持つので、
+  検証の並行動作で衝突しない。共有されるのは `dist/`（build の出力）と `node_modules/` だけ。
+  同じ checkout で 2 つ以上の build を走らせると `dist/` が競合する。並行な implementation
+  worker を始めるなら worktree ごとに build 出力を持つ（`worktree-workflow`）か、build を直列化する。
+  現状は solo 開発で、この制約は顕在化していない。
