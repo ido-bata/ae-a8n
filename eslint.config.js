@@ -22,4 +22,16 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-assignment": "off",
     },
   },
+  {
+    // The plain-JavaScript runner scripts are not part of the TypeScript
+    // project, so the type-aware rules cannot run on them.
+    files: ["scripts/**/*.mjs", "test/**/*.mjs"],
+    rules: tseslint.configs.disableTypeChecked.rules,
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: false,
+      },
+    },
+  },
 );

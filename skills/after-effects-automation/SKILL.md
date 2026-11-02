@@ -35,7 +35,8 @@ been run at all**; on Windows the package will not quit After Effects for you
 ## macOS: UIフォーカスとモーダルダイアログ
 
 - **普段のmacOSユーザーでGUI操作をフォールバックしない。** Aeがモーダルで止まっても、システム全体のカーソル移動、`osascript`のGUIクリック、CGEvent、Accessibility操作で物理デスクトップを乗っ取らない。タイムアウトしたら状態と証跡を残して停止する。
-- 別OSユーザーのバックグラウンドGUIを使う実験的なoffstageランナーは [docs/offstage-macos.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/offstage-macos.md) と #49 を参照。**macOS実機の受入とトランスポートのセッション宛先確認が終わるまで、`offstage`を本番の標準経路として扱わない。**
+- 隔離実行は別のOSユーザーのGUIセッション（別フレームバッファ・別HID）で行う。`offstage` の session lane がその代表で、[docs/offstage-macos.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/offstage-macos.md) と #49 を参照。**macOS実機の受入とトランスポートのセッション宛先確認が終わるまで、本番の標準経路として扱わない。**
+- `offstage` の `session setup` は `sudo` と端末を必要とするため**人間が実行する**。TCCデータベースの直接書き込みやSIPの無効化は**自動では行わない**。
 - ライセンス上、同じMacの別ユーザーは追加のデバイス認証にカウントされないが、Adobeアプリを使うOSユーザーは同時に1人だけ。自動サインアウト、ライセンス上限ダイアログの勝手な処理は禁止。
 
 ## Before you start

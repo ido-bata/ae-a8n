@@ -10,6 +10,22 @@ on a real host (#47).
 
 ### Added
 
+- macOS session scoping (#49): `src/driver/mac-session.ts` reads a user's
+  login session (`asid`, Aqua/Background) and the apps that live in it, and
+  runs a command *inside* another user's session. `ScriptInvocationTransport`
+  filters the After Effects processes by uid, sends `DoScriptFile` from the
+  target session, and refuses to send anything when the destination cannot be
+  established.
+- A GUI fallback for a host that stopped answering (#49): `MacGuiRecovery`
+  finds a modal window through Accessibility in the target session, presses
+  only `OK`/`Cancel`/`Close`/`Dismiss`, never a sign-in or licence window,
+  and takes the screenshot of the *target* session. `MacHostRecovery` is the
+  policy layer. `AfterEffects.launch({ session: { uid, recover: true } })`
+  wires it in.
+- `ae.showModalDialog(message)` (#49) raises a native modal dialog through
+  the host, so the fallback has something to close.
+- A timed-out operation is **not** sent again after a recovery (#49): the
+  driver waits for the result of the request it already sent.
 - Menu commands (#45): `ae.menuCommand(nameOrId)` → `MenuCommand.execute()`,
   `ae.undo()`, `ae.redo()`. A run reports the active composition's layers
   before and after, with `added` / `removed` by layer id, and records the
@@ -28,6 +44,9 @@ on a real host (#47).
 
 ### Changed
 
+- `verifiesDestination` is true on macOS as well as Windows (#49): the
+  session marker proves that the instance which answered the probe is the
+  one this session started.
 - `LayerInfo` carries `id`, `enabled`, `selected` and `type`, from
   `comp.layers()` too (part of #23); `enabled` is no longer optional.
 - `@ido-bata/ae-a8n/testing` (unstable): `FakeLayer` takes `(name, position)`

@@ -12,6 +12,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { entryScriptPath, writeBootstrapScript } from "./bootstrap.js";
+import type { HostRecovery } from "./recovery.js";
 import { READINESS_TIMEOUT_MS } from "./script-invocation.js";
 import type { HostOwnership, HostTransport } from "./transport.js";
 
@@ -78,6 +79,17 @@ export type DriverOptions = {
   readonly defaultTimeoutMs?: number;
   /** Budget for the post-launch readiness probe; a cold AE start is slow. */
   readonly readinessTimeoutMs?: number;
+  /**
+   * What to do when an operation times out and the host may be blocked by a
+   * dialog. Optional; a driver without one reports the timeout as it is.
+   */
+  readonly recovery?: HostRecovery;
+  /**
+   * How long to wait for the timed-out request's own result after a recovery.
+   * The request may still be running inside After Effects, so the driver
+   * waits for it instead of sending it again.
+   */
+  readonly recoveryGraceMs?: number;
 };
 
 export type CallOptions = {
@@ -103,6 +115,8 @@ export class AeDriver {
   readonly #trace: TraceRecorder;
   readonly #defaultTimeoutMs: number;
   readonly #readinessTimeoutMs: number;
+  readonly #recovery: HostRecovery | undefined;
+  readonly #recoveryGraceMs: number;
   #started = false;
   #closed = false;
   /** Random per driver; what the host remembers to tell "my instance" from another. */
@@ -117,6 +131,8 @@ export class AeDriver {
     // A cold After Effects start is slow. Sharing the per-operation budget with
     // the probe would report a healthy-but-slow host as a broken install.
     this.#readinessTimeoutMs = options.readinessTimeoutMs ?? READINESS_TIMEOUT_MS;
+    this.#recovery = options.recovery;
+    this.#recoveryGraceMs = options.recoveryGraceMs ?? 60_000;
 
     if (!existsSync(this.#hostScriptPath)) {
       throw new HostUnavailableError(`host script not found: ${this.#hostScriptPath}`);
@@ -335,6 +351,12 @@ export class AeDriver {
       }
       return outcome.value;
     } catch (error) {
+      if (error instanceof TimeoutError && this.#recovery !== undefined) {
+        const recovered = await this.#recoverAndWait(id, method, params, timeoutMs, op);
+        if (recovered !== undefined) {
+          return recovered;
+        }
+      }
       const status: TraceStatus = error instanceof TimeoutError ? "timeout" : "error";
       this.#trace.record(op, status, Date.now() - began, {
         args: { ...params },
@@ -342,6 +364,60 @@ export class AeDriver {
       });
       throw error;
     }
+  }
+
+  /**
+   * Tries to unblock the host, then waits for the *original* request.
+   *
+   * The request that timed out may still be running inside After Effects: a
+   * timeout says the answer did not arrive in time, not that the work was
+   * abandoned. Sending it again would run it twice — a render, a project
+   * open, an export. So after a recovery the driver waits for the result of
+   * the request it already sent, and only reports a failure when that result
+   * does not arrive either.
+   *
+   * Returns the recovered result, or undefined when the operation still
+   * failed (the caller then reports the original timeout).
+   */
+  async #recoverAndWait(
+    id: string,
+    method: string,
+    params: Record<string, unknown>,
+    timeoutMs: number,
+    op: string,
+  ): Promise<unknown> {
+    const recovery = this.#recovery;
+    if (recovery === undefined) {
+      return undefined;
+    }
+    let outcome: Awaited<ReturnType<HostRecovery["attempt"]>>;
+    try {
+      outcome = await recovery.attempt({ requestId: id, method, timeoutMs });
+    } catch (error) {
+      this.#trace.record("session.recover", "error", 0, {
+        error: { name: nameOf(error), message: messageOf(error) },
+      });
+      return undefined;
+    }
+    this.#trace.record("session.recover", outcome.recovered ? "ok" : "error", 0, {
+      result: {
+        recovered: outcome.recovered,
+        evidence: outcome.evidence,
+        ...(outcome.window === undefined ? {} : { window: outcome.window }),
+        ...(outcome.screenshotPath === undefined ? {} : { screenshot: outcome.screenshotPath }),
+      },
+    });
+    if (!outcome.recovered) {
+      return undefined;
+    }
+    const result = await this.#awaitResult(id, method, params, this.#recoveryGraceMs, timeoutMs);
+    if (result.status === "ok") {
+      this.#trace.record(op, "ok", 0, {
+        result: { recovered: true, ...summariseResult(result.value) },
+      });
+      return result.value;
+    }
+    return undefined;
   }
 
   async #awaitResult(

@@ -1,0 +1,422 @@
+/**
+ * GUI fallback: what to do when After Effects has stopped answering.
+ *
+ * A modal dialog that the ExtendScript API cannot reach — a plugin's own
+ * window, an Adobe sign-in prompt, a crash-recovery notice — makes every
+ * script call time out. The only way out is to look at the screen and click.
+ *
+ * Two rules make that safe, and both are enforced here rather than left to
+ * the caller:
+ *
+ *   1. **Only the isolated session is ever touched.** Every action is
+ *      executed inside the session that owns the After Effects instance
+ *      being recovered (see `mac-session.ts`). When the target session
+ *      cannot be entered, the recovery refuses. It never falls back to the
+ *      console session, because "the desktop the agent happens to sit on" is
+ *      never the right answer.
+ *
+ *   2. **The Accessibility API is preferred over coordinates.** A button is
+ *      pressed by its accessibility identity — role, title, position — and
+ *      only when the element cannot be pressed that way is a coordinate
+ *      click used, with the coordinates taken from that same element's frame
+ *      in the target session.
+ */
+
+import { execFileSync } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+
+import {
+  MacSessionError,
+  runInSession,
+  type MacSession,
+  type SessionCommandResult,
+} from "./mac-session.js";
+
+export type GuiButtonInfo = {
+  readonly title: string;
+  readonly description: string;
+  readonly position: { readonly x: number; readonly y: number } | null;
+  readonly size: { readonly width: number; readonly height: number } | null;
+};
+
+export type GuiWindowInfo = {
+  readonly title: string;
+  readonly role: string;
+  readonly subrole: string | null;
+  readonly buttons: readonly GuiButtonInfo[];
+};
+
+export type GuiAppState = {
+  readonly pid: number;
+  /** Whether the process is the frontmost application of its session. */
+  readonly frontmost: boolean;
+  readonly windows: readonly GuiWindowInfo[];
+};
+
+/** A window that keeps the application from taking scripts. */
+export function isBlockingWindow(window: GuiWindowInfo): boolean {
+  const role = window.role.toLowerCase();
+  const subrole = window.subrole?.toLowerCase() ?? "";
+  return (
+    role.includes("dialog") ||
+    subrole.includes("dialog") ||
+    subrole.includes("sheet") ||
+    subrole.includes("alert")
+  );
+}
+
+/**
+ * The listing the accessibility query returns.
+ *
+ * ```
+ * FRONTMOST|1
+ * W|After Effects|AXWindow|AXStandardWindow
+ * B|OK||640,480|80,32
+ * ```
+ */
+export function parseUiListing(text: string): { frontmost: boolean; windows: GuiWindowInfo[] } {
+  const windows: { title: string; role: string; subrole: string | null; buttons: GuiButtonInfo[] }[] = [];
+  let frontmost = false;
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    const parts = trimmed.split("|");
+    if (parts[0] === "FRONTMOST") {
+      frontmost = parts[1] === "1";
+      continue;
+    }
+    if (parts[0] === "W") {
+      windows.push({ title: parts[1] ?? "", role: parts[2] ?? "", subrole: parts[3] ?? null, buttons: [] });
+      continue;
+    }
+    if (parts[0] === "B") {
+      const current = windows[windows.length - 1];
+      if (current === undefined) {
+        continue;
+      }
+      const position = parsePoint(parts[3]);
+      const size = parseSize(parts[4]);
+      current.buttons.push({
+        title: parts[1] ?? "",
+        description: parts[2] ?? "",
+        position: position === null ? null : { x: position.x, y: position.y },
+        size: size === null ? null : { width: size.width, height: size.height },
+      });
+    }
+  }
+  return { frontmost, windows: windows.map((window) => ({ ...window, buttons: window.buttons })) };
+}
+
+/** A point the accessibility API reported, as "x,y". */
+function parsePoint(text: string | undefined): { x: number; y: number } | null {
+  const parts = splitNumbers(text);
+  return parts === null ? null : { x: parts[0], y: parts[1] };
+}
+
+/** A size the accessibility API reported, as "width,height". */
+function parseSize(text: string | undefined): { width: number; height: number } | null {
+  const parts = splitNumbers(text);
+  return parts === null ? null : { width: parts[0], height: parts[1] };
+}
+
+function splitNumbers(text: string | undefined): [number, number] | null {
+  if (text === undefined || text.trim().length === 0) {
+    return null;
+  }
+  const parts = text.split(",").map((part) => Number(part.trim()));
+  if (parts.length !== 2 || parts.some((part) => !Number.isFinite(part))) {
+    return null;
+  }
+  return [parts[0] as number, parts[1] as number];
+}
+
+/**
+ * Lists the windows of a process through the Accessibility API.
+ *
+ * The script is written as an `on run argv` handler so the pid and the
+ * button title are arguments, never source: nothing that comes from the
+ * outside is spliced into AppleScript.
+ */
+const LIST_WINDOWS_SCRIPT = [
+  "on run argv",
+  "  set targetPid to (item 1 of argv) as integer",
+  "  set report to \"\"",
+  "  tell application \"System Events\"",
+  "    set procs to (every application process whose unix id is targetPid)",
+  "    if (count of procs) is 0 then",
+  "      return \"MISSING\"",
+  "    end if",
+  "    set p to item 1 of procs",
+  "    try",
+  "      if (frontmost of p) is true then set report to report & \"FRONTMOST|1\" & linefeed",
+  "    end try",
+  "    repeat with w in windows of p",
+  "      set wtitle to \"\"",
+  "      try",
+  "        set wtitle to (name of w) as string",
+  "      end try",
+  "      set wrole to \"\"",
+  "      try",
+  "        set wrole to (role of w) as string",
+  "      end try",
+  "      set wsub to \"\"",
+  "      try",
+  "        set wsub to (subrole of w) as string",
+  "      end try",
+  "      set report to report & \"W|\" & wtitle & \"|\" & wrole & \"|\" & wsub & linefeed",
+  "      repeat with b in buttons of w",
+  "        set btitle to \"\"",
+  "        try",
+  "          set btitle to (name of b) as string",
+  "        end try",
+  "        set bdesc to \"\"",
+  "        try",
+  "          set bdesc to (description of b) as string",
+  "        end try",
+  "        set bpos to \"\"",
+  "        try",
+  "          set bpos to ((item 1 of (get position of b)) as string) & \",\" & ((item 2 of (get position of b)) as string)",
+  "        end try",
+  "        set bsize to \"\"",
+  "        try",
+  "          set bsize to ((item 1 of (get size of b)) as string) & \",\" & ((item 2 of (get size of b)) as string)",
+  "        end try",
+  "        set report to report & \"B|\" & btitle & \"|\" & bdesc & \"|\" & bpos & \"|\" & bsize & linefeed",
+  "      end repeat",
+  "    end repeat",
+  "  end tell",
+  "  return report",
+  "end run",
+];
+
+/** Presses the button with the given title, in the process with the given pid. */
+const PRESS_BUTTON_SCRIPT = [
+  "on run argv",
+  "  set targetPid to (item 1 of argv) as integer",
+  "  set wanted to item 2 of argv",
+  "  tell application \"System Events\"",
+  "    set procs to (every application process whose unix id is targetPid)",
+  "    if (count of procs) is 0 then return \"MISSING\"",
+  "    set p to item 1 of procs",
+  "    repeat with w in windows of p",
+  "      try",
+  "        repeat with b in buttons of w",
+  "          set btitle to \"\"",
+  "          try",
+  "            set btitle to (name of b) as string",
+  "          end try",
+  "          if btitle is wanted then",
+  "            click b",
+  "            return \"CLICKED\"",
+  "          end if",
+  "        end repeat",
+  "      end try",
+  "    end repeat",
+  "  end tell",
+  "  return \"NOT_FOUND\"",
+  "end run",
+];
+
+/** Sends the escape key to the process with the given pid. */
+const PRESS_ESCAPE_SCRIPT = [
+  "on run argv",
+  "  set targetPid to (item 1 of argv) as integer",
+  "  tell application \"System Events\"",
+  "    set procs to (every application process whose unix id is targetPid)",
+  "    if (count of procs) is 0 then return \"MISSING\"",
+  "    set p to item 1 of procs",
+  "    -- The key only reaches the window that is in front, so the process is",
+  "    -- brought forward first. That happens in this session alone.",
+  "    try",
+  "      set frontmost of p to true",
+  "    end try",
+  "    key code 53",
+  "  end tell",
+  "  return \"SENT\"",
+  "end run",
+];
+
+/** Clicks at a point of the target session's screen. */
+const CLICK_AT_SCRIPT = [
+  "on run argv",
+  "  set x to (item 1 of argv) as integer",
+  "  set y to (item 2 of argv) as integer",
+  "  tell application \"System Events\" to click at {x, y}",
+  "  return \"CLICKED\"",
+  "end run",
+];
+
+export type GuiRecoveryOptions = {
+  /** The session the After Effects instance lives in. Nothing else is ever touched. */
+  readonly session: MacSession;
+  /** The pid of the After Effects instance to recover. */
+  readonly pid: number;
+  /** Where screenshots are written. Mainly a test seam. */
+  readonly screenshotDir?: string;
+};
+
+export class GuiRecoveryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GuiRecoveryError";
+  }
+}
+
+/**
+ * The GUI fallback for one After Effects instance.
+ *
+ * Every method runs inside the instance's own session. When the session
+ * cannot be entered the method refuses; there is no path from here to the
+ * console desktop.
+ */
+export class MacGuiRecovery {
+  readonly #session: MacSession;
+  readonly #pid: number;
+  readonly #screenshotDir: string | undefined;
+
+  constructor(options: GuiRecoveryOptions) {
+    if (options.session.kind !== "Aqua") {
+      throw new GuiRecoveryError(
+        `the recovery target has no Aqua session (uid ${options.session.uid}, session kind ${options.session.kind}); ` +
+          "there is no screen to recover. No GUI action was taken.",
+      );
+    }
+    this.#session = options.session;
+    this.#pid = options.pid;
+    this.#screenshotDir = options.screenshotDir;
+  }
+
+  get session(): MacSession {
+    return this.#session;
+  }
+
+  get pid(): number {
+    return this.#pid;
+  }
+
+  /** The windows of the After Effects instance, as the Accessibility API sees them. */
+  listWindows(): GuiAppState {
+    const result = this.#osascript(LIST_WINDOWS_SCRIPT, [String(this.#pid)]);
+    if (result.stdout.trim() === "MISSING") {
+      throw new GuiRecoveryError(
+        `the After Effects process ${this.#pid} is not visible to the Accessibility API of ` +
+          `${this.#session.username}'s session; it may have exited.`,
+      );
+    }
+    const parsed = parseUiListing(result.stdout);
+    return { pid: this.#pid, frontmost: parsed.frontmost, windows: parsed.windows };
+  }
+
+  /** The windows that keep the application from taking a script. */
+  blockingWindows(): GuiWindowInfo[] {
+    return this.listWindows().windows.filter(isBlockingWindow);
+  }
+
+  /**
+   * A screenshot of the target session, as evidence of what the screen held.
+   *
+   * The capture happens inside the target session, so the file holds that
+   * session's screen, not the console user's.
+   */
+  capture(path: string): string {
+    if (this.#screenshotDir !== undefined) {
+      mkdirSync(this.#screenshotDir, { recursive: true });
+    }
+    mkdirSync(dirname(path), { recursive: true });
+    const result = runInSession(this.#session, "/usr/sbin/screencapture", ["-x", "-o", path], {
+      timeoutMs: 30_000,
+    });
+    if (result.status !== 0) {
+      throw new GuiRecoveryError(
+        `could not capture the screen of ${this.#session.username}'s session: ${result.stderr.trim()}`,
+      );
+    }
+    return path;
+  }
+
+  /** Presses a button by its accessibility title. */
+  pressButton(title: string): boolean {
+    const result = this.#osascript(PRESS_BUTTON_SCRIPT, [String(this.#pid), title]);
+    return result.stdout.trim() === "CLICKED";
+  }
+
+  /** Sends escape to the process. */
+  pressEscape(): boolean {
+    const result = this.#osascript(PRESS_ESCAPE_SCRIPT, [String(this.#pid)]);
+    return result.stdout.trim() === "SENT";
+  }
+
+  /**
+   * Clicks at a point of the target session's screen.
+   *
+   * The coordinates must come from the target session — an accessibility
+   * frame read in that session, or a screenshot of it. Coordinates taken
+   * from the physical display of another session are meaningless here.
+   */
+  clickAt(x: number, y: number): boolean {
+    const result = this.#osascript(CLICK_AT_SCRIPT, [String(Math.round(x)), String(Math.round(y))]);
+    return result.stdout.trim() === "CLICKED";
+  }
+
+  /**
+   * Clicks a button, by accessibility identity first and by coordinates
+   * only when the element cannot be pressed directly.
+   */
+  pressButtonIn(windowTitle: string | null, buttonTitle: string): boolean {
+    if (this.pressButton(buttonTitle)) {
+      return true;
+    }
+    const state = this.listWindows();
+    for (const window of state.windows) {
+      if (windowTitle !== null && window.title !== windowTitle) {
+        continue;
+      }
+      for (const button of window.buttons) {
+        if (button.title !== buttonTitle || button.position === null || button.size === null) {
+          continue;
+        }
+        return this.clickAt(
+          button.position.x + button.size.width / 2,
+          button.position.y + button.size.height / 2,
+        );
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Runs an AppleScript in the target session.
+   *
+   * The arguments are passed to the script as `argv`, never spliced into its
+   * source: nothing that comes from the outside becomes AppleScript.
+   */
+  #osascript(script: readonly string[], args: readonly string[]): SessionCommandResult {
+    const result = runInSession(
+      this.#session,
+      "/usr/bin/osascript",
+      [...script.flatMap((line) => ["-e", line]), ...args],
+      { timeoutMs: 60_000 },
+    );
+    if (result.status !== 0) {
+      throw new GuiRecoveryError(
+        `the accessibility query in ${this.#session.username}'s session failed: ${result.stderr.trim()}`,
+      );
+    }
+    return result;
+  }
+}
+
+/** Whether a screenshot file was written and is not empty. Mainly a test seam. */
+export function screenshotLooksReal(path: string): boolean {
+  try {
+    const stat = execFileSync("stat", ["-f", "%z", path], { encoding: "utf-8" });
+    return Number(stat.trim()) > 0;
+  } catch {
+    return false;
+  }
+}
+
+export { MacSessionError };

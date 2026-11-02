@@ -117,10 +117,13 @@ dismisses it, and the call times out; a plugin driven this way needs a mode
 that reports instead of alerting.
 
 On macOS, do **not** recover by moving the physical user's cursor or clicking
-through the user's desktop. A separate-user offstage session is being evaluated
-for GUI-only recovery; the [experimental macOS isolation notes](https://github.com/ido-bata/ae-a8n/blob/main/docs/offstage-macos.md)
-explain its safety gates and limitations. It is **not** the default and is not
-verified against real AE yet (see [#49](https://github.com/ido-bata/ae-a8n/issues/49)).
+through the user's desktop. A recovery may only act inside the session the
+After Effects instance lives in, and it must never press a sign-in or licence
+button. The [macOS isolation notes](https://github.com/ido-bata/ae-a8n/blob/main/docs/offstage-macos.md)
+describe the separate-user session this needs (`offstage`'s session lane, or an
+equivalent native runner), its safety gates, and what is still unverified. It
+is **opt-in** and not verified against real AE yet (see
+[#49](https://github.com/ido-bata/ae-a8n/issues/49)).
 
 ### `@ido-bata/ae-a8n/testing`
 

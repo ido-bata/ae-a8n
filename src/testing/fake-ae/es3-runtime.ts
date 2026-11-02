@@ -274,6 +274,14 @@ export type RunHostOptions = {
    * it does in a real AE process. Defaults to an empty one per run.
    */
   readonly environment?: Map<string, string>;
+  /**
+   * Called for every `alert()` the host script makes.
+   *
+   * A real `alert` blocks until a human closes the dialog; the fake cannot
+   * block, so it reports and carries on. The messages are collected so a
+   * test can assert that the host asked for a dialog at all.
+   */
+  readonly onAlert?: (message: string) => void;
 };
 
 export type RunHostResult =
@@ -387,6 +395,11 @@ export function runHostScript(
   };
 
   sandbox["$"] = dollar;
+  // ExtendScript's `alert`: a modal dialog that blocks until it is closed.
+  // The fake reports instead of blocking.
+  sandbox["alert"] = (message: unknown): void => {
+    options.onAlert?.(String(message));
+  };
   sandbox["File"] = FakeFile;
   sandbox["Folder"] = FakeFolder;
 
