@@ -39,6 +39,7 @@ Requirements on the machine that runs After Effects:
 
 - After Effects installed in the default location (`/Applications/Adobe After Effects <version>/` on macOS), or pass `installDir`.
 - **Settings → Scripting & Expressions → Allow Scripts to Write Files and Access Network** enabled. Without it the first call times out instead of failing fast.
+- On **After Effects 2026 (26.5)** the host also needs AE's approval to run scripts from the driver's folder: AE refuses the first `DoScriptFile` with `-1708` and shows a modal that points at its Scripting & Expressions panel. Approve the session's `staging/` folder there (the folder holds the entry script and the staged host script); the approval covers later calls.
 
 ## What it does to your After Effects
 

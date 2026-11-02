@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { entryScriptPath, writeBootstrapScript } from "./bootstrap.js";
+import { entryScriptPath, stageHostScript, writeBootstrapScript } from "./bootstrap.js";
 import type { HostRecovery } from "./recovery.js";
 import { READINESS_TIMEOUT_MS } from "./script-invocation.js";
 import type { HostOwnership, HostTransport } from "./transport.js";
@@ -112,6 +112,8 @@ export class AeDriver {
   readonly #transport: HostTransport;
   readonly #paths: SessionPaths;
   readonly #hostScriptPath: string;
+  /** The copy of the host script that AE is pointed at; see bootstrap.stageHostScript. */
+  readonly #stagedHostScriptPath: string;
   readonly #trace: TraceRecorder;
   readonly #defaultTimeoutMs: number;
   readonly #readinessTimeoutMs: number;
@@ -137,9 +139,15 @@ export class AeDriver {
     if (!existsSync(this.#hostScriptPath)) {
       throw new HostUnavailableError(`host script not found: ${this.#hostScriptPath}`);
     }
+    // AE decides whether it may run a script from where the script sits, so
+    // every file AE is pointed at lives in one folder of this session, under
+    // stable names. A person approves that folder once and every later call
+    // runs without another approval.
+    this.#stagedHostScriptPath = stageHostScript(this.#paths.staging, this.#hostScriptPath);
     writeSessionManifest(this.#paths, {
       transport: options.transport.kind,
       hostScript: this.#hostScriptPath,
+      stagedHostScript: this.#stagedHostScriptPath,
       pid: process.pid,
     });
   }
@@ -313,7 +321,7 @@ export class AeDriver {
       const entry = entryScriptPath(this.#paths.root, id);
       writeBootstrapScript({
         entryPath: entry,
-        hostScriptPath: this.#hostScriptPath,
+        hostScriptPath: this.#stagedHostScriptPath,
         requestPath: `${this.#paths.inbox}/${id}.request.json`,
         resultPath: `${this.#paths.outbox}/${id}.result.json`,
         id,

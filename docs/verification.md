@@ -303,9 +303,13 @@ On a machine with After Effects installed:
 
 ### Prerequisites
 
-1. **Preferences → General → *Allow Scripts to Write Files and Access Network*.**
-   Without it the host cannot read the request file or write the result. This
-   is the single most likely cause of "it hangs and then times out".
+1. **Settings → Scripting & Expressions → *Allow Scripts to Write Files and Access
+   Network*.** Without it the host cannot read the request file or write the
+   result. This is the single most likely cause of "it hangs and then times out".
+   On AE 2026 (26.5) this is not sufficient on its own: AE also refuses to run a
+   script from a location it has not been told to trust, answering `-1708` and
+   showing a modal that points at the same panel. Approve the driver's `staging/`
+   folder there as well.
 2. A `.aep` with a composition and at least one layer, and the match name of a
    plugin that is actually installed.
 

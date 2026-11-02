@@ -315,6 +315,7 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 
 - **DoScriptFile が「届くのに答えない」以为是 AE のモーダルのせいだいが、モーダルはもう無い。** 壁は **TCC の Automation → ターミナル → After Effects**。
 - `-1743` と `-1712` の混在は「同じ TCC サービスでも経路によって拒絶の表現が違う」ことを示す: いずれにせよ**許可されていない**。
+- **訂正（§10.9）**: 上の「壁は TCC」は **Terminal 基版の中で測り直すと成立しない**。同じ `test` セッションの Terminal からは `count documents` が `0` を返し、`DoScriptFile` / `DoScript` は **Ae 自身が `-1708` で拒否**する（= Ae のスクリプト実行許可が要る）。TCC はこの経路の壁ではない。
 - `codesign -d --entitlements` で確認: **Ae は app-sandbox を使っていない**（`com.apple.security.app-sandbox` なし）。よって `/Users/Shared/ae-a8n` への読み書きは妨げられない。壁は TCC だけ。
 
 ### 10.8 フォーカスの非干渉（実測）
@@ -325,3 +326,36 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 - よって **フォーカスの奪取 0 件・意図しないカーソル移動 0 件**（この観測範囲では）。
 - **キー入力は観測していない。** `focus-watch` は frontmost とポインタしか記録しない。よって**意図しないキー入力 0 件とは断定しない**（`0` と書くのは監視できていない項目）。
 - 別ユーザーへの GUI 操作の配送も 0 件（隔離セッションの操作は `launchctl asuser` / offstage のセッション内で完結し、コンソールセッションの Accessibility は使っていない）。
+
+### 10.9 AE 26.5 のスクリプト実行許可（実測, 2026-11-02 06:04–06:12Z）
+
+§10.7 の結論（「壁は TCC の Automation → ターミナル → After Effects」）は、**Terminal 基版の中で測り直すと Corrections になる**。
+`test` セッションの Terminal の中から（コンソールではなく）実 Ae へ投げた結果:
+
+| 投げ方 | 実測 | 意味 |
+| --- | --- | --- |
+| `count documents`（通常の Apple Event） | `0` が返る | **TCC の Automation → Ae は壁ではない**（同 user's 同一セッション内の Ae なので-events は届く） |
+| `DoScriptFile (POSIX file "…" as alias)` | **`-1708`**（`DoScriptFileを続けることができません`） | **Ae 自身が拒否**（TCC ではなく） |
+| `DoScript ("inline text")` | **`-1708`**（`DoScriptを続けることができません`） | ファイル不经由でも同じ拒否。**Ae の許可リストが empty のまま** |
+| `«event miscfile»`（リポジトリの実装） | AECrash 中は `1`（例外なく「成功」したように見える） | **サイレント no-op**。`-1708` を見せないため、診断としては compiled 形式の方が Information が多い |
+
+- `-1708` は **errAEEventFailed**:「イベントは届いて、Ae が拒否した」。`-1743`（TCC の拒否）とは意味が違う。
+- Ae は `警告` モーダル（layer=8）を出し、**行番号付きで**「このスクリプトは実行できない、アクセスが拒否された。環境設定の『スクリプトとエクスプレッション』で『スクリプト』および『ファイルへの書き込みとネットワークアクセス』を許可せよ」と指す。
+- つまり **AE 2026（26.5）は『スクリプトの実行』そのものを既定で拒否し、偏好パネルの許可リストに載っているスクリプトだけ実行する**。ファイルを読むだけの compute-only スクリプトでも拒否される（実測）。
+- Ae の `ae.sdef` にこの許可を操作する語彙は**存在しない**（`DoScript` / `DoScriptFile` のみ）。`strings` でも許可リストの保存先が見つからない。→ **GUI での許可が要る操作**。
+- **Ae のクラッシュ（実測2件）**: `After Effects-2026-11-02-144538.ips` / `-145642.ips`。どちらも `EXC_CRASH` / `SIGABRT`（`Abort trap: 6`）、クラッシュしたフレームは `com.adobe.dvascripting.framework` / `dvascriptingNAPI` / `com.adobe.extendscript.framework`（後者には `com.adobe.Scripting.plugin` と `Expressions and Scripting Palette`）。**スクリプト実行が拒否された直後に Ae が落ちる**。落ちた Ae は以後のすべてのイベントに `1` を返す（refusing 状態）になり、`kill -TERM` では復帰しない（fresh launch のみ復帰）。
+- 実装への帰結: **`MAC_DO_SCRIPT_FILE` はこの実測だけでは変えない**。compiled 形式が `-1708` を返すのは「permission が要る」ためであり、許可が下りた後に raw 形式が動くかは未検証。**許可が下りた時点で両形式を実測してから**決める（§10.10）。
+
+### 10.10 AE 26.5 の許可は 2 種類（実測 06:17–06:25Z）
+
+| 許可 | 実測 | 誰のものか |
+| --- | --- | --- |
+| **スクリプト実行の許可** | `DoScriptFile` / `DoScript` が **`-1708`**、`警告` モーダル（行番号つき）。**どのパスでも同じ**（実測: `~/Library/Application Support/Adobe/After Effects/Scripts/`、`~/Scripts/`、`~/Documents/`、`/Users/Shared/ae-a8n/run/`） | **Ae の偏好パネルで人間が許可する**（`ae.sdef` に操作語彙は無い。許可リストは空で、まだ保存されていない） |
+| **ファイル書き込み・ネットワークの許可** | `Pref_SCRIPTING_FILE_NETWORK_SECURITY` = `"0"` → `"1"` にしたら **書き出しは通るが、実行拒否（`-1708`）は変わらない**（実測 06:23Z） | Ae の偏好（ファイルは `~/Library/Preferences/Adobe/After Effects/26.5/…環境設定.txt`） |
+
+- つまり **2 つ必要**。前者は GUI での許可が要る操作（Agent からは操作語彙が無いので不可）、後者は Ae 自身の偏好ファイルで足りる（= `default` 相当）。
+- 設定した偏好は **Ae が閉じている時にだけ**書ける（Ae は終了時に偏好ファイルを上書きする）。テストユーザー（uid 502）として書き換えた。
+- 許可の粒度（フォルダ単位かスクリプト単位か）が GUI なしでは分からないため、実装は **Ae に読ませるファイルを 1 フォルダにまとめる**方針にした:
+  - `staging/<id>.entry.jsx`（**呼び出しごとに別名**。Ae はスクリプトが*走るとき*にファイルを読むので、名前が固定だと「タイムアウトしたスクリプトが次の要求を読んで二重に実行する」）
+  - `staging/host/a8n-host.js` と `staging/host/a8n-json.js`（**.driver が 1 回だけ**、`host/` のコピーを置く。バイト同一）
+  - これにより、**フォルダ単位の許可なら 1 回、スクリプト単位なら 3 件**の承認で済む。
