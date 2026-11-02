@@ -2,9 +2,14 @@
 /**
  * Reads a focus-witness log and says what changed.
  *
- * The log lines are `timestamp|app|pid|x,y` (see focus-watch.swift). The
- * question the log answers is narrow: while the isolated session worked,
- * did anything on *this* desktop change hands?
+ * The log lines are `timestamp|app|pid|x,y|keys=<state>|keyCount|programmaticCount`
+ * (see focus-watch.swift). The question the log answers is narrow: while the
+ * isolated session worked, did anything on *this* desktop change hands?
+ *
+ * Key input is reported as **watched** or **unwatched**, never as "zero".
+ * A witness that could not watch says so; "0" would be a claim it cannot make.
+ * What was typed is never in the log: only counts, and whether an event was
+ * posted programmatically rather than typed on the keyboard.
  *
  *   node analyze-focus.mjs focus.log
  */
@@ -15,12 +20,22 @@ function parse(text) {
   for (const line of text.split("\n")) {
     if (line.trim().length === 0) continue;
     const parts = line.split("|");
-    // timestamp|app|pid|x,y
+    // timestamp|app|pid|x,y|keys=<state>|<keyCount>|<programmaticCount>
     if (parts.length < 4) continue;
     const [time, app, pid, cursor] = parts;
     const [x, y] = cursor.split(",").map((value) => Number(value));
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-    samples.push({ time: Number(time), app, pid: Number(pid), x, y });
+    const keysField = parts[4] ?? "";
+    samples.push({
+      time: Number(time),
+      app,
+      pid: Number(pid),
+      x,
+      y,
+      keysWatched: keysField === "keys=watched",
+      keyCount: parts[5] === undefined ? null : Number(parts[5]),
+      programmaticCount: parts[6] === undefined ? null : Number(parts[6]),
+    });
   }
   return samples;
 }
@@ -71,6 +86,16 @@ function main() {
     console.log(`  +${(change.at - first.time).toFixed(1)}s ${change.from} → ${change.to} (cursor ${change.cursor})`);
   }
   console.log(`pointer position samples that moved: ${moved}`);
+  // Key input. "unwatched" is not "zero": it is the absence of a measurement.
+  const watched = samples.some((sample) => sample.keysWatched);
+  if (!watched) {
+    console.log("key input: NOT MONITORED (the witness could not watch key events; no claim is made)");
+  } else {
+    const keys = last.keyCount ?? 0;
+    const programmatic = last.programmaticCount ?? 0;
+    console.log(`key events seen: ${keys} (typed by the human)`);
+    console.log(`key events posted programmatically: ${programmatic}`);
+  }
 }
 
 try {
