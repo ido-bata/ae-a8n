@@ -120,5 +120,6 @@ false green の禁止事項、platform matrix を置いた。stable な entry po
 
 ## 未確認 / 残る制約
 
-- Windows 版 After Effects の実機挙動は未検証のまま（`docs/verification.md` に記録済み）。
+- Windows 版 After Effects は `docs/windows-verification.md` に実機検証が記録済み。ただし ARM64 と
+  英語以外の Windows UI は未実行で、Windows の主張はその範囲に限られる。
 - `release-* → main` の merge には human の明示的な authorization が必要で、agent は merge しない。

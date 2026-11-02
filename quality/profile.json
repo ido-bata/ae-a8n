@@ -143,8 +143,8 @@
       "notes": "After Effects 2026 (26.5x89), macOS 27, arm64. See docs/verification.md."
     },
     "windows": {
-      "status": "not verified",
-      "notes": "The launcher path exists and the release tooling is tested there, but no After Effects behaviour has been observed on Windows. No behaviour is claimed."
+      "status": "verified on real host",
+      "notes": "After Effects 2026 (26.5x89, English UI) on Windows 11 x64: cold launch, install discovery, process ownership, menu commands, hostEnvironment, scene building, Undo/Redo, and Ae_Restro's E2E through this API. See docs/windows-verification.md. ARM64 and non-English Windows UIs are not run."
     }
   },
 

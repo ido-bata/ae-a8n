@@ -42,7 +42,8 @@ property.
 ## Integration against a real After Effects
 
 Integration is opt-in and is skipped when no AE installation is discoverable. The procedure, the
-environment, and the recorded results are in `docs/verification.md`.
+environment, and the recorded results are in `docs/verification.md` (macOS) and
+`docs/windows-verification.md` (Windows).
 
 Before driving a real AE, read `skills/after-effects-automation/SKILL.md`. It covers how to run
 against someone's open work without damaging it.
@@ -58,6 +59,7 @@ against someone's open work without damaging it.
 - `test/` — the unit suite.
 - `docs/` — vision, verification status, sessions, releasing, architecture.
 - `quality/profile.json` — the machine-readable quality policy.
+- `docs/github-settings.md` — the repository's GitHub settings and the rulesets script.
 
 `docs/architecture.md` explains how these fit together.
 
