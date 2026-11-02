@@ -300,7 +300,24 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 - **重要な区別**: 通常の Apple Event（`count documents` など）は `-1743` で**拒否**されるが、**DoScriptFile（`miscfile` イベント）は `-1712` で届く**。ae-a8n の macOS 輸送は DoScriptFile を使うので、**Automation → Ae の許可は ae-a8n の動作には要らない**。要るのは **Screen Recording と Accessibility（Terminal.app に対して）** と **Adobe のサインイン**。いずれも人がやる操作（§8）。
 - 逆に言えば、`count documents` の `-1743` を「Ae に届いていない証拠」と読むのは誤り。**`-1743` は TCC の拒否、`-1712` は「届いたが答えない」**。この 2 つは意味が違う。
 
-### 10.7 フォーカスの非干渉（実測）
+### 10.7 人間が test セッションで許可した後（05:15–05:23Z の実測）
+
+人間が `test` セッションで作業した後の実測:
+
+| 項目 | 実測 | 意味 |
+| --- | --- | --- |
+| Adobe サインイン | **済んだ**。Ae に `警告` モーダルなし（`CGWindowList` に layer=8 が無い）。画面も通常の Ae の UI | Ae の起動モーダルは解消 |
+| Screen Recording → ターミナル | **使える**。`screencapture` が 702KB の PNG を書けた | 許可済み |
+| Accessibility → ターミナル | `AXIsProcessTrusted()` = **`AX_NOT_TRUSTED`** | **未許可** |
+| Automation → ターミナル → System Events | `-1743`（System Events に Apple Events を送信する権限がありません） | **未許可** |
+| Automation → ターミナル → After Effects | `count documents` は `-1712`、`«event miscfile»` は `-1743` | **未許可**（プロンプトが出せないので、この2つの形で違う拒絶になる） |
+| DoScriptFile（実Ae へ） | `-1712`（120秒タイムアウト）。スクリプトは 1 枚も実行されない | TCC の壁 |
+
+- **DoScriptFile が「届くのに答えない」以为是 AE のモーダルのせいだいが、モーダルはもう無い。** 壁は **TCC の Automation → ターミナル → After Effects**。
+- `-1743` と `-1712` の混在は「同じ TCC サービスでも経路によって拒絶の表現が違う」ことを示す: いずれにせよ**許可されていない**。
+- `codesign -d --entitlements` で確認: **Ae は app-sandbox を使っていない**（`com.apple.security.app-sandbox` なし）。よって `/Users/Shared/ae-a8n` への読み書きは妨げられない。壁は TCC だけ。
+
+### 10.8 フォーカスの非干渉（実測）
 
 - 観測方法: コンソールセッション（uid 501）で `focus-watch` を動かし、**約 0.2 秒ごとに frontmost アプリ名・pid とポインタ座標**を記録。E2E 実行の前後を覆う区間を取った。
 - 観測区間: epoch 1793593355.83 – 1793593490.64（**134.8 秒**, 652 サンプル）。E2E の実行区間（04:22:38–04:23:49Z）を完全に含む。
