@@ -15,6 +15,7 @@ import {
   assertTargetSession,
   parseAeProcesses,
   parseTerminalResult,
+  sessionFromOffstageStatus,
   shellCommandLine,
   shellQuote,
 } from "../scripts/isolated-session/session-rules.mjs";
@@ -118,4 +119,45 @@ test("a job that wrote nothing is not a result", () => {
 test("a failed job keeps its exit code", () => {
   const result = parseTerminalResult("uid=502\nusername=test\nasid=100040\nexit=7\n");
   assert.equal(result.exitCode, 7);
+});
+
+test("offstage's own report is the session fact", () => {
+  const status = {
+    available: true,
+    accountExists: true,
+    user: "test",
+    uid: 502,
+    guiSession: { exists: true, loginDone: true, onConsole: false, sessionId: 258 },
+  };
+  assert.deepEqual(sessionFromOffstageStatus(status), {
+    uid: 502,
+    username: "test",
+    asid: 258,
+    kind: "Aqua",
+  });
+});
+
+test("an account that is not logged in has no graphical session", () => {
+  const status = {
+    available: true,
+    accountExists: true,
+    user: "test",
+    uid: 502,
+    guiSession: { exists: false, loginDone: false, onConsole: false, sessionId: null },
+  };
+  assert.equal(sessionFromOffstageStatus(status).kind, "none");
+});
+
+test("a session lane that is not available is a refusal", () => {
+  const status = { available: false, reason: "no account", fix: "create it" };
+  assert.throws(() => sessionFromOffstageStatus(status), /not available/);
+});
+
+test("a missing account is a refusal", () => {
+  const status = { available: true, accountExists: false, fix: "create it" };
+  assert.throws(() => sessionFromOffstageStatus(status), /no second session/);
+});
+
+test("no report at all leaves the question open", () => {
+  assert.equal(sessionFromOffstageStatus(null), null);
 });

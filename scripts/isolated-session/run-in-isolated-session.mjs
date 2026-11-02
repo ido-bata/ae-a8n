@@ -48,6 +48,7 @@ import {
   assertTargetSession,
   parseAeProcesses,
   parseTerminalResult,
+  sessionFromOffstageStatus,
   shellCommandLine,
 } from "./session-rules.mjs";
 
@@ -156,11 +157,55 @@ function offstageBinary() {
 }
 
 /**
+ * The offstage account's own status, as JSON.
+ *
+ * The controller usually runs in the *console* session, and from there
+ * `launchctl print gui/<uid>` for another user is refused ("Operation not
+ * permitted") — the console user cannot read another user's launchd
+ * domain. offstage can, because it talks to the session daemon that runs
+ * inside that session. So the facts about the target session come from
+ * offstage, and the launchd document is only the fallback for a controller
+ * that is already inside the target session.
+ */
+export function readOffstageStatus(user) {
+  try {
+    const text = execFileSync("offstage", ["session", "status", "--user", user, "--json"], {
+      encoding: "utf-8",
+      timeout: 30_000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end < 0) {
+      return null;
+    }
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The target session, as far as the controller can see it.
+ *
+ * Offstage's report is preferred: it is made from inside the target
+ * session. The launchd document is the fallback, and it only works for a
+ * controller that is already in that session (or root).
+ */
+export function resolveTargetSession(user, targetUid, offstageStatus) {
+  const fromOffstage = sessionFromOffstageStatus(offstageStatus);
+  if (fromOffstage !== null) {
+    return fromOffstage;
+  }
+  return readGuiSession(targetUid);
+}
+
+/**
  * Everything that has to be true before a test may start, whatever the
  * substrate. Each check refuses rather than repairs.
  */
-export function preflight({ user, targetUid, consoleUidValue, psOutput, binary }) {
-  const session = assertTargetSession(readGuiSession(targetUid), targetUid, consoleUidValue);
+export function preflight({ user, targetUid, consoleUidValue, psOutput, binary, session }) {
+  assertTargetSession(session, targetUid, consoleUidValue);
   assertNoRunningAfterEffects(parseAeProcesses(psOutput));
   if (binary === null) {
     throw new Error(
@@ -338,12 +383,15 @@ function main() {
   const targetUid = uidOfUser(options.user);
   const consoleUidValue = consoleUid();
   const binary = options.substrate === "native" ? "native" : offstageBinary();
+  const offstageStatus = binary === "native" ? null : readOffstageStatus(options.user);
+  const session = resolveTargetSession(options.user, targetUid, offstageStatus);
   preflight({
     user: options.user,
     targetUid,
     consoleUidValue,
     psOutput: commandOutput("ps", ["-axo", "pid=,uid=,comm="]),
     binary,
+    session,
   });
   process.stderr.write(
     `[ae-a8n] running in ${options.user}'s session (uid ${targetUid}); the console is uid ${consoleUidValue}. ` +

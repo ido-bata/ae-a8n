@@ -109,6 +109,42 @@ export function assertJobSession(job, session) {
 }
 
 /**
+ * The target session, as offstage reports it.
+ *
+ * The controller usually runs in the console session, and from there
+ * `launchctl print gui/<uid>` for another user is refused ("Operation not
+ * permitted"): the console user cannot read another user's launchd domain.
+ * offstage can, because it talks to the daemon running inside that session.
+ * So the facts about the target session come from offstage, and the launchd
+ * document is only the fallback for a controller already inside the target
+ * session.
+ */
+export function sessionFromOffstageStatus(status) {
+  if (status === null || status === undefined) {
+    return null;
+  }
+  if (status.available !== true) {
+    throw new Error(
+      `the session lane is not available: ${status.reason ?? "unknown reason"}. ` +
+        `Fix: ${status.fix ?? "see `offstage session status`"}. Nothing was run.`,
+    );
+  }
+  if (status.accountExists !== true) {
+    throw new Error(
+      `there is no account on this Mac, so there is no second session to run in. ` +
+        `Fix: ${status.fix ?? "create the account"}. Nothing was run.`,
+    );
+  }
+  const gui = status.guiSession;
+  return {
+    uid: status.uid,
+    username: status.user,
+    asid: gui?.sessionId ?? null,
+    kind: gui?.exists === true && gui?.loginDone === true ? "Aqua" : "none",
+  };
+}
+
+/**
  * One shell argument, quoted for `sh`.
  *
  * The command that runs in the other session is written into a file that a
