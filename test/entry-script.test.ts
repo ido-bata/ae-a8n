@@ -84,9 +84,9 @@ describe("the staged host script", () => {
     writeFileSync(join(source, "a8n-host.js"), "// host\n");
     writeFileSync(join(source, "a8n-json.js"), "// codec\n");
     const staged = stageHostScript(dir, join(source, "a8n-host.js"));
-    expect(staged).toBe(join(dir, "host", "a8n-host.js"));
+    expect(staged).toBe(join(dir, "a8n-host.js"));
     expect(readFileSync(staged, "utf-8")).toBe("// host\n");
-    expect(readFileSync(join(dir, "host", "a8n-json.js"), "utf-8")).toBe("// codec\n");
+    expect(readFileSync(join(dir, "a8n-json.js"), "utf-8")).toBe("// codec\n");
     rmSync(source, { recursive: true, force: true });
   });
 });

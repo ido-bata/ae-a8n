@@ -150,7 +150,10 @@ export function entryScriptPath(sessionRoot: string, id: string): string {
  */
 export function stageHostScript(stagingDir: string, hostScriptPath: string): string {
   const sourceDir = dirname(hostScriptPath);
-  const targetDir = join(stagingDir, "host");
+  // Into the staging folder itself, not a folder below it: the point is that
+  // everything AE is pointed at is in ONE folder, so that one approval of
+  // that folder covers the entry script and the host script together.
+  const targetDir = stagingDir;
   mkdirSync(targetDir, { recursive: true });
   for (const name of readdirSync(sourceDir)) {
     const source = join(sourceDir, name);

@@ -15,6 +15,7 @@ import { entryScriptPath, stageHostScript, writeBootstrapScript } from "./bootst
 import type { HostRecovery } from "./recovery.js";
 import { READINESS_TIMEOUT_MS } from "./script-invocation.js";
 import type { HostOwnership, HostTransport } from "./transport.js";
+import { ScriptNotSentError } from "./transport.js";
 
 export type StopOptions = {
   /** "discard" permits throwing away the open project's unsaved changes. */
@@ -338,6 +339,12 @@ export class AeDriver {
       try {
         await this.#transport.invoke(entry, { signal: abort.signal });
       } catch (error) {
+        // A call that never reached the host is not a timeout of the
+        // operation: nothing ran, so there is nothing to recover from and
+        // nothing to wait for. It is reported as what it is.
+        if (error instanceof ScriptNotSentError) {
+          throw error;
+        }
         if (abort.signal.aborted) {
           throw new TimeoutError(method, timeoutMs);
         }

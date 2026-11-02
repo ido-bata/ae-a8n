@@ -31,6 +31,7 @@ import {
   type MacSession,
 } from "./mac-session.js";
 import type { HostOwnership, HostTransport, InvokeOptions } from "./transport.js";
+import { ScriptNotSentError } from "./transport.js";
 
 export type ScriptInvocationOptions = {
   /** Explicit install directory; skips discovery. */
@@ -777,7 +778,20 @@ export class ScriptInvocationTransport implements HostTransport {
       // One DoScriptFile at a time. A call that timed out leaves its script
       // running in AE; the next one waits for it rather than racing it.
       if (this.#inFlight !== null) {
-        await untilAborted(this.#inFlight, options.signal);
+        // If the deadline passes during this wait, the script was never
+        // sent. Saying "timed out" would claim the operation ran and did not
+        // answer, which is not what happened: nothing ran at all.
+        try {
+          await untilAborted(this.#inFlight, options.signal);
+        } catch (error) {
+          if (options.signal?.aborted === true) {
+            throw new ScriptNotSentError(
+              "the call was abandoned while it waited for the previous script to finish; " +
+                "it was never sent to After Effects, so nothing ran",
+            );
+          }
+          throw error;
+        }
       }
       // DoScriptFile returns only when the script has finished. On a deadline
       // the call stops *waiting*, but osascript is left to finish: killing it

@@ -7,6 +7,22 @@
  * After Effects process or the in-repo fake.
  */
 
+/**
+ * The call was abandoned before it reached the host.
+ *
+ * A transport that can only send one script at a time (macOS `DoScriptFile`
+ * is synchronous) has to wait for the running script to finish before it may
+ * send the next one. If the call's deadline passes during that wait, the
+ * script was never sent: nothing ran, and nothing may be reported as a
+ * timeout of the operation.
+ */
+export class ScriptNotSentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ScriptNotSentError";
+  }
+}
+
 export type InvokeOptions = {
   /**
    * Aborted when the call's deadline passes. A transport that waits for the

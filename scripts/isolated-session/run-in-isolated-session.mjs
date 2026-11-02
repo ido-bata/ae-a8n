@@ -43,6 +43,7 @@ import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  assertOutcomeSession,
   assertNoRunningAfterEffects,
   assertResultSession,
   assertTargetSession,
@@ -245,7 +246,7 @@ function runOffstage(options) {
  * The job writes down which session it ran in; the controller believes that
  * account only when it names the session it asked for.
  */
-export function runTerminal(options, targetUid) {
+export function runTerminal(options, targetUid, targetSession) {
   const root = resolve(options.root);
   const jobs = join(root, "jobs");
   const results = join(root, "results");
@@ -314,12 +315,10 @@ export function runTerminal(options, targetUid) {
   for (;;) {
     if (existsSync(donePath)) {
       const outcome = parseTerminalResult(readFileSync(donePath, "utf-8"));
-      if (outcome.uid !== targetUid) {
-        throw new Error(
-          `the job ran as uid ${outcome.uid}, not ${targetUid}: it did not run in the requested session. ` +
-            "The result is not trusted.",
-        );
-      }
+      // The console is checked again here, not only in the preflight: the
+      // human may have switched to the target session while the job ran, and
+      // a job that ran on the console desktop is not an isolated run.
+      assertOutcomeSession(outcome, { uid: targetUid, asid: targetSession?.asid ?? null }, consoleUid());
       const stdout = existsSync(outPath) ? readFileSync(outPath, "utf-8") : "";
       const stderr = existsSync(errPath) ? readFileSync(errPath, "utf-8") : "";
       if (stdout.length > 0) {
@@ -401,7 +400,7 @@ function main() {
     options.substrate === "native"
       ? runNative(options, targetUid)
       : options.substrate === "terminal"
-        ? runTerminal(options, targetUid)
+        ? runTerminal(options, targetUid, session)
         : runOffstage(options);
   if (options.report !== undefined && status === 0) {
     const report = readReport(options.report, targetUid);

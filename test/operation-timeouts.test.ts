@@ -69,9 +69,8 @@ class SlowScriptsTransport implements HostTransport {
 /**
  * The request the entry script belongs to.
  *
- * The entry script's name is not unique on purpose (AE decides whether it may
- * run a script from where the script sits, so the name stays stable), so the
- * id comes from the script itself: it carries the path of its request.
+ * The entry script's name is unique per call, so the id is read from the
+ * script itself: it carries the path of its request.
  */
 function requestIdOf(entry: string): string | null {
   const source = readFileSync(entry, "utf-8");

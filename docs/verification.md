@@ -296,6 +296,7 @@ ARM64.
 | `ADBE Effect Parade` match-name lookup for a third-party plugin | needs a real plugin installed |
 | `File`/`Folder` behaviour matching ExtendScript's | approximated by the fake, not verified against the real implementation |
 | ARM64 Windows, non-English Windows UI, several AE versions running at once | not run; the platform branches were exercised on x64 Windows (en) and on macOS (ja) only |
+| The **isolated-session** path of #49 (a second OS user's Aqua session, its safety gates, and the E2E that runs there) | `implemented` and `fake/mock only` — never verified end to end on a real host. The pipeline was observed running in the `test` session on this Mac (uid 502 / asid 107488 / console uid 501), but AE 26.5 refuses to run a script from a location it has not been told to trust, so the last AE call never completed and **no E2E has run to the end**. See [offstage-macos.md](offstage-macos.md) §10.9–§10.11 |
 
 ## Closing the gap
 

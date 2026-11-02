@@ -39,6 +39,40 @@ export function assertTargetSession(session, targetUid, consoleUid) {
 /**
  * A result is only believed when it names the session it was asked to run in.
  */
+/**
+ * The result of a job that ran in the target session.
+ *
+ * The result file lives in a directory any local process may write to, so
+ * the account it names is not proof on its own. It has to name the session
+ * the controller asked for, and the console must still belong to somebody
+ * else: if the target session became the console session while the job ran,
+ * the job ran on the human's desktop, and no result may be believed.
+ */
+export function assertOutcomeSession(outcome, target, consoleUidValue) {
+  if (outcome.uid !== target.uid) {
+    throw new Error(
+      `the job ran as uid ${outcome.uid}, not ${target.uid}: it did not run in the requested session. ` +
+        "The result is not trusted.",
+    );
+  }
+  if (target.asid !== null && outcome.asid !== target.asid) {
+    // The job has to name the session it ran in. An unknown session (the job
+    // could not read one) is not a match: refusing here costs one run,
+    // while accepting it costs the whole point of the isolation.
+    throw new Error(
+      `the job ran in session ${outcome.asid}, not in session ${target.asid}: it did not run in the ` +
+        "requested session. The result is not trusted.",
+    );
+  }
+  if (consoleUidValue === target.uid) {
+    throw new Error(
+      `the target session (uid ${target.uid}) owns the console now: the job ran on the human's own desktop. ` +
+        "The result is not trusted.",
+    );
+  }
+  return outcome;
+}
+
 export function assertResultSession(result, targetUid) {
   if (result?.session?.uid !== targetUid) {
     throw new Error(

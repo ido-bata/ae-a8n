@@ -11,6 +11,7 @@ import { test } from "node:test";
 import {
   assertJobSession,
   assertNoRunningAfterEffects,
+  assertOutcomeSession,
   assertResultSession,
   assertTargetSession,
   parseAeProcesses,
@@ -65,6 +66,32 @@ test("the agent runs a job that names its own session", () => {
 test("the agent runs a job that names no session", () => {
   const job = { command: ["node", "e2e.mjs"] };
   assert.equal(assertJobSession(job, aqua), job);
+});
+
+test("a job that ran as another user is not trusted", () => {
+  assert.throws(
+    () => assertOutcomeSession({ uid: 501, asid: 100021 }, { uid: 502, asid: 100040 }, 501),
+    /ran as uid 501, not 502/,
+  );
+});
+
+test("a job that ran in another session of the same user is not trusted", () => {
+  assert.throws(
+    () => assertOutcomeSession({ uid: 502, asid: 999 }, { uid: 502, asid: 100040 }, 501),
+    /ran in session 999, not in session 100040/,
+  );
+});
+
+test("a job that ran while the target session owned the console is not trusted", () => {
+  assert.throws(
+    () => assertOutcomeSession({ uid: 502, asid: 100040 }, { uid: 502, asid: 100040 }, 502),
+    /owns the console now/,
+  );
+});
+
+test("a job that ran in the requested session, off the console, is trusted", () => {
+  const outcome = { uid: 502, asid: 100040 };
+  assert.equal(assertOutcomeSession(outcome, { uid: 502, asid: 100040 }, 501), outcome);
 });
 
 test("an After Effects process of any user is recognised", () => {

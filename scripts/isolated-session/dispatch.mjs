@@ -15,7 +15,7 @@
  * The other session has to exist because that user logged in.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -103,6 +103,9 @@ function main() {
   const results = join(options.root, "results");
   for (const dir of [jobs, results]) {
     mkdirSync(dir, { recursive: true, mode: 0o1777 });
+    // mkdir applies the umask to the mode it is given, so 1777 would come
+    // out as 0755 and the other account could not write its result there.
+    chmodSync(dir, 0o1777);
   }
   const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
   const jobPath = join(jobs, `${id}.job.json`);

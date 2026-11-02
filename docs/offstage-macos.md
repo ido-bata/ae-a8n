@@ -8,14 +8,15 @@
 | 項目 | 状態 |
 | --- | --- |
 | offstage の配布物・CLIの監査と実行確認 | `verified on real host` |
-| 別ユーザーのAquaセッションの生成・操作 | `verified on real host`（test uid 502 / asid 258。コンソール所有者は uid 501 のまま） |
-| 隔離セッションでのAe起動 | `verified on real host`（AE 26.5.0 が test セッションで起動した。ただし起動モーダルで応答せず） |
-| Apple Events の配送先が対象ユーザーのAeであることの実測 | `UNVERIFIED`（test セッションの Automation 許可が未了で -1743。実測できていない） |
-| GUIフォールバックによるダイアログクローズ | `UNVERIFIED`（test セッションの AX 許可が未了。Aeのダイアログは AX に現状出ない） |
+| 別ユーザーのAquaセッションの生成・操作 | `verified on real host`（test uid 502 / asid 107488。コンソール所有者は uid 501 のまま） |
+| 隔離セッションでのAe起動 | `verified on real host`（AE 26.5.0 が test セッションで起動した。§10.9 のとおり Ae がスクリプト実行を拒否するため readiness probe は未通過） |
+| 隔離E2Eパイプライン全体（セッション特定 → 別ユーザのTerminalで起動 → 実行 → 結果をコンソール側へ） | `implemented`＋**`fake/mock only`**。§10.11 のとおりパイプライン自体は実機で通るが、最後のAe呼び出し（`app.info`）で止まっており、**E2Eは1件も完走していない** |
+| Apple Events の配送先が対象ユーザーのAeであることの実測 | `verified on real host`（§10.9: `count documents` が `0`、TCCの拒否 `-1743` ではない） |
+| GUIフォールバックによるダイアログクローズ | `UNVERIFIED`（test セッションの AX 許可が未了。実Aeのモーダルでの実測は未実施） |
 | フォーカスの通常ユーザーへの干渉 | `implemented`＋**フォーカスとカーソル移動は実測 0 件**。キー入力は**未監視**なので 0 件とは断定しない |
 
 「fake/mock only」を「動作する」とは書かない。上の表のとおり、未検証は未検証と書く。
-**テストユーザーの Adobe サインインが未了のため、Aeの起動モーダル（`警告`）は人間の手で解く必要がある。**
+**§10.9 のとおり、残り Ae 自身の「スクリプト実行の許可」（GUI での人が操作）と test セッションの Accessibility 許可が下りれば実機受入に進める。それまでは macOS 隔離経路は `implemented`＋`fake/mock only` のままである。**
 
 ## 1. offstage の調査（実測）
 
@@ -189,18 +190,23 @@ Adobe公式（別OSアカウント × 同一PC）: 追加のデバイスアク�
 
 ## 8. 人間が実行すること（この Mac で必要な手順）
 
-このMacの現在地（2026-11-02）: `test` (uid 502) のアカウントは存在し、**高速ユーザー切替でログイン済みの Aqua セッション（asid 258）**がある。`offstage session status --user test` は **session lane available**。デーモン `offstage-sessiond` (pid 15768) も応答する。共有済み（`/Users/Shared/ae-a8n`）。
+このMacの現在地（2026-11-02）: `test` (uid 502) のアカウントは存在し、**高速ユーザー切替でログイン済みの Aqua セッション**がある（§10.11 の実測で asid 107488、コンソール所有者は uid 501 のまま）。ただし `offstage session status --user test` は **available: false**（helper セッション未ログイン）と出るが、**terminal 基版は offstage の helper セッションを必要としない**ので問題ない。共有済み（`/Users/Shared/ae-a8n`）。
 
-したがって残る手順は**権限の承認と Adobe のサインイン**だけで、代理にはできない。
+したがって残る手順は**権限の承認（Screen Recording / Accessibility）と、Ae 自身の「スクリプト実行の許可」**だけで、代理にはできない（§10.9・§10.10）。
 
 1. **高速ユーザー切替で `test` に切り替える**（`rebui` からはログアウトしない）。
 2. `test` セッションの画面で、保留中の TCC プロンプトを許可する:
-   - **画面収録**（Screen Recording）— 保留中のプロンプト（題名 `画面収録`）が既に画面にある。
-   - **ユーザー補助機能**（Accessibility）。
-   - **自動化**（Automation）: `ターミナル` → `Adobe After Effects 2026`、および `ターミナル` → `System Events`。これが無いと DoScriptFile が `-1743` で失敗する（実測済み）。
+   - **画面収録**（Screen Recording）— 実測で許可済み（§10.7）。
+   - **ユーザー補助機能**（Accessibility）— 実測で**未許可**。これが GUI フォールバックの前提。
+   - 自動化（Automation）は**不要**（§10.9: `count documents` が `0` を返す。TCC は壁ではない）。
    - 対象は `offstage-sessiond` ではなく **`ターミナル`**（§10.2）。`offstage-sessiond` は bundle が無く設定に現れない。
-3. `test` ユーザーで **Adobe にサインインする**（Ae の起動モーダル `警告` を解くため）。通常ユーザーでAeを使っていない時に行う。Adobe ID・パスワード・トークンは代理が扱うことも保存することもない。
-4. **コンソール（`rebui`）へ戻す**（`test` 側は**ログアウトしない**。ログアウトするとセッションごと消える）。
+3. **Ae 2026 → 設定 → スクリプトとエクスプレッション**で、driver が Ae に読ませるフォルダを許可する（§10.10）。許可的原因是 Ae が `DoScriptFile` を **`-1708`** で拒否すること（実測）。
+   - 追加するフォルダ: **`/Users/Shared/ae-a8n/sessions/real-host/staging`**（`a8n-host.js` と `a8n-json.js` と `*.entry.jsx` が入るフォルダ）
+   - 「スクリプト」**と**「ファイルへの書き込みとネットワークアクセス」の両方を許可する。
+   - **Ae を終了してから**設定し、**その後で** Ae を起動し直す（偏好は終了時に上書きされる）。
+4. `test` ユーザーで **Adobe にサインインする**（Ae の起動モーダル `警告` を解くため）。通常ユーザーでAeを使っていない時に行う。Adobe ID・パスワード・トークンは代理が扱うことも保存することもない。
+5. **コンソール（`rebui`）へ戻す**（`test` 側は**ログアウトしない**。ログアウトするとセッションごと消える）。
+6. **許可の粒度を答える**: Ae のパネルがフォルダ単位かスクリプト単位か（フォルダを1回追加すれば足りるのか、ファイルごとに追加が要るか）。これは実装の判断（安定名の entry に固定すべきか）に直結する。
 
 その後、`scripts/isolated-session/ae-e2e.mjs` を隔離セッションで走らせる:
 
@@ -317,6 +323,7 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 - `-1743` と `-1712` の混在は「同じ TCC サービスでも経路によって拒絶の表現が違う」ことを示す: いずれにせよ**許可されていない**。
 - **訂正（§10.9）**: 上の「壁は TCC」は **Terminal 基版の中で測り直すと成立しない**。同じ `test` セッションの Terminal からは `count documents` が `0` を返し、`DoScriptFile` / `DoScript` は **Ae 自身が `-1708` で拒否**する（= Ae のスクリプト実行許可が要る）。TCC はこの経路の壁ではない。
 - `codesign -d --entitlements` で確認: **Ae は app-sandbox を使っていない**（`com.apple.security.app-sandbox` なし）。よって `/Users/Shared/ae-a8n` への読み書きは妨げられない。壁は TCC だけ。
+- **訂正（§10.9）**: 最後の「壁は TCC だけ」も成立しない。同じ `test` セッションの Terminal からは `count documents` が `0` を返し、`DoScriptFile` は **`-1708`（Ae 自身が拒否）** になる。TCC の Automation 許可は要らず、壁は **Ae 自身のスクリプト実行許可**である。
 
 ### 10.8 フォーカスの非干渉（実測）
 
@@ -357,7 +364,7 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 - 設定した偏好は **Ae が閉じている時にだけ**書ける（Ae は終了時に偏好ファイルを上書きする）。テストユーザー（uid 502）として書き換えた。
 - 許可の粒度（フォルダ単位かスクリプト単位か）が GUI なしでは分からないため、実装は **Ae に読ませるファイルを 1 フォルダにまとめる**方針にした:
   - `staging/<id>.entry.jsx`（**呼び出しごとに別名**。Ae はスクリプトが*走るとき*にファイルを読むので、名前が固定だと「タイムアウトしたスクリプトが次の要求を読んで二重に実行する」）
-  - `staging/host/a8n-host.js` と `staging/host/a8n-json.js`（**.driver が 1 回だけ**、`host/` のコピーを置く。バイト同一）
+  - `staging/a8n-host.js` と `staging/a8n-json.js`（**`.driver` が 1 回だけ**、`host/` のコピーを**`staging/` 自身に**置く。バイト同一。Ae に読ませるファイルは 1 フォルダにまとめ、フォルダ単位の許可がそのまま効く）
   - これにより、**フォルダ単位の許可なら 1 回、スクリプト単位なら 3 件**の承認で済む。
 
 ### 10.11 隔離E2E パイプラインの通し実測（06:33–06:36Z）
