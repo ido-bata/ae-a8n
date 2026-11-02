@@ -244,7 +244,7 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 | macOS | 27.0.1 (26A434) |
 | After Effects | 26.5.0（`/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects`） |
 | offstage | `@exla/offstage` 0.4.1 |
-| テストユーザー | `test` uid 502 / Aqua asid 258 / ログアウトなしでバックグラウンドに存在 |
+| テストユーザー | `test` uid 502 / Aqua（§10.11 の実測で asid 107488）/ ログアウトなしでバックグラウンドに存在 |
 | コンソール所有者 | uid 501 (`rebui`) — テスト中も変わらず |
 | 隔離セッションの Ae | pid 69349（uid 502）、起動は `DoScriptFile` によるオンデマンド起動 |
 
