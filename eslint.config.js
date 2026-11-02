@@ -28,6 +28,22 @@ export default tseslint.config(
     files: ["scripts/**/*.mjs", "test/**/*.mjs"],
     rules: tseslint.configs.disableTypeChecked.rules,
     languageOptions: {
+      // The Node globals these scripts use. Listed by hand rather than pulled
+      // from a package, so the lint setup stays dependency-free.
+      globals: {
+        Buffer: "readonly",
+        URL: "readonly",
+        __dirname: "readonly",
+        __filename: "readonly",
+        clearInterval: "readonly",
+        clearTimeout: "readonly",
+        console: "readonly",
+        exports: "writable",
+        module: "writable",
+        process: "readonly",
+        setInterval: "readonly",
+        setTimeout: "readonly",
+      },
       parserOptions: {
         projectService: false,
         project: false,

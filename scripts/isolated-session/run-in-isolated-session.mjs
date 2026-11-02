@@ -152,7 +152,7 @@ export function preflight({ user, targetUid, consoleUidValue, psOutput, binary }
   return { session, user };
 }
 
-function runOffstage(options, targetUid) {
+function runOffstage(options) {
   const args = ["run", "--lane", "session", "--user", options.user, "--timeout", String(options.timeoutMs), "--"];
   const child = spawnSync("offstage", [...args, ...options.command], { stdio: "inherit", shell: false });
   if (child.error) {
@@ -223,7 +223,7 @@ function main() {
       `Substrate: ${options.substrate}.\n`,
   );
   const status =
-    options.substrate === "native" ? runNative(options, targetUid) : runOffstage(options, targetUid);
+    options.substrate === "native" ? runNative(options, targetUid) : runOffstage(options);
   if (options.report !== undefined && status === 0) {
     const report = readReport(options.report, targetUid);
     process.stderr.write(
