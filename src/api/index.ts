@@ -262,7 +262,7 @@ export class AfterEffects {
       options.session?.recover === true && transport instanceof ScriptInvocationTransport
         ? new MacHostRecovery({
             session: requireSession(options.session.uid),
-            pid: () => transport.hostPid(),
+            pid: () => transport.recoveryTargetPid(),
             screenshotDir: join(sessionRoot, "artifacts"),
           })
         : undefined;

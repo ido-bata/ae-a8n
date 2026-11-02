@@ -359,3 +359,61 @@ describe("who owns the After Effects process", () => {
     expect(t.ownership().kind).toBe("unknown");
   });
 });
+
+describe("finding the host before it has answered", () => {
+  // On macOS `DoScriptFile` starts After Effects on demand, so the process
+  // appears after launch() returned — and when a start-up dialog blocks it, the
+  // readiness probe never answers, so the ownership bookkeeping never runs.
+  // The GUI fallback still has to find that process: it was this transport
+  // that caused it to start.
+  const executable = "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects";
+  const install = { executable, versionName: "Adobe After Effects 2026.app", renderExecutable: null };
+  const T0 = Date.parse("2026-10-15T00:00:00Z");
+  type P = { pid: number; startedAt: number; executable: string };
+  const ae = (pid: number, startedAt = T0 + 1_000, exe = executable): P => ({ pid, startedAt, executable: exe });
+
+  function transportSeeing(...lists: P[][]) {
+    let i = 0;
+    return new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      now: () => T0,
+      processes: () => lists[Math.min(i++, lists.length - 1)] as P[],
+    });
+  }
+
+  it("finds the host it started even though the probe never answered", async () => {
+    const t = transportSeeing([], [ae(42)]);
+    await t.launch();
+    // No confirmLaunched(): the probe timed out.
+    expect(t.hostPid()).toBeNull();
+    expect(t.recoveryTargetPid()).toBe(42);
+  });
+
+  it("claims nothing when no host appeared at all", async () => {
+    const t = transportSeeing([], []);
+    await t.launch();
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("claims nothing when two hosts appeared", async () => {
+    const t = transportSeeing([], [ae(42), ae(43)]);
+    await t.launch();
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("does not claim a host that was already running", async () => {
+    const t = transportSeeing([ae(7, T0 - 60_000)], [ae(7, T0 - 60_000)]);
+    await t.launch();
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("keeps the ownership rule as it was: quitting still needs the probe's proof", async () => {
+    const t = transportSeeing([], [ae(42)]);
+    await t.launch();
+    // The pid is available for the GUI fallback...
+    expect(t.recoveryTargetPid()).toBe(42);
+    // ...but nothing is owned yet, so nothing may be quit.
+    expect(t.ownership().kind).toBe("unknown");
+  });
+});

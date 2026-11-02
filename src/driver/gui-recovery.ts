@@ -46,6 +46,15 @@ export type GuiWindowInfo = {
   readonly role: string;
   readonly subrole: string | null;
   readonly buttons: readonly GuiButtonInfo[];
+  /**
+   * The static text the window shows.
+   *
+   * The title of an Adobe account window is often just "警告" or a product
+   * name; what tells it apart from an ordinary dialog is what it says. The
+   * wording is in the UI language of the session, so it is kept verbatim
+   * rather than translated.
+   */
+  readonly texts: readonly string[];
 };
 
 export type GuiAppState = {
@@ -73,11 +82,18 @@ export function isBlockingWindow(window: GuiWindowInfo): boolean {
  * ```
  * FRONTMOST|1
  * W|After Effects|AXWindow|AXStandardWindow
+ * T|Adobe Creative Cloud にサインインしてください
  * B|OK||640,480|80,32
  * ```
  */
 export function parseUiListing(text: string): { frontmost: boolean; windows: GuiWindowInfo[] } {
-  const windows: { title: string; role: string; subrole: string | null; buttons: GuiButtonInfo[] }[] = [];
+  const windows: {
+    title: string;
+    role: string;
+    subrole: string | null;
+    buttons: GuiButtonInfo[];
+    texts: string[];
+  }[] = [];
   let frontmost = false;
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
@@ -90,7 +106,21 @@ export function parseUiListing(text: string): { frontmost: boolean; windows: Gui
       continue;
     }
     if (parts[0] === "W") {
-      windows.push({ title: parts[1] ?? "", role: parts[2] ?? "", subrole: parts[3] ?? null, buttons: [] });
+      windows.push({
+        title: parts[1] ?? "",
+        role: parts[2] ?? "",
+        subrole: parts[3] ?? null,
+        buttons: [],
+        texts: [],
+      });
+      continue;
+    }
+    if (parts[0] === "T") {
+      const current = windows[windows.length - 1];
+      if (current === undefined) {
+        continue;
+      }
+      current.texts.push(parts.slice(1).join("|"));
       continue;
     }
     if (parts[0] === "B") {
@@ -108,7 +138,7 @@ export function parseUiListing(text: string): { frontmost: boolean; windows: Gui
       });
     }
   }
-  return { frontmost, windows: windows.map((window) => ({ ...window, buttons: window.buttons })) };
+  return { frontmost, windows };
 }
 
 /** A point the accessibility API reported, as "x,y". */
@@ -168,6 +198,24 @@ const LIST_WINDOWS_SCRIPT = [
   "        set wsub to (subrole of w) as string",
   "      end try",
   "      set report to report & \"W|\" & wtitle & \"|\" & wrole & \"|\" & wsub & linefeed",
+  "      set wtexts to {}",
+  "      try",
+  "        set wtexts to static texts of w",
+  "      on error",
+  "        set wtexts to {}",
+  "      end try",
+  "      repeat with t in wtexts",
+  "        set ttext to \"\"",
+  "        try",
+  "          set ttext to (value of t) as string",
+  "        end try",
+  "        if ttext is \"\" then",
+  "          try",
+  "            set ttext to (name of t) as string",
+  "          end try",
+  "        end if",
+  "        if ttext is not \"\" then set report to report & \"T|\" & a8nClean(ttext) & linefeed",
+  "      end repeat",
   "      repeat with b in buttons of w",
   "        set btitle to \"\"",
   "        try",
@@ -191,6 +239,14 @@ const LIST_WINDOWS_SCRIPT = [
   "  end tell",
   "  return report",
   "end run",
+  // One line per field: the listing is line-based, so a line break inside a
+  // label would split it into two records.
+  "on a8nClean(s)",
+  "  set AppleScript's text item delimiters to {return, linefeed, \"|\"}",
+  "  set parts to text items of s",
+  "  set AppleScript's text item delimiters to \" \"",
+  "  return parts as string",
+  "end a8nClean",
 ];
 
 /** Presses the button with the given title, in the process with the given pid. */

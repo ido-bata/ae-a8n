@@ -71,6 +71,8 @@ describe("what the accessibility query reports", () => {
   const listing = [
     "FRONTMOST|1",
     "W||AXWindow|AXDialog",
+    "T|警告",
+    "T|Adobe Creative Cloud にサインインしてください",
     "B|Cancel|ボタン|964,362|82,26",
     "B|OK|ボタン|872,362|82,26",
     "W|Adobe After Effects 2026|AXWindow|AXStandardWindow",
@@ -85,6 +87,7 @@ describe("what the accessibility query reports", () => {
       title: "",
       role: "AXWindow",
       subrole: "AXDialog",
+      texts: ["警告", "Adobe Creative Cloud にサインインしてください"],
       buttons: [
         { title: "Cancel", description: "ボタン", position: { x: 964, y: 362 }, size: { width: 82, height: 26 } },
         { title: "OK", description: "ボタン", position: { x: 872, y: 362 }, size: { width: 82, height: 26 } },
@@ -107,10 +110,15 @@ describe("what the accessibility query reports", () => {
       size: null,
     });
   });
+
+  it("keeps a window's own words with that window", () => {
+    const parsed = parseUiListing(listing);
+    expect(parsed.windows[1]?.texts).toEqual([]);
+  });
 });
 
 describe("what the recovery may press", () => {
-  const dialog = { title: "", role: "AXWindow", subrole: "AXDialog", buttons: [] };
+  const dialog = { title: "", role: "AXWindow", subrole: "AXDialog", buttons: [], texts: [] };
 
   it("presses only buttons that end a dialog", () => {
     expect(RECOVERY_BUTTONS).toEqual(["OK", "Cancel", "Close", "Dismiss"]);
@@ -125,9 +133,30 @@ describe("what the recovery may press", () => {
     expect(isHumanOnlyWindow(dialog)).toBe(false);
   });
 
+  it("refuses an Adobe account window whose wording is not English", () => {
+    // The session runs in Japanese, so the sign-in prompt says "サインイン"
+    // and its title is only "警告". Neither is findable by an English matcher.
+    expect(isHumanOnlyWindow({ ...dialog, title: "警告" })).toBe(false);
+    expect(
+      isHumanOnlyWindow({ ...dialog, title: "警告", texts: ["Adobe Creative Cloud にサインインしてください"] }),
+    ).toBe(true);
+    expect(isHumanOnlyWindow({ ...dialog, texts: ["ライセンス契約に同意してください"] })).toBe(true);
+    expect(isHumanOnlyWindow({ ...dialog, texts: ["ae-a8n: close me"] })).toBe(false);
+  });
+
   it("says what it saw", () => {
     expect(describeWindow({ ...dialog, buttons: [{ title: "OK", description: "", position: null, size: null }] })).toBe(
       'AXWindow/AXDialog "" [OK]',
+    );
+    expect(
+      describeWindow({
+        ...dialog,
+        title: "警告",
+        texts: ["Adobe Creative Cloud にサインインしてください"],
+        buttons: [{ title: "OK", description: "", position: null, size: null }],
+      }),
+    ).toBe(
+      'AXWindow/AXDialog "警告" [OK] says "Adobe Creative Cloud にサインインしてください"',
     );
   });
 });

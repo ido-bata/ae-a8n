@@ -490,6 +490,45 @@ export class ScriptInvocationTransport implements HostTransport {
     return this.#owned?.pid ?? null;
   }
 
+  /**
+   * The After Effects this transport is talking to, whether or not it has
+   * answered a script yet.
+   *
+   * The GUI fallback needs this *before* the readiness probe has answered: a
+   * modal dialog that blocks the host is exactly the reason the probe never
+   * answers, so the process has to be findable in that state. On macOS the
+   * host is started on demand by the Apple Event, so it appears after
+   * `launch()` returned and before any script has run — the ownership
+   * bookkeeping, which waits for the probe, cannot see it yet.
+   *
+   * Only a process this transport caused to start counts: the one that
+   * appeared after the launch began and was not already running then. When
+   * that is not exactly one process, nothing is claimed. Ownership itself
+   * stays as strict as it was: quitting still requires the probe's proof.
+   */
+  recoveryTargetPid(): number | null {
+    const owned = this.#owned;
+    if (owned !== null) {
+      return owned.pid;
+    }
+    if (this.#platform !== "darwin" || this.#preexisting === null || this.#launchBegan === 0) {
+      return null;
+    }
+    const preexisting = this.#preexisting;
+    let now: HostProcess[];
+    try {
+      now = this.#hostProcesses();
+    } catch {
+      return null;
+    }
+    const started = now.filter(
+      (p) =>
+        p.startedAt >= this.#launchBegan - START_SLACK_MS &&
+        !preexisting.some((known) => sameProcess(this.#platform, known, p)),
+    );
+    return started.length === 1 ? (started[0] as HostProcess).pid : null;
+  }
+
   /** The session this transport talks into, in words a human can check. */
   #sessionDescription(): string {
     const session = this.#targetSession;

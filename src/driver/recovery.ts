@@ -49,17 +49,36 @@ export const RECOVERY_BUTTONS: readonly string[] = ["OK", "Cancel", "Close", "Di
  * An Adobe sign-in or licence window belongs to a human: pressing its button
  * can sign the account out, deactivate a device, or accept a licence change
  * on the user's behalf. The recovery reports the window instead.
+ *
+ * The wording is matched in the language the session runs in as well as in
+ * English: After Effects shows its dialogs in the UI language of the user,
+ * and a Japanese sign-in prompt says nothing an English matcher can find.
+ * The window's own text is searched too, because such a window's title is
+ * often only "警告" or a product name.
  */
+const HUMAN_ONLY_WORDS: readonly RegExp[] = [
+  /sign[ -]?in|sign[ -]?out|log[ -]?in|licen[cs]|activat|deactivat|creative ?cloud|adobe ?id/,
+  /サインイン|サインアウト|ログイン|ライセンス|認証|アクティベーション/,
+];
+
 export function isHumanOnlyWindow(window: GuiWindowInfo): boolean {
-  const text = `${window.title} ${window.role} ${window.subrole ?? ""}`.toLowerCase();
-  return /sign[ -]?in|log[ -]?in|licen[cs]|activat|deactivat|creative ?cloud|adobe ?id/.test(text);
+  const text = [
+    window.title,
+    window.role,
+    window.subrole ?? "",
+    ...window.texts,
+  ]
+    .join(" ")
+    .toLowerCase();
+  return HUMAN_ONLY_WORDS.some((pattern) => pattern.test(text));
 }
 
 /** What a window says, in one line, for evidence. */
 export function describeWindow(window: GuiWindowInfo): string {
   const buttons = window.buttons.map((button) => button.title).filter((title) => title.length > 0);
   const subrole = window.subrole === null ? "" : `/${window.subrole}`;
-  return `${window.role}${subrole} "${window.title}" [${buttons.join(", ")}]`;
+  const said = window.texts.filter((text) => text.length > 0).join(" / ");
+  return `${window.role}${subrole} "${window.title}" [${buttons.join(", ")}]` + (said.length > 0 ? ` says "${said}"` : "");
 }
 
 export type MacHostRecoveryOptions = {
