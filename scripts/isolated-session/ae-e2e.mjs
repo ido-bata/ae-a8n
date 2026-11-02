@@ -17,7 +17,7 @@
  *   C. writes what happened, with the evidence, to the report file.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 function parseArgs(argv) {
@@ -119,7 +119,12 @@ try {
   record("scene", "ok", { comp: comp.name, layers: (await comp.layers()).length });
 
   const frame = await comp.renderFrame(0);
-  record("render", "ok", { bytes: frame.png.length, width: frame.width, height: frame.height });
+  record("render", "ok", {
+    path: frame.path,
+    bytes: statSync(frame.path).size,
+    width: frame.width,
+    height: frame.height,
+  });
 
   // ---------------------------------------------------------------- B ----
   const dialogStarted = Date.now();

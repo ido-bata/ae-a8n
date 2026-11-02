@@ -15,7 +15,8 @@ function parse(text) {
   for (const line of text.split("\n")) {
     if (line.trim().length === 0) continue;
     const parts = line.split("|");
-    if (parts.length < 5) continue;
+    // timestamp|app|pid|x,y
+    if (parts.length < 4) continue;
     const [time, app, pid, cursor] = parts;
     const [x, y] = cursor.split(",").map((value) => Number(value));
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
