@@ -6,7 +6,7 @@
  * has to run in another user's session, on a machine where the agent cannot
  * install anything, and its result has to be a file a controller can read.
  *
- *   node ae-e2e.mjs --pkg /Users/Shared/ae-a8n/pkg --report /Users/Shared/ae-a8n/e2e-report.json
+ *   node ae-e2e.mjs --pkg /Users/Shared/ae-a8n/pkg --report /Users/Shared/ae-a8n/run/e2e-report.json
  *
  * What it does:
  *   A. launches After Effects in this session, reads its version and who

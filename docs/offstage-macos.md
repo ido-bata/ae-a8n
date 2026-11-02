@@ -213,11 +213,11 @@ Adobe公式（別OSアカウント × 同一PC）: 追加のデバイスアク�
 ```sh
 node scripts/isolated-session/run-in-isolated-session.mjs \
   --user test \
-  --report /Users/Shared/ae-a8n/e2e-report.json \
+  --report /Users/Shared/ae-a8n/run/e2e-report.json \
   -- /Users/Shared/ae-a8n/bin/node \
        /Users/rebui/work/ae-a8n/scripts/isolated-session/ae-e2e.mjs \
        --pkg /Users/Shared/ae-a8n/pkg \
-       --report /Users/Shared/ae-a8n/e2e-report.json
+       --report /Users/Shared/ae-a8n/run/e2e-report.json
 ```
 
 - **node の置き場所**: `test` ユーザーの PATH に node が無い（実測: `node: command not found`）。既に監査済みの mise 版 node 24.22.1 を **`/Users/Shared/ae-a8n/bin/node` にコピー**して使う（インストールスクリプトは実行していない。`/Users/rebui/.local/...` 上の実体を直接呼んでも動くが、共有置き場の方が他ユーザーのホームに依存しない）。
