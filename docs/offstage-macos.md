@@ -195,11 +195,20 @@ Adobe公式（別OSアカウント × 同一PC）: 追加のデバイスアク�
 したがって残る手順は**権限の承認（Screen Recording / Accessibility）と、Ae 自身の「スクリプト実行の許可」**だけで、代理にはできない（§10.9・§10.10）。
 
 1. **高速ユーザー切替で `test` に切り替える**（`rebui` からはログアウトしない）。
-2. `test` セッションの画面で、保留中の TCC プロンプトを許可する:
-   - **画面収録**（Screen Recording）— 実測で許可済み（§10.7）。
-   - **ユーザー補助機能**（Accessibility）— 実測で**未許可**。これが GUI フォールバックの前提。
-   - 自動化（Automation）は**不要**（§10.9: `count documents` が `0` を返す。TCC は壁ではない）。
-   - 対象は `offstage-sessiond` ではなく **`ターミナル`**（§10.2）。`offstage-sessiond` は bundle が無く設定に現れない。
+2. **`test` セッションの Terminal で** 次の1行を実行する（`/Users/Shared/ae-a8n/run/ax-grant.command`）:
+
+   ```sh
+   /Users/Shared/ae-a8n/run/ax-grant.command
+   ```
+
+   macOS の **設定に「ターミナル」の項目は無い**。ユーザー補助機能（Accessibility）と自動化（Automation）のリストには、**，要求したアプリしか現れない**。だから「リストでターミナルをオンにする」という操作は存在せず、**ターミナル自身から要求してプロンプトを出し**，それを許可する形になる。このスクリプトは:
+   - `AXIsProcessTrustedWithOptions(prompt: true)` を呼ぶ → **`ターミナルはこのコンピューターを制御したい`** というダイアログが **`test` セッションの画面**に出る
+   - `osascript → System Events` を呼ぶ → **`ターミナルが System Events を制御したい`** というダイアログが同上
+   - 出たら2つとも **OK** を押す。押すと `test` ユーザーの設定のユーザー補助機能/自動化のリストに **`ターミナル`** が現れ、**その子孫（osascript / node）にも継承される**（§10.2）。
+   - 実行後、同じ Terminal で `ax-grant-all.command` を走らせると `AX_TRUSTED` と `count processes` の結果が出るので、許可できたか確認できる。
+   - **対象は `offstage-sessiond` ではなく `ターミナル`**（§10.2）。`offstage-sessiond` は bundle が無く設定に現れない。
+   - 画面収録（Screen Recording）は §10.7 のとおり**許可済み**。
+   - 自動化（Automation）→ **After Effects は不要**（§10.9: `count documents` が `0` を返す。TCC は壁ではない）。必要なのは → System Events だけ（GUI フォールバックが AX を通すため）。
 3. **Ae 2026 → 設定 → スクリプトとエクスプレッション**で、driver が Ae に読ませるフォルダを許可する（§10.10）。許可的原因是 Ae が `DoScriptFile` を **`-1708`** で拒否すること（実測）。
    - 追加するフォルダ: **`/Users/Shared/ae-a8n/sessions/real-host/staging`**（`a8n-host.js` と `a8n-json.js` と `*.entry.jsx` が入るフォルダ）
    - 「スクリプト」**と**「ファイルへの書き込みとネットワークアクセス」の両方を許可する。
@@ -314,7 +323,7 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 | --- | --- | --- |
 | Adobe サインイン | **済んだ**。Ae に `警告` モーダルなし（`CGWindowList` に layer=8 が無い）。画面も通常の Ae の UI | Ae の起動モーダルは解消 |
 | Screen Recording → ターミナル | **使える**。`screencapture` が 702KB の PNG を書けた | 許可済み |
-| Accessibility → ターミナル | `AXIsProcessTrusted()` = **`AX_NOT_TRUSTED`** | **未許可** |
+| Accessibility → ターミナル | `AXIsProcessTrusted()` = **`AX_NOT_TRUSTED`** | **未許可**（§8 の通り、この項目は**設定のリストに無い**。「要求したアプリしか現れない」ため、ターミナル自身から要求して許可する） |
 | Automation → ターミナル → System Events | `-1743`（System Events に Apple Events を送信する権限がありません） | **未許可** |
 | Automation → ターミナル → After Effects | `count documents` は `-1712`、`«event miscfile»` は `-1743` | **未許可**（プロンプトが出せないので、この2つの形で違う拒絶になる） |
 | DoScriptFile（実Ae へ） | `-1712`（120秒タイムアウト）。スクリプトは 1 枚も実行されない | TCC の壁 |
