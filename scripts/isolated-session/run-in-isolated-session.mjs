@@ -37,7 +37,7 @@
  *   - a result that does not name the requested session.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -200,12 +200,16 @@ function runOffstage(options) {
  * The job writes down which session it ran in; the controller believes that
  * account only when it names the session it asked for.
  */
-function runTerminal(options, targetUid) {
+export function runTerminal(options, targetUid) {
   const root = resolve(options.root);
   const jobs = join(root, "jobs");
   const results = join(root, "results");
   for (const dir of [jobs, results]) {
-    mkdirSync(dir, { recursive: true, mode: 0o1777 });
+    mkdirSync(dir, { recursive: true });
+    // The job runs as the other user and writes its own result there, so the
+    // directory has to be writable by it: 1777, and not the umask's idea of
+    // it (mkdir applies the umask to the mode it is given).
+    chmodSync(dir, 0o1777);
   }
   const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
   const commandPath = join(jobs, `${id}.cmd`);
@@ -231,7 +235,7 @@ function runTerminal(options, targetUid) {
       'cd / || exit 127',
       '/bin/sh "$COMMAND" > "$OUT" 2> "$ERR"',
       "code=$?",
-      'asid=$(/bin/launchctl print "gui/$(/usr/bin/id -u)" 2>/dev/null | /usr/bin/sed -n "s/.*gui asid = \\([0-9]*\\).*/\\1/p" | /usr/bin/head -1)',
+      'asid=$(/bin/launchctl print "gui/$(/usr/bin/id -u)" 2>/dev/null | /usr/bin/sed -n "s/.*asid = \\([0-9]*\\).*/\\1/p" | /usr/bin/head -1)',
       "{",
       '  echo "uid=$(/usr/bin/id -u)"',
       '  echo "username=$(/usr/bin/id -un)"',
