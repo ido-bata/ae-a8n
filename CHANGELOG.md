@@ -24,6 +24,8 @@ on a real host (#47).
   wires it in.
 - `ae.showModalDialog(message)` (#49) raises a native modal dialog through
   the host, so the fallback has something to close.
+- The GUI fallback refuses the console session (#49): a recovery never moves
+  the cursor or takes the focus of the screen the user is looking at.
 - A timed-out operation is **not** sent again after a recovery (#49): the
   driver waits for the result of the request it already sent.
 - Menu commands (#45): `ae.menuCommand(nameOrId)` → `MenuCommand.execute()`,

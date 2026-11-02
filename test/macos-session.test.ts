@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 
 import { MacGuiRecovery, isBlockingWindow, parseUiListing } from "../src/driver/gui-recovery.js";
-import { parseLaunchctlGuiSession, parseLsappinfo } from "../src/driver/mac-session.js";
+import { consoleSessionUid, parseLaunchctlGuiSession, parseLsappinfo } from "../src/driver/mac-session.js";
 import { RECOVERY_BUTTONS, describeWindow, isHumanOnlyWindow } from "../src/driver/recovery.js";
 
 describe("the login session of a user", () => {
@@ -133,6 +133,20 @@ describe("what the recovery may press", () => {
 });
 
 describe("the GUI recovery", () => {
+  it("refuses the console session, which is the screen the user is looking at", () => {
+    const uid = consoleSessionUid();
+    if (uid < 0) {
+      return; // The console owner is unknown on this machine; nothing to refuse.
+    }
+    expect(
+      () =>
+        new MacGuiRecovery({
+          session: { uid, username: "console", asid: 100021, kind: "Aqua" },
+          pid: 4242,
+        }),
+    ).toThrow(/console session/);
+  });
+
   it("refuses a session that has no screen", () => {
     expect(
       () =>

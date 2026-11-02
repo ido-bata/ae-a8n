@@ -138,6 +138,26 @@ export function readGuiSession(uid: number): MacSession | null {
   return { uid, username: readUsername(uid), asid, kind };
 }
 
+/**
+ * The uid that owns the console session — the screen the human is looking at.
+ *
+ * -1 when it cannot be read. A GUI action in this session reaches the
+ * person's own desktop, which is exactly what the isolated session exists to
+ * avoid.
+ */
+export function consoleSessionUid(): number {
+  try {
+    const out = execFileSync("stat", ["-f", "%u", "/dev/console"], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const uid = Number(out);
+    return Number.isInteger(uid) ? uid : -1;
+  } catch {
+    return -1;
+  }
+}
+
 /** The session of the user this process runs as. */
 export function currentSession(): MacSession {
   const uid = typeof process.getuid === "function" ? process.getuid() : -1;

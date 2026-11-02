@@ -27,6 +27,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import {
+  consoleSessionUid,
   MacSessionError,
   runInSession,
   type MacSession,
@@ -256,6 +257,14 @@ export type GuiRecoveryOptions = {
   readonly pid: number;
   /** Where screenshots are written. Mainly a test seam. */
   readonly screenshotDir?: string;
+  /**
+   * Allow the recovery to act in the console session.
+   *
+   * Off by default: the console session is the screen the human is looking
+   * at, and a recovery that clicks there takes their cursor and their focus.
+   * A caller that owns that screen can say so explicitly.
+   */
+  readonly allowConsoleSession?: boolean;
 };
 
 export class GuiRecoveryError extends Error {
@@ -282,6 +291,13 @@ export class MacGuiRecovery {
       throw new GuiRecoveryError(
         `the recovery target has no Aqua session (uid ${options.session.uid}, session kind ${options.session.kind}); ` +
           "there is no screen to recover. No GUI action was taken.",
+      );
+    }
+    if (options.allowConsoleSession !== true && consoleSessionUid() === options.session.uid) {
+      throw new GuiRecoveryError(
+        `the target session (uid ${options.session.uid}) is the console session, the screen the user is looking ` +
+          "at. Recovering there would move their cursor and take their focus, so no GUI action was taken. " +
+          "Recover in an isolated session instead.",
       );
     }
     this.#session = options.session;
