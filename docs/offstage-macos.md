@@ -278,7 +278,23 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 
 2 回目は別の壁に当たった。**この 2 つの `-1743` は「TCC が拒否した」のではなく「Ae が答えない」ことを意味する。** 同じイベントを、**起動済みの** Ae に対して Terminal.app の子から送ると **届いて `-1712`（タイムアウト）** になる（§10.3）。つまり壁は**Ae の起動モーダル**で、**人が `警告` を解くまで脚本は一枚も通らない**。
 
-### 10.6 フォーカスの非干渉（実測）
+### 10.6 terminal 基版の実測（2026-11-02, 04:43）
+
+- `run-in-isolated-session.mjs --substrate terminal` の経路を実機で走らせ、**ジョブが test セッションの Terminal.app の子として実行される**ことを確認した。
+- ジョブは**自分のセッションを自分で書き記す**: `uid=502` / `username=test` / `asid=107488` / `exit=0`。制御側は依頼した uid（502）と一致した時だけ結果を信じ、不一致なら**信頼しない**（結果は丢弃）。
+- つまり「隔離されたセッションで走った」ことは**自称ではなく、ジョブ自身が uid として証明している**。
+- ただし権限の穴が残る（この時点の test セッション、Terminal.app の子として）:
+
+| 対象 | 実測 | 意味 |
+| --- | --- | --- |
+| Apple Events → After Effects | `-1712`（タイムアウト） | **届く**。Ae が答えないだけ（§10.3） |
+| Apple Events → System Events | `-1712`（タイムアウト） | **届く**。System Events が応答しない（保留中の TCC プロンプト待ち） |
+| Screen Recording (`screencapture`) | `could not create image from display` | **使えない**。許可が必要 |
+| Accessibility (AX で Ae の窓を読む) | 応答なし（待ち） | **許可が必要** |
+
+- つまり残るのは **Screen Recording と Accessibility の許可**（どちらも Terminal.app に対して）と **Adobe のサインイン**。いずれも人がやる操作（§8）。
+
+### 10.7 フォーカスの非干渉（実測）
 
 - 観測方法: コンソールセッション（uid 501）で `focus-watch` を動かし、**約 0.2 秒ごとに frontmost アプリ名・pid とポインタ座標**を記録。E2E 実行の前後を覆う区間を取った。
 - 観測区間: epoch 1793593355.83 – 1793593490.64（**134.8 秒**, 652 サンプル）。E2E の実行区間（04:22:38–04:23:49Z）を完全に含む。
