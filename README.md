@@ -129,6 +129,14 @@ After Effects turned out to do and changes with it.
 - [`examples/render-compare.ts`](examples/render-compare.ts) — apply, set, render before/after, count changed pixels.
 - [`skills/after-effects-automation/SKILL.md`](skills/after-effects-automation/SKILL.md) — instructions for AI coding agents: how to use this package against a real After Effects without damaging anyone's work, and how to investigate failures. Both directories ship in the package; installing the package does not register the skill with any agent — copy it where your agent loads skills from.
 
+## Development
+
+The development environment is described in [docs/development.md](docs/development.md):
+bootstrap, the command entry points, the layout, and the release procedure.
+[CLAUDE.md](CLAUDE.md) is the contract an AI agent works under, and
+[docs/architecture.md](docs/architecture.md) explains how the bridge, the driver,
+and the host script fit together.
+
 ## Known risks
 
 - A long-running script lets other installed CEP extensions run inside it. One

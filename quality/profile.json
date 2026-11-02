@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "profile_version": "1.0.0",
+  "updated_at": "2026-11-02",
+  "source_revision": "1b14e7e132bb3701f225a0db4fa2119bc64febbb",
+  "purpose": "The machine-readable form of this repository's quality policy. It says which verification exists, what each level of evidence proves, and which gate a change has to pass. The prose version is docs/development.md; the taxonomy itself is in CLAUDE.md.",
+
+  "stack": {
+    "runtime": "node 24 (mise tool pin `node = \"24\"`; npm `engines.node` is `>=22`)",
+    "language": "typescript 5.9",
+    "package_manager": "npm (package-lock.json is the lockfile)",
+    "test_runner": "vitest 3.2",
+    "linter": "eslint 9 (typescript-eslint)",
+    "build": "tsc -p tsconfig.build.json",
+    "toolchain_frontend": "mise",
+    "package_manager_deviation": "The project-init house rule names Bun for JavaScript/TypeScript. This project ships to npm with package-lock.json as its lockfile and CI installs with `npm ci`; switching the package manager would change the published reproducibility mechanism, so npm stays."
+  },
+
+  "verification_taxonomy": [
+    {
+      "level": "implemented",
+      "meaning": "The code exists and compiles.",
+      "example": "src/api/index.ts exists and `mise run typecheck` passes."
+    },
+    {
+      "level": "automated test",
+      "meaning": "Covered by a green test in CI.",
+      "example": "test/api.test.ts drives the public API against the in-repo fake host."
+    },
+    {
+      "level": "fake/mock only",
+      "meaning": "Verified against the in-repo fake AE host, not against a real After Effects.",
+      "example": "Every test under test/ runs host/a8n-host.js verbatim against src/testing/fake-ae/."
+    },
+    {
+      "level": "verified on real host",
+      "meaning": "Observed running against an installed After Effects.",
+      "example": "The macOS rows of docs/verification.md."
+    }
+  ],
+
+  "change_to_verification": [
+    {
+      "change": "Documentation only, no code or host script",
+      "required": ["fast"],
+      "notes": "docs/verification.md JSX snippets are still ES3-checked; that is part of the fast gate."
+    },
+    {
+      "change": "TypeScript under src/ or test/",
+      "required": ["fast"],
+      "notes": "typecheck + lint + vitest."
+    },
+    {
+      "change": "host/a8n-host.js or host/a8n-json.js",
+      "required": ["fast", "release"],
+      "notes": "The host script ships verbatim and must stay ES3. `node --check` plus the ES3 test cover syntax; the release gate adds the packaging checks."
+    },
+    {
+      "change": "Public API surface, package exports, or the published shape",
+      "required": ["fast", "release"],
+      "notes": "scripts/check-public-api.js and scripts/check-packed-package.js are the gate that a broken `exports` map cannot survive."
+    },
+    {
+      "change": "Anything that must be proven against a real After Effects",
+      "required": ["fast", "integration"],
+      "notes": "Integration is manual and opt-in; it is recorded in docs/verification.md, never asserted from a fake-host run."
+    },
+    {
+      "change": "Version bump, publish, or release tooling",
+      "required": ["fast", "release"],
+      "notes": "docs/releasing.md holds the procedure; publishing itself needs a human approval with 2FA."
+    }
+  ],
+
+  "canonical_entry_points": {
+    "fast": "mise run check",
+    "release": "mise run validate:release",
+    "integration": "Manual, opt-in, against an installed After Effects. The procedure and the recorded results are docs/verification.md. There is no automated integration runner; a skipped or absent integration run is reported as `fake/mock only` or `not verified`, never as `verified on real host`.",
+    "one_test_file": "npx vitest run test/api.test.ts",
+    "one_test_by_name": "npx vitest run -t \"renders a frame\""
+  },
+
+  "gates": {
+    "worker": {
+      "command": "mise run check",
+      "scope": "typecheck + lint + unit tests",
+      "blocking": true
+    },
+    "integration": {
+      "command": "docs/verification.md",
+      "scope": "real-host behaviour",
+      "blocking": false,
+      "notes": "Opt-in. Absent an After Effects install there is nothing to run and nothing to claim."
+    },
+    "release": {
+      "command": "mise run validate:release",
+      "scope": "the quality gate, the build, the ES3 host check, the documented-snippet check, and the packed-package and public-API checks",
+      "blocking": true
+    }
+  },
+
+  "ci": {
+    "workflows": [
+      {
+        "file": ".github/workflows/ci.yml",
+        "triggers": ["pull_request", "push to main and release-*"],
+        "jobs": {
+          "check": {
+            "runner": "ubuntu-latest",
+            "timeout_minutes": 10,
+            "covers": "typecheck, lint, test, build, ES3 host parse, documented JSX snippets, packed package, public API"
+          },
+          "release-tooling-windows": {
+            "runner": "windows-latest",
+            "timeout_minutes": 15,
+            "covers": "the release tooling's tests on native Windows with CRLF checkouts"
+          }
+        }
+      },
+      {
+        "file": ".github/workflows/publish.yml",
+        "triggers": ["push of a v* tag", "workflow_dispatch", "pull_request touching the release surface"],
+        "jobs": {
+          "verify": { "runner": "ubuntu-latest", "timeout_minutes": 15 },
+          "stage": { "runner": "ubuntu-latest", "timeout_minutes": 10, "permissions": { "id-token": "write" } }
+        }
+      }
+    ],
+    "required_status_checks": ["check", "release-tooling-windows"],
+    "cancel_superseded": true,
+    "artifact_retention_days": 7,
+    "cost_policy": "The fast PR gate is one job; the Windows release-tooling job is the only platform-specific cost and it runs on every PR because it covers a checkout shape (CRLF) the unit suite does not reproduce."
+  },
+
+  "coverage_policy": {
+    "configured": false,
+    "notes": "There is no coverage tool in the dependency set and no threshold. Coverage is therefore not a gate, and a passing suite says nothing about how much of the bridge was exercised. Do not read a green suite as coverage."
+  },
+
+  "platform_matrix": {
+    "macos": {
+      "status": "verified on real host",
+      "notes": "After Effects 2026 (26.5x89), macOS 27, arm64. See docs/verification.md."
+    },
+    "windows": {
+      "status": "not verified",
+      "notes": "The launcher path exists and the release tooling is tested there, but no After Effects behaviour has been observed on Windows. No behaviour is claimed."
+    }
+  },
+
+  "false_green": [
+    "A test that skips, is `.only`, or asserts nothing.",
+    "A command with `|| true`, a no-fail flag, or a blanket ignore.",
+    "A green result reported against a predecessor's SHA rather than the current one.",
+    "A fake-host run presented as `verified on real host`.",
+    "A manual check that happened but was not recorded in docs/verification.md.",
+    "A lowered threshold or a disabled CI check."
+  ],
+
+  "recompile_triggers": [
+    "A framework, runtime, or toolchain major version changes.",
+    "The public API or the package `exports` map changes shape.",
+    "A CI workflow changes its jobs, runners, or required checks.",
+    "A new platform target is claimed.",
+    "A regression escapes and the gate that should have caught it did not.",
+    "The release model (branch topology, publish path) changes."
+  ]
+}
