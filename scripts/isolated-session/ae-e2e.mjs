@@ -23,7 +23,7 @@ import { join, resolve } from "node:path";
 function parseArgs(argv) {
   const options = {
     pkg: "/Users/Shared/ae-a8n/pkg",
-    report: "/Users/Shared/ae-a8n/e2e-report.json",
+    report: "/Users/Shared/ae-a8n/run/e2e-report.json",
     sessionRoot: "/Users/Shared/ae-a8n/sessions",
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -104,7 +104,10 @@ try {
       "this session owns the console; the test would run on the user's own desktop. Log in as the test user first.",
     );
   }
-  const sessionRoot = join(options.sessionRoot, `run-${Date.now()}`);
+  // A stable session root on purpose: AE 2026 asks a person to approve the
+  // folder it may run scripts from, and the folder has to be the same one on
+  // every run for that approval to hold.
+  const sessionRoot = join(options.sessionRoot, "real-host");
   mkdirSync(sessionRoot, { recursive: true });
 
   // ---------------------------------------------------------------- A ----

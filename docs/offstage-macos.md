@@ -359,3 +359,18 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
   - `staging/<id>.entry.jsx`（**呼び出しごとに別名**。Ae はスクリプトが*走るとき*にファイルを読むので、名前が固定だと「タイムアウトしたスクリプトが次の要求を読んで二重に実行する」）
   - `staging/host/a8n-host.js` と `staging/host/a8n-json.js`（**.driver が 1 回だけ**、`host/` のコピーを置く。バイト同一）
   - これにより、**フォルダ単位の許可なら 1 回、スクリプト単位なら 3 件**の承認で済む。
+
+### 10.11 隔離E2E パイプラインの通し実測（06:33–06:36Z）
+
+`run-in-isolated-session.mjs`（terminal 基版）→ `ae-e2e.mjs` を `test` セッションで実行した結果:
+
+| 項目 | 実測 |
+| --- | --- |
+| 実行セッション | uid 502 / `Aqua` / asid 107488 / console uid 501 → **`isolated: true`** |
+| 起動 | `AfterEffects.launch({session:{uid,recover:true}})` が **test セッションで Ae を起動した**（コンソール側の Ae は無し） |
+| readiness probe | **`app.info` に 179941ms 応答なし** → `AfterEffectsError`。Ae 側は §10.9 の通りスクリプト実行を拒否している |
+| 後始末 | 失敗経路で Ae は**終了した**（実行後に Ae のプロセスは無し。kill はしていない） |
+| レポート | `/Users/Shared/ae-a8n/run/e2e-report.json` にセッション情報と失敗理由が書けた |
+
+- **パイプライン（セッション特定 → 別ユーザの Terminal で起動 → 実行 → 結果ファイルをコンソール側へ）は Insurance まで通る**。剩餘は **Ae のスクリプト許可（§10.10）と Accessibility（§10.7）** だけ。
+- 注意: `offstage session status --user test` はこの時点で `available: false`（helper セッション未ログイン）と出るが、**terminal 基版は offstage の helper セッションを必要としない**ので問題ない（`offstage session open` が使える）。
