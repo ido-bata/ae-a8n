@@ -190,7 +190,9 @@ Adobe公式（別OSアカウント × 同一PC）: 追加のデバイスアク�
 
 ## 8. 人間が実行すること（この Mac で必要な手順）
 
-このMacの現在地（2026-11-02）: `test` (uid 502) のアカウントは存在し、**高速ユーザー切替でログイン済みの Aqua セッション**がある（§10.11 の実測で asid 107488、コンソール所有者は uid 501 のまま）。ただし `offstage session status --user test` は **available: false**（helper セッション未ログイン）と出るが、**terminal 基版は offstage の helper セッションを必要としない**ので問題ない。共有済み（`/Users/Shared/ae-a8n`）。
+このMacの現在地（2026-11-02 の最後の確認時点）: `test` (uid 502) のアカウントは存在するが、**いまは GUI セッションが無い**（`offstage session status --user test` が `available: false`「no logged-in GUI session」、`/dev/console` の所有者は uid 501 の `rebui`）。§10.11 の実測時（asid 107488、コンソール所有者は uid 501 のまま）には `test` の Aqua セッションが存在したが、その後セッションごと消えた。**ステップ 1（高速ユーザー切替で `test` にログイン）が，其余すべての前提**——ステップ 2 のプロンプト（`test` セッションの画面に出る）も，Ae の偏好設定（`test` ユーザーの `~/Library/Preferences/...`）も，すべて `test` セッション内にしか存在しないため。
+
+なお `offstage session status --user test` が **available: false**（helper セッション未ログイン）と出るのは、**terminal 基版は offstage の helper セッションを必要としない**ので問題ない。共有済み（`/Users/Shared/ae-a8n`）。
 
 したがって残る手順は**権限の承認（Screen Recording / Accessibility）と、Ae 自身の「スクリプト実行の許可」**だけで、代理にはできない（§10.9・§10.10）。
 
