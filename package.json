@@ -45,7 +45,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p examples/tsconfig.json",
     "lint": "eslint src test examples --no-error-on-unmatched-pattern",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run lint && npm run test"
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "validate:release": "npm run check && npm run build && node --check host/a8n-host.js && node --check host/a8n-json.js && node scripts/check-doc-snippets.js docs/verification.md && node scripts/check-packed-package.js && node scripts/check-public-api.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

@@ -7,7 +7,6 @@
 
 [tools]
 node = "24"
-pnpm = "10"
 
 [tasks.build]
 description = "Compile TypeScript to dist/"
@@ -32,3 +31,7 @@ run = "npx vitest"
 [tasks.check]
 description = "Full local quality gate"
 depends = ["typecheck", "lint", "test"]
+
+[tasks."validate:release"]
+description = "Release gate: the quality gate, the build, and the shipping checks"
+run = "npm run validate:release"

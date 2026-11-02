@@ -14,3 +14,11 @@ coverage/
 
 # scratch directories used while reviewing the published shape
 .review-probe/
+
+# transient verification artifacts and external reference clones
+.tmp/
+.reference/
+
+# the skills CLI also writes a copy of every vendored skill here; the
+# committed copy lives in .claude/skills/ and is pinned by skills-lock.json
+.agents/
