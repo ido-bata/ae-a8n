@@ -32,6 +32,12 @@ been run at all**; on Windows the package will not quit After Effects for you
    seconds lets other installed extensions run inside it; one has been seen to
    raise a modal alert that blocks AE until a person clicks it.
 
+## macOS: UIフォーカスとモーダルダイアログ
+
+- **普段のmacOSユーザーでGUI操作をフォールバックしない。** Aeがモーダルで止まっても、システム全体のカーソル移動、`osascript`のGUIクリック、CGEvent、Accessibility操作で物理デスクトップを乗っ取らない。タイムアウトしたら状態と証跡を残して停止する。
+- 別OSユーザーのバックグラウンドGUIを使う実験的なoffstageランナーは [docs/offstage-macos.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/offstage-macos.md) と #49 を参照。**macOS実機の受入とトランスポートのセッション宛先確認が終わるまで、`offstage`を本番の標準経路として扱わない。**
+- ライセンス上、同じMacの別ユーザーは追加のデバイス認証にカウントされないが、Adobeアプリを使うOSユーザーは同時に1人だけ。自動サインアウト、ライセンス上限ダイアログの勝手な処理は禁止。
+
 ## Before you start
 
 ```bash
