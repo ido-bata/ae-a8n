@@ -9,7 +9,9 @@ set -u
 
 HERE=$(dirname "$0")
 SHARED=/Users/Shared/ae-a8n/run
-LOG=$SHARED/ax-grant.log
+# One log per user, for the same reason as ax-grant.command: a file in the
+# shared sticky directory belongs to whoever made it first.
+LOG=$SHARED/ax-grant.$(id -u).log
 PROMPT=$SHARED/ax-prompt
 
 if [ ! -x "$PROMPT" ]; then

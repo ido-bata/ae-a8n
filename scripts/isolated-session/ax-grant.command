@@ -25,7 +25,12 @@ set -u
 
 HERE=$(dirname "$0")
 SHARED=/Users/Shared/ae-a8n/run
-LOG=$SHARED/ax-grant.log
+# One log per user: the shared directory is a sticky world-writable one, so a
+# file another user already made cannot be appended to. Writing a log named
+# after the uid means the run never depends on someone else's file mode — and
+# a redirect that cannot be opened would silently skip the whole block,
+# prompts included.
+LOG=$SHARED/ax-grant.$(id -u).log
 PROMPT=$SHARED/ax-prompt
 
 mkdir -p "$SHARED" 2>/dev/null || true

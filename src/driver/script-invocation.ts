@@ -213,10 +213,26 @@ const EXIT_POLL_MS = 250;
  * The owning user is read as well: on macOS a second OS user may have an
  * After Effects of their own, and a process list that cannot say whose it is
  * cannot say which one a script is talking to.
+ *
+ * `LC_ALL=C` is not a detail: `ps` formats `lstart` in the login user's
+ * locale, and a Japanese session prints `火 11/ 3 11:29:17 2026`. Parsed with
+ * the English pattern that is *zero* processes, which reads as "After Effects
+ * is not running" — measured on 2026-11-03, where that made `ownership()`
+ * report `unknown` for a host the session had just launched, and `close()`
+ * therefore refused to quit it. The locale is forced instead of the pattern
+ * being widened, so the date keeps one spelling.
  */
 function psProcesses(): HostProcess[] {
+  const text = execFileSync("ps", ["-axo", "pid=,uid=,lstart=,comm="], {
+    encoding: "utf-8",
+    env: { ...process.env, LC_ALL: "C", LANG: "C" },
+  });
+  return parsePsProcesses(text);
+}
+
+/** The process listing `psProcesses` reads, parsed. Exported for tests. */
+export function parsePsProcesses(text: string): HostProcess[] {
   const out: HostProcess[] = [];
-  const text = execFileSync("ps", ["-axo", "pid=,uid=,lstart=,comm="], { encoding: "utf-8" });
   for (const line of text.split("\n")) {
     const match = /^\s*(\d+)\s+(\d+)\s+(\S{3} \S{3}\s+\d+ \d\d:\d\d:\d\d \d{4})\s+(.+)$/.exec(line);
     if (match === null) continue;

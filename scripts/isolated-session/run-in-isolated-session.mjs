@@ -134,6 +134,26 @@ function consoleUid() {
   }
 }
 
+/**
+ * The session id of the console session, read from its launchd domain.
+ *
+ * The controller can always read this one (it runs in the console session),
+ * which is what makes it usable as outside evidence: a job that reports this
+ * id ran on the human's desktop, whatever user it ran as.
+ */
+function consoleAsid(uid) {
+  if (uid < 0) {
+    return null;
+  }
+  try {
+    const text = execFileSync("launchctl", ["print", `gui/${uid}`], { encoding: "utf-8", timeout: 10_000 });
+    const asid = /asid = (\d+)/.exec(text);
+    return asid === null ? null : Number(asid[1]);
+  } catch {
+    return null;
+  }
+}
+
 function uidOfUser(user) {
   const text = commandOutput("id", ["-u", user]);
   if (!/^\d+$/.test(text)) {
@@ -246,7 +266,7 @@ function runOffstage(options) {
  * The job writes down which session it ran in; the controller believes that
  * account only when it names the session it asked for.
  */
-export function runTerminal(options, targetUid, targetSession) {
+export function runTerminal(options, targetUid) {
   const root = resolve(options.root);
   const jobs = join(root, "jobs");
   const results = join(root, "results");
@@ -282,10 +302,15 @@ export function runTerminal(options, targetUid, targetSession) {
       '/bin/sh "$COMMAND" > "$OUT" 2> "$ERR"',
       "code=$?",
       'asid=$(/bin/launchctl print "gui/$(/usr/bin/id -u)" 2>/dev/null | /usr/bin/sed -n "s/.*asid = \\([0-9]*\\).*/\\1/p" | /usr/bin/head -1)',
+      'onconsole=0',
+      // The console's owner, read from inside the job: 1 means this job ran
+      // on the desktop the human is looking at.
+      'if [ "$(/usr/bin/stat -f %u /dev/console)" = "$(/usr/bin/id -u)" ]; then onconsole=1; fi',
       "{",
       '  echo "uid=$(/usr/bin/id -u)"',
       '  echo "username=$(/usr/bin/id -un)"',
       '  echo "asid=$asid"',
+      '  echo "onconsole=$onconsole"',
       '  echo "exit=$code"',
       '} > "$DONE"',
       "",
@@ -318,7 +343,8 @@ export function runTerminal(options, targetUid, targetSession) {
       // The console is checked again here, not only in the preflight: the
       // human may have switched to the target session while the job ran, and
       // a job that ran on the console desktop is not an isolated run.
-      assertOutcomeSession(outcome, { uid: targetUid, asid: targetSession?.asid ?? null }, consoleUid());
+      const consoleUidValue = consoleUid();
+      assertOutcomeSession(outcome, { uid: targetUid }, { uid: consoleUidValue, asid: consoleAsid(consoleUidValue) });
       const stdout = existsSync(outPath) ? readFileSync(outPath, "utf-8") : "";
       const stderr = existsSync(errPath) ? readFileSync(errPath, "utf-8") : "";
       if (stdout.length > 0) {
@@ -400,7 +426,7 @@ function main() {
     options.substrate === "native"
       ? runNative(options, targetUid)
       : options.substrate === "terminal"
-        ? runTerminal(options, targetUid, session)
+        ? runTerminal(options, targetUid)
         : runOffstage(options);
   if (options.report !== undefined && status === 0) {
     const report = readReport(options.report, targetUid);

@@ -240,7 +240,7 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 
 - セッション分離であって**機械分離ではない**。同じカーネル・同じディスク・同じGPU。VM相当のセキュリティ境界ではない。
 - ヘルパーは `0750` の `~` の外側にある。テストコードと fixture は `offstage session share` で読ませる必要がある。
-- AX は Ae の**メインウィンドウ**を返さない（実測: Aeは AX 上で 0 windows。`CGWindowList` には出ている）。そのため GUI フォールバックは Ae 本体ではなく**ネイティブダイアログ**を対象にする。
+- ~~AX は Ae の**メインウィンドウ**を返さない~~ → **訂正（§10.12）**: これは Accessibility が未許可の時の測定だった。許可後は AX から Ae の窓と子要素が見える（`AXLayoutArea` + subrole `AXFloatingWindow` として。`AXWindow` 型で期待すると取りこぼす）。GUI フォールバックは今も Ae 本体ではなく**ネイティブダイアログ**を対象にするが、それは「窓が見えないから」ではなく「Ae のパネルは触らない方が安全だから」。
 - Escape キーではネイティブダイアログが閉じない（実測）。AX のボタン押下が現実的な経路。
 - 現在 Ae の**標準ダイアログ**（ライセンス・警告等）を実機で開いて閉じられるかどうかは未検証。
 
@@ -391,5 +391,23 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 | 後始末 | 失敗経路で Ae は**終了した**（実行後に Ae のプロセスは無し。kill はしていない） |
 | レポート | `/Users/Shared/ae-a8n/run/e2e-report.json` にセッション情報と失敗理由が書けた |
 
-- **パイプライン（セッション特定 → 別ユーザの Terminal で起動 → 実行 → 結果ファイルをコンソール側へ）は Insurance まで通る**。剩餘は **Ae のスクリプト許可（§10.10）と Accessibility（§10.7）** だけ。
+- **パイプライン（セッション特定 → 別ユーザの Terminal で起動 → 実行 → 結果ファイルをコンソール側へ）は終わりまで通る**。残るは **Ae のスクリプト許可（§10.10）と Accessibility（§10.7）** だけ。
 - 注意: `offstage session status --user test` はこの時点で `available: false`（helper セッション未ログイン）と出るが、**terminal 基版は offstage の helper セッションを必要としない**ので問題ない（`offstage session open` が使える）。
+
+### 10.12 許可が下りた後（2026-11-03 11:13–11:28 の実測）
+
+`test` セッションに再ログイン（launchd の gui/502 は asid **109086**、console は uid 501）した後の実測。
+
+| 項目 | 実測 | 意味 |
+| --- | --- | --- |
+| Accessibility（`test` セッションの Terminal） | `ax-prompt status` → **`AX_TRUSTED`** | §8 の「ターミナル自身から要求して OK」で通った |
+| Automation → System Events | `-1743`（その後 `-1712`）。画面にプロンプトは出ていない | **未許可**。設定の Automations で Terminal → System Events を有効にする必要がある |
+| Automation → After Effects | 不要（`DoScriptFile` が通る） | §10.9 のとおり |
+| Ae のスクリプト実行の許可 | `DoScriptFile` → **`0`**（`-1708` ではない）。`DoScript` インラインも `0` | **許可された**。§10.10 の壁は解消 |
+| Ae のファイル書き込み | ExtendScript から `/Users/Shared/ae-a8n/run/probe41-wrote.txt` を書けた | `Pref_SCRIPTING_FILE_NETWORK_SECURITY = "1"` が効いている |
+| Ae | 26.5x89（`app.version`） | — |
+| AX から見た Ae | **`windows=2`**。`AXLayoutArea`（`AXFloatingWindow`）2枚、子に `AXButton` / `AXRadioButton` / `AXComboBox` などが全部見える | **§9 の「AX は Ae のメインウィンドウを返さない」は、Accessibility 未許可の時の測定だった**。許可後は AX で Ae の UI が読める（ただし Ae の実装が `AXWindow` ではなく `AXLayoutArea` + `AXFloatingWindow` で出すので、`AXWindows` の型を `AXWindow` と期待すると取りこぼす） |
+| offstage の `sessionId` | offstage は **258**、一方 gui/502 の asid と `CGSessionCopyCurrentDictionary` の audit id はどちらも **109086** | **offstage 0.4.1 の `guiSession.sessionId` は launchd の asid と同じ数の空間にない**。この番号を「要求したセッションの識別子」としてジョブの自己申告と比べると、隔離された実行を誤って拒否する。ランナーは比較対象を **コンソール側の asid**（コントローラが gui/501 から読める）に変え、ジョブ自身の `onconsole`（`/dev/console` の所有者が自分か）と併せて判定するようにした |
+
+- `offstage session screenshot --user test` はこの状態で撮れる（3420×2224 px, 2 px/pt）。写るのは `test` セッションの画面。
+- **`offstage run --lane session` で走らせたコマンドは Terminal の子ではない**ため、Terminal に与えた許可を継承しない（実測: `-1743` / `-1712` で止まる）。許可が要る処理は **terminal 基版**（`run-in-isolated-session.mjs` の既定）で走らせること。

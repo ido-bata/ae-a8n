@@ -19,6 +19,7 @@ import { AeDriver } from "../src/driver/driver.js";
 import { macAppBundle, resolveInstall } from "../src/driver/install-path.js";
 import {
   MAX_DIAGNOSTIC_CHARS,
+  parsePsProcesses,
   ScriptInvocationTransport,
   summariseProcessOutput,
 } from "../src/driver/script-invocation.js";
@@ -415,5 +416,36 @@ describe("finding the host before it has answered", () => {
     expect(t.recoveryTargetPid()).toBe(42);
     // ...but nothing is owned yet, so nothing may be quit.
     expect(t.ownership().kind).toBe("unknown");
+  });
+});
+
+describe("the process listing", () => {
+  /**
+   * Measured on 2026-11-03: `ps` formats `lstart` in the login user's locale,
+   * and the test session runs in Japanese. Every line failed the English
+   * pattern, so the listing was empty — which reads as "After Effects is not
+   * running". `ownership()` said `unknown` for the host the session had just
+   * launched, and `close()` refused to quit it.
+   */
+  it("parses the English listing", () => {
+    const rows = parsePsProcesses(
+      "63293   502 Tue Nov  3 11:29:17 2026     /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects\n",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.pid).toBe(63293);
+    expect(rows[0]?.uid).toBe(502);
+    expect(rows[0]?.executable).toBe(
+      "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects",
+    );
+  });
+
+  it("does not accept a localized date as a process", () => {
+    // The fix is to force LC_ALL=C, not to parse this. If a caller ever gets
+    // a localized listing here, an empty result is the safe answer: the
+    // transport then claims nothing rather than claiming the wrong process.
+    const rows = parsePsProcesses(
+      "63293   502 火 11/ 3 11:29:17 2026     /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects\n",
+    );
+    expect(rows).toHaveLength(0);
   });
 });

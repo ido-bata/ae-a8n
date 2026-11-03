@@ -70,28 +70,44 @@ test("the agent runs a job that names no session", () => {
 
 test("a job that ran as another user is not trusted", () => {
   assert.throws(
-    () => assertOutcomeSession({ uid: 501, asid: 100021 }, { uid: 502, asid: 100040 }, 501),
+    () => assertOutcomeSession({ uid: 501, asid: 100021, onConsole: false }, { uid: 502 }, { uid: 501, asid: 100021 }),
     /ran as uid 501, not 502/,
   );
 });
 
-test("a job that ran in another session of the same user is not trusted", () => {
+test("a job that says it ran on the console is not trusted", () => {
   assert.throws(
-    () => assertOutcomeSession({ uid: 502, asid: 999 }, { uid: 502, asid: 100040 }, 501),
-    /ran in session 999, not in session 100040/,
+    () => assertOutcomeSession({ uid: 502, asid: 100040, onConsole: true }, { uid: 502 }, { uid: 501, asid: 100021 }),
+    /ran on the console/,
   );
 });
 
-test("a job that ran while the target session owned the console is not trusted", () => {
+test("a job that ran in the console session is not trusted", () => {
   assert.throws(
-    () => assertOutcomeSession({ uid: 502, asid: 100040 }, { uid: 502, asid: 100040 }, 502),
+    () => assertOutcomeSession({ uid: 502, asid: 100021, onConsole: false }, { uid: 502 }, { uid: 501, asid: 100021 }),
+    /which is the console session/,
+  );
+});
+
+test("a job that ran while the target user owned the console is not trusted", () => {
+  assert.throws(
+    () => assertOutcomeSession({ uid: 502, asid: 100040, onConsole: false }, { uid: 502 }, { uid: 502, asid: 100040 }),
     /owns the console now/,
   );
 });
 
-test("a job that ran in the requested session, off the console, is trusted", () => {
-  const outcome = { uid: 502, asid: 100040 };
-  assert.equal(assertOutcomeSession(outcome, { uid: 502, asid: 100040 }, 501), outcome);
+test("a job in a session id other than the console's is trusted", () => {
+  const outcome = { uid: 502, asid: 100040, onConsole: false };
+  assert.equal(assertOutcomeSession(outcome, { uid: 502 }, { uid: 501, asid: 100021 }), outcome);
+});
+
+test("a job is trusted even when offstage's session number disagrees", () => {
+  // Measured on 2026-11-03: offstage reported session 258 for a session whose
+  // launchd asid and CGSession audit id were both 109086. The job was off the
+  // console and ran as the target user, so it is an isolated run; the number
+  // offstage prints is not in the same space and is not a reason to refuse.
+  const outcome = { uid: 502, asid: 109086, onConsole: false };
+  assert.equal(assertOutcomeSession(outcome, { uid: 502 }, { uid: 501, asid: 108197 }), outcome);
 });
 
 test("an After Effects process of any user is recognised", () => {
@@ -132,8 +148,15 @@ test("a command line quotes every word", () => {
 });
 
 test("the job's own account of where it ran is read as data", () => {
-  const result = parseTerminalResult(["uid=502", "username=test", "asid=100040", "exit=0"].join("\n") + "\n");
-  assert.deepEqual(result, { uid: 502, username: "test", asid: 100040, exitCode: 0 });
+  const result = parseTerminalResult(
+    ["uid=502", "username=test", "asid=100040", "onconsole=0", "exit=0"].join("\n") + "\n",
+  );
+  assert.deepEqual(result, { uid: 502, username: "test", asid: 100040, onConsole: false, exitCode: 0 });
+});
+
+test("a job that reports the console as its own is marked as such", () => {
+  const result = parseTerminalResult("uid=501\nusername=rebui\nasid=100021\nonconsole=1\nexit=0\n");
+  assert.equal(result.onConsole, true);
 });
 
 test("a job that wrote nothing is not a result", () => {

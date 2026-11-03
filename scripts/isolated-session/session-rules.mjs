@@ -43,30 +43,45 @@ export function assertTargetSession(session, targetUid, consoleUid) {
  * The result of a job that ran in the target session.
  *
  * The result file lives in a directory any local process may write to, so
- * the account it names is not proof on its own. It has to name the session
- * the controller asked for, and the console must still belong to somebody
- * else: if the target session became the console session while the job ran,
- * the job ran on the human's desktop, and no result may be believed.
+ * the account it names is not proof on its own. What is checked here is what
+ * the controller can establish from *outside* the job, against what the job
+ * says about itself from inside:
+ *
+ *   - it ran as the target uid;
+ *   - it did not run on the console (the human's desktop), and the console
+ *     still belongs to somebody else;
+ *   - it is not the console session (compared by session id, which the
+ *     controller reads from the console's own launchd domain).
+ *
+ * The session id is deliberately compared with the *console's*, not with the
+ * id offstage reports for the target: measured on 2026-11-03, offstage 0.4.1
+ * reported session 258 for a session whose launchd asid and CGSession audit
+ * id were both 109086. The number offstage prints is not in the same space,
+ * so treating a disagreement as a failure refuses runs that were in fact
+ * isolated. See docs/offstage-macos.md §10.12.
  */
-export function assertOutcomeSession(outcome, target, consoleUidValue) {
+export function assertOutcomeSession(outcome, target, console) {
   if (outcome.uid !== target.uid) {
     throw new Error(
       `the job ran as uid ${outcome.uid}, not ${target.uid}: it did not run in the requested session. ` +
         "The result is not trusted.",
     );
   }
-  if (target.asid !== null && outcome.asid !== target.asid) {
-    // The job has to name the session it ran in. An unknown session (the job
-    // could not read one) is not a match: refusing here costs one run,
-    // while accepting it costs the whole point of the isolation.
+  if (outcome.onConsole === true) {
     throw new Error(
-      `the job ran in session ${outcome.asid}, not in session ${target.asid}: it did not run in the ` +
-        "requested session. The result is not trusted.",
+      `the job reports that it ran on the console: that is the screen the human is looking at. ` +
+        "The result is not trusted.",
     );
   }
-  if (consoleUidValue === target.uid) {
+  if (console.uid === target.uid) {
     throw new Error(
       `the target session (uid ${target.uid}) owns the console now: the job ran on the human's own desktop. ` +
+        "The result is not trusted.",
+    );
+  }
+  if (console.asid !== null && outcome.asid !== null && outcome.asid === console.asid) {
+    throw new Error(
+      `the job ran in session ${outcome.asid}, which is the console session: it ran on the human's own desktop. ` +
         "The result is not trusted.",
     );
   }
@@ -202,7 +217,8 @@ export function shellCommandLine(command) {
  * What the job that ran in the other session wrote down about itself.
  *
  * The lines are written by the job, in the other session, so they are the
- * job's own account of where it ran — not the controller's guess.
+ * job's own account of where it ran — not the controller's guess. `onconsole`
+ * is 1 when `/dev/console` belonged to the job's own user while it ran.
  */
 export function parseTerminalResult(text) {
   const fields = new Map();
@@ -215,10 +231,12 @@ export function parseTerminalResult(text) {
   const uid = Number(fields.get("uid"));
   const asid = Number(fields.get("asid"));
   const exitCode = Number(fields.get("exit"));
+  const onConsole = fields.get("onconsole");
   return {
     uid: Number.isInteger(uid) ? uid : -1,
     username: fields.get("username") ?? "unknown",
     asid: Number.isInteger(asid) ? asid : null,
+    onConsole: onConsole === "1",
     exitCode: Number.isInteger(exitCode) ? exitCode : 1,
   };
 }
