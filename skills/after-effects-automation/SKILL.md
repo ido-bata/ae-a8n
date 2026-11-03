@@ -8,8 +8,7 @@ description: Drive a real Adobe After Effects from Node with @ido-bata/ae-a8n â€
 `@ido-bata/ae-a8n` runs ExtendScript inside a real After Effects and gives you
 a typed API over it. Everything below matches the package's public types; if
 a call you want is not listed here, check `dist/index.d.ts` rather than guess â€”
-there is, for example, **no save, no layer creation, and no arbitrary-script
-API**.
+there is, for example, **no save and no arbitrary-script API**.
 
 Verified on macOS (After Effects 2026 / 26.5, Japanese UI). **Windows has not
 been run at all**; on Windows the package will not quit After Effects for you
@@ -220,9 +219,10 @@ work:
 
 ## Not covered
 
-Saving projects, creating comps or layers, expressions, keyframes, render
-queue output modules, audio, Windows behaviour. Do not improvise these
-through other channels without the human's agreement.
+Saving projects, expressions, keyframes, render queue output modules, audio,
+Windows behaviour. Creating a comp and adding a text layer **are** covered
+(`project.createComp(...)`, `comp.addTextLayer(...)`); do not improvise the
+rest through other channels without the human's agreement.
 
 ## Worked examples
 
