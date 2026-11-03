@@ -37,7 +37,7 @@
  *   - a result that does not name the requested session.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,6 +49,7 @@ import {
   assertTargetSession,
   parseAeProcesses,
   parseTerminalResult,
+  resultFileIsTrusted,
   sessionFromOffstageStatus,
   shellCommandLine,
 } from "./session-rules.mjs";
@@ -152,6 +153,35 @@ function consoleAsid(uid) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Refuses a file in the shared results directory that the target account did
+ * not write.
+ *
+ * The directory is 1777 so the job can write there; that also lets any local
+ * process leave a plausible-looking `<id>.done` at a guessed id and have the
+ * controller believe it. The job ids are not secrets: the `.command` files
+ * next to them say what each id runs.
+ */
+function assertTrustedSharedFile(path, targetUid, what) {
+  let info;
+  try {
+    info = lstatSync(path);
+  } catch (error) {
+    throw new Error(`the ${what} ${path} could not be inspected: ${error instanceof Error ? error.message : String(error)}. It is not trusted.`);
+  }
+  if (!resultFileIsTrusted(info, targetUid)) {
+    throw new Error(
+      `the ${what} ${path} was not written by the target uid ${targetUid} as a regular file that nobody ` +
+        "else can change; it is not trusted.",
+    );
+  }
+}
+
+function readTrustedOutput(path, targetUid, what) {
+  assertTrustedSharedFile(path, targetUid, `${what} file`);
+  return readFileSync(path, "utf-8");
 }
 
 function uidOfUser(user) {
@@ -343,6 +373,7 @@ export function runTerminal(options, targetUid) {
   const deadline = Date.now() + options.timeoutMs;
   for (;;) {
     if (existsSync(donePath)) {
+      assertTrustedSharedFile(donePath, targetUid, "job's result");
       const outcome = parseTerminalResult(readFileSync(donePath, "utf-8"));
       // A file that exists is not necessarily finished; publish-by-rename
       // makes this rare, and `complete` turns "rarely" into "never read as a
@@ -361,8 +392,8 @@ export function runTerminal(options, targetUid) {
       // a job that ran on the console desktop is not an isolated run.
       const consoleUidValue = consoleUid();
       assertOutcomeSession(outcome, { uid: targetUid }, { uid: consoleUidValue, asid: consoleAsid(consoleUidValue) });
-      const stdout = existsSync(outPath) ? readFileSync(outPath, "utf-8") : "";
-      const stderr = existsSync(errPath) ? readFileSync(errPath, "utf-8") : "";
+      const stdout = existsSync(outPath) ? readTrustedOutput(outPath, targetUid, "stdout") : "";
+      const stderr = existsSync(errPath) ? readTrustedOutput(errPath, targetUid, "stderr") : "";
       if (stdout.length > 0) {
         process.stdout.write(stdout);
       }
@@ -402,6 +433,7 @@ function readReport(path, targetUid) {
   if (!existsSync(path)) {
     throw new Error(`the run wrote no report at ${path}; the result is not trusted.`);
   }
+  assertTrustedSharedFile(path, targetUid, "report");
   const report = JSON.parse(readFileSync(path, "utf-8"));
   assertResultSession(report, targetUid);
   if (report.session?.isolated !== true) {

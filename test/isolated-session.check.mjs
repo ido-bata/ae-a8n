@@ -46,6 +46,16 @@ test("the console session is refused", () => {
   assert.throws(() => assertTargetSession(consoleUser, 501, 501), /owns the console session/);
 });
 
+test("an unreadable console owner is a refusal, not a pass", () => {
+  assert.throws(() => assertTargetSession(aqua, 502, -1), /console session's owner could not be read/);
+  assert.throws(() => assertTargetSession(aqua, 502, Number.NaN), /console session's owner could not be read/);
+  // The same for the post-job check: without an owner, isolation is unproven.
+  assert.throws(
+    () => assertOutcomeSession({ uid: 502, asid: 109086, onConsole: false }, { uid: 502 }, { uid: -1, asid: null }),
+    /console session's owner could not be read/,
+  );
+});
+
 test("a separate graphical session is accepted", () => {
   assert.equal(assertTargetSession(aqua, 502, 501), aqua);
 });

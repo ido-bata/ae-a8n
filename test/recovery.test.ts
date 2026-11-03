@@ -77,6 +77,12 @@ class BlockedTransport implements HostTransport {
     });
   }
 
+  /** The blocked host leaves a result file that is never whole. */
+  finishUnparseable(): void {
+    const id = this.#pending();
+    writeFileSync(join(root, "outbox", `${id}.result.json`), '{"v":1,"id":"');
+  }
+
   #pending(): string {
     if (this.pendingId === null) {
       throw new Error("no request is pending");
@@ -164,6 +170,23 @@ describe("a timeout followed by a recovery", () => {
     expect(error).not.toBeInstanceOf(TimeoutError);
     expect((error as Error).message).toMatch(/the project was not open/);
     // Still one request: the answer belongs to it, it was not sent again.
+    expect(transport.invocations).toBe(1);
+  });
+
+  it("keeps the timeout when the result file is never readable", async () => {
+    // An unreadable result is a publication problem, not the host's answer.
+    // Reporting ProtocolError here would replace the timeout with a less
+    // useful error; the host never answered.
+    const transport = new BlockedTransport();
+    const recovery: HostRecovery = {
+      attempt: () => {
+        transport.finishUnparseable();
+        return Promise.resolve({ recovered: true, evidence: "closed the dialog" });
+      },
+    };
+    const driver = startDriver(transport, recovery);
+    const error = await driver.call("app.info", {}).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(TimeoutError);
     expect(transport.invocations).toBe(1);
   });
 });

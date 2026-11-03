@@ -15,6 +15,15 @@
  * and must not be the console session.
  */
 export function assertTargetSession(session, targetUid, consoleUid) {
+  if (!Number.isInteger(consoleUid) || consoleUid < 0) {
+    // -1 is not "somebody else": it means the console's owner could not be
+    // read, so it cannot be shown that the target session is not the screen
+    // the human is looking at. The same refusal as MacGuiRecovery.
+    throw new Error(
+      "the console session's owner could not be read, so it cannot be shown that the target session is " +
+        "not the screen the user is looking at. Nothing was run.",
+    );
+  }
   if (session === null || session === undefined) {
     throw new Error(
       `uid ${targetUid} has no login session on this Mac. Log that user in (a fast user switch is enough) ` +
@@ -61,6 +70,14 @@ export function assertTargetSession(session, targetUid, consoleUid) {
  * isolated. See docs/offstage-macos.md §10.12.
  */
 export function assertOutcomeSession(outcome, target, console) {
+  if (!Number.isInteger(console.uid) || console.uid < 0) {
+    // Without knowing who owns the console, a job that ran as the target uid
+    // might have run on the human's desktop and nothing here could tell.
+    throw new Error(
+      "the console session's owner could not be read, so the job cannot be shown to have run off the " +
+        "human's desktop. The result is not trusted.",
+    );
+  }
   if (outcome.uid !== target.uid) {
     throw new Error(
       `the job ran as uid ${outcome.uid}, not ${target.uid}: it did not run in the requested session. ` +
@@ -204,6 +221,16 @@ export function sessionFromOffstageStatus(status) {
 export function jobFileIsTrusted(info, trustedUid) {
   return info.isFile() && info.uid === trustedUid && (info.mode & 0o022) === 0;
 }
+
+/**
+ * The same rule for a result file the controller reads back.
+ *
+ * It is the same predicate on purpose: jobs, results and reports all live in
+ * directories more than one account can write to, and in every case the only
+ * file worth reading is a regular one that the account that was supposed to
+ * write it owns, and that nobody else could have changed afterwards.
+ */
+export const resultFileIsTrusted = jobFileIsTrusted;
 
 /**
  * One shell argument, quoted for `sh`.

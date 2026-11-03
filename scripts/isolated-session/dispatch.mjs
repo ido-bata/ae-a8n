@@ -15,11 +15,11 @@
  * The other session has to exist because that user logged in.
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assertResultSession, assertTargetSession } from "./session-rules.mjs";
+import { assertOutcomeSession, assertResultSession, assertTargetSession } from "./session-rules.mjs";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_ROOT = "/Users/Shared/ae-a8n";
@@ -90,6 +90,20 @@ export function consoleUid() {
   }
 }
 
+/** The console session's id, read from the console owner's launchd domain. */
+export function consoleAsid(uid) {
+  if (!Number.isInteger(uid) || uid < 0) {
+    return null;
+  }
+  try {
+    const text = execFileSync("launchctl", ["print", `gui/${uid}`], { encoding: "utf-8", timeout: 10_000 });
+    const asid = /asid = (\d+)/.exec(text);
+    return asid === null ? null : Number(asid[1]);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Whether a result file may be read.
  *
@@ -117,6 +131,38 @@ export function assertTrustedResult(path, targetUid) {
   }
 }
 
+/**
+ * Makes a directory both accounts can use, whichever of them creates it.
+ *
+ * `mkdir` applies the umask, so the mode it is given comes out as 0755. The
+ * directory then has to be `chmod`ed — but only its owner can do that, and
+ * the other account may have created it (the agent and the controller can
+ * start in either order). A directory that is already usable is left alone;
+ * one that is not and cannot be fixed is a refusal, not a guess.
+ */
+function ensureSharedDir(dir) {
+  mkdirSync(dir, { recursive: true, mode: 0o1777 });
+  if ((statSync(dir).mode & 0o777) === 0o1777) {
+    return;
+  }
+  try {
+    chmodSync(dir, 0o1777);
+  } catch (error) {
+    if (error?.code !== "EPERM") {
+      throw error;
+    }
+    // Owned by the other account, so it cannot be fixed from here. It is
+    // usable only if that account already made it writable by everyone; the
+    // attribution checks then decide what may be read from it.
+    if ((statSync(dir).mode & 0o002) === 0) {
+      throw new Error(
+        `the shared directory ${dir} belongs to another account and is not writable by others, so the job ` +
+          "could not be written there. Nothing was run.",
+      );
+    }
+  }
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.uid === undefined || !Number.isInteger(options.uid)) {
@@ -129,10 +175,7 @@ function main() {
   const jobs = join(options.root, "jobs");
   const results = join(options.root, "results");
   for (const dir of [jobs, results]) {
-    mkdirSync(dir, { recursive: true, mode: 0o1777 });
-    // mkdir applies the umask to the mode it is given, so 1777 would come
-    // out as 0755 and the other account could not write its result there.
-    chmodSync(dir, 0o1777);
+    ensureSharedDir(dir);
   }
   const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
   const jobPath = join(jobs, `${id}.job.json`);
@@ -165,6 +208,29 @@ function main() {
       const result = JSON.parse(readFileSync(resultPath, "utf-8"));
       rmSync(jobPath, { force: true });
       assertResultSession(result, options.uid);
+      // The console may have moved while the job ran (a fast user switch is
+      // how the helper session is reached). The agent reports what it saw;
+      // the controller checks it against the console *now*, which it can read
+      // itself.
+      const consoleNow = consoleUid();
+      assertOutcomeSession(
+        {
+          uid: result.session?.uid,
+          asid: result.session?.asid ?? null,
+          onConsole: result.onConsole === true,
+        },
+        { uid: options.uid },
+        { uid: consoleNow, asid: consoleAsid(consoleNow) },
+      );
+      if (result.ok === false || result.exitCode === undefined) {
+        // A refused job is written with `ok: false` and no exit code. Reading
+        // that as exit 0 would report the defense as a successful run.
+        if (typeof result.error === "string" && result.error.length > 0) {
+          process.stderr.write(`[ae-a8n dispatch] the job was refused: ${result.error}\n`);
+        }
+        process.exitCode = typeof result.exitCode === "number" ? result.exitCode : 1;
+        return;
+      }
       process.stderr.write(
         `[ae-a8n dispatch] job ${id} finished in ${result.session?.username}'s session (uid ${result.session?.uid}, ` +
           `asid ${result.session?.asid}), exit ${result.exitCode}\n`,

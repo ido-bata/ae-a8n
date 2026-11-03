@@ -434,11 +434,12 @@ export class AeDriver {
       });
       return result.value;
     }
-    // A result that arrived and says "error" is the host's answer, not a
-    // timeout: the recovery unblocked the host and the operation it had
-    // already started failed. Reporting the earlier timeout would hide the
-    // host's error and invite the caller to send the operation again.
-    if (!(result.error instanceof TimeoutError)) {
+    // An error the host itself sent is the answer to the request that timed
+    // out: the recovery unblocked it and the operation it had already started
+    // failed. Reporting the earlier timeout would hide the host's error and
+    // invite the caller to send the operation again. A result that never
+    // became readable is not an answer — the caller keeps the timeout.
+    if (result.error instanceof HostError) {
       this.#trace.record(op, "error", 0, result.detail);
       throw result.error;
     }

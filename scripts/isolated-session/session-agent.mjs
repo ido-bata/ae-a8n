@@ -19,7 +19,7 @@
  * Result:     <root>/results/<id>.result.json
  * Log:        <root>/logs/<id>.log
  */
-import { readdir, readFile, writeFile, mkdir, appendFile, chmod, lstat, rename } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, appendFile, chmod, lstat, rename, stat } from "node:fs/promises";
 import { execFile, execFileSync as syncExecFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -77,10 +77,7 @@ async function main() {
   const results = join(root, "results");
   const logs = join(root, "logs");
   for (const dir of [jobs, results, logs]) {
-    await mkdir(dir, { recursive: true, mode: 0o1777 });
-    // mkdir applies the umask to the mode it is given, so 1777 would come
-    // out as 0755 and the controller could not write a job there.
-    await chmod(dir, 0o1777);
+    await ensureSharedDir(dir);
   }
   const session = readSession();
   const consoleUid = readConsoleUid();
@@ -178,6 +175,30 @@ async function main() {
   }
 }
 
+/**
+ * The same rule as dispatch.mjs: the two accounts can start in either order,
+ * and only a directory's owner can `chmod` it.
+ */
+async function ensureSharedDir(dir) {
+  await mkdir(dir, { recursive: true, mode: 0o1777 });
+  if (((await stat(dir)).mode & 0o777) === 0o1777) {
+    return;
+  }
+  try {
+    await chmod(dir, 0o1777);
+  } catch (error) {
+    if (error?.code !== "EPERM") {
+      throw error;
+    }
+    if (((await stat(dir)).mode & 0o002) === 0) {
+      throw new Error(
+        `the shared directory ${dir} belongs to another account and is not writable by others, so results ` +
+          "could not be written there. No job is run.",
+      );
+    }
+  }
+}
+
 async function writeResult(path, payload) {
   // Published by rename: the controller polls for this path and parses it as
   // soon as it exists, so a direct write can be read half-finished.
@@ -198,12 +219,34 @@ async function isTrustedJob(path, trustedUid) {
   }
 }
 
+/** Whether this account owns the console — including when that is unknowable. */
+function consoleIsOwn(uid) {
+  const consoleUid = readConsoleUid();
+  return !Number.isInteger(consoleUid) || consoleUid < 0 || consoleUid === uid;
+}
+
 async function runJob({ id, job, resultPath, logs, session }) {
   const startedAt = new Date().toISOString();
   const logPath = join(logs, `${id}.log`);
   const command = Array.isArray(job.command) ? job.command : [];
   if (command.length === 0) {
     await writeResult(resultPath, { id, ok: false, error: "the job has no command", session, startedAt });
+    return;
+  }
+  // A fast user switch is how the human reaches this session, and it can put
+  // this account on the console while the agent is running. Checking only at
+  // startup would then run jobs on the screen the human is looking at.
+  if (consoleIsOwn(session.uid)) {
+    await writeResult(resultPath, {
+      id,
+      ok: false,
+      error:
+        "this account owns the console now (or the console's owner cannot be read); the job was not run, " +
+        "because running it would happen on the screen the user is looking at.",
+      session,
+      onConsole: true,
+      startedAt,
+    });
     return;
   }
   const cwd = typeof job.cwd === "string" ? job.cwd : process.cwd();
@@ -232,6 +275,10 @@ async function runJob({ id, job, resultPath, logs, session }) {
     stdout: outcome.stdout ?? "",
     stderr: outcome.stderr ?? "",
     session,
+    // What the console looked like when the job finished. The controller
+    // checks this; a job that ran while the console moved here did not run in
+    // isolation, whatever its exit code.
+    onConsole: consoleIsOwn(session.uid),
     startedAt,
     endedAt: new Date().toISOString(),
   });

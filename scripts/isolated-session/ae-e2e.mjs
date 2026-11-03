@@ -94,7 +94,7 @@ function finish(status, error) {
     report.error = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   }
   mkdirSync(resolve(options.report, ".."), { recursive: true });
-  writeFileSync(options.report, JSON.stringify(report, null, 2));
+  writeFileSync(options.report, JSON.stringify(report, null, 2), { mode: 0o644 });
   process.stdout.write(`[e2e] report written to ${options.report} (${status})\n`);
   if (status !== "passed") {
     process.exitCode = 1;
