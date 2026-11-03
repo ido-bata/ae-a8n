@@ -586,8 +586,15 @@ export class ScriptInvocationTransport implements HostTransport {
       }
     }
     if (this.#platform === "darwin") {
-      // Whatever is running now was not started by this session.
-      this.#preexisting = this.#hostProcesses();
+      // Whatever is running now was not started by this session. A process
+      // list that cannot be read leaves ownership unproven, never assumed —
+      // the same rule the Windows branch follows: the readiness probe below
+      // is what decides whether the host answers.
+      try {
+        this.#preexisting = this.#hostProcesses();
+      } catch {
+        this.#preexisting = null;
+      }
       // On macOS `DoScriptFile` launches AE on demand, so there is nothing to do.
       return;
     }

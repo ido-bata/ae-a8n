@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { AeDriver } from "../driver/driver.js";
-import { readGuiSession, type MacSession } from "../driver/mac-session.js";
+import { readGuiSession, readGuiSessionFailure, type MacSession } from "../driver/mac-session.js";
 import { MacHostRecovery } from "../driver/recovery.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
 import { TraceRecorder, type TraceEvent } from "../trace/trace.js";
@@ -119,6 +119,19 @@ function optionalTimeout(value: unknown): number | undefined {
 function requireSession(uid: number): MacSession {
   const session = readGuiSession(uid);
   if (session === null) {
+    // A refusal to answer is not an answer. `launchctl print gui/<other uid>`
+    // is "Operation not permitted" for a non-root process outside that
+    // session, and telling a logged-in user to log in sends the caller in
+    // entirely the wrong direction.
+    const failure = readGuiSessionFailure(uid);
+    if (failure !== null && /operation not permitted|not permitted/i.test(failure)) {
+      throw new AfterEffectsError(
+        `uid ${uid}'s login session could not be read: macOS refused this process (launchctl: ${failure}). ` +
+          "The user may well be logged in; only a process running in that session (or root) can ask about it. " +
+          "Nothing was started.",
+        "session.launch",
+      );
+    }
     throw new AfterEffectsError(
       `uid ${uid} has no login session on this Mac, so no After Effects of that user could be reached. ` +
         "Log that user in — a fast user switch is enough — and try again. Nothing was started.",

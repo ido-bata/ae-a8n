@@ -391,8 +391,10 @@ export class AeDriver {
    * the request it already sent, and only reports a failure when that result
    * does not arrive either.
    *
-   * Returns the recovered result, or undefined when the operation still
-   * failed (the caller then reports the original timeout).
+   * Returns the recovered result. Returns undefined when no result arrived
+   * either (the caller then reports the original timeout), and throws the
+   * host's error when the original request finished with one — the recovery
+   * unblocked it, so its answer is the real outcome.
    */
   async #recoverAndWait(
     id: string,
@@ -431,6 +433,14 @@ export class AeDriver {
         result: { recovered: true, ...summariseResult(result.value) },
       });
       return result.value;
+    }
+    // A result that arrived and says "error" is the host's answer, not a
+    // timeout: the recovery unblocked the host and the operation it had
+    // already started failed. Reporting the earlier timeout would hide the
+    // host's error and invite the caller to send the operation again.
+    if (!(result.error instanceof TimeoutError)) {
+      this.#trace.record(op, "error", 0, result.detail);
+      throw result.error;
     }
     return undefined;
   }

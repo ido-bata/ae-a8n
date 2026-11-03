@@ -14,7 +14,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AeDriver, TimeoutError } from "../src/driver/driver.js";
-import type { HostRecovery } from "../src/driver/recovery.js";
+import type { GuiWindowInfo } from "../src/driver/gui-recovery.js";
+import { chooseRecoveryWindow, type HostRecovery } from "../src/driver/recovery.js";
 import type { HostOwnership, HostTransport, InvokeOptions } from "../src/driver/transport.js";
 import { TraceRecorder } from "../src/trace/trace.js";
 
@@ -62,13 +63,30 @@ class BlockedTransport implements HostTransport {
 
   /** The blocked host finishes the request it already has. */
   finish(result: unknown): void {
+    this.#write({ v: 1, id: this.#pending(), ok: true, durationMs: 1, result });
+  }
+
+  /** The blocked host finishes the request with an error of its own. */
+  finishError(message: string): void {
+    this.#write({
+      v: 1,
+      id: this.#pending(),
+      ok: false,
+      durationMs: 1,
+      error: { name: "Error", message },
+    });
+  }
+
+  #pending(): string {
     if (this.pendingId === null) {
       throw new Error("no request is pending");
     }
-    writeFileSync(
-      join(root, "outbox", `${this.pendingId}.result.json`),
-      JSON.stringify({ v: 1, id: this.pendingId, ok: true, durationMs: 1, result }),
-    );
+    return this.pendingId;
+  }
+
+  #write(envelope: unknown): void {
+    const id = this.#pending();
+    writeFileSync(join(root, "outbox", `${id}.result.json`), JSON.stringify(envelope));
   }
 
   close(): Promise<void> {
@@ -129,5 +147,71 @@ describe("a timeout followed by a recovery", () => {
     await expect(driver.call("app.info", {})).rejects.toBeInstanceOf(TimeoutError);
     // The request was sent once; the recovery waited for its result and gave up.
     expect(transport.invocations).toBe(1);
+  });
+
+  it("reports the host's own error, not a timeout, when the host answers after the recovery", async () => {
+    const transport = new BlockedTransport();
+    const recovery: HostRecovery = {
+      attempt: () => {
+        // The dialog was the only thing blocking the host; once it is closed
+        // the request finishes, and it fails on its own terms.
+        transport.finishError("the project was not open");
+        return Promise.resolve({ recovered: true, evidence: "closed the dialog" });
+      },
+    };
+    const driver = startDriver(transport, recovery);
+    const error = await driver.call("app.info", {}).catch((reason: unknown) => reason);
+    expect(error).not.toBeInstanceOf(TimeoutError);
+    expect((error as Error).message).toMatch(/the project was not open/);
+    // Still one request: the answer belongs to it, it was not sent again.
+    expect(transport.invocations).toBe(1);
+  });
+});
+
+describe("which window a recovery may act on", () => {
+  const dialog = (title: string, text = ""): GuiWindowInfo => ({
+    title,
+    role: "AXWindow",
+    subrole: "AXDialog",
+    buttons: [{ title: "OK", description: "", position: null, size: null }],
+    texts: text.length === 0 ? [] : [text],
+  });
+
+  it("does nothing when no window is blocking the host", () => {
+    const windows: GuiWindowInfo[] = [
+      { title: "Project", role: "AXWindow", subrole: "AXStandardWindow", buttons: [], texts: [] },
+    ];
+    expect(chooseRecoveryWindow(windows)).toEqual({ kind: "none" });
+  });
+
+  it("addresses the first blocking window by its listing index", () => {
+    const windows: GuiWindowInfo[] = [
+      { title: "Project", role: "AXWindow", subrole: "AXStandardWindow", buttons: [], texts: [] },
+      dialog("警告"),
+      dialog("別のダイアログ"),
+    ];
+    const choice = chooseRecoveryWindow(windows);
+    expect(choice.kind).toBe("act");
+    if (choice.kind !== "act") return;
+    // 1-based: the standard window above it must be skipped.
+    expect(choice.index).toBe(2);
+    expect(choice.window.title).toBe("警告");
+    expect(choice.blockingCount).toBe(2);
+  });
+
+  it("presses nothing anywhere when a sign-in window is among the blockers", () => {
+    // The Japanese wording is what the session shows; an English-only match
+    // would have pressed OK on the visible dialog while the licence prompt
+    // stayed underneath it.
+    const windows: GuiWindowInfo[] = [dialog("警告", "Creative Cloud にサインインしてください"), dialog("Script")];
+    const choice = chooseRecoveryWindow(windows);
+    expect(choice.kind).toBe("human-only");
+    if (choice.kind !== "human-only") return;
+    expect(choice.index).toBe(1);
+  });
+
+  it("refuses when a licence window comes after an ordinary dialog", () => {
+    const windows: GuiWindowInfo[] = [dialog("Script"), dialog("ライセンスの確認")];
+    expect(chooseRecoveryWindow(windows).kind).toBe("human-only");
   });
 });

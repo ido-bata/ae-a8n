@@ -188,6 +188,15 @@ describe("the GUI recovery", () => {
     expect(text).toContain("my a8nClean(ttext)");
   });
 
+  it("checks the window is still the one the caller chose before pressing", () => {
+    // Listing and pressing are two calls; a sheet raised in between would
+    // otherwise take the press meant for the dialog before it.
+    const text = PRESS_BUTTON_SCRIPT.join("\n");
+    expect(text).toContain("set expectedTitle to item 4 of argv");
+    expect(text).toContain('if wtitle is not expectedTitle then return "CHANGED"');
+    expect(text).toContain('if wsub is not expectedSubrole then return "CHANGED"');
+  });
+
   it.runIf(process.platform === "darwin")("compiles every script it sends, host or not", () => {
     // A script that does not compile is only discovered on a real host, at
     // the moment a dialog is blocking After Effects. osacompile answers the
@@ -224,6 +233,20 @@ describe("the GUI recovery", () => {
           pid: 4242,
         }),
     ).toThrow(/console session/);
+  });
+
+  it("can be told explicitly that the target is the console session", () => {
+    // The refusal exists so that a recovery cannot be aimed at the human's
+    // desktop by accident. A caller that is itself running there can say so,
+    // and only then does the check not apply.
+    expect(
+      () =>
+        new MacGuiRecovery({
+          session: { uid: 501, username: "console", asid: 100021, kind: "Aqua" },
+          pid: 4242,
+          allowConsoleSession: true,
+        }),
+    ).not.toThrow();
   });
 
   it("refuses a session that has no screen", () => {

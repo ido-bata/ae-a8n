@@ -139,6 +139,34 @@ export function readGuiSession(uid: number): MacSession | null {
 }
 
 /**
+ * Why `readGuiSession(uid)` could not answer, or null when it could.
+ *
+ * A null from `readGuiSession` means "no session" only the caller knows; the
+ * same null covers "macOS refused this process the right to ask", which is a
+ * different problem with a different fix. This reports what `launchctl` said
+ * so a caller can tell them apart instead of telling a logged-in user to log
+ * in again.
+ */
+export function readGuiSessionFailure(uid: number): string | null {
+  try {
+    execFileSync("launchctl", ["print", `gui/${uid}`], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return null;
+  } catch (error) {
+    const stderr = (error as { stderr?: unknown }).stderr;
+    const text =
+      typeof stderr === "string"
+        ? stderr
+        : stderr instanceof Buffer
+          ? stderr.toString("utf-8")
+          : "";
+    return text.trim().length > 0 ? text.trim() : error instanceof Error ? error.message : String(error);
+  }
+}
+
+/**
  * The uid that owns the console session — the screen the human is looking at.
  *
  * -1 when it cannot be read. A GUI action in this session reaches the

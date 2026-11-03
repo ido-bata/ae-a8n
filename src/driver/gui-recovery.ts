@@ -261,25 +261,49 @@ export const LIST_WINDOWS_SCRIPT = [
 export const PRESS_BUTTON_SCRIPT = [
   "on run argv",
   "  set targetPid to (item 1 of argv) as integer",
-  "  set wanted to item 2 of argv",
+  "  set windowIndex to (item 2 of argv) as integer",
+  "  set wanted to item 3 of argv",
+  "  set expectedTitle to item 4 of argv",
+  "  set expectedSubrole to item 5 of argv",
   "  tell application \"System Events\"",
   "    set procs to (every application process whose unix id is targetPid)",
   "    if (count of procs) is 0 then return \"MISSING\"",
   "    set p to item 1 of procs",
-  "    repeat with w in windows of p",
+  "    set wlist to windows of p",
+  "    if windowIndex < 1 then return \"NOT_FOUND\"",
+  "    if windowIndex > (count of wlist) then return \"NOT_FOUND\"",
+  "    set w to item windowIndex of wlist",
+  // The listing was made by a separate call, so the windows may have shifted
+  // in between. Pressing by index alone would then click a different window —
+  // possibly a sign-in sheet raised by the very operation that timed out.
+  // The identity the caller saw is checked against the window that is there
+  // now; a mismatch is a refusal, not a guess.
+  "    if expectedTitle is not \"\" then",
+  "      set wtitle to \"\"",
   "      try",
-  "        repeat with b in buttons of w",
-  "          set btitle to \"\"",
-  "          try",
-  "            set btitle to (name of b) as string",
-  "          end try",
-  "          if btitle is wanted then",
-  "            click b",
-  "            return \"CLICKED\"",
-  "          end if",
-  "        end repeat",
+  "        set wtitle to (name of w) as string",
   "      end try",
-  "    end repeat",
+  "      if wtitle is not expectedTitle then return \"CHANGED\"",
+  "    end if",
+  "    if expectedSubrole is not \"\" then",
+  "      set wsub to \"\"",
+  "      try",
+  "        set wsub to (subrole of w) as string",
+  "      end try",
+  "      if wsub is not expectedSubrole then return \"CHANGED\"",
+  "    end if",
+  "    try",
+  "      repeat with b in buttons of w",
+  "        set btitle to \"\"",
+  "        try",
+  "          set btitle to (name of b) as string",
+  "        end try",
+  "        if btitle is wanted then",
+  "          click b",
+  "          return \"CLICKED\"",
+  "        end if",
+  "      end repeat",
+  "    end try",
   "  end tell",
   "  return \"NOT_FOUND\"",
   "end run",
@@ -357,12 +381,25 @@ export class MacGuiRecovery {
           "there is no screen to recover. No GUI action was taken.",
       );
     }
-    if (options.allowConsoleSession !== true && consoleSessionUid() === options.session.uid) {
-      throw new GuiRecoveryError(
-        `the target session (uid ${options.session.uid}) is the console session, the screen the user is looking ` +
-          "at. Recovering there would move their cursor and take their focus, so no GUI action was taken. " +
-          "Recover in an isolated session instead.",
-      );
+    if (options.allowConsoleSession !== true) {
+      const consoleUid = consoleSessionUid();
+      // A console owner that cannot be read must not be read as "not the
+      // console": -1 never equals a real uid, so the check below would pass
+      // and the recovery would act on the screen the human is looking at.
+      if (consoleUid < 0) {
+        throw new GuiRecoveryError(
+          "the console session could not be identified (the owner of /dev/console could not be read), so it " +
+            "cannot be shown that this recovery would not reach the screen the user is looking at. " +
+            "No GUI action was taken.",
+        );
+      }
+      if (consoleUid === options.session.uid) {
+        throw new GuiRecoveryError(
+          `the target session (uid ${options.session.uid}) is the console session, the screen the user is looking ` +
+            "at. Recovering there would move their cursor and take their focus, so no GUI action was taken. " +
+            "Recover in an isolated session instead.",
+        );
+      }
     }
     this.#session = options.session;
     this.#pid = options.pid;
@@ -417,9 +454,27 @@ export class MacGuiRecovery {
     return path;
   }
 
-  /** Presses a button by its accessibility title. */
-  pressButton(title: string): boolean {
-    const result = this.#osascript(PRESS_BUTTON_SCRIPT, [String(this.#pid), title]);
+  /**
+   * Presses a button **in one window**, identified by its 1-based position in
+   * the listing the Accessibility API returned.
+   *
+   * The window matters. Scanning every window of the process would press the
+   * first matching button wherever it is — including a sign-in or licence
+   * sheet the caller was explicitly told not to touch. The caller decides
+   * which window is safe; this method only acts inside it.
+   *
+   * When `expected` is given, the window found at that position must still be
+   * the one the caller saw: the listing and the press are two calls, and a
+   * window that appeared in between would otherwise receive the press.
+   */
+  pressButton(windowIndex: number, title: string, expected?: GuiWindowInfo): boolean {
+    const result = this.#osascript(PRESS_BUTTON_SCRIPT, [
+      String(this.#pid),
+      String(windowIndex),
+      title,
+      expected?.title ?? "",
+      expected?.subrole ?? "",
+    ]);
     return result.stdout.trim() === "CLICKED";
   }
 
@@ -442,27 +497,34 @@ export class MacGuiRecovery {
   }
 
   /**
-   * Clicks a button, by accessibility identity first and by coordinates
-   * only when the element cannot be pressed directly.
+   * Clicks a button in one window, by accessibility identity first and by
+   * coordinates only when the element cannot be pressed directly.
+   *
+   * `windowIndex` is the same 1-based position `listWindows()` returned. The
+   * coordinate fallback is taken from that window's own listing, never from a
+   * different window and never from the physical display.
    */
-  pressButtonIn(windowTitle: string | null, buttonTitle: string): boolean {
-    if (this.pressButton(buttonTitle)) {
+  pressButtonIn(windowIndex: number, buttonTitle: string, expected?: GuiWindowInfo): boolean {
+    if (this.pressButton(windowIndex, buttonTitle, expected)) {
       return true;
     }
     const state = this.listWindows();
-    for (const window of state.windows) {
-      if (windowTitle !== null && window.title !== windowTitle) {
+    const window = state.windows[windowIndex - 1];
+    if (window === undefined) {
+      return false;
+    }
+    if (expected !== undefined && (window.title !== expected.title || window.subrole !== expected.subrole)) {
+      // The window at that position is no longer the one the caller chose.
+      return false;
+    }
+    for (const button of window.buttons) {
+      if (button.title !== buttonTitle || button.position === null || button.size === null) {
         continue;
       }
-      for (const button of window.buttons) {
-        if (button.title !== buttonTitle || button.position === null || button.size === null) {
-          continue;
-        }
-        return this.clickAt(
-          button.position.x + button.size.width / 2,
-          button.position.y + button.size.height / 2,
-        );
-      }
+      return this.clickAt(
+        button.position.x + button.size.width / 2,
+        button.position.y + button.size.height / 2,
+      );
     }
     return false;
   }

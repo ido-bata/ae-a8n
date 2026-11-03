@@ -81,6 +81,45 @@ export function describeWindow(window: GuiWindowInfo): string {
   return `${window.role}${subrole} "${window.title}" [${buttons.join(", ")}]` + (said.length > 0 ? ` says "${said}"` : "");
 }
 
+export type RecoveryWindowChoice =
+  /** No window is blocking the host; nothing to press. */
+  | { readonly kind: "none" }
+  /** A blocking window belongs to a human; nothing may be pressed anywhere. */
+  | { readonly kind: "human-only"; readonly index: number; readonly window: GuiWindowInfo }
+  /** The first blocking window, and the only one a press may be sent to. */
+  | {
+      readonly kind: "act";
+      readonly index: number;
+      readonly window: GuiWindowInfo;
+      readonly blockingCount: number;
+    };
+
+/**
+ * Which window, if any, a recovery may act on.
+ *
+ * `index` is the window's 1-based position in the listing from
+ * `MacGuiRecovery.listWindows()`: the press is addressed to that window, not
+ * to "whatever window of the process happens to have an OK button first".
+ *
+ * If **any** blocking window is a sign-in or licence window, nothing is
+ * pressed at all. Acting on a different window would still leave the human's
+ * decision unanswered, and the next press could land on it.
+ */
+export function chooseRecoveryWindow(windows: readonly GuiWindowInfo[]): RecoveryWindowChoice {
+  const blocking = windows
+    .map((window, index) => ({ window, index: index + 1 }))
+    .filter(({ window }) => isBlockingWindow(window));
+  if (blocking.length === 0) {
+    return { kind: "none" };
+  }
+  const humanOnly = blocking.find(({ window }) => isHumanOnlyWindow(window));
+  if (humanOnly !== undefined) {
+    return { kind: "human-only", index: humanOnly.index, window: humanOnly.window };
+  }
+  const first = blocking[0] as { window: GuiWindowInfo; index: number };
+  return { kind: "act", index: first.index, window: first.window, blockingCount: blocking.length };
+}
+
 export type MacHostRecoveryOptions = {
   /** The session the After Effects instance lives in. */
   readonly session: MacSession;
@@ -143,8 +182,8 @@ export class MacHostRecovery implements HostRecovery {
         evidence: `the target session could not be inspected: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
-    const blocking = windows.filter(isBlockingWindow);
-    if (blocking.length === 0) {
+    const choice = chooseRecoveryWindow(windows);
+    if (choice.kind === "none") {
       return {
         recovered: false,
         evidence:
@@ -152,7 +191,7 @@ export class MacHostRecovery implements HostRecovery {
           "reason, and nothing was clicked",
       };
     }
-    const window = blocking[0] as GuiWindowInfo;
+    const window = choice.window;
     const screenshotPath = join(this.#screenshotDir, `recovery-${context.requestId}.png`);
     let shot: string | undefined;
     try {
@@ -163,7 +202,7 @@ export class MacHostRecovery implements HostRecovery {
       // accessibility report is the primary evidence.
     }
     const description = describeWindow(window);
-    if (isHumanOnlyWindow(window)) {
+    if (choice.kind === "human-only") {
       return {
         recovered: false,
         evidence:
@@ -176,12 +215,16 @@ export class MacHostRecovery implements HostRecovery {
     }
     for (const title of this.#buttons) {
       const pressed = window.buttons.some((button) => button.title === title)
-        ? gui.pressButton(title)
-        : gui.pressButtonIn(null, title);
+        ? gui.pressButton(choice.index, title, window)
+        : gui.pressButtonIn(choice.index, title, window);
       if (pressed) {
+        const others =
+          choice.blockingCount > 1
+            ? ` (${choice.blockingCount - 1} other modal window(s) were left untouched)`
+            : "";
         return {
           recovered: true,
-          evidence: `closed "${description}" by pressing "${title}" in ${this.#session.username}'s session`,
+          evidence: `closed "${description}" by pressing "${title}" in ${this.#session.username}'s session${others}`,
           ...(shot === undefined ? {} : { screenshotPath: shot }),
           window: description,
         };
