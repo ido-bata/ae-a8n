@@ -6,7 +6,12 @@
  * session and no After Effects are needed to prove them.
  */
 import assert from "node:assert/strict";
+import { chmodSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+
+import { assertTrustedResult } from "../scripts/isolated-session/dispatch.mjs";
 
 import {
   assertJobSession,
@@ -14,6 +19,7 @@ import {
   assertOutcomeSession,
   assertResultSession,
   assertTargetSession,
+  jobFileIsTrusted,
   parseAeProcesses,
   parseTerminalResult,
   sessionFromOffstageStatus,
@@ -56,6 +62,18 @@ test("a result from the requested session is accepted", () => {
 
 test("the agent refuses a job that names another session", () => {
   assert.throws(() => assertJobSession({ session: { uid: 501 } }, aqua), /was not run/);
+});
+
+test("a job file is run only when it is attributable to the controller", () => {
+  const file = (over) => ({ isFile: () => true, uid: 501, mode: 0o100644, ...over });
+  assert.equal(jobFileIsTrusted(file({}), 501), true);
+  // Written by somebody else, or writable by group/others (so it could be
+  // replaced between the check and the read).
+  assert.equal(jobFileIsTrusted(file({ uid: 502 }), 501), false);
+  assert.equal(jobFileIsTrusted(file({ mode: 0o100666 }), 501), false);
+  assert.equal(jobFileIsTrusted(file({ mode: 0o100664 }), 501), false);
+  // A symlink's own stat is not a regular file.
+  assert.equal(jobFileIsTrusted(file({ isFile: () => false }), 501), false);
 });
 
 test("the agent runs a job that names its own session", () => {
@@ -122,6 +140,22 @@ test("an After Effects process of any user is recognised", () => {
   ]);
 });
 
+test("the After Effects binary is recognised under its application name", () => {
+  // The current release ships the executable as `AfterFX`, not
+  // `After Effects`; a miss here would let a run start beside a live AE.
+  const listing = [
+    "  4242   502 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/AfterFX",
+    "  4243   501 /usr/libexec/AfterFXHelper",
+  ].join("\n");
+  assert.deepEqual(parseAeProcesses(listing), [
+    {
+      pid: 4242,
+      uid: 502,
+      executable: "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/AfterFX",
+    },
+  ]);
+});
+
 test("a running After Effects stops the run, and nothing is killed", () => {
   assert.throws(
     () => assertNoRunningAfterEffects([{ pid: 4242, uid: 501, executable: "/Applications/After Effects" }]),
@@ -151,7 +185,25 @@ test("the job's own account of where it ran is read as data", () => {
   const result = parseTerminalResult(
     ["uid=502", "username=test", "asid=100040", "onconsole=0", "exit=0"].join("\n") + "\n",
   );
-  assert.deepEqual(result, { uid: 502, username: "test", asid: 100040, onConsole: false, exitCode: 0 });
+  assert.deepEqual(result, {
+    complete: true,
+    uid: 502,
+    username: "test",
+    asid: 100040,
+    onConsole: false,
+    exitCode: 0,
+  });
+});
+
+test("a half-written result is not read as a result", () => {
+  // The file is published by rename, but the controller may still catch a
+  // write in progress. Without a complete uid and exit, "no answer yet" must
+  // not turn into "uid -1, exit 1" and refuse or fail a run that is fine.
+  const partial = parseTerminalResult("uid=5\nusername=test\n");
+  assert.equal(partial.complete, false);
+  const done = parseTerminalResult("uid=502\nusername=test\nasid=100040\nonconsole=0\nexit=0\n");
+  assert.equal(done.complete, true);
+  assert.equal(parseTerminalResult("").complete, false);
 });
 
 test("a job that reports the console as its own is marked as such", () => {
@@ -169,6 +221,25 @@ test("a job that wrote nothing is not a result", () => {
 test("a failed job keeps its exit code", () => {
   const result = parseTerminalResult("uid=502\nusername=test\nasid=100040\nexit=7\n");
   assert.equal(result.exitCode, 7);
+});
+
+test("a result file is read only when it is attributable to the target user", () => {
+  const dir = mkdtempSync(join(tmpdir(), "a8n-result-"));
+  try {
+    const uid = process.getuid();
+    const path = join(dir, "job.result.json");
+    writeFileSync(path, "{}", { mode: 0o644 });
+    assert.doesNotThrow(() => assertTrustedResult(path, uid));
+    assert.throws(() => assertTrustedResult(path, uid + 1), /was written by uid/);
+    chmodSync(path, 0o666);
+    assert.throws(() => assertTrustedResult(path, uid), /writable by group or others/);
+    // lstat, not stat: a symlink to a file that would pass is still refused.
+    const link = join(dir, "link.result.json");
+    symlinkSync(path, link);
+    assert.throws(() => assertTrustedResult(link, uid), /not a regular file/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("offstage's own report is the session fact", () => {

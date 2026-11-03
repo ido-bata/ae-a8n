@@ -15,7 +15,7 @@
  * The other session has to exist because that user logged in.
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -90,6 +90,33 @@ export function consoleUid() {
   }
 }
 
+/**
+ * Whether a result file may be read.
+ *
+ * The results directory is 1777 so the target account can write there; that
+ * also means another local process could leave a plausible-looking file at a
+ * guessed job id. Only a regular file written by the target uid, with no
+ * group/other write bit, is read as that job's result. `lstat` (not `stat`),
+ * so a symlink planted at the result path is refused rather than followed.
+ */
+export function assertTrustedResult(path, targetUid) {
+  const info = lstatSync(path);
+  if (!info.isFile()) {
+    throw new Error(`the result ${path} is not a regular file; it is not trusted.`);
+  }
+  if (info.uid !== targetUid) {
+    throw new Error(
+      `the result ${path} was written by uid ${info.uid}, not by the target uid ${targetUid}; it is not trusted.`,
+    );
+  }
+  if ((info.mode & 0o022) !== 0) {
+    throw new Error(
+      `the result ${path} is writable by group or others, so it could have been changed after it was written; ` +
+        "it is not trusted.",
+    );
+  }
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.uid === undefined || !Number.isInteger(options.uid)) {
@@ -122,7 +149,11 @@ function main() {
       null,
       2,
     ),
-    { mode: 0o666 },
+    // The agent accepts only a file it can attribute: group/other write
+    // bits would let another local process replace the payload between the
+    // write and the agent's read. 0644 keeps it readable by the target user
+    // and writable only by this one.
+    { mode: 0o644 },
   );
   process.stderr.write(
     `[ae-a8n dispatch] job ${id} → ${session.username} (uid ${options.uid}, asid ${session.asid})\n`,
@@ -130,6 +161,7 @@ function main() {
   const deadline = Date.now() + options.timeoutMs;
   for (;;) {
     if (existsSync(resultPath)) {
+      assertTrustedResult(resultPath, options.uid);
       const result = JSON.parse(readFileSync(resultPath, "utf-8"));
       rmSync(jobPath, { force: true });
       assertResultSession(result, options.uid);

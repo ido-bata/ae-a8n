@@ -312,7 +312,11 @@ export function runTerminal(options, targetUid) {
       '  echo "asid=$asid"',
       '  echo "onconsole=$onconsole"',
       '  echo "exit=$code"',
-      '} > "$DONE"',
+      // Published by rename, so the controller never reads a half-written
+      // result. A direct write was measurable as a partial file under the
+      // 500 ms poll; the temporary name is in the same directory, so the
+      // rename stays atomic.
+      '} > "$DONE.tmp" && /bin/mv -f "$DONE.tmp" "$DONE"',
       "",
     ].join("\n"),
     { mode: 0o755 },
@@ -340,6 +344,18 @@ export function runTerminal(options, targetUid) {
   for (;;) {
     if (existsSync(donePath)) {
       const outcome = parseTerminalResult(readFileSync(donePath, "utf-8"));
+      // A file that exists is not necessarily finished; publish-by-rename
+      // makes this rare, and `complete` turns "rarely" into "never read as a
+      // result". Keep polling until every field is there.
+      if (!outcome.complete) {
+        if (Date.now() >= deadline) {
+          throw new Error(
+            `the job's result file never became complete: ${donePath}. No result is trusted.`,
+          );
+        }
+        execFileSync("sleep", ["0.5"]);
+        continue;
+      }
       // The console is checked again here, not only in the preflight: the
       // human may have switched to the target session while the job ran, and
       // a job that ran on the console desktop is not an isolated run.

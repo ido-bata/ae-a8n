@@ -135,7 +135,7 @@ export function parseAeProcesses(psOutput) {
       throw new Error("cannot parse the process list; refusing to start After Effects");
     }
     const executable = match[3];
-    if (/(?:^|\/)After Effects$/.test(executable)) {
+    if (/(?:^|\/)(?:After Effects|AfterFX)$/.test(executable)) {
       processes.push({ pid: Number(match[1]), uid: Number(match[2]), executable });
     }
   }
@@ -194,6 +194,18 @@ export function sessionFromOffstageStatus(status) {
 }
 
 /**
+ * Whether a `stat` of a job file may be run.
+ *
+ * The jobs directory is world-writable because the controller and the agent
+ * are different users; that also lets any local process write there. Only a
+ * regular file (not a symlink) owned by the controlling uid, with no
+ * group/other write bit, is trusted.
+ */
+export function jobFileIsTrusted(info, trustedUid) {
+  return info.isFile() && info.uid === trustedUid && (info.mode & 0o022) === 0;
+}
+
+/**
  * One shell argument, quoted for `sh`.
  *
  * The command that runs in the other session is written into a file that a
@@ -228,14 +240,26 @@ export function parseTerminalResult(text) {
       fields.set(match[1], match[2]);
     }
   }
-  const uid = Number(fields.get("uid"));
-  const asid = Number(fields.get("asid"));
-  const exitCode = Number(fields.get("exit"));
+  const uidText = fields.get("uid") ?? "";
+  const asidText = fields.get("asid") ?? "";
+  const exitText = fields.get("exit") ?? "";
+  // An absent field is not zero: `Number("")` is 0, which would read as a
+  // real uid. Missing or empty stays out of range.
+  const number = (text) => (text.trim().length === 0 ? Number.NaN : Number(text));
+  const uid = number(uidText);
+  const asid = number(asidText);
+  const exitCode = number(exitText);
   const onConsole = fields.get("onconsole");
   return {
+    // A file the controller has just seen is not necessarily a whole file:
+    // the job publishes it by rename, but a reader can still catch an older
+    // direct write. `complete` is false until every field is there, so a
+    // half-written result is waited for instead of being read as uid -1 or
+    // exit 1.
+    complete: uidText.trim().length > 0 && exitText.trim().length > 0,
     uid: Number.isInteger(uid) ? uid : -1,
     username: fields.get("username") ?? "unknown",
-    asid: Number.isInteger(asid) ? asid : null,
+    asid: asidText.trim().length > 0 && Number.isInteger(asid) ? asid : null,
     onConsole: onConsole === "1",
     exitCode: Number.isInteger(exitCode) ? exitCode : 1,
   };

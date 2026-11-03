@@ -19,25 +19,30 @@
  * Result:     <root>/results/<id>.result.json
  * Log:        <root>/logs/<id>.log
  */
-import { readdir, readFile, writeFile, mkdir, appendFile } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, appendFile, chmod, lstat, rename } from "node:fs/promises";
 import { execFile, execFileSync as syncExecFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 
-import { assertJobSession } from "./session-rules.mjs";
+import { assertJobSession, jobFileIsTrusted } from "./session-rules.mjs";
 
 const DEFAULT_ROOT = "/Users/Shared/ae-a8n";
 const POLL_MS = 500;
 
 function parseArgs(argv) {
   let root = DEFAULT_ROOT;
+  let allowUid;
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--root") {
       root = argv[index + 1];
       index += 1;
+    } else if (argv[index] === "--allow-uid") {
+      allowUid = Number(argv[index + 1]);
+      index += 1;
     }
   }
-  return { root: resolve(root) };
+  return { root: resolve(root), allowUid };
 }
 
 /** The login session this process is in, as macOS reports it. */
@@ -67,31 +72,55 @@ function readConsoleUid() {
 }
 
 async function main() {
-  const { root } = parseArgs(process.argv.slice(2));
+  const { root, allowUid } = parseArgs(process.argv.slice(2));
   const jobs = join(root, "jobs");
   const results = join(root, "results");
   const logs = join(root, "logs");
   for (const dir of [jobs, results, logs]) {
     await mkdir(dir, { recursive: true, mode: 0o1777 });
+    // mkdir applies the umask to the mode it is given, so 1777 would come
+    // out as 0755 and the controller could not write a job there.
+    await chmod(dir, 0o1777);
   }
   const session = readSession();
   const consoleUid = readConsoleUid();
+  if (session.uid === consoleUid) {
+    // Running jobs here would run them on the screen the human is looking
+    // at. That is the one thing this agent exists to avoid, so it refuses
+    // rather than warn: measured 2026-11-03, an agent left running in the
+    // console session would otherwise have executed any job it found.
+    process.stderr.write(
+      `[ae-a8n session agent] refusing to start: uid ${session.uid} owns the console. ` +
+        "This agent must run inside the isolated account's own GUI session. No job is run.\n",
+    );
+    process.exitCode = 1;
+    return;
+  }
+  // Jobs are accepted only from the account that drives the session (the
+  // console user, unless one is named). The jobs directory is world-writable
+  // so the other account can write there; without this check any local
+  // process could have code run as the test user.
+  const trustedUid = Number.isInteger(allowUid) ? allowUid : consoleUid;
+  if (!Number.isInteger(trustedUid) || trustedUid < 0) {
+    process.stderr.write(
+      "[ae-a8n session agent] refusing to start: the controlling uid could not be determined " +
+        "(pass --allow-uid). No job is run.\n",
+    );
+    process.exitCode = 1;
+    return;
+  }
   const banner = {
     startedAt: new Date().toISOString(),
     session,
     consoleUid,
+    trustedUid,
     isolated: session.uid !== consoleUid,
   };
   await writeFile(join(results, "agent.json"), JSON.stringify(banner, null, 2));
   process.stdout.write(
     `[ae-a8n session agent] uid ${session.uid} (${session.username}), session ${session.kind} asid ${session.asid}, ` +
-      `console uid ${consoleUid}. Waiting for jobs in ${jobs}\n`,
+      `console uid ${consoleUid}, accepting jobs from uid ${trustedUid}. Waiting for jobs in ${jobs}\n`,
   );
-  if (!banner.isolated) {
-    process.stdout.write(
-      "[ae-a8n session agent] WARNING: this is the console session. Stop and log in as the test user first.\n",
-    );
-  }
 
   for (;;) {
     let entries = [];
@@ -109,6 +138,12 @@ async function main() {
         // Already done; the controller has not collected it yet.
         continue;
       }
+      if (!(await isTrustedJob(jobPath, trustedUid))) {
+        process.stderr.write(
+          `[ae-a8n session agent] ignored ${entry}: it is not a file written by uid ${trustedUid}. No job was run.\n`,
+        );
+        continue;
+      }
       let job;
       try {
         job = JSON.parse(await readFile(jobPath, "utf-8"));
@@ -124,6 +159,9 @@ async function main() {
       }
       try {
         assertJobSession(job, session);
+        if (job?.id !== id) {
+          throw new Error(`the job file says id ${job?.id}, not ${id}; it was not run.`);
+        }
       } catch (error) {
         await writeResult(resultPath, {
           id,
@@ -141,7 +179,23 @@ async function main() {
 }
 
 async function writeResult(path, payload) {
-  await writeFile(path, JSON.stringify(payload, null, 2));
+  // Published by rename: the controller polls for this path and parses it as
+  // soon as it exists, so a direct write can be read half-finished.
+  const temporary = `${path}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
+  await writeFile(temporary, JSON.stringify(payload, null, 2), { mode: 0o644 });
+  await rename(temporary, path);
+}
+
+/**
+ * Whether a job file may be run. The rule itself is in session-rules.mjs,
+ * where it is checked without a second session; only the `lstat` is here.
+ */
+async function isTrustedJob(path, trustedUid) {
+  try {
+    return jobFileIsTrusted(await lstat(path), trustedUid);
+  } catch {
+    return false;
+  }
 }
 
 async function runJob({ id, job, resultPath, logs, session }) {
