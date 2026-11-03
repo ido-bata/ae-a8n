@@ -7,9 +7,22 @@
  * so no test needs a second user or a second session.
  */
 
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import { MacGuiRecovery, isBlockingWindow, parseUiListing } from "../src/driver/gui-recovery.js";
+import {
+  CLICK_AT_SCRIPT,
+  LIST_WINDOWS_SCRIPT,
+  MacGuiRecovery,
+  PRESS_BUTTON_SCRIPT,
+  PRESS_ESCAPE_SCRIPT,
+  isBlockingWindow,
+  parseUiListing,
+} from "../src/driver/gui-recovery.js";
 import { consoleSessionUid, parseLaunchctlGuiSession, parseLsappinfo } from "../src/driver/mac-session.js";
 import { RECOVERY_BUTTONS, describeWindow, isHumanOnlyWindow } from "../src/driver/recovery.js";
 
@@ -162,6 +175,43 @@ describe("what the recovery may press", () => {
 });
 
 describe("the GUI recovery", () => {
+  it("calls its own handler with `my`, inside the tell block that wraps it", () => {
+    // AppleScript sends an unqualified handler name to the application being
+    // told, so `a8nClean(ttext)` inside `tell application "System Events"`
+    // reaches System Events as a command it does not have and fails with
+    // "Can't continue a8nClean (-1708)". That is a runtime error, not a
+    // compile error, so osacompile cannot catch it — measured on a real
+    // host, 2026-11-03.
+    const text = LIST_WINDOWS_SCRIPT.join("\n");
+    // The only call site, so qualifying it is the whole fix.
+    expect(text.match(/a8nClean\(ttext\)/g)).toHaveLength(1);
+    expect(text).toContain("my a8nClean(ttext)");
+  });
+
+  it.runIf(process.platform === "darwin")("compiles every script it sends, host or not", () => {
+    // A script that does not compile is only discovered on a real host, at
+    // the moment a dialog is blocking After Effects. osacompile answers the
+    // same question without sending anything to any application.
+    const dir = mkdtempSync(join(tmpdir(), "a8n-osa-"));
+    try {
+      for (const [name, script] of Object.entries({
+        "list-windows": LIST_WINDOWS_SCRIPT,
+        "press-button": PRESS_BUTTON_SCRIPT,
+        "press-escape": PRESS_ESCAPE_SCRIPT,
+        "click-at": CLICK_AT_SCRIPT,
+      })) {
+        const source = join(dir, `${name}.applescript`);
+        writeFileSync(source, `${script.join("\n")}\n`);
+        expect(
+          () => execFileSync("osacompile", ["-o", join(dir, `${name}.scpt`), source], { stdio: "pipe" }),
+          `${name} does not compile`,
+        ).not.toThrow();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses the console session, which is the screen the user is looking at", () => {
     const uid = consoleSessionUid();
     if (uid < 0) {

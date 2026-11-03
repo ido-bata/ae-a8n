@@ -26,6 +26,7 @@ function parse(text) {
     const [x, y] = cursor.split(",").map((value) => Number(value));
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
     const keysField = parts[4] ?? "";
+    const gapMatch = /gapped\((\d+)\)/.exec(keysField);
     samples.push({
       time: Number(time),
       app,
@@ -33,6 +34,7 @@ function parse(text) {
       x,
       y,
       keysWatched: keysField === "keys=watched",
+      gapCount: gapMatch === null ? 0 : Number(gapMatch[1]),
       keyCount: parts[5] === undefined ? null : Number(parts[5]),
       programmaticCount: parts[6] === undefined ? null : Number(parts[6]),
     });
@@ -95,6 +97,12 @@ function main() {
     const programmatic = last.programmaticCount ?? 0;
     console.log(`key events seen: ${keys} (typed by the human)`);
     console.log(`key events posted programmatically: ${programmatic}`);
+  }
+  // Gaps: macOS disabled the tap at some point, so keys during that time
+  // were not seen. The counts above are then a lower bound, not a total.
+  const gaps = samples.reduce((most, sample) => Math.max(most, sample.gapCount), 0);
+  if (gaps > 0) {
+    console.log(`key input gaps: the tap was disabled ${gaps} time(s); keys typed while it was off were not seen`);
   }
 }
 

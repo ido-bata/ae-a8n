@@ -170,8 +170,11 @@ function splitNumbers(text: string | undefined): [number, number] | null {
  * The script is written as an `on run argv` handler so the pid and the
  * button title are arguments, never source: nothing that comes from the
  * outside is spliced into AppleScript.
+ *
+ * Exported so a test can hand it to `osacompile`: a script that does not
+ * compile fails only on a real host, at the moment a dialog needs closing.
  */
-const LIST_WINDOWS_SCRIPT = [
+export const LIST_WINDOWS_SCRIPT = [
   "on run argv",
   "  set targetPid to (item 1 of argv) as integer",
   "  set report to \"\"",
@@ -214,7 +217,12 @@ const LIST_WINDOWS_SCRIPT = [
   "            set ttext to (name of t) as string",
   "          end try",
   "        end if",
-  "        if ttext is not \"\" then set report to report & \"T|\" & a8nClean(ttext) & linefeed",
+  // `my` is required: inside a `tell application …` block an unqualified
+  // handler name is sent to that application as a command, and System Events
+  // answers "Can't continue a8nClean (-1708)". Measured on a real host,
+  // 2026-11-03, the first time the Automation grant let this script run at
+  // all.
+  "        if ttext is not \"\" then set report to report & \"T|\" & my a8nClean(ttext) & linefeed",
   "      end repeat",
   "      repeat with b in buttons of w",
   "        set btitle to \"\"",
@@ -250,7 +258,7 @@ const LIST_WINDOWS_SCRIPT = [
 ];
 
 /** Presses the button with the given title, in the process with the given pid. */
-const PRESS_BUTTON_SCRIPT = [
+export const PRESS_BUTTON_SCRIPT = [
   "on run argv",
   "  set targetPid to (item 1 of argv) as integer",
   "  set wanted to item 2 of argv",
@@ -278,7 +286,7 @@ const PRESS_BUTTON_SCRIPT = [
 ];
 
 /** Sends the escape key to the process with the given pid. */
-const PRESS_ESCAPE_SCRIPT = [
+export const PRESS_ESCAPE_SCRIPT = [
   "on run argv",
   "  set targetPid to (item 1 of argv) as integer",
   "  tell application \"System Events\"",
@@ -297,7 +305,7 @@ const PRESS_ESCAPE_SCRIPT = [
 ];
 
 /** Clicks at a point of the target session's screen. */
-const CLICK_AT_SCRIPT = [
+export const CLICK_AT_SCRIPT = [
   "on run argv",
   "  set x to (item 1 of argv) as integer",
   "  set y to (item 2 of argv) as integer",

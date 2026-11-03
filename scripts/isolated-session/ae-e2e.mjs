@@ -146,7 +146,10 @@ try {
   const versionAfter = await ae.version();
   record("responsive-after-dialog", versionAfter === ae.info().version ? "ok" : "failed", { version: versionAfter });
 
-  const closed = await ae.close();
+  // The test built a comp and rendered it, so the project has unsaved
+  // changes on purpose. `close()` refuses to discard them unless the caller
+  // says so — the refusal is the library working, not a failure of this run.
+  const closed = await ae.close({ unsavedChanges: "discard" });
   ae = null;
   record("close", closed.quit ? "ok" : "skipped", closed);
 
