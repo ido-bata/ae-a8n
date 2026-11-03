@@ -436,34 +436,48 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 
 つまり `src/driver/gui-recovery.ts` が `System Events` を使う以上、**Automation → System Events の許可は実機での前提**であり、代理が迂回できるものではない（ユーザー補助機能だけでは足りない）。代替は「AX だけを使う Swift ヘルパーを同梱する」ことだが、それはネイティブバイナリの配布・監査という別の判断になるため、この Issue では採らない。§8 の手順で人間が許可する。
 
-### 10.14 実機受入（2026-11-03 03:00–03:03 UTC、3回連続 PASS）
+### 10.14 実機受入（2026-11-03 03:10–03:12 UTC、最終版の E2E で3回連続 PASS）
 
-Automation → System Events を人間が許可した後、`test` セッションで通しの E2E を3回走らせ、**3回とも全ステップ `ok`**、レポートの `status` も `passed`。
+Automation → System Events を人間が許可した後、`test` セッションで通しの E2E を走らせ、最終版のスクリプトで **3回連続、9ステップ全部 `ok`**、レポートの `status` も `passed`（メニュー操作のステップを足す前の版でも 03:00–03:03 に3回連続 PASS）。
 
-| ステップ | 実測値（03:00:01–03:00:40 の回） |
+| ステップ | 実測値（03:10:07–03:10:47 の回） |
 | --- | --- |
 | 1 session | `uid 502` / `asid 109086` / `kind Aqua` / `consoleUid 501` / `isolated true` |
-| 2 launch | `26.5x89` (build 89)、12.4 s |
-| 3 ownership | `owned`（`pid 31481 is still the only instance`） |
+| 2 launch | `26.5x89` (build 89)、9.0 s |
+| 3 ownership | `owned`（`pid 98360 is still the only instance`） |
 | 4 scene | comp `A8N Isolated`、layer 1 |
 | 5 render | 320×180 PNG、3901 bytes |
-| 6 modal-dialog | **`ok` 21.3 s** — 20 s のタイムアウト後、対象セッション内の AX で `OK` を押し、**元の呼び出しがそのまま完了** |
-| 7 responsive-after-dialog | `26.5x89`（ダイアログの後も応答する） |
-| 8 close | `quit: true`、ownership `owned` |
+| 6 **menu** | `編集 › 複製`（メニュー名で解決 → id 2080）、28 ms、layer 1 → 2 |
+| 7 modal-dialog | **`ok` 21.1 s** — 20 s のタイムアウト後、対象セッション内の AX で `OK` を押し、**元の呼び出しがそのまま完了** |
+| 8 responsive-after-dialog | `26.5x89`（ダイアログの後も応答する） |
+| 9 close | `quit: true`、ownership `owned` |
 
-- 3回の所要は 03:00:01→03:00:40、03:01:12→03:01:56、03:02:46→03:03:30（いずれも UTC、レポートは `/Users/Shared/ae-a8n/run/e2e-report*.json`）。
+- 3回の所要は 03:10:07→03:10:47、03:10:57→03:11:35、03:11:36→03:12:14（UTC）。レポートは `/Users/Shared/ae-a8n/run/e2e-report-7.json` / `-8.json` / `-9.json`。
 - ダイアログ復帰の証拠（`/Users/Shared/ae-a8n/sessions/real-host/trace.jsonl`）:
   - `session.recover` … `recovered: true`、`closed "AXWindow/AXDialog "" [OK] says "ae-a8n: close me / missing value"" by pressing "OK" in test's session`、復帰前の画面は `artifacts/recovery-*.png` に保存
   - `ui.alert` … **1件だけ**、`recovered: true`、`dismissed: true`。**タイムアウトした呼び出しは再送されていない**（ダイアログも1枚しか出ていない）
 - 受入中に見つけて直したもの:
   - **`LIST_WINDOWS_SCRIPT` が実機で動かなかった**: `tell application "System Events"` の中で自前のハンドラを `my` 無しで呼んでいたため `Can't continue a8nClean (-1708)`。`my a8nClean(...)` に修正し、全 AppleScript を `osacompile` でコンパイルするテストを追加（`my` の欠落はコンパイルでは見つからないので、呼び出し箇所の検査も足した）。
   - **E2E の close が正しく拒否された**: テストが comp を作って render したので未保存変更があり、`close()` は `UnsavedChangesError` で拒否した（ライブラリは正しい）。テスト側を `close({ unsavedChanges: "discard" })` にした。
+  - **メニュー操作には「ビューアで開く」が要る**: スクリプトだけで作った comp は `app.project.activeItem` ではない。`openInViewer()` しないと `menu.execute` の before/after は `comp: null` になる（実測）。開いて `selectLayers` した後、`複製`（id 2080）で layer が 1 → 2 に増えた。
+  - **Edit › Undo はスクリプト由来の変更を取り消さなかった**（id 16 と、メニュー名から解決した 2371 の両方）。だからメニューのステップは undo/redo ではなく複製後のレイヤー数で判定する。`docs/verification.md` の #45 ではプラグインのコマンド（独自の undo グループを持つ）で undo/redo が効いている。**AE のメニューから undo できることと、スクリプトの変更を undo できることは別**。
   - **フォーカス監視が偽の「programmatic 入力」を数えていた**: タップが無効化されると macOS は `type=-2`（`tapDisabledByUserInput`）の疑似イベントを渡す。これをキーイベントとして読むと「プログラムが入力した」と誤記録する（実測: ソース pid が監視プロセス自身だった）。疑似イベントを除外し、タップが外れた回数を `keys=gapped(N)` として記録するようにした。
   - **`NSWorkspace.frontmostApplication` が常に `nil`**（`lsappinfo front` も NULL）。System Events からの1秒ポーリングにフォールバックして、実際の前面アプリ名を記録できるようにした。
 
-#### フォーカス非干渉の測定（2026-11-03 03:02:46–03:03:30 UTC）
+#### フォーカス非干渉の測定（2026-11-03 03:02–03:12 UTC、4つの窓）
 
-- **測定対象期間**: `focus-watch5` をコンソールセッション（uid 501）で起動した 03:02:46 UTC から、E2E のジョブ終了・監視停止までの 42.5 秒。この間に上の3回目の E2E（launch〜dialog recovery〜close）が全部入っている。
-- **観測方法**: `focus-watch5`（`scripts/isolated-session/focus-watch.swift`）が 0.2 秒ごとに (1) 前面アプリ名と pid、(2) カーソル座標、(3) キーイベント数とその出自（キーボード / プログラム投稿、疑似イベント除外）を記録。ログは `/Users/Shared/ae-a8n/run/focus-e2e-20261103T030246Z.log`、解析は `analyze-focus.mjs`。
-- **結果**: 150 サンプル。前面アプリは `ghostty` 95 / `ChatGPT` 55 で、**変化は1回**（+27.7 s に `ghostty → ChatGPT`。どちらも人間のアプリで、Ae はこのセッションに窓を持たない）。カーソル位置の変化 0。キー入力は**監視できていた**（`keys=watched`、ギャップ0）: 人間の入力 0、プログラム投稿 0。
-- **言えないこと**: この1回の前面変化を「人間が ⌘-Tab した」と証明はしていない。証拠は「Ae ではないアプリ間の変化で、カーソルもキーも動いていない」ところまで。また 1 回目の E2E（02:47）の窓では、上記の疑似イベントのバグにより「プログラム投稿 2」と誤記録されていた（修正後に再測したのがこの窓）。
+- **観測方法**: `focus-watch5`（`scripts/isolated-session/focus-watch.swift`）をコンソールセッション（uid 501）で起動し、0.2 秒ごとに (1) 前面アプリ名と pid（`NSWorkspace` が `nil` を返すため System Events から1秒ごとに補完）、(2) カーソル座標、(3) キーイベント数とその出自（キーボード / プログラム投稿）。疑似イベント（`type=-2`）はキーとして数えず、タップが外れた回数だけ `keys=gapped(N)` に残す。解析は `node scripts/isolated-session/analyze-focus.mjs <log>`。
+- **測定対象期間**（いずれも E2E の launch〜close が全部入っている）:
+
+| 窓 | 長さ | サンプル | 前面アプリ | フォーカス変化 | カーソル移動 | 人間のキー入力 | プログラム投稿 | タップのギャップ |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 03:02:46–03:03:30 | 42.5 s | 150 | ghostty / ChatGPT | 1（ghostty→ChatGPT） | 0 | 0 | 0 | 0 |
+| 03:10:07–03:10:47 | 44.2 s | 150 | ChatGPT のみ | 0 | 0 | 16 | 0 | 5 |
+| 03:10:57–03:11:35 | 37.4 s | 125 | ChatGPT のみ | 0 | 0 | 7 | 0 | 3 |
+| 03:11:36–03:12:14 | 38.0 s | 130 | ChatGPT のみ | 0 | 0 | 7 | 0 | 5 |
+
+- **読み方**: 通常ユーザーが **実際に文字入力しながら** E2E を走らせた窓（下3つ）で、前面アプリは変わらず、カーソルは1サンプルも動かず、プログラムからの入力は 0。Ae はこのセッションにプロセスも窓も持たない（Ae は uid 502 のセッションで動いている）。
+- **言えないこと**:
+  - タップが外れた時間（`tapDisabledByUserInput`、合計13回、いずれも直後に再有効化）はキーを見ていない。**キー数の 16/7/7 は下限**で、「0件」とは言わない。フォーカスとカーソルのサンプリング（0.2 s）はタップとは独立で、この間も止まっていない。
+  - 03:02 の窓の1回の前面変化を「人間が ⌘-Tab した」と証明はしていない。証拠は「Ae ではないアプリ間の変化で、カーソルもキーも動いていない」ところまで。
+  - 02:47 の最初の窓では、上記の疑似イベントのバグにより「プログラム投稿 2」と誤記録されていた（pid は監視プロセス自身。修正後に再測したのが上の表）。

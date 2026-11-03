@@ -10,7 +10,8 @@
  *
  * What it does:
  *   A. launches After Effects in this session, reads its version and who
- *      owns it, builds a scene, renders a frame, and quits;
+ *      owns it, builds a scene, renders a frame, runs a menu command
+ *      (Edit › Duplicate) and quits;
  *   B. raises a native modal dialog, lets the call time out, and lets the
  *      GUI fallback close it — then checks that the original call finished
  *      instead of being sent a second time;
@@ -82,6 +83,12 @@ function record(name, status, detail) {
 
 function finish(status, error) {
   report.finishedAt = new Date().toISOString();
+  // A step that failed is a failed report, whatever path reached here.
+  const failedSteps = report.steps.filter((step) => step.status !== "ok");
+  if (status === "passed" && failedSteps.length > 0) {
+    status = "failed";
+    error = error ?? new Error(`${failedSteps.map((step) => step.name).join(", ")} did not pass`);
+  }
   report.status = status;
   if (error !== undefined) {
     report.error = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
@@ -94,6 +101,10 @@ function finish(status, error) {
   }
 }
 
+// Edit › Duplicate, the id AE 26.5 reports on this machine. It is only the
+// fallback: the command is resolved by its menu text first, which is what a
+// caller should do.
+const DUPLICATE_COMMAND_ID = 2080;
 const { AfterEffects } = await import(join(options.pkg, "dist", "index.js"));
 
 let ae = null;
@@ -127,6 +138,34 @@ try {
     bytes: statSync(frame.path).size,
     width: frame.width,
     height: frame.height,
+  });
+
+  // Menu operations through the same public API a caller uses: Edit ›
+  // Duplicate on the selected layer, resolved by its menu text and run in
+  // this host. Undo is not used to reverse it — measured here, 2026-11-03:
+  // AE's Edit › Undo does not take back a change a script made (ids 16 and
+  // 2371 both left the duplicate in place), so the step checks the layer
+  // count instead and leaves the duplicate for the close.
+  //
+  // The comp has to be opened in a viewer and the layer selected first: a
+  // comp that was only created by script is not `app.project.activeItem`
+  // (the same reason docs/verification.md records `openInViewer` for #45).
+  await comp.openInViewer();
+  await comp.selectLayers(["Label"]);
+  const layersBefore = (await comp.layers()).length;
+  let duplicate;
+  try {
+    duplicate = await ae.menuCommand("複製");
+  } catch {
+    duplicate = await ae.menuCommand(DUPLICATE_COMMAND_ID);
+  }
+  const duplicateRun = await duplicate.execute();
+  const layersAfter = (await comp.layers()).length;
+  record("menu", layersAfter === layersBefore + 1 ? "ok" : "failed", {
+    commandId: duplicate.id,
+    ms: duplicateRun.durationMs,
+    layersBefore,
+    layersAfter,
   });
 
   // ---------------------------------------------------------------- B ----
