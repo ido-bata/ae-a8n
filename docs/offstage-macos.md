@@ -488,15 +488,15 @@ Automation → System Events を人間が許可した後、`test` セッショ�
 
 ### 10.15 独立レビューで見つかった問題と修正（2026-11-03、実装＋自動テストまで）
 
-実機受入の後、差分に対して独立レビューを行い、10件の問題が見つかった。すべて修正した。ただし**修正後のコードは実機で走らせていない**（§10.14 の6回の実機 PASS は `59ef4e2` の pkg、つまり修正前のコード）。この節の内容の検証レベルは **`implemented` + `automated test`** であり、`verified on real host` ではない。
+実機受入の後、差分に対して独立レビューを行い、10件の問題が見つかった。すべて修正した。§10.14 の6回の実機 PASS は `59ef4e2` の pkg（修正前）に対するもので、修正後は pkg を `a11b969` で作り直して**1回だけ実機で通した**（下の「修正後の実機確認」）。その1回で発火しなかった経路は実機未検証のままで、下の表の検証レベルはその1回を反映している。
 
 | # | 問題 | 修正 | 検証レベル |
 | --- | --- | --- | --- |
 | 1 | `session-agent` はコンソールセッションにいる場合も警告だけで動き続け、置かれた job をコンソールで実行し得た | コンソール所有 uid と同じなら**起動を拒否**（`exit 1`） | automated test（判定規則）＋実装 |
 | 2 | jobs ディレクトリは 1777 なので、任意のローカルプロセスが job を置いて **test ユーザーでコードを実行**できた | 実行するのは**制御側 uid が所有し group/other 書込不可の通常ファイル**のみ（`jobFileIsTrusted`）。job の `id` と `session.uid` も照合 | automated test |
 | 3 | 結果ファイルも 1777 の中で、誰が書いたかを確かめずに JSON を読んでいた（symlink も辿っていた） | `lstat` で**通常ファイル（symlink でない）・対象 uid 所有・group/other 書込不可**を確認してから読む | automated test |
-| 4 | 結果ファイルの書き込みが直接書きで、読む側が**途中の内容**を uid -1 / exit 1 として解釈し得た | 一時ファイル＋`rename` で公開。ターミナル経路の `.done` も同様。読み側は `complete`（uid と exit が揃う）まで待つ | automated test |
-| 5 | GUI 復帰が**プロセスの全ウィンドウを走査**して最初の一致ボタンを押していた。サインイン窓の上に通常ダイアログがあると、その窓に当たり得た | 押下は**列挙で選んだ1枚（1始まりの index）に限定**。押下直前に窓の title/subrole を照合し、違えば `CHANGED` で押さない | automated test（規則）＋ osacompile ＋実装 |
+| 4 | 結果ファイルの書き込みが直接書きで、読む側が**途中の内容**を uid -1 / exit 1 として解釈し得た | 一時ファイル＋`rename` で公開。ターミナル経路の `.done` も同様。読み側は `complete`（uid と exit が揃う）まで待つ | automated test ＋ `rename` 公開は実機（`complete` 待機の発火は未観測） |
+| 5 | GUI 復帰が**プロセスの全ウィンドウを走査**して最初の一致ボタンを押していた。サインイン窓の上に通常ダイアログがあると、その窓に当たり得た | 押下は**列挙で選んだ1枚（1始まりの index）に限定**。押下直前に窓の title/subrole を照合し、違えば `CHANGED` で押さない | automated test ＋ osacompile ＋**実機で subrole 照合つき押下が成功**（title 照合は空 title のため未発火） |
 | 6 | 人間用の窓の判定は**先頭の遮断窓だけ**に掛かっており、通常のダイアログの後ろにサインイン窓があると、前の窓の OK を押して先へ進んでしまった | **遮っている窓の1枚でも人間用なら、どこにも押さない**（日本語 UI の語も既に照合対象） | automated test |
 | 7 | `/dev/console` の所有者が読めない（-1）と「コンソールではない」と同義に扱われ、復帰が人間の画面に届き得た | 読めない場合は**復帰を拒否**（`allowConsoleSession` を明示した呼び出しだけが対象外） | automated test |
 | 8 | 復帰後にホストが**エラーで答えた**場合、そのエラーを捨てて元の `TimeoutError` を報告していた（再送を誘う） | ホストのエラーをそのまま投げる。再送はしない | automated test |
@@ -505,4 +505,25 @@ Automation → System Events を人間が許可した後、`test` セッショ�
 
 追加したテスト: `test/isolated-session.check.mjs`（34 件）に job file / 結果ファイルの信頼判定・`AfterFX` の認識・不完全な結果の待機、`test/recovery.test.ts` にウィンドウ選択規則と「復帰後のホストエラー」、`test/macos-session.test.ts` に押下直前の窓照合と `allowConsoleSession`。`mise run check` は **vitest 496 passed / 3 skipped、node --test 34 passed** で通る。
 
-- 未検証として残ること: 修正後の `session-agent` / `dispatch` / ターミナル経路を**実機の2セッションで走らせていない**。特に #2 の job file 判定と #4 の `complete` 待機は、実機の 1777 ディレクトリと umask の組み合わせで確認していない。次の実機受入で確認する。
+- 未検証として残ること: ネイティブ経路（`session-agent` / `dispatch`）は修正後に実機で走らせていない。#2 の job file 判定と #3 の結果判定は、実機の 1777 ディレクトリと umask の組み合わせで確認していない。#4 の `complete` 待機も、実際に不完全なファイルを掴んだ場面では観測していない。ターミナル経路の1回（下記）以外は次の実機受入で確認する。
+
+#### 修正後の実機確認（2026-11-03 03:42 UTC、1回）
+
+pkg を `a11b969` で作り直し（`/Users/Shared/ae-a8n/pkg/COMMIT`）、**修正後のランナーと dist** で E2E を1回走らせた。9ステップ全部 `ok`、`status: passed`。`test` セッション（uid 502 / asid 109086、コンソール uid 501）、レポートは `/Users/Shared/ae-a8n/run/e2e-report-review.json`。
+
+| ステップ | 実測値 |
+| --- | --- |
+| 1 session | `isolated: true` |
+| 2 launch | `26.5x89` (build 89)、9.0 s |
+| 3 ownership | `owned`（`pid 25402 is still the only instance`） |
+| 4 scene | comp `A8N Isolated`、layer 1 |
+| 5 render | 320×180 PNG、3901 bytes |
+| 6 menu | `複製`（id 2080）、24 ms、layer 1 → 2 |
+| 7 modal-dialog | `ok` 21.3 s — 20 s のタイムアウト後、**新しい押下スクリプト**（window index + subrole 照合）で `OK` を押し、**元の呼び出しがそのまま完了** |
+| 8 responsive-after-dialog | `26.5x89` |
+| 9 close | `quit: true`、ownership `owned` |
+
+- この1回で実機確認できた修正: ターミナル経路の結果公開（rename で `.done` を公開し、`complete` を待つ）、`parseTerminalResult` / `shellQuote` / preflight の新コード、**押下直前の window 照合**（trace: `closed "AXWindow/AXDialog "" ..." by pressing "OK"`、`expectedSubrole=AXDialog` が一致）。`ui.alert` は1件、再送なし。
+- この1回では**発火していない**ため実機未確認のままの修正: 人間用ウィンドウが混在する場合の全面拒否、`/dev/console` が読めない場合の拒否、復帰後にホストがエラーを返す経路、`launchctl` の "Operation not permitted" の案内、jobs / results の信頼判定（ネイティブ経路。この実測はターミナル経路）、`AfterFX` の認識（実行前に Ae が無かったため一度も一致判定が走っていない）。
+- 実行後に残ったのは Adobe のヘルパー（`crashpad_handler` / `dynamiclinkmanager` / `TeamProjectsLocalHub`）だけ。Ae 本体は終了しており、ヘルパーは強制終了していない（§SKILL の記載どおり自然終了を待つ）。
+- フォーカス測定はこの1回では行っていない。§10.14 の3窓が最後の測定で、修正後のコードでのフォーカス再測定は**未実施**。
