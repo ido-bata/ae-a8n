@@ -39,6 +39,7 @@ Requirements on the machine that runs After Effects:
 
 - After Effects installed in the default location (`/Applications/Adobe After Effects <version>/` on macOS), or pass `installDir`.
 - **Settings → Scripting & Expressions → Allow Scripts to Write Files and Access Network** enabled. Without it the first call times out instead of failing fast.
+- On **After Effects 2026 (26.5)** the host also needs AE's approval to run scripts from the driver's folder: AE refuses the first `DoScriptFile` with `-1708` and shows a modal that points at its Scripting & Expressions panel. Approve the session's `staging/` folder there (the folder holds the entry script and the staged host script); the approval covers later calls.
 
 ## What it does to your After Effects
 
@@ -115,6 +116,15 @@ await ae.close({ unsavedChanges: "discard" });
 A command that opens a modal dialog blocks After Effects until a person
 dismisses it, and the call times out; a plugin driven this way needs a mode
 that reports instead of alerting.
+
+On macOS, do **not** recover by moving the physical user's cursor or clicking
+through the user's desktop. A recovery may only act inside the session the
+After Effects instance lives in, and it must never press a sign-in or licence
+button. The [macOS isolation notes](https://github.com/ido-bata/ae-a8n/blob/main/docs/offstage-macos.md)
+describe the separate-user session this needs (`offstage`'s session lane, or an
+equivalent native runner), its safety gates, and what is still unverified. It
+is **opt-in** and not verified against real AE yet (see
+[#49](https://github.com/ido-bata/ae-a8n/issues/49)).
 
 ### `@ido-bata/ae-a8n/testing`
 

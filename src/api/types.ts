@@ -251,4 +251,26 @@ export type LaunchOptions = {
    * rejects with `HostNotOwnedError` and leaves the running AE untouched.
    */
   readonly hostEnvironment?: Readonly<Record<string, string>>;
+  /**
+   * The macOS login session the After Effects lives in.
+   *
+   * The default is the session this process runs in. A test that runs inside
+   * an isolated OS user's session names that user here: the Apple Event is
+   * then delivered inside that user's session, the process list is scoped to
+   * it, and the console user's After Effects is neither addressed nor quit.
+   *
+   * With `recover`, a timed-out call is followed by a GUI fallback that
+   * closes what is blocking the host — *inside that session only*. The
+   * operation that timed out is never sent again.
+   */
+  readonly session?: {
+    /** The OS user whose login session owns the After Effects. */
+    readonly uid: number;
+    /**
+     * Whether a modal dialog may be closed by GUI automation when it blocks
+     * the host. Off by default: a dialog that asks for a decision belongs to
+     * a human.
+     */
+    readonly recover?: boolean;
+  };
 };
