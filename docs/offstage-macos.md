@@ -190,7 +190,15 @@ Adobe公式（別OSアカウント × 同一PC）: 追加のデバイスアク�
 
 ## 8. 人間が実行すること（この Mac で必要な手順）
 
-このMacの現在地（2026-11-02 の最後の確認時点）: `test` (uid 502) のアカウントは存在するが、**いまは GUI セッションが無い**（`offstage session status --user test` が `available: false`「no logged-in GUI session」、`/dev/console` の所有者は uid 501 の `rebui`）。§10.11 の実測時（asid 107488、コンソール所有者は uid 501 のまま）には `test` の Aqua セッションが存在したが、その後セッションごと消えた。**ステップ 1（高速ユーザー切替で `test` にログイン）が，其余すべての前提**——ステップ 2 のプロンプト（`test` セッションの画面に出る）も，Ae の偏好設定（`test` ユーザーの `~/Library/Preferences/...`）も，すべて `test` セッション内にしか存在しないため。
+このMacの現在地（2026-11-03 11:37Z の実測）: `test` (uid 502) の Aqua セッションは**存在する**（asid 109086、コンソール所有者は uid 501 の `rebui` のまま。§10.12）。`test` セッションの Terminal から測った許可の状態は:
+
+| 権限 | 実測 | 根拠 |
+| --- | --- | --- |
+| 画面収録（Screen Recording） | 許可済み | `offstage session status --user test`（§10.7） |
+| ユーザー補助機能（Accessibility） | **許可済み** | `AXIsProcessTrusted()` → `true`（`test` セッション、2026-11-03 11:37Z） |
+| 自動化（Automation）→ System Events | **未許可** | `osascript -e 'tell application "System Events" …'` → `-1743`（同上。画面にプロンプトは出ていない） |
+
+`test` セッションが消えると、そのセッションにしかないもの（プロンプト、Ae の環境設定）がすべて失われる。**ステップ 1（高速ユーザー切替で `test` にログイン）が、残りすべての前提**。ログアウトではなく、高速ユーザー切替で戻ること。
 
 なお `offstage session status --user test` が **available: false**（helper セッション未ログイン）と出るのは、**terminal 基版は offstage の helper セッションを必要としない**ので問題ない。共有済み（`/Users/Shared/ae-a8n`）。
 
@@ -203,14 +211,15 @@ Adobe公式（別OSアカウント × 同一PC）: 追加のデバイスアク�
    /Users/Shared/ae-a8n/run/ax-grant.command
    ```
 
-   macOS の **設定に「ターミナル」の項目は無い**。ユーザー補助機能（Accessibility）と自動化（Automation）のリストには、**，要求したアプリしか現れない**。だから「リストでターミナルをオンにする」という操作は存在せず、**ターミナル自身から要求してプロンプトを出し**，それを許可する形になる。このスクリプトは:
-   - `AXIsProcessTrustedWithOptions(prompt: true)` を呼ぶ → **`ターミナルはこのコンピューターを制御したい`** というダイアログが **`test` セッションの画面**に出る
-   - `osascript → System Events` を呼ぶ → **`ターミナルが System Events を制御したい`** というダイアログが同上
+   macOS の **設定に「ターミナル」の項目は無い**。ユーザー補助機能（Accessibility）と自動化（Automation）のリストには、**要求したアプリしか現れない**。だから「リストでターミナルをオンにする」という操作は存在せず、**ターミナル自身から要求してプロンプトを出し**、それを許可する形になる。このスクリプトは:
+   - `AXIsProcessTrustedWithOptions(prompt: true)` を呼ぶ → **`ターミナルはこのコンピューターを制御したい`** というダイアログが **`test` セッションの画面**に出る（**すでに許可済みなので出ない**）
+   - `osascript → System Events` を呼ぶ → **`ターミナルが System Events を制御したい`** というダイアログが同上（**許可が下りていれば `-1743` は出ず、`count processes` が数値を返す**）
    - 出たら2つとも **OK** を押す。押すと `test` ユーザーの設定のユーザー補助機能/自動化のリストに **`ターミナル`** が現れ、**その子孫（osascript / node）にも継承される**（§10.2）。
    - 実行後、同じ Terminal で `ax-grant-all.command` を走らせると `AX_TRUSTED` と `count processes` の結果が出るので、許可できたか確認できる。
    - **対象は `offstage-sessiond` ではなく `ターミナル`**（§10.2）。`offstage-sessiond` は bundle が無く設定に現れない。
    - 画面収録（Screen Recording）は §10.7 のとおり**許可済み**。
    - 自動化（Automation）→ **After Effects は不要**（§10.9: `count documents` が `0` を返す。TCC は壁ではない）。必要なのは → System Events だけ（GUI フォールバックが AX を通すため）。
+   - **プロンプトが出ないまま `-1743` が続く場合**は、その要求は以前に「許可しない」で決着している。`test` セッションで `tccutil reset AppleEvents com.apple.Terminal` を実行してから、`ax-grant.command` をもう一度走らせる（`tccutil` は macOS 標準のコマンドで、TCC データベースを直接編集しない）。プロンプトは **`test` セッションの画面にしか出ない**ので、その画面が見えている状態で押す。
 3. **Ae 2026 → 設定 → スクリプトとエクスプレッション**で、driver が Ae に読ませるフォルダを許可する（§10.10）。許可的原因是 Ae が `DoScriptFile` を **`-1708`** で拒否すること（実測）。
    - 追加するフォルダ: **`/Users/Shared/ae-a8n/sessions/real-host/staging`**（`a8n-host.js` と `a8n-json.js` と `*.entry.jsx` が入るフォルダ）
    - 「スクリプト」**と**「ファイルへの書き込みとネットワークアクセス」の両方を許可する。
@@ -411,3 +420,16 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 
 - `offstage session screenshot --user test` はこの状態で撮れる（3420×2224 px, 2 px/pt）。写るのは `test` セッションの画面。
 - **`offstage run --lane session` で走らせたコマンドは Terminal の子ではない**ため、Terminal に与えた許可を継承しない（実測: `-1743` / `-1712` で止まる）。許可が要る処理は **terminal 基版**（`run-in-isolated-session.mjs` の既定）で走らせること。
+
+### 10.13 GUI フォールバックの許可要件（2026-11-03 11:37Z の実測）
+
+`test` セッションの Terminal から測った、GUI フォールバックに必要な許可:
+
+| 測ったこと | 結果 |
+| --- | --- |
+| `AXIsProcessTrusted()`（`test` セッション、Terminal の子） | **`true`** — ユーザー補助機能は許可済み |
+| `osascript -e 'tell application "System Events" to get name of first process'` | **`-1743`**（`System EventsにApple Eventsを送信する権限がありません`）。画面にプロンプトは出ていない |
+| `AXUIElementCopyAttributeValue`（Swift ヘルパー `ax-windows`） | Ae の窓を列挙できる。**ユーザー補助機能だけで足りる** |
+| 同じ呼び出しを JXA（`osascript -l JavaScript` から `ObjC.import('ApplicationServices')`）で | `AXIsProcessTrusted()` は呼べるが、`AXUIElementCopyAttributeValue` の out 引数（`CFArrayRef`）は JXA の ObjC ブリッジで `Ref` のまま返り、`ObjC.unwrap` / `CFArrayGetCount` のどちらでも取り出せない（`Ref has incompatible type`）。**現行の osascript だけでの AX 実装は成立しない** |
+
+つまり `src/driver/gui-recovery.ts` が `System Events` を使う以上、**Automation → System Events の許可は実機での前提**であり、代理が迂回できるものではない（ユーザー補助機能だけでは足りない）。代替は「AX だけを使う Swift ヘルパーを同梱する」ことだが、それはネイティブバイナリの配布・監査という別の判断になるため、この Issue では採らない。§8 の手順で人間が許可する。
