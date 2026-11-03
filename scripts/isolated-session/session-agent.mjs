@@ -19,13 +19,18 @@
  * Result:     <root>/results/<id>.result.json
  * Log:        <root>/logs/<id>.log
  */
-import { readdir, readFile, writeFile, mkdir, appendFile, chmod, lstat, rename, stat } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, appendFile, chmod, lstat, rename, rm, stat } from "node:fs/promises";
 import { execFile, execFileSync as syncExecFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { assertJobSession, jobFileIsTrusted } from "./session-rules.mjs";
+import {
+  assertJobSession,
+  jobFileIsTrusted,
+  sharedDirIsUsable,
+  sharedDirIsUsableForOthers,
+} from "./session-rules.mjs";
 
 const DEFAULT_ROOT = "/Users/Shared/ae-a8n";
 const POLL_MS = 500;
@@ -76,9 +81,6 @@ async function main() {
   const jobs = join(root, "jobs");
   const results = join(root, "results");
   const logs = join(root, "logs");
-  for (const dir of [jobs, results, logs]) {
-    await ensureSharedDir(dir);
-  }
   const session = readSession();
   const consoleUid = readConsoleUid();
   if (session.uid === consoleUid) {
@@ -106,6 +108,11 @@ async function main() {
     process.exitCode = 1;
     return;
   }
+  // Only now, having refused every reason to not run at all, touch the
+  // shared directories.
+  for (const dir of [jobs, results, logs]) {
+    await ensureSharedDir(dir);
+  }
   const banner = {
     startedAt: new Date().toISOString(),
     session,
@@ -113,11 +120,27 @@ async function main() {
     trustedUid,
     isolated: session.uid !== consoleUid,
   };
-  await writeFile(join(results, "agent.json"), JSON.stringify(banner, null, 2));
+  // Diagnostic only: no job depends on it. A file the other account left
+  // behind in the sticky results directory cannot be replaced from here
+  // (EACCES), and that must not stop the agent.
+  try {
+    await writeResult(join(results, "agent.json"), JSON.stringify(banner, null, 2));
+  } catch (error) {
+    process.stderr.write(
+      `[ae-a8n session agent] could not write the startup banner: ${
+        error instanceof Error ? error.message : String(error)
+      }. Continuing.\n`,
+    );
+  }
   process.stdout.write(
     `[ae-a8n session agent] uid ${session.uid} (${session.username}), session ${session.kind} asid ${session.asid}, ` +
       `console uid ${consoleUid}, accepting jobs from uid ${trustedUid}. Waiting for jobs in ${jobs}\n`,
   );
+
+  // Files that were looked at and refused. Without this, a foreign file in the
+  // shared directory (a symlink, or one writable by everyone) is re-checked
+  // and re-reported every poll, and the log fills with the same line forever.
+  const ignored = new Set();
 
   for (;;) {
     let entries = [];
@@ -135,7 +158,11 @@ async function main() {
         // Already done; the controller has not collected it yet.
         continue;
       }
+      if (ignored.has(entry)) {
+        continue;
+      }
       if (!(await isTrustedJob(jobPath, trustedUid))) {
+        ignored.add(entry);
         process.stderr.write(
           `[ae-a8n session agent] ignored ${entry}: it is not a file written by uid ${trustedUid}. No job was run.\n`,
         );
@@ -181,7 +208,7 @@ async function main() {
  */
 async function ensureSharedDir(dir) {
   await mkdir(dir, { recursive: true, mode: 0o1777 });
-  if (((await stat(dir)).mode & 0o777) === 0o1777) {
+  if (sharedDirIsUsable((await stat(dir)).mode)) {
     return;
   }
   try {
@@ -190,10 +217,10 @@ async function ensureSharedDir(dir) {
     if (error?.code !== "EPERM") {
       throw error;
     }
-    if (((await stat(dir)).mode & 0o002) === 0) {
+    if (!sharedDirIsUsableForOthers((await stat(dir)).mode)) {
       throw new Error(
-        `the shared directory ${dir} belongs to another account and is not writable by others, so results ` +
-          "could not be written there. No job is run.",
+        `the shared directory ${dir} belongs to another account and is not writable-and-sticky for others, ` +
+          "so results could not be written there safely. No job is run.",
       );
     }
   }
@@ -203,8 +230,15 @@ async function writeResult(path, payload) {
   // Published by rename: the controller polls for this path and parses it as
   // soon as it exists, so a direct write can be read half-finished.
   const temporary = `${path}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
-  await writeFile(temporary, JSON.stringify(payload, null, 2), { mode: 0o644 });
-  await rename(temporary, path);
+  try {
+    await writeFile(temporary, JSON.stringify(payload, null, 2), { mode: 0o644 });
+    await rename(temporary, path);
+  } catch (error) {
+    // A rename over a file the other account owns is refused in a sticky
+    // directory. Do not leave the half-written temporary behind.
+    await rm(temporary, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 /**

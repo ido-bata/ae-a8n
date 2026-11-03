@@ -15,11 +15,18 @@
  * The other session has to exist because that user logged in.
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assertOutcomeSession, assertResultSession, assertTargetSession } from "./session-rules.mjs";
+import {
+  assertOutcomeSession,
+  assertResultSession,
+  assertTargetSession,
+  sharedDirIsUsable,
+  sharedDirIsUsableForOthers,
+  targetSessionFrom,
+} from "./session-rules.mjs";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_ROOT = "/Users/Shared/ae-a8n";
@@ -68,7 +75,13 @@ export function parseArgs(argv) {
 /** The login session of a uid, or null when that user is not logged in. */
 export function readGuiSession(uid) {
   try {
-    const text = execFileSync("launchctl", ["print", `gui/${uid}`], { encoding: "utf-8" });
+    const text = execFileSync("launchctl", ["print", `gui/${uid}`], {
+      encoding: "utf-8",
+      // Captured, not inherited: from the console this call is refused, and
+      // launchctl's complaint belongs in our error message, not on the
+      // user's terminal.
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     const asid = /\b(?:gui )?asid = (\d+)/.exec(text);
     const kind = /^\s*session = (\w+)\s*$/m.exec(text);
     return {
@@ -90,13 +103,79 @@ export function consoleUid() {
   }
 }
 
+/** Why `launchctl print gui/<uid>` failed, or null when it did not. */
+export function guiDomainError(uid) {
+  try {
+    execFileSync("launchctl", ["print", `gui/${uid}`], { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] });
+    return null;
+  } catch (error) {
+    const text = error?.stderr;
+    return (typeof text === "string" && text.trim().length > 0 ? text : String(error?.message ?? error)).trim();
+  }
+}
+
+/** The account name of a uid, or null. */
+function usernameOf(uid) {
+  try {
+    return execFileSync("id", ["-un", String(uid)], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+/** offstage's report of an account's session, or null when it cannot be had. */
+export function readOffstageStatus(username) {
+  try {
+    const text = execFileSync("offstage", ["session", "status", "--user", username, "--json"], {
+      encoding: "utf-8",
+      timeout: 30_000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end < 0) {
+      return null;
+    }
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The target session, as far as this controller can see it.
+ *
+ * From the console session, another user's launchd domain is unreadable
+ * ("Operation not permitted"), so the launchd document alone would report a
+ * logged-in account as absent. offstage can see the session from inside it.
+ *
+ * offstage's answer is used only when it says the session is there. Its
+ * "unavailable" is about offstage's own helper daemon, not about whether the
+ * account has a GUI session, so it is not treated as an answer.
+ *
+ * offstage's session number is not launchd's asid (docs/offstage-macos.md
+ * §10.12), so it is not carried as one.
+ */
+export function readTargetSession(uid) {
+  const username = usernameOf(uid);
+  const status = username === null ? null : readOffstageStatus(username);
+  return targetSessionFrom(status, readGuiSession(uid));
+}
+
 /** The console session's id, read from the console owner's launchd domain. */
 export function consoleAsid(uid) {
   if (!Number.isInteger(uid) || uid < 0) {
     return null;
   }
   try {
-    const text = execFileSync("launchctl", ["print", `gui/${uid}`], { encoding: "utf-8", timeout: 10_000 });
+    const text = execFileSync("launchctl", ["print", `gui/${uid}`], {
+      encoding: "utf-8",
+      timeout: 10_000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     const asid = /asid = (\d+)/.exec(text);
     return asid === null ? null : Number(asid[1]);
   } catch {
@@ -142,7 +221,7 @@ export function assertTrustedResult(path, targetUid) {
  */
 function ensureSharedDir(dir) {
   mkdirSync(dir, { recursive: true, mode: 0o1777 });
-  if ((statSync(dir).mode & 0o777) === 0o1777) {
+  if (sharedDirIsUsable(statSync(dir).mode)) {
     return;
   }
   try {
@@ -152,12 +231,13 @@ function ensureSharedDir(dir) {
       throw error;
     }
     // Owned by the other account, so it cannot be fixed from here. It is
-    // usable only if that account already made it writable by everyone; the
-    // attribution checks then decide what may be read from it.
-    if ((statSync(dir).mode & 0o002) === 0) {
+    // usable only if that account already made it writable by everyone *and*
+    // sticky, so the other account cannot delete or replace files that are not
+    // its own; the attribution checks then decide what may be read from it.
+    if (!sharedDirIsUsableForOthers(statSync(dir).mode)) {
       throw new Error(
-        `the shared directory ${dir} belongs to another account and is not writable by others, so the job ` +
-          "could not be written there. Nothing was run.",
+        `the shared directory ${dir} belongs to another account and is not writable-and-sticky for others, ` +
+          "so the job could not be written there safely. Nothing was run.",
       );
     }
   }
@@ -171,7 +251,19 @@ function main() {
   if (options.command.length === 0) {
     throw new Error("pass the command to run after --");
   }
-  const session = assertTargetSession(readGuiSession(options.uid), options.uid, consoleUid());
+  const session = readTargetSession(options.uid);
+  if (session === null) {
+    // Neither offstage nor launchd could describe the session. Say which, so
+    // "cannot read another user's launchd domain" is not reported as "that
+    // user is not logged in".
+    const reason = guiDomainError(options.uid);
+    throw new Error(
+      `the session of uid ${options.uid} could not be confirmed from this session` +
+        (reason === null ? "" : `: ${reason}`) +
+        ". Check `offstage session status`; nothing was run.",
+    );
+  }
+  assertTargetSession(session, options.uid, consoleUid());
   const jobs = join(options.root, "jobs");
   const results = join(options.root, "results");
   for (const dir of [jobs, results]) {
@@ -180,26 +272,40 @@ function main() {
   const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
   const jobPath = join(jobs, `${id}.job.json`);
   const resultPath = join(results, `${id}.result.json`);
-  writeFileSync(
-    jobPath,
-    JSON.stringify(
-      {
-        id,
-        command: options.command,
-        ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-        session: { uid: options.uid, asid: session.asid },
-      },
-      null,
-      2,
-    ),
-    // The agent accepts only a file it can attribute: group/other write
-    // bits would let another local process replace the payload between the
-    // write and the agent's read. 0644 keeps it readable by the target user
-    // and writable only by this one.
-    { mode: 0o644 },
-  );
+  // Published by rename: the agent polls this directory, and a direct write
+  // can be read half-finished and turned into a parse error for a job that
+  // was never run. 0644: the agent accepts only a file it can attribute —
+  // group/other write bits would let another local process replace the
+  // payload between the write and the agent's read.
+  const temporary = `${jobPath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
+  try {
+    writeFileSync(
+      temporary,
+      JSON.stringify(
+        {
+          id,
+          command: options.command,
+          ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+          session: { uid: options.uid, asid: session.asid },
+        },
+        null,
+        2,
+      ),
+      { mode: 0o644 },
+    );
+    renameSync(temporary, jobPath);
+  } catch (error) {
+    try {
+      rmSync(temporary, { force: true });
+    } catch {
+      // Nothing more to clean up.
+    }
+    throw error;
+  }
   process.stderr.write(
-    `[ae-a8n dispatch] job ${id} → ${session.username} (uid ${options.uid}, asid ${session.asid})\n`,
+    `[ae-a8n dispatch] job ${id} → ${session.username} (uid ${options.uid}` +
+      (session.asid === null ? "" : `, asid ${session.asid}`) +
+      ")\n",
   );
   const deadline = Date.now() + options.timeoutMs;
   for (;;) {

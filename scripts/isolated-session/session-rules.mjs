@@ -211,6 +211,50 @@ export function sessionFromOffstageStatus(status) {
 }
 
 /**
+ * Which account of the target session to believe.
+ *
+ * offstage is asked first because from the console session another user's
+ * launchd domain is unreadable. Its answer is used only when it says the
+ * session is there: "offstage's helper is not available" is a fact about
+ * offstage, not about whether the account has a GUI session.
+ *
+ * offstage's session number is not launchd's asid (see §10.12 of
+ * docs/offstage-macos.md), so it is not carried as one.
+ */
+export function targetSessionFrom(offstageStatus, localSession) {
+  let fromOffstage = null;
+  try {
+    fromOffstage = sessionFromOffstageStatus(offstageStatus);
+  } catch {
+    fromOffstage = null;
+  }
+  if (fromOffstage !== null) {
+    return { ...fromOffstage, asid: null };
+  }
+  return localSession;
+}
+
+/**
+ * Whether a shared directory already has the mode both accounts expect.
+ *
+ * The sticky bit is part of the requirement, not decoration: in a directory
+ * any local process can write to, it is what stops one account deleting or
+ * replacing a file another account wrote. A `0o777` mask would hide it, so
+ * the comparison is made against `0o1777`.
+ */
+export function sharedDirIsUsable(mode) {
+  return (mode & 0o1777) === 0o1777;
+}
+
+/**
+ * The same question for a directory owned by the other account, which cannot
+ * be `chmod`ed from here: writable by others is not enough without sticky.
+ */
+export function sharedDirIsUsableForOthers(mode) {
+  return (mode & 0o1002) === 0o1002;
+}
+
+/**
  * Whether a `stat` of a job file may be run.
  *
  * The jobs directory is world-writable because the controller and the agent

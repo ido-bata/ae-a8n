@@ -23,8 +23,11 @@ import {
   parseAeProcesses,
   parseTerminalResult,
   sessionFromOffstageStatus,
+  sharedDirIsUsable,
+  sharedDirIsUsableForOthers,
   shellCommandLine,
   shellQuote,
+  targetSessionFrom,
 } from "../scripts/isolated-session/session-rules.mjs";
 
 const aqua = { uid: 502, username: "test", asid: 100040, kind: "Aqua" };
@@ -72,6 +75,44 @@ test("a result from the requested session is accepted", () => {
 
 test("the agent refuses a job that names another session", () => {
   assert.throws(() => assertJobSession({ session: { uid: 501 } }, aqua), /was not run/);
+});
+
+test("the target session comes from offstage when it says the session exists", () => {
+  const status = {
+    available: true,
+    accountExists: true,
+    user: "test",
+    uid: 502,
+    guiSession: { exists: true, loginDone: true, onConsole: false, sessionId: 258 },
+  };
+  // 258 is offstage's own number, not launchd's asid, so it is not carried.
+  assert.deepEqual(targetSessionFrom(status, null), {
+    uid: 502,
+    username: "test",
+    asid: null,
+    kind: "Aqua",
+  });
+});
+
+test("offstage's unavailability is not evidence that the account has no session", () => {
+  const local = { uid: 502, username: "test", asid: 109086, kind: "Aqua" };
+  const unavailable = { available: false, reason: "helper session is not logged in" };
+  assert.equal(targetSessionFrom(unavailable, local), local);
+  // No answer from either side stays null; the caller reports why.
+  assert.equal(targetSessionFrom(null, null), null);
+});
+
+test("a shared directory is usable only with the sticky bit", () => {
+  // 0o777 on its own lets either account delete the other's files; the
+  // dir must be 0o1777. A 0o777 mask would have hidden the difference.
+  assert.equal(sharedDirIsUsable(0o041777), true);
+  assert.equal(sharedDirIsUsable(0o040777), false);
+  assert.equal(sharedDirIsUsable(0o041755), false);
+  // A directory owned by the other account cannot be chmod'ed: it counts as
+  // usable only when it is world-writable *and* sticky.
+  assert.equal(sharedDirIsUsableForOthers(0o041777), true);
+  assert.equal(sharedDirIsUsableForOthers(0o040777), false);
+  assert.equal(sharedDirIsUsableForOthers(0o041775), false);
 });
 
 test("a job file is run only when it is attributable to the controller", () => {
