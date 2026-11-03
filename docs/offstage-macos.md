@@ -1,22 +1,22 @@
 # macOS: 別OSユーザーのセッションで隔離実行する（#49）
 
-**状態: 実装済み・実機受入は未完了（人間の手順待ち）。**
+**状態: 実装済み・実機受入 PASS（ターミナル経路、2026-11-03）。** ネイティブ経路（`session-agent` / `dispatch`）は実機で起動とジョブ実行まで確認した（§10.16 の最後）。
 通常の `AfterEffects.launch()` は変えていない。隔離はオプトイン。Windowsには適用しない。
 
-到達した検証レベル（2026-11-02 このMacで実測）:
+到達した検証レベル（2026-11-03 このMacで実測。行内の日付はその測定時点）:
 
 | 項目 | 状態 |
 | --- | --- |
 | offstage の配布物・CLIの監査と実行確認 | `verified on real host` |
-| 別ユーザーのAquaセッションの生成・操作 | `verified on real host`（test uid 502 / asid 107488。コンソール所有者は uid 501 のまま） |
-| 隔離セッションでのAe起動 | `verified on real host`（AE 26.5.0 が test セッションで起動した。§10.9 のとおり Ae がスクリプト実行を拒否するため readiness probe は未通過） |
-| 隔離E2Eパイプライン全体（セッション特定 → 別ユーザのTerminalで起動 → 実行 → 結果をコンソール側へ） | `implemented`＋**`fake/mock only`**。§10.11 のとおりパイプライン自体は実機で通るが、最後のAe呼び出し（`app.info`）で止まっており、**E2Eは1件も完走していない** |
+| 別ユーザーのAquaセッションの生成・操作 | `verified on real host`（test uid 502 / asid 109086。コンソール所有者は uid 501 のまま。§10.12） |
+| 隔離セッションでのAe起動 | `verified on real host`（AE 26.5x89 が test セッションで起動。§10.14） |
+| 隔離E2Eパイプライン全体（セッション特定 → 別ユーザのTerminalで起動 → 実行 → 結果をコンソール側へ） | `verified on real host`（§10.14 で3回連続、§10.15・§10.16 で修正後に各1回、計9ステップ全部 `ok`） |
 | Apple Events の配送先が対象ユーザーのAeであることの実測 | `verified on real host`（§10.9: `count documents` が `0`、TCCの拒否 `-1743` ではない） |
-| GUIフォールバックによるダイアログクローズ | `UNVERIFIED`（test セッションの AX 許可が未了。実Aeのモーダルでの実測は未実施） |
-| フォーカスの通常ユーザーへの干渉 | `implemented`＋**フォーカスとカーソル移動は実測 0 件**。キー入力は**未監視**なので 0 件とは断定しない |
+| GUIフォールバックによるダイアログクローズ | `verified on real host`（§10.14: 実際のモーダルダイアログを、対象セッション内の AX で `OK` を押して閉じ、タイムアウトした呼び出しがそのまま完了。再送なし） |
+| フォーカスの通常ユーザーへの干渉 | `verified on real host`（§10.14 の3窓: 前面アプリの変化 0、プログラム投稿キー 0）。**ただし測定は修正前のビルドで、修正後のコードでは未再測定**。カーソル移動は誰の操作かを帰属できないので 0 件とは断定しない |
 
 「fake/mock only」を「動作する」とは書かない。上の表のとおり、未検証は未検証と書く。
-**§10.9 のとおり、残り Ae 自身の「スクリプト実行の許可」（GUI での人が操作）と test セッションの Accessibility 許可が下りれば実機受入に進める。それまでは macOS 隔離経路は `implemented`＋`fake/mock only` のままである。**
+Ae 自身の「スクリプト実行の許可」と test セッションの Accessibility / Automation の許可は人間が与え、§10.12・§10.14 の実測に至った。**許可が要る操作はエージェントが代行しない**（§2）。
 
 ## 1. offstage の調査（実測）
 
@@ -527,3 +527,42 @@ pkg を `a11b969` で作り直し（`/Users/Shared/ae-a8n/pkg/COMMIT`）、**修
 - この1回では**発火していない**ため実機未確認のままの修正: 人間用ウィンドウが混在する場合の全面拒否、`/dev/console` が読めない場合の拒否、復帰後にホストがエラーを返す経路、`launchctl` の "Operation not permitted" の案内、jobs / results の信頼判定（ネイティブ経路。この実測はターミナル経路）、`AfterFX` の認識（実行前に Ae が無かったため一度も一致判定が走っていない）。
 - 実行後に残ったのは Adobe のヘルパー（`crashpad_handler` / `dynamiclinkmanager` / `TeamProjectsLocalHub`）だけ。Ae 本体は終了しており、ヘルパーは強制終了していない（§SKILL の記載どおり自然終了を待つ）。
 - フォーカス測定はこの1回では行っていない。§10.14 の3窓が最後の測定で、修正後のコードでのフォーカス再測定は**未実施**。
+
+### 10.16 2回目の独立レビューと、実機でしか出なかった4件（2026-11-03）
+
+§10.15 の修正コミット（`a11b969`）に対してもう一度独立レビューを行い、6件の問題が見つかった。すべて `414460a` で修正し、`mise run check` は **vitest 497 passed / 3 skipped、node --test 36 passed** で通った。pkg を作り直して実機 E2E を1回走らせ、9/9 `ok`（`/Users/Shared/ae-a8n/run/e2e-report-review2.json`、03:51:52–03:52:26Z、pkg `414460aa3f80c2980e7bfcd2289f78b45286a305`）。その後の #7–#10 の修正でテストを足し、最終状態の `mise run check` は **vitest 497 passed / 3 skipped、node --test 38 passed**。
+
+| # | 問題 | 修正 | 検証レベル |
+| --- | --- | --- | --- |
+| 1 | `mkdir` の mode は umask で 0755 になり、既に 1777 で存在する共有ディレクトリは他アカウント所有なので `chmod` が `EPERM`。そのまま例外にしており、**通常の共有レイアウトでは agent が結果を書けずに落ちた**（HIGH） | 既に要件を満たすディレクトリには触らない。`EPERM` のときは他アカウントが作ったものとして、other 書込を確認して続行 | automated test |
+| 2 | ターミナル経路が `.done` / `.out` / `.err` / レポートを**帰属を確かめずに**読んでいた。1777 のディレクトリなので、別プロセスが置いたファイルを結果として読める | `lstat` で通常ファイル（symlink でない）・対象 uid 所有・group/other 書込不可を確認してから読む | automated test ＋**実機**（下記の E2E が新しい確認を通って完走） |
+| 3 | agent がコンソール所有を**起動時にしか**見ていなかった。実行中にファストユーザスイッチでコンソールが移ると、人間の画面でジョブを走らせ得た | ジョブごとに**実行前後**で確認し、`onConsole` を結果に記録する。実行前なら走らせずに拒否 | automated test ＋**実機**（`onConsole: false` を記録） |
+| 4 | `/dev/console` の所有者が読めない（-1）とき、`assertTargetSession` / `assertOutcomeSession` が**通していた** | どちらも拒否する（隔離を証明できないため） | automated test |
+| 5 | 復帰後に結果ファイルが読めない場合、`ProtocolError` が元の `TimeoutError` を置き換えていた（「ホストが答えた」ように見える） | ホスト自身のエラー（`HostError`）だけを透過し、読めない結果は元のタイムアウトのまま | automated test |
+| 6 | `dispatch` が `ok: false` の拒否結果を **exit 0** として報告していた | 非0で報告し、拒否理由を stderr に出す | automated test |
+
+続いて、修正後（`414460a`）の**ネイティブ経路を初めて実機で起動した**。ターミナル経路の E2E とは別の基版であり、§10.15 以降一度も走らせていなかった。起動の試行そのものから4件が出た。
+
+| # | 問題 | 修正 | 検証レベル |
+| --- | --- | --- | --- |
+| 7 | 共有ディレクトリの判定が `mode & 0o777` で、**sticky bit を隠していた**。早期 return は一度も成立せず、`EPERM` 時の代替条件も「other 書込」だけで sticky を要求していなかった（sticky が無いと他アカウントが相手のファイルを差し替えられる） | 判定を `session-rules.mjs` の純関数にし、`0o1777` / `0o1002` で比較 | automated test |
+| 8 | 起動バナー `results/agent.json` が**他アカウント所有**だと、sticky ディレクトリでは `rename` が `EACCES`。バナーの失敗で agent が**起動直後に落ちた**（実機で発火） | バナーは診断用なので失敗を警告して続行。一時ファイルは片付ける | **実機で発火→修正後は継続**（下記） |
+| 9 | 信頼できないジョブファイル（symlink など）を **500 ms ごとに再検査・再記録**し続けた（実機で発火、同じ行が延々と出た） | 一度拒否した名前はそのプロセス中は再検査しない | **実機で発火→修正**（下記） |
+| 10 | コンソールから `launchctl print gui/502` は `EPERM` なので、`dispatch` は**ログイン中のアカウントを「未ログイン」と報告**していた。つまりネイティブ経路はコンソールからはそもそも動かなかった | offstage の status を先に読み（セッションが在るときだけ採用）、無ければ launchd。どちらも駄目なら `launchctl` の失敗理由を添えて拒否 | automated test ＋**実機**（下記） |
+
+#### ネイティブ経路の実機確認（2026-11-03 04:00–04:01Z）
+
+`414460a`＋上の4件の修正を入れたコードで、**ネイティブ経路を初めて実機で起動した**。`offstage session open --user test -- -a Terminal <launcher>` でランチャーを開き、`test` ユーザーのセッションで `session-agent.mjs` を動かした。
+
+- 起動: `uid 502 (test), session Aqua asid 109086, console uid 501, accepting jobs from uid 501`。バナーは `results/agent.json` に **test 所有**で書かれた（`isolated: true`）。
+- 制御側（uid 501）が 0644 で置いたジョブ: 実行され、`uid 502 / test / asid=109086 / console=501` を返し、結果の `onConsole` は **false**。
+- 制御側が 0666 で置いたジョブ（他人が差し替え得るファイル）: **実行されず**、結果も書かれなかった。ログは1行だけ（#9 の修正）。
+- `jobs/` に置いた symlink（通常ファイルでない）: **実行されず**、結果も書かれなかった。ログは1行だけ。
+- `session.uid` に 501 を名乗るジョブ: `ok: false`「the job asks for uid 501, but this agent runs in uid 502's session; the job was not run.」で、実行されていない。
+- コンソールからの `dispatch.mjs --uid 502 -- node ...`: **offstage の status 経由で対象セッションを特定**してジョブを出し、`finished in test's session (uid 502, asid 109086), exit 0`、出力 `502 / test / 501`。ジョブファイルは結果の回収後に削除された。`launchctl` の "Operation not permitted" はもう端末に漏れない。
+- 拒否の実機確認: `--uid 501` は「uid 501 owns the console session ... Nothing was run.」、存在しない `--uid 999` は「the session of uid 999 could not be confirmed from this session: ... Could not find domain for user gui: 999」（≠「未ログイン」）。どちらも exit 1。
+
+**この試行で実機に出た（修正前）**: #8（バナーが他アカウント所有で `rename` が `EACCES`、agent が起動直後に終了）と #9（拒否したファイルを500 msごとに再記録）。修正後はいずれも再発していない。
+
+- **実機でまだ発火していない経路**: ジョブ実行時に `consoleIsOwn` が真になる拒否（ファストユーザスイッチでコンソールが `test` に移る必要があり、人間の操作なしには作れない）、`onConsole: true` の結果、バナー書込み失敗後の継続（#8 の修正後は、古いバナーを消してから起動したため成功した）。これらは automated test までで、実機では未観測。
+- **片付け**: 2026-11-02 10:55 に起動された古い `session-agent`（pid 89540、uid 501、コンソールセッション、修正前のコード）がこの Mac に残っていた。jobs に置かれたものを何でも実行し得る状態だったので停止した（`kill 89540`、残存なしを確認）。今回の agent はランチャーが 180 秒で停止し、終了後に `session-agent` のプロセスが無いことを確認した。
