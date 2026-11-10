@@ -37,6 +37,8 @@ export type TestOptions = CommonOptions & {
 export type RecoverOptions = CommonOptions & {
   readonly runId: string | null;
   readonly dryRun: boolean;
+  /** Permits clearing a quarantine; never implied by anything else. */
+  readonly force: boolean;
 };
 
 export type ReportOptions = {
@@ -84,6 +86,7 @@ const BOOLEAN_FLAGS = new Set([
   "--resume",
   "--dry-run",
   "--keep",
+  "--force",
 ]);
 
 const VALUE_FLAGS = new Set(["--target", "--user", "--host", "--timeout", "--run", "--format"]);
@@ -121,6 +124,7 @@ const ALLOWED: Record<CommandName, ReadonlySet<string>> = {
     "--host",
     "--run",
     "--dry-run",
+    "--force",
   ]),
   report: new Set(["--json", "--help", "-h", "--run", "--format"]),
 };
@@ -136,6 +140,7 @@ type Mutable = {
   resume: boolean;
   dryRun: boolean;
   keep: boolean;
+  force: boolean;
   timeoutMs: number | null;
   runId: string | null;
   format: "summary" | "json" | "junit";
@@ -183,6 +188,7 @@ function optionsFor(command: CommandName, state: Mutable): CommandOptions {
         host: state.host,
         runId: state.runId,
         dryRun: state.dryRun,
+        force: state.force,
       };
     case "report":
       return {
@@ -211,6 +217,7 @@ function parseCommand(
     resume: false,
     dryRun: false,
     keep: false,
+    force: false,
     timeoutMs: null,
     runId: null,
     format: "summary",
@@ -266,6 +273,9 @@ function parseCommand(
           break;
         case "--keep":
           state.keep = true;
+          break;
+        case "--force":
+          state.force = true;
           break;
       }
       continue;

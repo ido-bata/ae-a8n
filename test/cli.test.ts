@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,6 +16,7 @@ import {
   type FakeAdapterOptions,
 } from "../src/platform/fake-adapter.js";
 import type { AdapterSelection, SelectOptions } from "../src/platform/select.js";
+import { stateLayout, targetKey, writeQuarantine } from "../src/runner/state.js";
 import { unsupportedPlatformCheck } from "../src/platform/select.js";
 import type {
   AdapterProbe,
@@ -376,22 +377,18 @@ describe("commands not implemented in this increment", () => {
     expect(adapter.calls).toEqual([]);
   });
 
-  it.each(["recover", "report"] as const)(
-    "fails %s closed with exit 3 and a notice",
-    async (command) => {
-      const adapter = new FakeAdapter("darwin");
-      const test = harness({ ok: true, adapter });
-      const argv = [command, "--json"];
-      const code = await runCli(argv, test.deps);
+  it("fails report closed with exit 3 and a notice", async () => {
+    const adapter = new FakeAdapter("darwin");
+    const test = harness({ ok: true, adapter });
+    const code = await runCli(["report", "--json"], test.deps);
 
-      expect(code).toBe(EXIT.blocked);
-      const envelope = jsonEnvelope(test.out());
-      expect(envelope.status).toBe("blocked");
-      expect(envelope.exitCode).toBe(3);
-      expect(envelope.notice).toContain("not implemented in this increment");
-      expect(adapter.calls).toEqual([]);
-    },
-  );
+    expect(code).toBe(EXIT.blocked);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.status).toBe("blocked");
+    expect(envelope.exitCode).toBe(3);
+    expect(envelope.notice).toContain("not implemented in this increment");
+    expect(adapter.calls).toEqual([]);
+  });
 });
 
 const stateRoots: string[] = [];
@@ -536,5 +533,90 @@ describe("the test command", () => {
     expect(test.out()).toContain("(directory not kept)");
     expect(test.err()).toContain("the run directory was not kept");
     expect(adapter.sent).toEqual(["node test.js"]);
+  });
+});
+
+describe("the recover command", () => {
+  function quarantined(root: string): string {
+    const path = writeQuarantine(stateLayout(root), "local", {
+      runId: "20261110T120000Z-4f2a8c11",
+      quarantinedAt: "2026-01-02T03:04:05.000Z",
+      detail: "the command timed out and may still be running",
+    });
+    return path;
+  }
+
+  it("reports the quarantine and its remedy without clearing it", async () => {
+    const root = stateRoot();
+    const path = quarantined(root);
+    const test = harness({ ok: true, adapter: new FakeAdapter("darwin") }, { stateRoot: root });
+    const code = await runCli(["recover", "--json"], test.deps);
+
+    expect(code).toBe(EXIT.ok);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.command).toBe("recover");
+    expect(envelope.status).toBe("ok");
+    expect(envelope.cleared).toBe(false);
+    expect(envelope.runId).toBe("20261110T120000Z-4f2a8c11");
+    expect(envelope.findings?.[0]).toMatchObject({ code: "A8N-JOB-002", action: "reported" });
+    expect(envelope.nextActions[0]?.action).toContain("--force");
+    expect(existsSync(path)).toBe(true);
+  });
+
+  it("clears the quarantine with --force and says so", async () => {
+    const root = stateRoot();
+    const path = quarantined(root);
+    const test = harness({ ok: true, adapter: new FakeAdapter("darwin") }, { stateRoot: root });
+    const code = await runCli(["recover", "--json", "--force"], test.deps);
+
+    expect(code).toBe(EXIT.ok);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.cleared).toBe(true);
+    expect(envelope.findings?.[0]).toMatchObject({ action: "cleared" });
+    expect(existsSync(path)).toBe(false);
+  });
+
+  it("changes nothing on a dry run and says so", async () => {
+    const root = stateRoot();
+    const path = quarantined(root);
+    const test = harness({ ok: true, adapter: new FakeAdapter("darwin") }, { stateRoot: root });
+    const code = await runCli(["recover", "--json", "--dry-run", "--force"], test.deps);
+
+    expect(code).toBe(EXIT.ok);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.notice).toBe("dry run: nothing was changed");
+    expect(envelope.cleared).toBe(false);
+    expect(existsSync(path)).toBe(true);
+  });
+
+  it("prints its findings in human mode", async () => {
+    const root = stateRoot();
+    quarantined(root);
+    const test = harness({ ok: true, adapter: new FakeAdapter("darwin") }, { stateRoot: root });
+    const code = await runCli(["recover"], test.deps);
+
+    expect(code).toBe(EXIT.ok);
+    expect(test.out()).toContain("ae-a8n recover — ok (exit 0)");
+    expect(test.out()).toContain("findings (not cleared):");
+    expect(test.out()).toContain("[reported] A8N-JOB-002:");
+    expect(test.out()).toContain("next: ");
+  });
+
+  it("exits 6 when the state cannot be decided", async () => {
+    const root = stateRoot();
+    mkdirSync(stateLayout(root).locks, { recursive: true, mode: 0o700 });
+    writeFileSync(join(stateLayout(root).locks, `${targetKey("local")}.lock`), "{not json");
+    const test = harness({ ok: true, adapter: new FakeAdapter("darwin") }, { stateRoot: root });
+    const code = await runCli(["recover", "--json"], test.deps);
+
+    expect(code).toBe(EXIT.unknown);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.status).toBe("unknown");
+    expect(envelope.findings?.[0]).toMatchObject({ action: "refused" });
+  });
+
+  it("does not accept --force on a command that never clears anything", () => {
+    expect(parseArgs(["doctor", "--force"]).ok).toBe(false);
+    expect(parseArgs(["recover", "--force"]).ok).toBe(true);
   });
 });

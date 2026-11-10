@@ -21,18 +21,21 @@ import {
   type AdapterSelection,
   type SelectOptions,
 } from "../platform/select.js";
+import { recoverRun, type RecoverResult } from "../runner/recover-run.js";
 import { runTest, type TestRunResult } from "../runner/test-run.js";
 import {
   parseArgs,
   type CommandName,
   type CommandOptions,
   type DoctorOptions,
+  type RecoverOptions,
   type TestOptions,
 } from "./args.js";
 import {
   buildEnvelope,
   type CliEnvelope,
   type EnvelopeStatus,
+  type NextAction,
   type PlatformInfo,
   type TargetInfo,
 } from "./envelope.js";
@@ -199,7 +202,7 @@ function usageFailure(
 }
 
 function unimplemented(
-  command: Exclude<CommandName, "doctor" | "test">,
+  command: Exclude<CommandName, "doctor" | "test" | "recover">,
   options: CommandOptions,
   startedAt: Date,
   deps: RequiredDependencies,
@@ -468,6 +471,106 @@ async function test(
   return exitCode;
 }
 
+/** The findings' remedies, in order, as the envelope's `nextActions[]`. */
+function recoveryActions(result: RecoverResult): NextAction[] {
+  const actions: NextAction[] = [];
+  for (const finding of result.findings) {
+    if (finding.remedy === undefined || finding.remedy.length === 0) {
+      continue;
+    }
+    actions.push({ kind: "human", code: finding.code, action: finding.remedy });
+  }
+  return actions;
+}
+
+async function recover(
+  options: RecoverOptions,
+  startedAt: Date,
+  deps: RequiredDependencies,
+): Promise<ExitCode> {
+  const target = targetFrom(options);
+  let selection: AdapterSelection;
+  try {
+    selection = deps.select({ target });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    emit(
+      buildEnvelope({
+        command: "recover",
+        status: "unknown",
+        exitCode: EXIT.unknown,
+        startedAt,
+        finishedAt: deps.now(),
+        platform: UNKNOWN_PLATFORM,
+        target: targetInfo(target),
+        checks: [],
+        notice:
+          `recover could not select a platform backend: ${message}. ` +
+          "Nothing was inspected or changed.",
+        env: deps.env,
+      }),
+      options.json,
+      deps,
+    );
+    return EXIT.unknown;
+  }
+
+  let result: RecoverResult;
+  try {
+    result = await recoverRun({
+      adapter: selection.ok ? selection.adapter : null,
+      target,
+      runId: options.runId,
+      dryRun: options.dryRun,
+      force: options.force,
+      stateRoot: deps.stateRoot,
+      now: deps.now,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    emit(
+      buildEnvelope({
+        command: "recover",
+        status: "failed",
+        exitCode: EXIT.failed,
+        startedAt,
+        finishedAt: deps.now(),
+        platform: platformFromSelection(selection, target),
+        target: targetInfo(target),
+        checks: [],
+        notice: `recover could not inspect the run state: ${message}. Nothing was changed.`,
+        env: deps.env,
+      }),
+      options.json,
+      deps,
+    );
+    return EXIT.failed;
+  }
+
+  const exitCode = result.status === "ok" ? EXIT.ok : EXIT.unknown;
+  emit(
+    buildEnvelope({
+      command: "recover",
+      status: result.status,
+      exitCode,
+      startedAt,
+      finishedAt: deps.now(),
+      platform: platformFromSelection(selection, target),
+      target: targetInfo(target),
+      checks: selection.ok ? [] : [selection.check],
+      findings: result.findings,
+      cleared: result.cleared,
+      nextActions: recoveryActions(result),
+      ...(result.runId === null ? {} : { runId: result.runId }),
+      ...(result.notice === undefined ? {} : { notice: result.notice }),
+      env: deps.env,
+    }),
+    options.json,
+    deps,
+  );
+  return exitCode;
+}
+
 export async function runCli(
   argv: readonly string[],
   input: CliDependencies = {},
@@ -497,6 +600,10 @@ export async function runCli(
 
   if (parsed.command === "test") {
     return test(parsed.options as TestOptions, startedAt, deps);
+  }
+
+  if (parsed.command === "recover") {
+    return recover(parsed.options as RecoverOptions, startedAt, deps);
   }
 
   if (parsed.command !== "doctor") {

@@ -17,7 +17,7 @@ export function generalHelp(): string {
     "  doctor   Read-only environment check; never starts After Effects",
     "  setup    Prepare the isolated session (not implemented in this increment)",
     "  test     Run a command in the isolated session",
-    "  recover  Inspect or recover a prior run (not implemented in this increment)",
+    "  recover  Inspect a prior run and release what can be released safely",
     "  report   Print a prior run report (not implemented in this increment)",
     "",
     "Common options:",
@@ -91,10 +91,30 @@ const COMMAND_HELP: Record<CommandName, string> = {
     "blocked; 6 unknown and quarantined; 1 when the run could not be started.",
   ].join("\n"),
   recover: [
-    "Usage: ae-a8n recover [--json] [--target <name>] [--user <name>] [--host <name>] [--run <id>] [--dry-run]",
+    "Usage: ae-a8n recover [--json] [--target <name>] [--user <name>] [--host <name>] [--run <id>] [--dry-run] [--force]",
     "",
-    "Run recovery is not implemented in this increment (issue #55). The command",
-    "fails closed with exit 3 and acts on nothing.",
+    "Inspects what a prior run left behind: the target's lock, its quarantine",
+    "record, and the run directory (the quarantined run unless --run names one).",
+    "",
+    "Without --force it performs only safe cleanup: a lock whose owner process is",
+    "gone is released, and an incomplete run is recorded as unknown rather than",
+    "as a pass. A quarantine record is reported, not cleared: it exists because",
+    "nobody could prove the run had ended. --force clears it, and nothing",
+    "implies --force.",
+    "",
+    "It never quits After Effects, never re-sends a command, and never deletes",
+    "a run directory.",
+    "",
+    "Options:",
+    "  --json             Print exactly one JSON document on stdout",
+    "  --target <name>    Target whose state is inspected",
+    "  --run <id>         Inspect one run instead of the quarantined one",
+    "  --dry-run          Report what would be done; change nothing",
+    "  --force            Clear the quarantine record",
+    "  --help, -h         Show this help",
+    "",
+    "Exit codes: 0 when the state could be inspected; 6 when it could not be",
+    "decided; 1 when recovery could not run.",
   ].join("\n"),
   report: [
     "Usage: ae-a8n report [--json] [--run <id>] [--format <summary|json|junit>]",
@@ -141,6 +161,21 @@ function renderVerdicts(envelope: CliEnvelope): string[] {
   const lines = ["", "verdicts:"];
   for (const verdict of verdicts) {
     lines.push(`  [${verdict.verdict}] ${verdict.id}: ${verdict.message}`);
+  }
+  return lines;
+}
+
+function renderFindings(envelope: CliEnvelope): string[] {
+  const findings = envelope.findings;
+  if (findings === undefined) {
+    return [];
+  }
+  const lines = ["", `findings (${envelope.cleared === true ? "cleared" : "not cleared"}):`];
+  for (const finding of findings) {
+    lines.push(`  [${finding.action}] ${finding.code}: ${finding.detail}`);
+    if (finding.remedy !== undefined && finding.remedy.length > 0) {
+      lines.push(`    next: ${finding.remedy}`);
+    }
   }
   return lines;
 }
@@ -217,6 +252,7 @@ export function renderEnvelope(
   lines.push(...renderCapabilities(envelope.capabilities));
   lines.push(...renderFacts(envelope.facts));
   lines.push(...renderVerdicts(envelope));
+  lines.push(...renderFindings(envelope));
   lines.push(...renderArtifacts(envelope));
 
   if (options.verbose === true && envelope.facts !== undefined) {

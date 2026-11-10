@@ -91,7 +91,8 @@ npx @ido-bata/ae-a8n recover         # inspect and safely clear a stuck run
 
 `recover` will not quit an After Effects it does not own, re-send a timed-out
 script, or dismiss a licence dialog. If it cannot decide, it says so and leaves
-the run quarantined.
+the run quarantined. A quarantine record is cleared only when you pass
+`--force`, after you have checked that nothing from that run is still working.
 
 ## 5. Use it from your own project
 

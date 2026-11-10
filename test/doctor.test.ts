@@ -428,7 +428,7 @@ describe("the Darwin adapter's non-probe methods do not lie", () => {
     expect(runCommand).toHaveBeenCalledTimes(1);
   });
 
-  it("reports setup and recovery as not implemented, never as done", async () => {
+  it("reports setup as needs-human and recovery as uninspected, never as done", async () => {
     const adapter = new DarwinAdapter({ readFacts: () => darwinFacts() });
     const steps = await adapter.plan(TARGET);
     expect(steps.every((step) => step.state === "needs-human")).toBe(true);
@@ -446,7 +446,9 @@ describe("the Darwin adapter's non-probe methods do not lie", () => {
     const findings = await adapter.recover("/tmp/a8n-run");
     expect(findings).toHaveLength(1);
     expect(findings[0]?.code).toBe("A8N-JOB-002");
-    expect(findings[0]?.detail).toContain("not implemented");
+    // The stub must not read as a clean sweep: it says nothing was inspected.
+    expect(findings[0]?.detail).toContain("cannot yet inspect");
+    expect(findings[0]?.detail).toContain("nothing in /tmp/a8n-run was acted on");
   });
 });
 

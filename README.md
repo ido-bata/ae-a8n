@@ -80,9 +80,27 @@ blocked, `6` unknown and quarantined. A timeout is `unknown`, never a failed
 test, and a run that timed out is never re-sent automatically. With `--json`
 stdout is exactly one document and the human summary goes to stderr.
 
-`setup`, `recover` and `report` are not implemented yet in this increment:
-they parse their contract flags and then fail closed with a notice. None of
-them reports success for work it did not do.
+## Recover
+
+When a run times out, `test` quarantines the target and refuses to run again
+until the state is looked at. `ae-a8n recover` shows what the run left behind
+and releases only what cannot be wrong:
+
+```bash
+npx @ido-bata/ae-a8n recover                 # inspect; changes nothing it must not
+npx @ido-bata/ae-a8n recover --dry-run       # say what it would do
+npx @ido-bata/ae-a8n recover --force         # also clear the quarantine record
+```
+
+A lock whose recorded process is gone is released. A quarantine record is
+only reported: it exists because nobody could prove the run had ended, so
+clearing it takes an explicit `--force` from someone who checked. `recover`
+never quits After Effects, never re-sends a command and never deletes a run
+directory.
+
+`setup` and `report` are not implemented yet in this increment: they parse
+their contract flags and then fail closed with a notice. Neither reports
+success for work it did not do.
 
 ## What it does to your After Effects
 

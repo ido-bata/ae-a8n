@@ -9,6 +9,7 @@ import type { DiagnosticCheck } from "../doctor/diagnostics.js";
 import type { Capabilities, SessionIdentity } from "../platform/contract.js";
 import { packageInfo } from "../runner/package-info.js";
 import type { RunArtifacts, RunVerdict } from "../runner/artifacts.js";
+import type { Finding } from "../runner/recover-run.js";
 
 export const SCHEMA_VERSION = "1.0";
 
@@ -67,6 +68,9 @@ export type CliEnvelope = {
   readonly runId?: string;
   readonly artifacts?: RunArtifacts;
   readonly verdicts?: readonly RunVerdict[];
+  /** `recover` only: what was found, and whether anything was cleared. */
+  readonly findings?: readonly Finding[];
+  readonly cleared?: boolean;
 };
 
 export function nextActionsOf(checks: readonly DiagnosticCheck[]): readonly NextAction[] {
@@ -105,6 +109,10 @@ export type EnvelopeInput = {
   readonly runId?: string | undefined;
   readonly artifacts?: RunArtifacts | undefined;
   readonly verdicts?: readonly RunVerdict[] | undefined;
+  readonly findings?: readonly Finding[] | undefined;
+  readonly cleared?: boolean | undefined;
+  /** Overrides the actions derived from `checks` (used by `recover`). */
+  readonly nextActions?: readonly NextAction[] | undefined;
   readonly env?: NodeJS.ProcessEnv;
 };
 
@@ -126,7 +134,7 @@ export function buildEnvelope(input: EnvelopeInput): CliEnvelope {
     package: { name: project.name, version: project.version, commit },
     target: input.target,
     checks: input.checks,
-    nextActions: nextActionsOf(input.checks),
+    nextActions: input.nextActions ?? nextActionsOf(input.checks),
     ...(input.notice === undefined || input.notice.length === 0
       ? {}
       : { notice: input.notice }),
@@ -135,5 +143,7 @@ export function buildEnvelope(input: EnvelopeInput): CliEnvelope {
     ...(input.runId === undefined ? {} : { runId: input.runId }),
     ...(input.artifacts === undefined ? {} : { artifacts: input.artifacts }),
     ...(input.verdicts === undefined ? {} : { verdicts: input.verdicts }),
+    ...(input.findings === undefined ? {} : { findings: input.findings }),
+    ...(input.cleared === undefined ? {} : { cleared: input.cleared }),
   };
 }

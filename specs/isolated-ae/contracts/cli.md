@@ -10,7 +10,7 @@
 ae-a8n doctor   [--json] [--target <name>] [--verbose]
 ae-a8n setup    [--json] [--target <name>] [--yes] [--resume] [--dry-run]
 ae-a8n test     [--json] [--target <name>] [--timeout <ms>] [--keep] -- <command...>
-ae-a8n recover  [--json] [--target <name>] [--run <id>] [--dry-run]
+ae-a8n recover  [--json] [--target <name>] [--run <id>] [--dry-run] [--force]
 ae-a8n report   [--json] [--run <id>] [--format <summary|json|junit>]
 ```
 
@@ -229,11 +229,29 @@ a script.
   "schemaVersion": "1.0",
   "command": "recover",
   "runId": "…",
-  "findings": [ { "code": "A8N-AE-004", "action": "reported", "detail": "…" } ],
+  "findings": [
+    { "code": "A8N-JOB-002", "action": "reported | cleared | refused | recorded", "detail": "…", "remedy": "…" }
+  ],
   "cleared": false,
-  "nextActions": [ { "kind": "human", "detail": "Quit After Effects in the test session, then re-run." } ]
+  "nextActions": [ { "kind": "human", "code": "A8N-JOB-002", "action": "…" } ]
 }
 ```
+
+`nextActions[]` keeps the common envelope's shape (§4: `kind`, `code`,
+`action`) rather than the `detail` key of an earlier draft, so a reader parses
+one shape across all five commands.
+
+**Decision (T038):** a quarantine record is *reported*, never cleared, unless
+`--force` is passed: it exists because nobody could prove the run had ended,
+and clearing it silently would let a possibly-running After Effects be reused
+by the next run. `--force` is the human's explicit statement that they checked.
+A lock whose recorded pid is gone is safe to release without `--force`, because
+nothing can be holding it. An unreadable lock or quarantine record is never
+deleted; `recover` exits 6 and names the file for a human.
+
+`recover` never quits After Effects, never re-sends a command, and never
+deletes a run directory; the only file it writes is a `report.json` for an
+incomplete run, recording it as `unknown` rather than as a pass.
 
 ## 10. `report`
 

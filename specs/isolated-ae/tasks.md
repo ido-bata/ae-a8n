@@ -65,6 +65,40 @@ instead of a second implementation.
 
 **Depends on:** T006–T011 (doctor's checks), T085 (adapter contract).
 
+### T038 — `ae-a8n recover`: inspect a run and release what is safe
+
+**Files:** create `src/runner/recover-run.ts`, `test/runner-recover.test.ts`;
+extend `src/cli/args.ts` (the `--force` flag), `src/cli/run.ts`,
+`src/cli/envelope.ts` (`findings[]`, `cleared`), `src/cli/render.ts`,
+`test/cli.test.ts`.
+
+**Deliverable:** `ae-a8n recover [--json] [--run <id>] [--dry-run] [--force]`
+per `contracts/cli.md` §9. It reports the target's lock, its quarantine
+record, the run directory and what the platform's `recover()` can see, and it
+performs only the cleanup that cannot be wrong: a lock whose recorded pid is
+gone, and a `report.json` recording an incomplete run as `unknown`.
+
+**Acceptance:** a quarantine record is reported and survives without
+`--force`, even when `--force` is combined with `--dry-run`; a stale lock is
+released and a live one is never taken over; an unreadable lock or quarantine
+record is refused and exits 6 without deleting anything; an incomplete run
+gets `status: "unknown"`, never a pass, and an existing report is never
+overwritten; `recover` never quits After Effects and never deletes a run
+directory.
+
+**Verification:** `automated test` (`test/runner-recover.test.ts`,
+`test/cli.test.ts`). The platform half — what `recover()` can observe inside
+the target session — stays `fake/mock only` on macOS (the adapter's `recover`
+is still a stub) and is T092 on Windows.
+
+**Delivered 2026-11-10 (#59):** the neutral half of T038. The contract records
+why a quarantine needs `--force` while a dead-owner lock does not, and why
+`nextActions[]` keeps the common envelope's shape. The rest of #59 — T034
+(security threat model), T035 (session hardening), T036 (job publication),
+T037 (GUI recovery) and T039 (adversarial session tests) — is untouched.
+
+**Depends on:** T027 (`test` writes the lock and quarantine record).
+
 ## New tasks: cross-platform contract and Windows backend
 
 ### T085 — Platform adapter contract and fake adapter

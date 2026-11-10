@@ -805,8 +805,8 @@ export class DarwinAdapter implements PlatformAdapter {
         code: "A8N-JOB-002",
         action: "reported",
         detail:
-          `run recovery is not implemented in this increment (issues #58/#59); ` +
-          `nothing in ${runDir} was acted on and no lock was cleared`,
+          `the macOS adapter cannot yet inspect a run for recovery (issue #59: ` +
+          `T037/T039); nothing in ${runDir} was acted on and no lock was cleared`,
       },
     ]);
   }
