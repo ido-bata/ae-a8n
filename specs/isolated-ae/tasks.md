@@ -63,6 +63,15 @@ remedy.
 **Verification:** `automated test` + `fake/mock only` for the Windows fixture.
 **Not** a Windows real-host result.
 
+**Delivered 2026-11-10 (#67, PR #68):** OS caption/version, session id,
+current and console user, After Effects uninstall entries (HKLM, WOW6432Node,
+HKCU), running `AfterFX.exe` processes and target-account existence, all
+read-only, with raw output kept as evidence. Deliberate boundaries: the Node
+floor stays with `doctor` (T006) rather than being duplicated here; agent
+reachability needs the agent, so it is T087's; Adobe sign-in cannot be read
+without starting AE, so it belongs to T089. The real-host run is recorded in
+`docs/windows-verification.md` ("Read-only host probe").
+
 **Depends on:** T085.
 
 ### T087 — Windows remote-host setup and in-session agent

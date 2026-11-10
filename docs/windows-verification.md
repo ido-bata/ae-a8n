@@ -431,3 +431,37 @@ the fake now persists one per instance). ae-test (unmodified npm package, this
 branch's local build): 2 runs x 3 specs, snapshot compared equal to a baseline
 recorded in a much earlier session, typed error and deliberate failure as expected,
 0 AE processes left after each run.
+
+## Read-only host probe (T086, #67)
+
+`probeWindows` reads the facts the Windows backend has to decide on and turns
+them into `A8N-*` checks. The commands are `Get-CimInstance`, the process's own
+session id and identity, the console user, the After Effects uninstall entries,
+`tasklist /FI "IMAGENAME eq AfterFX.exe"`, and `net user <name>`. It starts
+nothing, writes nothing and sends nothing to After Effects.
+
+Run on the Windows host on 2026-11-10, `scripts/probe-windows.mjs` at commit
+`f9f87ef`:
+
+| Fact | Value |
+| --- | --- |
+| OS | Windows 11 Home Insider Preview 10.0.29704 (the machine has been updated since the table at the top) |
+| Session | 1; current and console user `UUU\basic` |
+| After Effects | registered twice under `D:\4_apps\adobe` (26.0 and 26.5) |
+| Running AE | `AfterFX.exe` pid 8028, session 1 |
+| Result | `status: "blocked"`, exit 3, one check: `A8N-AE-001` |
+
+`A8N-AE-001` is the intended result: the host is the developer's own signed-in
+session with After Effects open, so no test AE may be started. `A8N-SESSION-003`
+did not fire because the probe was asked for `isolation: "remote-host"`, where
+the console user and the agent user being the same is expected.
+
+Level: `verified on real host` for the probe's facts and for its refusal. It
+verifies no isolated backend — nothing was launched — and this host is not a
+dedicated one yet.
+
+Found by this run and fixed in `f9f87ef`: Adobe registers a 32-bit uninstaller,
+so the 64-bit `Uninstall` keys alone reported "After Effects not found" on a
+host that has it. The probe now reads `WOW6432Node` and `HKCU` too and collapses
+duplicate registrations. Two versions under one Adobe root are a normal upgrade
+and are not reported as ambiguity.
