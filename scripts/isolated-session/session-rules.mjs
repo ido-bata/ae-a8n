@@ -78,6 +78,14 @@ export function assertOutcomeSession(outcome, target, console) {
         "human's desktop. The result is not trusted.",
     );
   }
+  if (!Number.isInteger(console.asid)) {
+    // Without the console's session id, a job in any other session looks
+    // "different" only because one side is missing. Unknown is not isolated.
+    throw new Error(
+      "the console session's id could not be read, so the job cannot be shown to have run in a different " +
+        "session. The result is not trusted.",
+    );
+  }
   if (outcome.uid !== target.uid) {
     throw new Error(
       `the job ran as uid ${outcome.uid}, not ${target.uid}: it did not run in the requested session. ` +
@@ -96,7 +104,15 @@ export function assertOutcomeSession(outcome, target, console) {
         "The result is not trusted.",
     );
   }
-  if (console.asid !== null && outcome.asid !== null && outcome.asid === console.asid) {
+  if (!Number.isInteger(outcome.asid)) {
+    // A missing id is not a session id that differs from the console's. The
+    // job's own account of where it ran is incomplete, so isolation is unproven.
+    throw new Error(
+      "the job did not report a session id, so it cannot be shown to have run in a different session from " +
+        "the console. The result is not trusted.",
+    );
+  }
+  if (outcome.asid === console.asid) {
     throw new Error(
       `the job ran in session ${outcome.asid}, which is the console session: it ran on the human's own desktop. ` +
         "The result is not trusted.",
@@ -352,16 +368,19 @@ export function parseTerminalResult(text) {
   const asid = number(asidText);
   const exitCode = number(exitText);
   const onConsole = fields.get("onconsole");
+  const asidKnown = asidText.trim().length > 0 && Number.isInteger(asid);
   return {
     // A file the controller has just seen is not necessarily a whole file:
     // the job publishes it by rename, but a reader can still catch an older
     // direct write. `complete` is false until every field is there, so a
     // half-written result is waited for instead of being read as uid -1 or
-    // exit 1.
-    complete: uidText.trim().length > 0 && exitText.trim().length > 0,
+    // exit 1. The session id is part of that: without it, isolation cannot be
+    // shown, and a result that will never carry one must not be read as a
+    // pass.
+    complete: uidText.trim().length > 0 && exitText.trim().length > 0 && asidKnown,
     uid: Number.isInteger(uid) ? uid : -1,
     username: fields.get("username") ?? "unknown",
-    asid: asidText.trim().length > 0 && Number.isInteger(asid) ? asid : null,
+    asid: asidKnown ? asid : null,
     onConsole: onConsole === "1",
     exitCode: Number.isInteger(exitCode) ? exitCode : 1,
   };

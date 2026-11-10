@@ -212,6 +212,30 @@ test("a job in a session id other than the console's is trusted", () => {
   assert.equal(assertOutcomeSession(outcome, { uid: 502 }, { uid: 501, asid: 100021 }), outcome);
 });
 
+test("an unknown session id is never accepted as isolation", () => {
+  // Neither side may be missing: "not equal" is not the same as "different".
+  assert.throws(
+    () => assertOutcomeSession({ uid: 502, asid: null, onConsole: false }, { uid: 502 }, { uid: 501, asid: 100021 }),
+    /did not report a session id/,
+  );
+  assert.throws(
+    () => assertOutcomeSession({ uid: 502, asid: undefined, onConsole: false }, { uid: 502 }, { uid: 501, asid: 100021 }),
+    /did not report a session id/,
+  );
+  assert.throws(
+    () => assertOutcomeSession({ uid: 502, asid: 100040, onConsole: false }, { uid: 502 }, { uid: 501, asid: null }),
+    /console session's id could not be read/,
+  );
+});
+
+test("a result without a session id is never complete", () => {
+  const unknown = parseTerminalResult("uid=502\nusername=test\nonconsole=0\nexit=0\n");
+  assert.equal(unknown.complete, false);
+  assert.equal(unknown.asid, null);
+  const empty = parseTerminalResult("uid=502\nusername=test\nasid=\nonconsole=0\nexit=0\n");
+  assert.equal(empty.complete, false);
+});
+
 test("a job is trusted even when offstage's session number disagrees", () => {
   // Measured on 2026-11-03: offstage reported session 258 for a session whose
   // launchd asid and CGSession audit id were both 109086. The job was off the
