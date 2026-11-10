@@ -12,7 +12,13 @@
 
 import { createHash } from "node:crypto";
 
-export const JOB_SCHEMA_VERSION = "1.0";
+import { isRunId } from "./lock.js";
+
+/**
+ * 1.1 adds the controller's `runId`: the agent needs it to write the per-run
+ * session marker, and deducing it would be a guess.
+ */
+export const JOB_SCHEMA_VERSION = "1.1";
 /** A job older than this is not executed: it may have been replayed. */
 export const JOB_MAX_AGE_MS = 10 * 60 * 1000;
 /** Tolerance for a controller clock that is slightly ahead of the agent's. */
@@ -29,6 +35,8 @@ export type JobWriter = {
 export type Job = {
   readonly schemaVersion: typeof JOB_SCHEMA_VERSION;
   readonly jobId: string;
+  /** The controller's run id; the agent names it in the session marker. */
+  readonly runId: string;
   /** ISO-8601. */
   readonly createdAt: string;
   readonly payloadSha256: string;
@@ -220,15 +228,25 @@ export function decodeJob(bytes: Uint8Array): DecodeOutcome<Job> {
     return { ok: false, detail: `unsupported job schema ${String(parsed["schemaVersion"])}` };
   }
   const jobId = stringField(parsed, "jobId");
+  const runId = stringField(parsed, "runId");
   const createdAt = stringField(parsed, "createdAt");
   const payloadSha256 = stringField(parsed, "payloadSha256");
   const payloadFile = stringField(parsed, "payloadFile");
   const writer = parsed["writer"];
-  if (jobId === null || createdAt === null || payloadSha256 === null || payloadFile === null) {
+  if (
+    jobId === null ||
+    runId === null ||
+    createdAt === null ||
+    payloadSha256 === null ||
+    payloadFile === null
+  ) {
     return { ok: false, detail: "job.json is missing a required field" };
   }
   if (!isJobId(jobId)) {
     return { ok: false, detail: `jobId "${jobId}" is not in the expected form` };
+  }
+  if (!isRunId(runId)) {
+    return { ok: false, detail: `runId "${runId}" is not in the expected form` };
   }
   if (!HASH_PATTERN.test(payloadSha256)) {
     return { ok: false, detail: "payloadSha256 is not a SHA-256 hex digest" };
@@ -246,7 +264,7 @@ export function decodeJob(bytes: Uint8Array): DecodeOutcome<Job> {
   }
   return {
     ok: true,
-    value: { schemaVersion: JOB_SCHEMA_VERSION, jobId, createdAt, payloadSha256, payloadFile, writer: { host, user } },
+    value: { schemaVersion: JOB_SCHEMA_VERSION, jobId, runId, createdAt, payloadSha256, payloadFile, writer: { host, user } },
   };
 }
 

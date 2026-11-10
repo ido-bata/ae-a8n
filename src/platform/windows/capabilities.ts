@@ -15,9 +15,10 @@ export function windowsCapabilities(isolation: TargetSpec["isolation"]): Capabil
     // direct driver path proves it, but the isolated run has no such fact.
     provesOwnership: false,
     // T090: the agent writes a per-run marker and the controller verifies it
-    // names the run before close acts. Until that code and its tests land,
-    // neither proof may be claimed.
-    provesDestination: false,
+    // names this run, this job and this agent before a close path may quit.
+    // This proves the run's delivery, not which AE instance a script reached;
+    // the driver's own marker covers that when a run talks to AE directly.
+    provesDestination: true,
     // T089 reports blocking states; it has no GUI automation and presses nothing.
     guiRecovery: false,
     sessionIdentity: "host-and-user",

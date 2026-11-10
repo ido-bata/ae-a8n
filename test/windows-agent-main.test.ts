@@ -57,6 +57,7 @@ function jobFor(jobId: string): Job {
   return {
     schemaVersion: JOB_SCHEMA_VERSION,
     jobId,
+    runId: "20261110T120000Z-run00001",
     createdAt: NOW.toISOString(),
     payloadSha256: sha256Hex(PAYLOAD),
     payloadFile: "payload.json",

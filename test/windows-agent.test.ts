@@ -22,6 +22,10 @@ import {
   type Job,
 } from "../src/platform/windows/job.js";
 import { submitJob } from "../src/platform/windows/remote.js";
+import {
+  readSessionMarker,
+  sessionMarkerPath,
+} from "../src/platform/windows/session-marker.js";
 
 const NOW = new Date("2026-11-10T12:00:00.000Z");
 const PAYLOAD = new TextEncoder().encode('{"command":"echo hi"}\n');
@@ -51,6 +55,7 @@ function job(overrides: Partial<Job> = {}): Job {
   return {
     schemaVersion: JOB_SCHEMA_VERSION,
     jobId: JOB_ID,
+    runId: "20261110T120000Z-run00001",
     createdAt: NOW.toISOString(),
     payloadSha256: sha256Hex(PAYLOAD),
     payloadFile: "payload.json",
@@ -90,6 +95,51 @@ describe("the agent", () => {
 
     const stored = decodeResult((await files.read(jobPaths(JOB_ID).result)) ?? new Uint8Array());
     expect(stored).toMatchObject({ ok: true, value: { jobId: JOB_ID, payloadSha256: sha256Hex(PAYLOAD) } });
+  });
+
+  it("writes the run's session marker before the executor runs", async () => {
+    const files = await channel();
+    await publish(files);
+    let markerBeforeExecute: boolean | null = null;
+    const outcome = await runJob({
+      channel: files,
+      identity: IDENTITY,
+      jobId: JOB_ID,
+      now: () => NOW,
+      random: () => new Uint8Array(32).fill(0xab),
+      executor: {
+        execute: async () => {
+          const read = await readSessionMarker(files, JOB_ID);
+          markerBeforeExecute =
+            read.state === "ok" && read.marker.runId === job().runId && read.marker.secret === "ab".repeat(32);
+          return { status: "ok", message: "ran" };
+        },
+      },
+    });
+    expect(outcome).toMatchObject({ state: "finished" });
+    expect(markerBeforeExecute).toBe(true);
+    expect(await readSessionMarker(files, JOB_ID)).toMatchObject({
+      state: "ok",
+      marker: { runId: job().runId, jobId: JOB_ID, agent: IDENTITY },
+    });
+    expect(await files.read(sessionMarkerPath(JOB_ID))).not.toBeNull();
+  });
+
+  it("writes no marker for a job it refuses", async () => {
+    const files = await channel();
+    await files.writeAtomic(jobPaths(JOB_ID).payload("payload.json"), new TextEncoder().encode("evil"));
+    await files.writeAtomic(jobPaths(JOB_ID).manifest, encodeJob(job()));
+    const outcome = await runJob({
+      channel: files,
+      identity: IDENTITY,
+      executor: {
+        execute: () => Promise.reject(new Error("must not run")),
+      },
+      jobId: JOB_ID,
+      now: () => NOW,
+    });
+    expect(outcome).toMatchObject({ state: "refused" });
+    expect(await readSessionMarker(files, JOB_ID)).toEqual({ state: "missing" });
   });
 
   it("does not run the same job twice", async () => {
@@ -254,6 +304,7 @@ describe("the controller", () => {
     let calls = 0;
     const result = await submitJob(files, {
       payload: PAYLOAD,
+      runId: "20261110T120000Z-run00001",
       timeoutMs: 10_000,
       writer: { host: "controller", user: "tester" },
       now: () => NOW,
@@ -277,6 +328,7 @@ describe("the controller", () => {
     let calls = 0;
     const result = await submitJob(files, {
       payload: PAYLOAD,
+      runId: "20261110T120000Z-run00001",
       timeoutMs: 10_000,
       writer: { host: "controller", user: "tester" },
       now: () => NOW,
@@ -302,6 +354,7 @@ describe("the controller", () => {
     let clock = NOW.getTime();
     const result = await submitJob(files, {
       payload: PAYLOAD,
+      runId: "20261110T120000Z-run00001",
       timeoutMs: 10,
       writer: { host: "controller", user: "tester" },
       now: () => new Date(clock),
@@ -321,6 +374,7 @@ describe("the controller", () => {
     let calls = 0;
     const result = await submitJob(files, {
       payload: PAYLOAD,
+      runId: "20261110T120000Z-run00001",
       timeoutMs: 10_000,
       writer: { host: "controller", user: "tester" },
       now: () => NOW,
@@ -346,6 +400,7 @@ describe("the controller", () => {
     const other = newJobId(NOW, new Uint8Array([9, 9, 9, 9]));
     const result = await submitJob(files, {
       payload: PAYLOAD,
+      runId: "20261110T120000Z-run00001",
       timeoutMs: 10_000,
       writer: { host: "controller", user: "tester" },
       now: () => NOW,
@@ -380,6 +435,7 @@ describe("the controller", () => {
     await expect(
       submitJob(files, {
         payload: PAYLOAD,
+        runId: "20261110T120000Z-run00001",
         timeoutMs: 0,
         writer: { host: "controller", user: "tester" },
       }),

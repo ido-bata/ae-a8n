@@ -10,6 +10,7 @@ import {
   type TargetSpec,
 } from "../src/platform/contract.js";
 import { DirectoryChannel } from "../src/platform/windows/channel.js";
+import type { FileChannel } from "../src/platform/windows/channel.js";
 import { decodeJobPayload } from "../src/platform/windows/executor.js";
 import {
   JOB_SCHEMA_VERSION,
@@ -28,6 +29,11 @@ import {
   type ProbeCommand,
 } from "../src/platform/windows/probe.js";
 import type { SubmitOptions } from "../src/platform/windows/remote.js";
+import {
+  createSessionMarker,
+  encodeSessionMarker,
+  sessionMarkerPath,
+} from "../src/platform/windows/session-marker.js";
 import {
   WindowsAdapter,
   WindowsJobRefusedError,
@@ -49,6 +55,28 @@ const AGENT: AgentIdentity = {
   sessionId: 1,
   version: "0.1.0-alpha.1",
 };
+
+const MARKER_RANDOM = new Uint8Array(32).fill(7);
+
+/** What the agent writes before it executes: a marker naming the run and job. */
+async function writeMarker(
+  files: FileChannel,
+  runId: string,
+  jobId = JOB_ID,
+): Promise<void> {
+  await files.writeAtomic(
+    sessionMarkerPath(jobId),
+    encodeSessionMarker(
+      createSessionMarker({
+        runId,
+        jobId,
+        agent: AGENT,
+        now: () => NOW,
+        random: () => MARKER_RANDOM,
+      }),
+    ),
+  );
+}
 
 const TARGET: TargetSpec = {
   name: "win-ae",
@@ -170,6 +198,9 @@ async function fixture(options: {
     if (options.submit !== undefined) {
       return options.submit(files, request);
     }
+    // The default submit stands in for the agent: it writes the session
+    // marker first, then publishes the result, exactly as agent.ts does.
+    await writeMarker(files, request.runId);
     const jobResult = result("ok", "exited with code 0");
     await files.writeAtomic(jobPaths(JOB_ID).result, encodeResult(jobResult));
     return { status: "ok", jobId: JOB_ID, result: jobResult };
@@ -196,7 +227,7 @@ describe("the Windows adapter", () => {
     expect(remote.capabilities).toEqual({
       nonInterference: "by-construction",
       provesOwnership: false,
-      provesDestination: false,
+      provesDestination: true,
       guiRecovery: false,
       sessionIdentity: "host-and-user",
     });
@@ -236,6 +267,7 @@ describe("the Windows adapter", () => {
 
     const request = submitCalls[0];
     expect(request).toMatchObject({
+      runId: RUN_ID,
       timeoutMs: 5000,
       writer: { host: "WIN-AE-01", user: "a8n" },
     });
@@ -258,6 +290,8 @@ describe("the Windows adapter", () => {
         aeVersion: "26.5.0",
         jobId: JOB_ID,
         outcome: "ok",
+        destinationProof: "marker",
+        ownershipProof: "unproven",
       },
     });
     if (manifest.ok) {
@@ -348,7 +382,40 @@ describe("the Windows adapter", () => {
     });
     // The job may still be running, so the run's lock stays until close().
     expect(await channel.read(lockPath(RUN_ID))).not.toBeNull();
-    await session.close();
+    // No marker was written, so the destination is unproven and nothing may be
+    // acted on; close reports that instead of pretending it closed a session.
+    const closed = await session.close();
+    expect(closed.closed).toBe(false);
+    expect(closed.reason).toContain("A8N-AE-002");
+    expect(closed.reason).toContain("nothing was quit");
+    expect(await channel.read(lockPath(RUN_ID))).toBeNull();
+  });
+
+  it("does not act on a marker that names another run, and says so", async () => {
+    const { adapter, channel } = await fixture({
+      submit: async (files) => {
+        // A marker from some other run was delivered here. It must never be
+        // accepted as this run's destination.
+        await writeMarker(files, "20261110T120000Z-deadbeef");
+        const jobResult = result("ok", "exited with code 0");
+        await files.writeAtomic(jobPaths(JOB_ID).result, encodeResult(jobResult));
+        return { status: "ok", jobId: JOB_ID, result: jobResult };
+      },
+    });
+    const session = await adapter.open(TARGET);
+    await session.open();
+    await session.run(["/bin/echo"], RUN_OPTIONS);
+
+    expect(await readRunManifest(channel, RUN_ID)).toMatchObject({
+      ok: true,
+      value: { outcome: "ok", destinationProof: "unproven", ownershipProof: "unproven" },
+    });
+    const closed = await session.close();
+    expect(closed.closed).toBe(false);
+    expect(closed.reason).toContain("A8N-AE-002");
+    expect(closed.reason).toContain("names run");
+    expect(closed.reason).toContain("nothing was quit");
+    // The lock is this run's own bookkeeping, not an AE process.
     expect(await channel.read(lockPath(RUN_ID))).toBeNull();
   });
 

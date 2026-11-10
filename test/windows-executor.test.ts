@@ -19,6 +19,7 @@ const PAYLOAD = new TextEncoder().encode('{"argv":["/bin/echo","hi"]}\n');
 const JOB: Job = {
   schemaVersion: JOB_SCHEMA_VERSION,
   jobId: "20261110T120000Z-abcdef01",
+  runId: "20261110T120000Z-run00001",
   createdAt: "2026-11-10T12:00:00.000Z",
   payloadSha256: sha256Hex(PAYLOAD),
   payloadFile: "payload.json",

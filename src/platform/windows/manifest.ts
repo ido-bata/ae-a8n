@@ -10,9 +10,20 @@ import type { FileChannel } from "./channel.js";
 import { isRunId } from "./lock.js";
 import type { DecodeOutcome } from "./job.js";
 
-export const RUN_MANIFEST_SCHEMA_VERSION = "1.0";
+export const RUN_MANIFEST_SCHEMA_VERSION = "1.1";
 
 export type RunOutcome = "ok" | "failed" | "refused" | "unknown";
+
+/**
+ * What the manifest can say about the run's session marker and about the AE
+ * process. 1.1 added both: a manifest that cannot name its proof says
+ * "unproven" rather than leaving the reader to assume one.
+ */
+export type DestinationProof = "marker" | "pid-and-start-time" | "unproven";
+export type OwnershipProof = "pid-and-start-time" | "unproven";
+
+const DESTINATION_PROOFS: readonly string[] = ["marker", "pid-and-start-time", "unproven"];
+const OWNERSHIP_PROOFS: readonly string[] = ["pid-and-start-time", "unproven"];
 
 export type RunManifest = {
   readonly schemaVersion: typeof RUN_MANIFEST_SCHEMA_VERSION;
@@ -30,6 +41,10 @@ export type RunManifest = {
   /** Null when no result was published (a timeout); never a hash of nothing. */
   readonly resultSha256: string | null;
   readonly outcome: RunOutcome;
+  /** How the run's destination was proven; `unproven` when it was not. */
+  readonly destinationProof: DestinationProof;
+  /** How the AE process was proven to be this run's; `unproven` here. */
+  readonly ownershipProof: OwnershipProof;
   readonly startedAt: string;
   readonly finishedAt: string;
 };
@@ -122,6 +137,14 @@ export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest>
   if (typeof outcome !== "string" || !OUTCOMES.includes(outcome)) {
     return { ok: false, detail: `unknown outcome ${String(outcome)}` };
   }
+  const destinationProof = parsed["destinationProof"];
+  if (typeof destinationProof !== "string" || !DESTINATION_PROOFS.includes(destinationProof)) {
+    return { ok: false, detail: `unknown destinationProof ${String(destinationProof)}` };
+  }
+  const ownershipProof = parsed["ownershipProof"];
+  if (typeof ownershipProof !== "string" || !OWNERSHIP_PROOFS.includes(ownershipProof)) {
+    return { ok: false, detail: `unknown ownershipProof ${String(ownershipProof)}` };
+  }
   if (!HASH_PATTERN.test(payloadSha256)) {
     return { ok: false, detail: "payloadSha256 must be a SHA-256 hex digest" };
   }
@@ -143,6 +166,8 @@ export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest>
       payloadSha256,
       resultSha256,
       outcome: outcome as RunOutcome,
+      destinationProof: destinationProof as DestinationProof,
+      ownershipProof: ownershipProof as OwnershipProof,
       startedAt,
       finishedAt,
     },
