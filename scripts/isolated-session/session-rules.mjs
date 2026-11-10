@@ -175,6 +175,37 @@ export function assertJobSession(job, session) {
 }
 
 /**
+ * Whether the agent may still run a job it has just picked up.
+ *
+ * The job directory outlives the controller's wait. A controller that timed
+ * out writes a cancellation next to the job, and the deadline travels in the
+ * job itself. An agent pass that finds either is looking at work the caller
+ * was already told did not finish, so running it would execute an operation
+ * out of band. A job without a deadline is unknown state and is refused for
+ * the same reason: there is no way to tell whether it is still wanted.
+ *
+ * This is checked immediately before the command is started, not only when
+ * the file is first seen.
+ */
+export function assertJobRunnable(job, now, cancelled) {
+  const id = job?.id ?? "unknown";
+  if (cancelled === true) {
+    throw new Error(`the controller cancelled job ${id} before it ran; it was not run.`);
+  }
+  const deadline = job?.deadline;
+  if (!Number.isFinite(deadline)) {
+    throw new Error(`job ${id} has no deadline, so it cannot be shown to be still wanted; it was not run.`);
+  }
+  if (!Number.isFinite(now) || now >= deadline) {
+    throw new Error(
+      `job ${id} arrived after its deadline (${deadline}); the caller was already told it did not finish, ` +
+        "so it was not run.",
+    );
+  }
+  return job;
+}
+
+/**
  * The target session, as offstage reports it.
  *
  * The controller usually runs in the console session, and from there

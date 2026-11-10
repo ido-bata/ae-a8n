@@ -23,9 +23,10 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { assertTrustedResult } from "../scripts/isolated-session/dispatch.mjs";
+import { assertTrustedResult, cancelJob } from "../scripts/isolated-session/dispatch.mjs";
 
 import {
+  assertJobRunnable,
   assertJobSession,
   assertNoRunningAfterEffects,
   assertOutcomeSession,
@@ -147,6 +148,35 @@ test("the agent runs a job that names its own session", () => {
 test("the agent runs a job that names no session", () => {
   const job = { command: ["node", "e2e.mjs"] };
   assert.equal(assertJobSession(job, aqua), job);
+});
+
+test("a job that arrives before its deadline still runs", () => {
+  const job = { id: "1700000000000-abcd", command: ["node", "e2e.mjs"], deadline: 1_700_000_600_000 };
+  assert.equal(assertJobRunnable(job, 1_700_000_000_000, false), job);
+});
+
+test("a job published, timed out and cancelled is never run by a later agent pass", () => {
+  // The controller gave up waiting. The job file is still in the shared
+  // directory, so an agent starting now would otherwise run it — an
+  // operation the caller was told did not finish, executed afterwards.
+  const dir = mkdtempSync(join(tmpdir(), "a8n-cancel-"));
+  try {
+    const id = "1700000000000-abcd";
+    const job = { id, command: ["node", "e2e.mjs"], deadline: 1_700_000_600_000 };
+    assert.equal(assertJobRunnable(job, 1_700_000_000_000, false), job);
+    cancelJob(dir, id);
+    assert.equal(existsSync(join(dir, `${id}.cancel`)), true);
+    assert.throws(() => assertJobRunnable(job, 1_700_000_000_000, true), /cancelled/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a job that arrives after its deadline is not run", () => {
+  const job = { id: "1700000000000-abcd", command: ["node", "e2e.mjs"], deadline: 1_700_000_600_000 };
+  assert.throws(() => assertJobRunnable(job, 1_700_000_600_001, false), /deadline/);
+  // A job without a deadline is an unknown state, not a live one.
+  assert.throws(() => assertJobRunnable({ id: "no-deadline", command: ["node"] }, 1_700_000_000_000, false), /deadline/);
 });
 
 test("a job that ran as another user is not trusted", () => {

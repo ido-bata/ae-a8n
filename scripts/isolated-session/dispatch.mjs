@@ -243,6 +243,32 @@ function ensureSharedDir(dir) {
   }
 }
 
+/**
+ * Tells an agent that may still find the job not to run it.
+ *
+ * The job file stays behind when the controller's wait expires; an agent
+ * starting afterwards would otherwise execute work the caller was told did
+ * not finish. The token is published by rename for the same reason the job
+ * is: an agent must see either no token or a whole one, never a half-written
+ * file. If it cannot be written, the timeout is reported as possibly
+ * executing later rather than as a clean cancellation.
+ */
+export function cancelJob(jobs, id) {
+  const path = join(jobs, `${id}.cancel`);
+  const temporary = `${path}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
+  try {
+    writeFileSync(temporary, "", { mode: 0o644 });
+    renameSync(temporary, path);
+  } catch (error) {
+    try {
+      rmSync(temporary, { force: true });
+    } catch {
+      // Nothing more to clean up.
+    }
+    throw error;
+  }
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.uid === undefined || !Number.isInteger(options.uid)) {
@@ -272,6 +298,7 @@ function main() {
   const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
   const jobPath = join(jobs, `${id}.job.json`);
   const resultPath = join(results, `${id}.result.json`);
+  const deadline = Date.now() + options.timeoutMs;
   // Published by rename: the agent polls this directory, and a direct write
   // can be read half-finished and turned into a parse error for a job that
   // was never run. 0644: the agent accepts only a file it can attribute —
@@ -287,6 +314,10 @@ function main() {
           command: options.command,
           ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
           session: { uid: options.uid, asid: session.asid },
+          // The agent checks this immediately before it starts the command.
+          // A job found after the controller stopped waiting must not run:
+          // the caller was told it did not finish.
+          deadline,
         },
         null,
         2,
@@ -307,7 +338,6 @@ function main() {
       (session.asid === null ? "" : `, asid ${session.asid}`) +
       ")\n",
   );
-  const deadline = Date.now() + options.timeoutMs;
   for (;;) {
     if (existsSync(resultPath)) {
       assertTrustedResult(resultPath, options.uid);
@@ -351,7 +381,20 @@ function main() {
       return;
     }
     if (Date.now() >= deadline) {
-      throw new Error(`the job ${id} did not finish within ${options.timeoutMs}ms; no result was produced`);
+      // The job file stays where the agent can find it. Write the
+      // cancellation before reporting the timeout, so a later agent pass
+      // cannot run work the caller believes did not finish.
+      try {
+        cancelJob(jobs, id);
+      } catch (error) {
+        throw new Error(
+          `the job ${id} did not finish within ${options.timeoutMs}ms, and its cancellation could not be ` +
+            `written (${error instanceof Error ? error.message : String(error)}); it may still run later.`,
+        );
+      }
+      throw new Error(
+        `the job ${id} did not finish within ${options.timeoutMs}ms; it was cancelled and will not run.`,
+      );
     }
     execFileSync("sleep", ["0.5"]);
   }

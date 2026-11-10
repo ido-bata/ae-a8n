@@ -26,6 +26,7 @@ import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import {
+  assertJobRunnable,
   assertJobSession,
   jobFileIsTrusted,
   sharedDirIsUsable,
@@ -196,7 +197,7 @@ async function main() {
         });
         continue;
       }
-      await runJob({ id, job, resultPath, logs, session });
+      await runJob({ id, job, resultPath, logs, session, jobs });
     }
     await new Promise((done) => setTimeout(done, POLL_MS));
   }
@@ -259,12 +260,30 @@ function consoleIsOwn(uid) {
   return !Number.isInteger(consoleUid) || consoleUid < 0 || consoleUid === uid;
 }
 
-async function runJob({ id, job, resultPath, logs, session }) {
+async function runJob({ id, job, resultPath, logs, session, jobs }) {
   const startedAt = new Date().toISOString();
   const logPath = join(logs, `${id}.log`);
   const command = Array.isArray(job.command) ? job.command : [];
   if (command.length === 0) {
     await writeResult(resultPath, { id, ok: false, error: "the job has no command", session, startedAt });
+    return;
+  }
+  // Checked here, immediately before the command would start: the controller
+  // may have timed out while this agent was busy with an earlier job, and a
+  // cancellation (or a deadline now in the past) means the caller was already
+  // told this work did not finish. Running it then would execute an operation
+  // out of band.
+  const cancelled = existsSync(join(jobs, `${id}.cancel`));
+  try {
+    assertJobRunnable(job, Date.now(), cancelled);
+  } catch (error) {
+    await writeResult(resultPath, {
+      id,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      session,
+      startedAt,
+    });
     return;
   }
   // A fast user switch is how the human reaches this session, and it can put
