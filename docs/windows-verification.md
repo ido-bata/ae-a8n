@@ -465,3 +465,37 @@ so the 64-bit `Uninstall` keys alone reported "After Effects not found" on a
 host that has it. The probe now reads `WOW6432Node` and `HKCU` too and collapses
 duplicate registrations. Two versions under one Adobe root are a normal upgrade
 and are not reported as ambiguity.
+
+## In-session agent (T088, #70)
+
+The agent is a `bin`-style entry point, not a service. It must run inside the
+dedicated user's own signed-in desktop session; a session-0 service or an SSH
+session has no GUI and the agent refuses to start there.
+
+On the Windows target, after `npm run build` (or from an installed package):
+
+```bat
+node scripts\windows-agent.mjs ^
+  --channel \\controller\share\a8n ^
+  --agent-id ae-a8n-agent ^
+  --host WIN-AE-01 ^
+  --user a8n ^
+  --session-id 1 ^
+  --version 0.1.0-alpha.1
+```
+
+- `--channel` is the same directory the controller uses. The agent reads
+  `jobs/<jobId>/`, claims through `claims/<jobId>.json`, and publishes through
+  `results/<jobId>/result.json`. A missing or unreadable channel exits non-zero
+  with the reason on stderr.
+- `--session-id` must be the interactive session id (not `0`); the agent checks
+  this before it polls anything.
+- Start it from the dedicated account's own logon (for example a shortcut in
+  that account's Startup folder), not from a scheduled task with "Run whether
+  user is logged on or not". The latter has no interactive desktop.
+- The agent never reads or writes a credential. Adobe sign-in stays a human
+  setup step; GUI recovery and process ownership are T089/T090.
+
+The entry is tested through `main(argv, deps)` in
+`test/windows-agent-main.test.ts`. Level: `automated test` against the in-repo
+fake; this has **not** been run on a real Windows host.
