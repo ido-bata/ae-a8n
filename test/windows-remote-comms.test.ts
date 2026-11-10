@@ -486,6 +486,49 @@ describe("through the channel, with an agent on the other side", () => {
     }
   }, 30_000);
 
+  it("signs a run with the key the host configuration names, with none injected", async () => {
+    const rig = await startAgent();
+    try {
+      await waitFor(async () => {
+        const bytes = await new DirectoryChannel(rig.channelRoot).read(presencePath(AGENT.id));
+        return bytes === null ? null : bytes;
+      });
+      // The adapter a CLI builds for `--host`: neither the channel nor the key
+      // is injected, so both have to come from the host's configuration. The
+      // key is the one `openComms` verified, and a job signed with anything
+      // else would be refused by the agent rather than reach the executor.
+      const adapter = new WindowsAdapter({
+        host: AGENT.host,
+        // `--host UUU` alone: the CLI names no account, so the host's
+        // configuration has to supply one. The agent refuses a job whose
+        // writer names no user, so an empty one here cannot reach the host.
+        user: "",
+        agent: AGENT,
+        probe: noLocalProbe,
+        remote: {
+          host: AGENT.host,
+          user: AGENT.user,
+          channel: rig.channelRoot,
+          keyFile: rig.keyFile,
+          agentId: AGENT.id,
+        },
+        runDirectory: await tempDirectory("a8n-remote-runs-"),
+        pollMs: 5,
+        sleep: (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }),
+      });
+      const session = await adapter.open(TARGET);
+      await session.open();
+      const outcome = await session.run(["C:\\tools\\probe.exe", "configured-key"], {
+        timeoutMs: 10_000,
+        env: {},
+      });
+      expect(outcome.exitCode).toBe(0);
+      expect(rig.executor.seen.at(-1)).toEqual(["C:\\tools\\probe.exe", "configured-key"]);
+    } finally {
+      await rig.stop();
+    }
+  }, 30_000);
+
   it("refuses a job when the agent stops checking in", async () => {
     const rig = await startAgent();
     try {
