@@ -6,10 +6,22 @@
  * session and no After Effects are needed to prove them.
  */
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { assertTrustedResult } from "../scripts/isolated-session/dispatch.mjs";
 
@@ -332,4 +344,130 @@ test("a missing account is a refusal", () => {
 
 test("no report at all leaves the question open", () => {
   assert.equal(sessionFromOffstageStatus(null), null);
+});
+
+/**
+ * ax-grant.command and ax-grant-all.command compile and run a helper that
+ * lives next to them. They are meant to be copied into /Users/Shared, which
+ * is world-writable, so both must verify the helper before executing it.
+ *
+ * These cases copy the real scripts and helper into a temporary directory and
+ * run them there. The compiler is replaced so a case that passes verification
+ * stops at the compile step instead of building anything; a case that fails
+ * verification never reaches it.
+ */
+const scriptDir = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "isolated-session");
+
+function setupSandbox() {
+  const root = mkdtempSync(join(tmpdir(), "a8n-ax-grant-"));
+  for (const name of ["ax-grant.command", "ax-grant-all.command", "ax-prompt.swift", "ax-prompt.swift.sha256"]) {
+    copyFileSync(join(scriptDir, name), join(root, name));
+  }
+  return root;
+}
+
+function runSetup(name, root, extraEnv = {}) {
+  const result = spawnSync("/bin/sh", [join(root, name)], {
+    encoding: "utf-8",
+    env: { ...process.env, A8N_AX_SHARED: root, TMPDIR: root, ...extraEnv },
+  });
+  return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+}
+
+function assertRefused(result, pattern) {
+  assert.notEqual(result.status, 0, `expected a refusal, got exit ${result.status}`);
+  assert.match(result.stderr, pattern);
+}
+
+test("the pinned hash matches the helper source", () => {
+  const source = readFileSync(join(scriptDir, "ax-prompt.swift"));
+  const pinned = readFileSync(join(scriptDir, "ax-prompt.swift.sha256"), "utf-8")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0 && !line.startsWith("#"));
+  assert.equal(createHash("sha256").update(source).digest("hex"), pinned?.split(/\s+/)[0]);
+});
+
+test("the setup helpers check owner, mode, symlinks and the pinned hash before running", () => {
+  for (const name of ["ax-grant.command", "ax-grant-all.command"]) {
+    const text = readFileSync(join(scriptDir, name), "utf-8");
+    assert.match(text, /-L "\$path"/, `${name} must reject symlinks`);
+    assert.match(text, /stat -f '%u'/, `${name} must check the owner`);
+    assert.match(text, /owned by root or by uid/, `${name} must allow only root or the invoking user`);
+    assert.match(text, /\$\(\(0\$mode & 022\)\)/, `${name} must reject group/other write`);
+    assert.match(text, /shasum -a 256/, `${name} must check the pinned SHA-256`);
+    assert.match(text, /mktemp -d/, `${name} must build in a private directory`);
+    assert.match(text, /PROMPT=\$BUILD_DIR\/ax-prompt/, `${name} must run only the privately built helper`);
+    assert.doesNotMatch(text, /"\$SHARED\/ax-prompt"/, `${name} must not run a pre-existing shared binary`);
+  }
+});
+
+test("ax-grant.command refuses a symlinked helper source", () => {
+  const root = setupSandbox();
+  try {
+    const real = join(root, "real.swift");
+    writeFileSync(real, "print(\"hello\")\n", { mode: 0o644 });
+    rmSync(join(root, "ax-prompt.swift"));
+    symlinkSync(real, join(root, "ax-prompt.swift"));
+    assertRefused(runSetup("ax-grant.command", root), /symlink/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("ax-grant.command refuses a helper writable by group or others", () => {
+  const root = setupSandbox();
+  try {
+    chmodSync(join(root, "ax-prompt.swift"), 0o666);
+    assertRefused(runSetup("ax-grant.command", root), /writable by group or others/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("ax-grant.command refuses a source that does not match the pinned hash", () => {
+  const root = setupSandbox();
+  try {
+    writeFileSync(join(root, "ax-prompt.swift"), "// replaced\n");
+    assertRefused(runSetup("ax-grant.command", root), /does not match the pinned SHA-256/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("ax-grant.command refuses when the pinned hash is missing", () => {
+  const root = setupSandbox();
+  try {
+    rmSync(join(root, "ax-prompt.swift.sha256"));
+    assertRefused(runSetup("ax-grant.command", root), /pinned hash/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a verified helper is compiled privately, and a shared binary is never executed", () => {
+  const root = setupSandbox();
+  try {
+    const marker = join(root, "shared-binary-ran");
+    const decoy = join(root, "ax-prompt");
+    writeFileSync(decoy, `#!/bin/sh\ntouch ${JSON.stringify(marker)}\n`, { mode: 0o755 });
+    // The real source passes verification; the forced compiler failure proves
+    // execution stopped at the build step, after every check.
+    const result = runSetup("ax-grant.command", root, { A8N_AX_SWIFTC: "/usr/bin/false" });
+    assertRefused(result, /could not be compiled/);
+    // The shared binary must not have run.
+    assert.equal(existsSync(marker), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("ax-grant-all.command applies the same checks", () => {
+  const root = setupSandbox();
+  try {
+    chmodSync(join(root, "ax-prompt.swift.sha256"), 0o664);
+    assertRefused(runSetup("ax-grant-all.command", root), /writable by group or others/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

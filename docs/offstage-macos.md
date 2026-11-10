@@ -220,6 +220,12 @@ Adobe公式（別OSアカウント × 同一PC）: 追加のデバイスアク�
    - 画面収録（Screen Recording）は §10.7 のとおり**許可済み**。
    - 自動化（Automation）→ **After Effects は不要**（§10.9: `count documents` が `0` を返す。TCC は壁ではない）。必要なのは → System Events だけ（GUI フォールバックが AX を通すため）。
    - **プロンプトが出ないまま `-1743` が続く場合**は、その要求は以前に「許可しない」で決着している。`test` セッションで `tccutil reset AppleEvents com.apple.Terminal` を実行してから、`ax-grant.command` をもう一度走らせる（`tccutil` は macOS 標準のコマンドで、TCC データベースを直接編集しない）。プロンプトは **`test` セッションの画面にしか出ない**ので、その画面が見えている状態で押す。
+   - **共有ディレクトリのヘルパーは実行前に検証される**: `ax-grant.command` / `ax-grant-all.command` は `/Users/Shared/ae-a8n/run/ax-prompt.swift` をそのまま `swiftc` に渡さず、既存の `ax-prompt` バイナリも実行しない。両スクリプトは、ヘルパーのソースと `ax-prompt.swift.sha256` について (1) symlink でない、(2) 所有者が root または実行ユーザー、(3) group/other 書込不可、(4) ソースの SHA-256 が pin と一致、を確認する。どれか1つでも外れたら**何もコンパイル・実行せず**、理由を stderr に出して非0で終了する。検証を通ったソースは毎回プライベートな一時ディレクトリにコンパイルされる。共有ディレクトリへコピーするときは root（またはこのスクリプトを実行するアカウント）で行い、`ax-prompt.swift` と `ax-prompt.swift.sha256` の両方を置き、group/other 書込を付けないこと。手動で確認する場合は次を実行する:
+     ```sh
+     stat -f '%N %u %Lp' /Users/Shared/ae-a8n/run/ax-prompt.swift /Users/Shared/ae-a8n/run/ax-prompt.swift.sha256
+     shasum -a 256 /Users/Shared/ae-a8n/run/ax-prompt.swift
+     ```
+     2行目の値が `scripts/isolated-session/ax-prompt.swift.sha256` の値と一致すること。テストは `test/isolated-session.check.mjs` にあり、symlink・mode・hash 不一致・hash 欠落・共有バイナリを実行しないことを検査する。
 3. **Ae 2026 → 設定 → スクリプトとエクスプレッション**で、driver が Ae に読ませるフォルダを許可する（§10.10）。許可的原因是 Ae が `DoScriptFile` を **`-1708`** で拒否すること（実測）。
    - 追加するフォルダ: **`/Users/Shared/ae-a8n/sessions/real-host/staging`**（`a8n-host.js` と `a8n-json.js` と `*.entry.jsx` が入るフォルダ）
    - 「スクリプト」**と**「ファイルへの書き込みとネットワークアクセス」の両方を許可する。
