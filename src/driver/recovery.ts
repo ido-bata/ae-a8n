@@ -7,10 +7,13 @@
  * still be running inside After Effects, and sending it again would run it
  * twice. The driver waits for the original result instead.
  *
- * What the recovery may press is a policy, not a free-for-all. A button that
- * signs out of Adobe, deactivates a device, or confirms a licence change is
- * never pressed: those are a human's decision, and the recovery reports them
- * instead.
+ * What the recovery may press is a policy, not a free-for-all. The recoverable
+ * dialog classes are an **allow list**: only a shape the project has actually
+ * measured may be dismissed. Everything else is unknown, and unknown state is
+ * quarantined — nothing is pressed and the run reports `A8N-SEC-001`. A button
+ * that signs out of Adobe, deactivates a device, or confirms a licence change
+ * is never pressed: those are a human's decision, and the recovery reports
+ * them instead.
  */
 
 import { join } from "node:path";
@@ -28,6 +31,20 @@ export type RecoveryContext = {
 export type RecoveryOutcome = {
   /** Whether something was done that may have unblocked the host. */
   readonly recovered: boolean;
+  /**
+   * How the attempt ended. `"dismissed"` means a measured dialog class was
+   * closed; `"quarantined"` means a blocking window could not be classified
+   * and the run was left untouched. `"refused"` covers every other ending
+   * (no window, no host, a human-only window, or no safe button). Optional so
+   * a simple `HostRecovery` implementation need not classify itself.
+   */
+  readonly outcome?: "dismissed" | "quarantined" | "refused";
+  /**
+   * The security code, when the recovery quarantined the run because the
+   * blocking window was not a measured class. Currently always
+   * `"A8N-SEC-001"`.
+   */
+  readonly code?: "A8N-SEC-001";
   /** What was seen and what was done, for the trace and for a human. */
   readonly evidence: string;
   /** A screenshot of the target session, when one was taken. */
@@ -49,6 +66,12 @@ export const RECOVERY_BUTTONS: readonly string[] = ["OK", "Cancel", "Close", "Di
  * An Adobe sign-in or licence window belongs to a human: pressing its button
  * can sign the account out, deactivate a device, or accept a licence change
  * on the user's behalf. The recovery reports the window instead.
+ *
+ * This is a second, independent refusal. The policy that decides whether a
+ * window may be acted on at all is the allow list below; this one exists so a
+ * sign-in or licence window is named for what it is even when it would
+ * otherwise be quarantined, and so a measured class can never be widened into
+ * an account prompt.
  *
  * The wording is matched in the language the session runs in as well as in
  * English: After Effects shows its dialogs in the UI language of the user,
@@ -81,17 +104,72 @@ export function describeWindow(window: GuiWindowInfo): string {
   return `${window.role}${subrole} "${window.title}" [${buttons.join(", ")}]` + (said.length > 0 ? ` says "${said}"` : "");
 }
 
+/**
+ * A dialog class the project has measured, and may therefore dismiss.
+ *
+ * Membership is evidence, not a guess: the shape and wording in `matches`
+ * must come from a recorded run against a real After Effects. A class that
+ * has not been measured is not added "to be helpful" — an unknown blocking
+ * window is quarantined instead.
+ */
+export type KnownDialogClass = {
+  /** What the evidence calls this class. */
+  readonly name: string;
+  readonly matches: (window: GuiWindowInfo) => boolean;
+};
+
+/**
+ * Dialog classes a recovery may press a button in.
+ *
+ * This list is deliberately short. The one measured class is the native alert
+ * the run itself raises with `ui.alert`: on the real host (2026-11-03,
+ * docs/offstage-macos.md §10.14) it was an `AXWindow` / `AXDialog` with an
+ * empty title, the run's own `ae-a8n:` message among its static texts, and an
+ * `OK` button; pressing `OK` closed it and the original call completed.
+ *
+ * AE's start-up `警告` dialog is *not* here. Its Axis title is also empty, so
+ * matching on shape alone would press it; what it says (a sign-in, licence or
+ * script-permission decision) belongs to a human. It is therefore
+ * unclassified, and the run is quarantined.
+ */
+export const KNOWN_DIALOG_CLASSES: readonly KnownDialogClass[] = [
+  {
+    name: "ae-a8n ui.alert",
+    matches: (window) =>
+      (window.subrole ?? "").toLowerCase() === "axdialog" &&
+      window.title.trim() === "" &&
+      window.texts.some((text) => /^\s*ae-a8n:/.test(text)),
+  },
+];
+
+/** The measured class a window belongs to, or null when it is unknown. */
+export function classifyDialog(window: GuiWindowInfo): KnownDialogClass | null {
+  return KNOWN_DIALOG_CLASSES.find((dialogClass) => dialogClass.matches(window)) ?? null;
+}
+
 export type RecoveryWindowChoice =
   /** No window is blocking the host; nothing to press. */
   | { readonly kind: "none" }
   /** A blocking window belongs to a human; nothing may be pressed anywhere. */
   | { readonly kind: "human-only"; readonly index: number; readonly window: GuiWindowInfo }
-  /** The first blocking window, and the only one a press may be sent to. */
+  /** The first blocking window is a measured class, and the only one a press may be sent to. */
   | {
-      readonly kind: "act";
+      readonly kind: "known";
       readonly index: number;
       readonly window: GuiWindowInfo;
       readonly blockingCount: number;
+      /** The measured class that made the window safe to act on. */
+      readonly dialogClass: string;
+    }
+  /**
+   * A blocking window is not a measured class. Nothing may be pressed; the
+   * run is quarantined and reports `A8N-SEC-001`.
+   */
+  | {
+      readonly kind: "quarantine";
+      readonly index: number;
+      readonly window: GuiWindowInfo;
+      readonly code: "A8N-SEC-001";
     };
 
 /**
@@ -103,7 +181,9 @@ export type RecoveryWindowChoice =
  *
  * If **any** blocking window is a sign-in or licence window, nothing is
  * pressed at all. Acting on a different window would still leave the human's
- * decision unanswered, and the next press could land on it.
+ * decision unanswered, and the next press could land on it. The same applies
+ * to a window whose class has not been measured: unknown state is quarantine,
+ * so an unclassified window anywhere in the list stops every press.
  */
 export function chooseRecoveryWindow(windows: readonly GuiWindowInfo[]): RecoveryWindowChoice {
   const blocking = windows
@@ -116,8 +196,24 @@ export function chooseRecoveryWindow(windows: readonly GuiWindowInfo[]): Recover
   if (humanOnly !== undefined) {
     return { kind: "human-only", index: humanOnly.index, window: humanOnly.window };
   }
+  const unknown = blocking.find(({ window }) => classifyDialog(window) === null);
+  if (unknown !== undefined) {
+    return {
+      kind: "quarantine",
+      index: unknown.index,
+      window: unknown.window,
+      code: "A8N-SEC-001",
+    };
+  }
   const first = blocking[0] as { window: GuiWindowInfo; index: number };
-  return { kind: "act", index: first.index, window: first.window, blockingCount: blocking.length };
+  const dialogClass = classifyDialog(first.window) as KnownDialogClass;
+  return {
+    kind: "known",
+    index: first.index,
+    window: first.window,
+    blockingCount: blocking.length,
+    dialogClass: dialogClass.name,
+  };
 }
 
 export type MacHostRecoveryOptions = {
@@ -161,6 +257,7 @@ export class MacHostRecovery implements HostRecovery {
     if (pid === null) {
       return {
         recovered: false,
+        outcome: "refused",
         evidence: `no After Effects process to recover: ${context.method} (${context.requestId}) timed out and no host process was found`,
       };
     }
@@ -170,6 +267,7 @@ export class MacHostRecovery implements HostRecovery {
     } catch (error) {
       return {
         recovered: false,
+        outcome: "refused",
         evidence: `no GUI recovery is possible: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
@@ -179,6 +277,7 @@ export class MacHostRecovery implements HostRecovery {
     } catch (error) {
       return {
         recovered: false,
+        outcome: "refused",
         evidence: `the target session could not be inspected: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
@@ -186,6 +285,7 @@ export class MacHostRecovery implements HostRecovery {
     if (choice.kind === "none") {
       return {
         recovered: false,
+        outcome: "refused",
         evidence:
           `After Effects ${pid} has no modal window; ${context.method} (${context.requestId}) timed out for another ` +
           "reason, and nothing was clicked",
@@ -205,10 +305,24 @@ export class MacHostRecovery implements HostRecovery {
     if (choice.kind === "human-only") {
       return {
         recovered: false,
+        outcome: "refused",
         evidence:
           `After Effects ${pid} shows "${description}", which is an Adobe account or licence window. ` +
           "No button was pressed: signing in, signing out or deactivating a device is a human's decision. " +
           "The host stays blocked until it is answered by hand.",
+        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        window: description,
+      };
+    }
+    if (choice.kind === "quarantine") {
+      return {
+        recovered: false,
+        outcome: "quarantined",
+        code: choice.code,
+        evidence:
+          `After Effects ${pid} shows "${description}", which is not a dialog class this project has measured. ` +
+          `No button was pressed and no key was sent (${choice.code}). The state is unknown, so the run is ` +
+          "quarantined: answer the window by hand and inspect the screenshot before continuing.",
         ...(shot === undefined ? {} : { screenshotPath: shot }),
         window: description,
       };
@@ -224,18 +338,25 @@ export class MacHostRecovery implements HostRecovery {
             : "";
         return {
           recovered: true,
-          evidence: `closed "${description}" by pressing "${title}" in ${this.#session.username}'s session${others}`,
+          outcome: "dismissed",
+          evidence:
+            `closed "${description}" (${choice.dialogClass}) by pressing "${title}" in ` +
+            `${this.#session.username}'s session${others}`,
           ...(shot === undefined ? {} : { screenshotPath: shot }),
           window: description,
         };
       }
     }
-    const escaped = gui.pressEscape();
+    // There is deliberately no escape-key fallback. The key only reaches the
+    // window that happens to be key, and a listing made a moment earlier
+    // cannot prove that window is the one identified above. Pressing nothing
+    // and reporting it is the only safe answer.
     return {
-      recovered: escaped,
-      evidence: escaped
-        ? `closed "${description}" with the escape key in ${this.#session.username}'s session`
-        : `found "${description}" but pressed nothing: none of ${this.#buttons.join(", ")} was available and the escape key did not close it`,
+      recovered: false,
+      outcome: "refused",
+      evidence:
+        `found "${description}" but pressed nothing: none of ${this.#buttons.join(", ")} was available, ` +
+        "and no untargeted key was sent",
       ...(shot === undefined ? {} : { screenshotPath: shot }),
       window: description,
     };

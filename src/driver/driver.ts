@@ -420,6 +420,8 @@ export class AeDriver {
       result: {
         recovered: outcome.recovered,
         evidence: outcome.evidence,
+        ...(outcome.outcome === undefined ? {} : { outcome: outcome.outcome }),
+        ...(outcome.code === undefined ? {} : { code: outcome.code }),
         ...(outcome.window === undefined ? {} : { window: outcome.window }),
         ...(outcome.screenshotPath === undefined ? {} : { screenshot: outcome.screenshotPath }),
       },

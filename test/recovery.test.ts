@@ -15,7 +15,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AeDriver, TimeoutError } from "../src/driver/driver.js";
 import type { GuiWindowInfo } from "../src/driver/gui-recovery.js";
-import { chooseRecoveryWindow, type HostRecovery } from "../src/driver/recovery.js";
+import {
+  KNOWN_DIALOG_CLASSES,
+  chooseRecoveryWindow,
+  classifyDialog,
+  type HostRecovery,
+} from "../src/driver/recovery.js";
 import type { HostOwnership, HostTransport, InvokeOptions } from "../src/driver/transport.js";
 import { TraceRecorder } from "../src/trace/trace.js";
 
@@ -200,6 +205,13 @@ describe("which window a recovery may act on", () => {
     texts: text.length === 0 ? [] : [text],
   });
 
+  /**
+   * The one class measured on a real host (docs/offstage-macos.md §10.14):
+   * `ui.alert` is an AXDialog with an empty title and the run's own
+   * `ae-a8n:` message among its static texts.
+   */
+  const measuredAlert = (message = "ae-a8n: close me"): GuiWindowInfo => dialog("", message);
+
   it("does nothing when no window is blocking the host", () => {
     const windows: GuiWindowInfo[] = [
       { title: "Project", role: "AXWindow", subrole: "AXStandardWindow", buttons: [], texts: [] },
@@ -207,19 +219,49 @@ describe("which window a recovery may act on", () => {
     expect(chooseRecoveryWindow(windows)).toEqual({ kind: "none" });
   });
 
-  it("addresses the first blocking window by its listing index", () => {
+  it("acts only on the measured ae-a8n alert", () => {
+    expect(KNOWN_DIALOG_CLASSES.length).toBeGreaterThan(0);
+    expect(classifyDialog(measuredAlert())?.name).toBe("ae-a8n ui.alert");
+    // An ordinary-looking AE dialog has not been measured, whatever its title.
+    expect(classifyDialog(dialog("Script"))).toBeNull();
+    expect(classifyDialog(dialog("警告"))).toBeNull();
+  });
+
+  it("addresses the measured alert by its listing index", () => {
     const windows: GuiWindowInfo[] = [
       { title: "Project", role: "AXWindow", subrole: "AXStandardWindow", buttons: [], texts: [] },
-      dialog("警告"),
-      dialog("別のダイアログ"),
+      measuredAlert(),
     ];
     const choice = chooseRecoveryWindow(windows);
-    expect(choice.kind).toBe("act");
-    if (choice.kind !== "act") return;
+    expect(choice.kind).toBe("known");
+    if (choice.kind !== "known") return;
     // 1-based: the standard window above it must be skipped.
     expect(choice.index).toBe(2);
-    expect(choice.window.title).toBe("警告");
-    expect(choice.blockingCount).toBe(2);
+    expect(choice.window.title).toBe("");
+    expect(choice.blockingCount).toBe(1);
+    expect(choice.dialogClass).toBe("ae-a8n ui.alert");
+  });
+
+  it("quarantines an unclassified blocking window and reports A8N-SEC-001", () => {
+    // "警告" is AE's start-up modal. Its AX title is empty too, but what it
+    // says is a sign-in, licence or script-permission decision. Pressing OK
+    // would decide it for the human; an allow list must not contain it.
+    const windows: GuiWindowInfo[] = [dialog("警告", "スクリプトを実行するには許可が必要です")];
+    const choice = chooseRecoveryWindow(windows);
+    expect(choice.kind).toBe("quarantine");
+    if (choice.kind !== "quarantine") return;
+    expect(choice.index).toBe(1);
+    expect(choice.code).toBe("A8N-SEC-001");
+  });
+
+  it("presses nothing when a measured dialog is followed by an unclassified one", () => {
+    // Acting on the first window would still leave the unknown state behind
+    // the press, and the next press could land on it.
+    const windows: GuiWindowInfo[] = [measuredAlert(), dialog("Script")];
+    const choice = chooseRecoveryWindow(windows);
+    expect(choice.kind).toBe("quarantine");
+    if (choice.kind !== "quarantine") return;
+    expect(choice.index).toBe(2);
   });
 
   it("presses nothing anywhere when a sign-in window is among the blockers", () => {
@@ -235,6 +277,13 @@ describe("which window a recovery may act on", () => {
 
   it("refuses when a licence window comes after an ordinary dialog", () => {
     const windows: GuiWindowInfo[] = [dialog("Script"), dialog("ライセンスの確認")];
+    expect(chooseRecoveryWindow(windows).kind).toBe("human-only");
+  });
+
+  it("does not let the measured prefix hide an account prompt", () => {
+    // Both rules apply: the window is unclassified for a human decision even
+    // if its agent-supplied text starts with the prefix.
+    const windows: GuiWindowInfo[] = [measuredAlert("ae-a8n: sign in to Adobe ID")];
     expect(chooseRecoveryWindow(windows).kind).toBe("human-only");
   });
 });

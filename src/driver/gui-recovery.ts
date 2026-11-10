@@ -309,25 +309,6 @@ export const PRESS_BUTTON_SCRIPT = [
   "end run",
 ];
 
-/** Sends the escape key to the process with the given pid. */
-export const PRESS_ESCAPE_SCRIPT = [
-  "on run argv",
-  "  set targetPid to (item 1 of argv) as integer",
-  "  tell application \"System Events\"",
-  "    set procs to (every application process whose unix id is targetPid)",
-  "    if (count of procs) is 0 then return \"MISSING\"",
-  "    set p to item 1 of procs",
-  "    -- The key only reaches the window that is in front, so the process is",
-  "    -- brought forward first. That happens in this session alone.",
-  "    try",
-  "      set frontmost of p to true",
-  "    end try",
-  "    key code 53",
-  "  end tell",
-  "  return \"SENT\"",
-  "end run",
-];
-
 /** Clicks at a point of the target session's screen. */
 export const CLICK_AT_SCRIPT = [
   "on run argv",
@@ -476,12 +457,6 @@ export class MacGuiRecovery {
       expected?.subrole ?? "",
     ]);
     return result.stdout.trim() === "CLICKED";
-  }
-
-  /** Sends escape to the process. */
-  pressEscape(): boolean {
-    const result = this.#osascript(PRESS_ESCAPE_SCRIPT, [String(this.#pid)]);
-    return result.stdout.trim() === "SENT";
   }
 
   /**

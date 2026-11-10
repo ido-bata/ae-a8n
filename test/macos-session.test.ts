@@ -19,7 +19,6 @@ import {
   LIST_WINDOWS_SCRIPT,
   MacGuiRecovery,
   PRESS_BUTTON_SCRIPT,
-  PRESS_ESCAPE_SCRIPT,
   isBlockingWindow,
   parseUiListing,
 } from "../src/driver/gui-recovery.js";
@@ -197,6 +196,19 @@ describe("the GUI recovery", () => {
     expect(text).toContain('if wsub is not expectedSubrole then return "CHANGED"');
   });
 
+  it("never sends an untargeted escape key when the focused window cannot be proven", async () => {
+    // Escape only reaches whatever window happens to be key. The recovery
+    // identifies a window by listing index and title/subrole; a keystroke has
+    // no such identity check, so it could close a different window in the
+    // same process. The fallback is removed rather than guessed at.
+    const gui = await import("../src/driver/gui-recovery.js");
+    expect("PRESS_ESCAPE_SCRIPT" in gui).toBe(false);
+    expect("pressEscape" in MacGuiRecovery.prototype).toBe(false);
+    for (const script of [LIST_WINDOWS_SCRIPT, PRESS_BUTTON_SCRIPT, CLICK_AT_SCRIPT]) {
+      expect(script.join("\n")).not.toContain("key code");
+    }
+  });
+
   it.runIf(process.platform === "darwin")("compiles every script it sends, host or not", () => {
     // A script that does not compile is only discovered on a real host, at
     // the moment a dialog is blocking After Effects. osacompile answers the
@@ -206,7 +218,6 @@ describe("the GUI recovery", () => {
       for (const [name, script] of Object.entries({
         "list-windows": LIST_WINDOWS_SCRIPT,
         "press-button": PRESS_BUTTON_SCRIPT,
-        "press-escape": PRESS_ESCAPE_SCRIPT,
         "click-at": CLICK_AT_SCRIPT,
       })) {
         const source = join(dir, `${name}.applescript`);
