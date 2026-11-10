@@ -475,6 +475,48 @@ describe("finding the host before it has answered", () => {
     // ...but nothing is owned yet, so nothing may be quit.
     expect(t.ownership().kind).toBe("unknown");
   });
+
+  it("never hands the GUI fallback a recycled pid", async () => {
+    // The run owned pid 42. By the time a dialog needs closing, pid 42 names
+    // a different process (same pid, later start): the original is gone.
+    // Acting on the new one would send an Apple Event into an unrelated app.
+    const t = transportSeeing([], [ae(42)], [ae(42, T0 + 90_000)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("hands the GUI fallback the process this run started", async () => {
+    const t = transportSeeing([], [ae(42)], [ae(42)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.recoveryTargetPid()).toBe(42);
+  });
+
+  it("refuses the GUI fallback when the process list cannot be re-read", async () => {
+    const t = (() => {
+      let calls = 0;
+      return new ScriptInvocationTransport({
+        platform: "darwin",
+        install,
+        now: () => T0,
+        processes: () => {
+          calls += 1;
+          if (calls === 1) {
+            return [];
+          }
+          if (calls === 2) {
+            return [ae(42)];
+          }
+          throw new Error("ps failed");
+        },
+        launchMacHost: () => Promise.resolve(42),
+      });
+    })();
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
 });
 
 describe("the process listing", () => {

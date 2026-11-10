@@ -538,7 +538,17 @@ export class ScriptInvocationTransport implements HostTransport {
   recoveryTargetPid(): number | null {
     const owned = this.#owned;
     if (owned !== null) {
-      return owned.pid;
+      // The pid is not an identity. Re-read the process immediately before
+      // the GUI fallback may act: the old process may have exited and its pid
+      // been reused, and the Accessibility query matches on pid alone.
+      let now: HostProcess[];
+      try {
+        now = this.#hostProcesses();
+      } catch {
+        return null;
+      }
+      const same = now.filter((p) => sameProcess(this.#platform, p, owned));
+      return same.length === 1 && now.length === 1 ? owned.pid : null;
     }
     if (this.#platform !== "darwin" || this.#spawnedPid === undefined) {
       return null;

@@ -269,6 +269,19 @@ describe("the GUI recovery", () => {
         }),
     ).toThrow(/no Aqua session/);
   });
+
+  it("refuses a GUI action when the pid no longer names the run's process", () => {
+    // A pid is not an identity. The process is re-read immediately before the
+    // Accessibility query; a recycled pid is refused with A8N-AE-004 rather
+    // than queried or clicked.
+    const gui = new MacGuiRecovery({
+      session: { uid: 502, username: "test", asid: 100040, kind: "Aqua" },
+      pid: 4242,
+      verifyProcess: () => false,
+    });
+    expect(() => gui.listWindows()).toThrow(/A8N-AE-004/);
+    expect(() => gui.capture(join(tmpdir(), "a8n-not-this-process.png"))).toThrow(/A8N-AE-004/);
+  });
 });
 
 describe("starting a process in another user's session", () => {

@@ -334,12 +334,23 @@ export type GuiRecoveryOptions = {
    * A caller that owns that screen can say so explicitly.
    */
   readonly allowConsoleSession?: boolean;
+  /**
+   * Re-checks, immediately before each GUI action, that `pid` still names the
+   * process this run started. A pid alone is not an identity: the process may
+   * have exited and the pid been reused. Returning false, or throwing, refuses
+   * the action with `A8N-AE-004`; nothing is sent to the Accessibility API.
+   */
+  readonly verifyProcess?: ((pid: number) => boolean) | undefined;
 };
 
 export class GuiRecoveryError extends Error {
-  constructor(message: string) {
+  /** A stable code for a refusal a caller may act on. */
+  readonly code: "A8N-AE-004" | undefined;
+
+  constructor(message: string, options: { code?: "A8N-AE-004" } = {}) {
     super(message);
     this.name = "GuiRecoveryError";
+    this.code = options.code;
   }
 }
 
@@ -354,6 +365,7 @@ export class MacGuiRecovery {
   readonly #session: MacSession;
   readonly #pid: number;
   readonly #screenshotDir: string | undefined;
+  readonly #verifyProcess: ((pid: number) => boolean) | undefined;
 
   constructor(options: GuiRecoveryOptions) {
     if (options.session.kind !== "Aqua") {
@@ -385,6 +397,7 @@ export class MacGuiRecovery {
     this.#session = options.session;
     this.#pid = options.pid;
     this.#screenshotDir = options.screenshotDir;
+    this.#verifyProcess = options.verifyProcess;
   }
 
   get session(): MacSession {
@@ -397,6 +410,7 @@ export class MacGuiRecovery {
 
   /** The windows of the After Effects instance, as the Accessibility API sees them. */
   listWindows(): GuiAppState {
+    this.#assertSameProcess();
     const result = this.#osascript(LIST_WINDOWS_SCRIPT, [String(this.#pid)]);
     if (result.stdout.trim() === "MISSING") {
       throw new GuiRecoveryError(
@@ -420,6 +434,7 @@ export class MacGuiRecovery {
    * session's screen, not the console user's.
    */
   capture(path: string): string {
+    this.#assertSameProcess();
     if (this.#screenshotDir !== undefined) {
       mkdirSync(this.#screenshotDir, { recursive: true });
     }
@@ -449,6 +464,7 @@ export class MacGuiRecovery {
    * window that appeared in between would otherwise receive the press.
    */
   pressButton(windowIndex: number, title: string, expected?: GuiWindowInfo): boolean {
+    this.#assertSameProcess();
     const result = this.#osascript(PRESS_BUTTON_SCRIPT, [
       String(this.#pid),
       String(windowIndex),
@@ -467,6 +483,7 @@ export class MacGuiRecovery {
    * from the physical display of another session are meaningless here.
    */
   clickAt(x: number, y: number): boolean {
+    this.#assertSameProcess();
     const result = this.#osascript(CLICK_AT_SCRIPT, [String(Math.round(x)), String(Math.round(y))]);
     return result.stdout.trim() === "CLICKED";
   }
@@ -502,6 +519,34 @@ export class MacGuiRecovery {
       );
     }
     return false;
+  }
+
+  /**
+   * Refuses unless `pid` still names the process this run started.
+   *
+   * Every GUI action goes through this first. A pid can be reused between the
+   * moment ownership was decided and the moment a dialog is pressed; without
+   * this check the Accessibility query would find and act on whatever process
+   * now holds that pid.
+   */
+  #assertSameProcess(): void {
+    const verify = this.#verifyProcess;
+    if (verify === undefined) {
+      return;
+    }
+    let same = false;
+    try {
+      same = verify(this.#pid);
+    } catch {
+      same = false;
+    }
+    if (!same) {
+      throw new GuiRecoveryError(
+        `the After Effects process ${this.#pid} is no longer the one this run started (A8N-AE-004); ` +
+          "no GUI action was taken.",
+        { code: "A8N-AE-004" },
+      );
+    }
   }
 
   /**

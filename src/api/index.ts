@@ -276,6 +276,7 @@ export class AfterEffects {
         ? new MacHostRecovery({
             session: requireSession(options.session.uid),
             pid: () => transport.recoveryTargetPid(),
+            verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
             screenshotDir: join(sessionRoot, "artifacts"),
           })
         : undefined;

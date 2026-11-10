@@ -18,7 +18,7 @@
 
 import { join } from "node:path";
 
-import { MacGuiRecovery, isBlockingWindow, type GuiWindowInfo } from "./gui-recovery.js";
+import { GuiRecoveryError, MacGuiRecovery, isBlockingWindow, type GuiWindowInfo } from "./gui-recovery.js";
 import type { MacSession } from "./mac-session.js";
 
 export type RecoveryContext = {
@@ -44,7 +44,7 @@ export type RecoveryOutcome = {
    * blocking window was not a measured class. Currently always
    * `"A8N-SEC-001"`.
    */
-  readonly code?: "A8N-SEC-001";
+  readonly code?: "A8N-SEC-001" | "A8N-AE-004";
   /** What was seen and what was done, for the trace and for a human. */
   readonly evidence: string;
   /** A screenshot of the target session, when one was taken. */
@@ -221,6 +221,11 @@ export type MacHostRecoveryOptions = {
   readonly session: MacSession;
   /** The pid of the After Effects instance, when it is known. */
   readonly pid: () => number | null;
+  /**
+   * Whether that pid still names the process this run started, re-read
+   * immediately before each GUI action. A pid alone is not an identity.
+   */
+  readonly verifyProcess?: ((pid: number) => boolean) | undefined;
   /** Where a screenshot of the target session is written. */
   readonly screenshotDir: string;
   /** The buttons that may be pressed. */
@@ -236,12 +241,14 @@ export type MacHostRecoveryOptions = {
 export class MacHostRecovery implements HostRecovery {
   readonly #session: MacSession;
   readonly #pid: () => number | null;
+  readonly #verifyProcess: ((pid: number) => boolean) | undefined;
   readonly #screenshotDir: string;
   readonly #buttons: readonly string[];
 
   constructor(options: MacHostRecoveryOptions) {
     this.#session = options.session;
     this.#pid = options.pid;
+    this.#verifyProcess = options.verifyProcess;
     this.#screenshotDir = options.screenshotDir;
     this.#buttons = options.buttons ?? RECOVERY_BUTTONS;
   }
@@ -258,12 +265,19 @@ export class MacHostRecovery implements HostRecovery {
       return {
         recovered: false,
         outcome: "refused",
-        evidence: `no After Effects process to recover: ${context.method} (${context.requestId}) timed out and no host process was found`,
+        code: "A8N-AE-004",
+        evidence:
+          `no After Effects process this run started could be tied to it: ${context.method} (${context.requestId}) ` +
+          "timed out and no host process was found",
       };
     }
     let gui: MacGuiRecovery;
     try {
-      gui = new MacGuiRecovery({ session: this.#session, pid });
+      gui = new MacGuiRecovery({
+        session: this.#session,
+        pid,
+        ...(this.#verifyProcess === undefined ? {} : { verifyProcess: this.#verifyProcess }),
+      });
     } catch (error) {
       return {
         recovered: false,
@@ -278,6 +292,7 @@ export class MacHostRecovery implements HostRecovery {
       return {
         recovered: false,
         outcome: "refused",
+        ...(error instanceof GuiRecoveryError && error.code !== undefined ? { code: error.code } : {}),
         evidence: `the target session could not be inspected: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
@@ -327,25 +342,38 @@ export class MacHostRecovery implements HostRecovery {
         window: description,
       };
     }
-    for (const title of this.#buttons) {
-      const pressed = window.buttons.some((button) => button.title === title)
-        ? gui.pressButton(choice.index, title, window)
-        : gui.pressButtonIn(choice.index, title, window);
-      if (pressed) {
-        const others =
-          choice.blockingCount > 1
-            ? ` (${choice.blockingCount - 1} other modal window(s) were left untouched)`
-            : "";
-        return {
-          recovered: true,
-          outcome: "dismissed",
-          evidence:
-            `closed "${description}" (${choice.dialogClass}) by pressing "${title}" in ` +
-            `${this.#session.username}'s session${others}`,
-          ...(shot === undefined ? {} : { screenshotPath: shot }),
-          window: description,
-        };
+    try {
+      for (const title of this.#buttons) {
+        const pressed = window.buttons.some((button) => button.title === title)
+          ? gui.pressButton(choice.index, title, window)
+          : gui.pressButtonIn(choice.index, title, window);
+        if (pressed) {
+          const others =
+            choice.blockingCount > 1
+              ? ` (${choice.blockingCount - 1} other modal window(s) were left untouched)`
+              : "";
+          return {
+            recovered: true,
+            outcome: "dismissed",
+            evidence:
+              `closed "${description}" (${choice.dialogClass}) by pressing "${title}" in ` +
+              `${this.#session.username}'s session${others}`,
+            ...(shot === undefined ? {} : { screenshotPath: shot }),
+            window: description,
+          };
+        }
       }
+    } catch (error) {
+      // A refusal to prove the process is still this run's is not a failed
+      // press: it is evidence that the target changed under us.
+      return {
+        recovered: false,
+        outcome: "refused",
+        ...(error instanceof GuiRecoveryError && error.code !== undefined ? { code: error.code } : {}),
+        evidence: `no button was pressed: ${error instanceof Error ? error.message : String(error)}`,
+        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        window: description,
+      };
     }
     // There is deliberately no escape-key fallback. The key only reaches the
     // window that happens to be key, and a listing made a moment earlier
