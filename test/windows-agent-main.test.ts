@@ -115,6 +115,9 @@ class UnreadableChannel implements FileChannel {
   createExclusive(_path: string, _bytes: Uint8Array): Promise<boolean> {
     return Promise.reject(new Error("EACCES: unreadable"));
   }
+  ensureDirectory(_path: string): Promise<void> {
+    return Promise.reject(new Error("EACCES: unreadable"));
+  }
   list(_directory: string): Promise<readonly string[]> {
     return Promise.reject(new Error("EACCES: unreadable"));
   }

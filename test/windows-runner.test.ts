@@ -379,6 +379,8 @@ describe("the Windows adapter", () => {
           code: "A8N-AE-004",
           message: "no result after 5000ms; the job was left in place",
           resultSha256: null,
+          evidence: { polls: 20, absent: 20, failed: 0, lastError: null, slowestReadMs: 2 },
+          lateResult: null,
         });
       },
     });
