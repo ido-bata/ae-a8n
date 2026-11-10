@@ -10,6 +10,15 @@ on a real host (#47).
 
 ### Fixed
 
+- `ae-a8n test --host <name>` refused every run with "the Windows channel key
+  is not configured" even when the channel was reachable and the agent was
+  heartbeating: the adapter verified the host's key file and then signed the
+  job with a key only an injected caller could supply. A remote run now signs
+  with the key the host configuration names — the one the agent holds.
+- A remote run with no `--user` recorded an empty writer, which the agent
+  refused (`A8N-JOB-001: writer.host and writer.user are required`); that
+  refusal reached the caller as a timeout, because nothing else was wrong.
+  The host configuration's account is now used when the caller names none.
 - `ae-a8n agent` accepts the command its own help and the Windows setup plan
   print: `--agent-id`, `--session-id` and `--version` were documented as
   having defaults but were required, so the documented form failed before it

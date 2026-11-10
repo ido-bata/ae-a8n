@@ -383,7 +383,7 @@ export class WindowsAdapter implements PlatformAdapter {
   #channel: FileChannel;
   readonly #channelInjected: boolean;
   readonly #host: string;
-  readonly #user: string;
+  #user: string;
   readonly #agent: AgentIdentity;
   readonly #key: JobKey | undefined;
   readonly #probeRunner: CommandRunner;
@@ -761,6 +761,13 @@ export class WindowsAdapter implements PlatformAdapter {
       if (resolution.ok && !this.#channelInjected) {
         this.#channel = new DirectoryChannel(resolution.config.channel);
       }
+      if (resolution.ok && this.#user === "") {
+        // The account for this host comes from its configuration when the
+        // caller names none. `--host UUU` alone used to leave the writer
+        // anonymous, and the agent refuses such a job (A8N-JOB-001) — which
+        // reached a person as a timeout, because nothing else was wrong.
+        this.#user = resolution.config.user ?? "";
+      }
       return openComms(
         {
           channel: this.#channel,
@@ -783,6 +790,34 @@ export class WindowsAdapter implements PlatformAdapter {
             },
       );
     });
+  }
+
+  /**
+   * The key this run's job is signed with.
+   *
+   * A caller that supplied one — a test, or a backend that resolved it itself
+   * — keeps it. A remote target takes the key `openComms` has just verified
+   * against the host's own channel configuration: that is the same key file
+   * the agent reads, and the only one it accepts. Reading `#key` alone made
+   * every remote run refuse with "the key is not configured" while the
+   * channel and the agent were both fine, because the CLI never has a key to
+   * inject — the host's configuration is where it comes from.
+   *
+   * Resolving here also settles `#channel` before the run lock is written, so
+   * the lock lands in the channel the job goes into rather than a local one.
+   */
+  async #signingKey(target: TargetSpec): Promise<JobKey> {
+    if (this.#key !== undefined) {
+      return this.#key;
+    }
+    if (target.isolation === "remote-host" && this.#remote !== null && !this.#simulatedHostProbe) {
+      const comms = await this.#openRemote();
+      if (!comms.ok) {
+        throw new WindowsAgentUnavailableError(comms.checks);
+      }
+      return comms.key;
+    }
+    throw new WindowsKeyNotConfiguredError();
   }
 
   /**
@@ -904,10 +939,7 @@ export class WindowsAdapter implements PlatformAdapter {
     options: RunOptions,
     onRun: (run: RunBinding) => void,
   ): Promise<CommandOutcome> {
-    const key = this.#key;
-    if (key === undefined) {
-      throw new WindowsKeyNotConfiguredError();
-    }
+    const key = await this.#signingKey(target);
     const now = this.#now();
     const runId = newJobId(now, this.#random(4));
     const owner = this.#owner();
