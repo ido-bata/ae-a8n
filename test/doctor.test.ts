@@ -1,3 +1,7 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { runCli, type CliDependencies } from "../src/cli/run.js";
@@ -428,27 +432,128 @@ describe("the Darwin adapter's non-probe methods do not lie", () => {
     expect(runCommand).toHaveBeenCalledTimes(1);
   });
 
-  it("reports setup as needs-human and recovery as uninspected, never as done", async () => {
-    const adapter = new DarwinAdapter({ readFacts: () => darwinFacts() });
-    const steps = await adapter.plan(TARGET);
-    expect(steps.every((step) => step.state === "needs-human")).toBe(true);
-    expect(steps.every((step) => step.automatable === false)).toBe(true);
+  it("plans the account, session and permissions, and never claims a human step", async () => {
+    const root = mkdtempSync(join(tmpdir(), "a8n-mac-setup-"));
+    const stateFile = join(root, "state.json");
+    try {
+      const adapter = new DarwinAdapter({
+        readFacts: () => darwinFacts(),
+        setupStateFile: stateFile,
+      });
+      const steps = await adapter.plan(TARGET);
+      const byId = new Map(steps.map((step) => [step.id, step]));
+      expect(byId.get("macos.target-user")?.state).toBe("done");
+      expect(byId.get("macos.session")?.state).toBe("done");
+      expect(byId.get("macos.console-separation")?.state).toBe("done");
+      expect(byId.get("macos.ae")?.state).toBe("done");
+      for (const id of ["macos.permissions", "macos.ae-scripting", "macos.signin"]) {
+        expect(byId.get(id)?.state).toBe("needs-human");
+      }
+      expect(steps.every((step) => step.automatable === false)).toBe(true);
 
-    const dryRun = await adapter.apply(steps, { yes: false, dryRun: true });
-    expect(dryRun.outcomes.every((outcome) => outcome.state === "planned")).toBe(true);
-    expect(dryRun.stateFile).toContain("not written");
+      const dryRun = await adapter.apply(steps, { yes: false, dryRun: true });
+      expect(dryRun.stateFile).toBe(stateFile);
+      expect(dryRun.outcomes.every((outcome) => outcome.detail.includes("dry run"))).toBe(true);
+      expect(() => readFileSync(stateFile, "utf-8")).toThrow();
 
-    const applied = await adapter.apply(steps, { yes: true, dryRun: false });
-    expect(applied.outcomes.every((outcome) => outcome.state === "needs-human")).toBe(
-      true,
-    );
+      const applied = await adapter.apply(steps, { yes: true, dryRun: false });
+      const done = applied.outcomes
+        .filter((outcome) => outcome.state === "done")
+        .map((outcome) => outcome.id)
+        .sort();
+      expect(done).toEqual(
+        ["macos.ae", "macos.console-separation", "macos.session", "macos.target-user"],
+      );
+      expect(applied.outcomes.some((outcome) => outcome.state === "failed")).toBe(false);
+      const stored = JSON.parse(readFileSync(stateFile, "utf-8")) as {
+        schemaVersion: string;
+        completed: readonly string[];
+      };
+      expect(stored).toMatchObject({ schemaVersion: "1.0" });
+      expect([...stored.completed].sort()).toEqual(done);
 
-    const findings = await adapter.recover("/tmp/a8n-run");
-    expect(findings).toHaveLength(1);
-    expect(findings[0]?.code).toBe("A8N-JOB-002");
-    // The stub must not read as a clean sweep: it says nothing was inspected.
-    expect(findings[0]?.detail).toContain("cannot yet inspect");
-    expect(findings[0]?.detail).toContain("nothing in /tmp/a8n-run was acted on");
+      // Idempotent: the second run performs no destructive action and skips
+      // what the state file records.
+      const again = await adapter.apply(steps, { yes: true, dryRun: false });
+      expect(
+        again.outcomes
+          .filter((outcome) => outcome.state === "skipped")
+          .map((outcome) => outcome.id)
+          .sort(),
+      ).toEqual(done);
+      expect(
+        again.outcomes
+          .filter((outcome) => outcome.state === "needs-human")
+          .map((outcome) => outcome.id)
+          .sort(),
+      ).toEqual(["macos.ae-scripting", "macos.permissions", "macos.signin"]);
+
+      const findings = await adapter.recover("/tmp/a8n-run");
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.code).toBe("A8N-JOB-002");
+      // Recovery on macOS is not implemented (#59); the finding must say so
+      // rather than read as a clean sweep.
+      expect(findings[0]?.detail).toContain("cannot yet inspect");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("plans human steps when the account is missing or is the console user", async () => {
+    const root = mkdtempSync(join(tmpdir(), "a8n-mac-setup-"));
+    try {
+      const adapter = new DarwinAdapter({
+        readFacts: () =>
+          darwinFacts({
+            targetUser: "missing",
+            targetUid: null,
+            targetUserFailure: "The user name could not be found",
+            guiSession: null,
+            consoleUid: 501,
+          }),
+        setupStateFile: join(root, "state.json"),
+      });
+      const steps = await adapter.plan({ ...TARGET, user: "missing" });
+      const byId = new Map(steps.map((step) => [step.id, step]));
+      expect(byId.get("macos.target-user")?.state).toBe("needs-human");
+      expect(byId.get("macos.target-user")?.reason).toContain("could not be resolved");
+      expect(byId.get("macos.session")?.state).toBe("needs-human");
+      expect(byId.get("macos.console-separation")?.state).toBe("needs-human");
+
+      const consoleAdapter = new DarwinAdapter({
+        readFacts: () => darwinFacts({ consoleUid: 502 }),
+        setupStateFile: join(root, "state.json"),
+      });
+      const consoleSteps = await consoleAdapter.plan(TARGET);
+      expect(
+        consoleSteps.find((step) => step.id === "macos.console-separation")?.state,
+      ).toBe("needs-human");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to reset a setup state file it cannot read", async () => {
+    const root = mkdtempSync(join(tmpdir(), "a8n-mac-setup-"));
+    const stateFile = join(root, "state.json");
+    try {
+      writeFileSync(stateFile, "not json", "utf-8");
+      const adapter = new DarwinAdapter({
+        readFacts: () => darwinFacts(),
+        setupStateFile: stateFile,
+      });
+      const steps = await adapter.plan(TARGET);
+      const applied = await adapter.apply(steps, { yes: true, dryRun: false });
+      expect(applied.outcomes).toHaveLength(1);
+      expect(applied.outcomes[0]).toMatchObject({
+        id: "macos.setup-state",
+        state: "failed",
+      });
+      // The unreadable file is left exactly as it was, for a human to inspect.
+      expect(readFileSync(stateFile, "utf-8")).toBe("not json");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

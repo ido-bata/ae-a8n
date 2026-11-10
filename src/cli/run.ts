@@ -1,9 +1,8 @@
 /**
  * `ae-a8n` command dispatch.
  *
- * `doctor` (#55), `test` (#58), `recover` (#59) and `report` are implemented.
- * `setup` parses its contract flags, then fails closed with a notice and a
- * documented exit code; it never reports success for work it did not do.
+ * All five contract commands are implemented: `doctor` (#55), `setup` (#56),
+ * `test` (#58), `recover` (#59) and `report`.
  *
  * The platform choice is delegated to `select.ts`; nothing here branches on
  * the host OS.
@@ -26,19 +25,18 @@ import { readRunReport, type RunReportRead } from "../runner/report-read.js";
 import { runTest, type TestRunResult } from "../runner/test-run.js";
 import {
   parseArgs,
-  type CommandName,
-  type CommandOptions,
   type DoctorOptions,
   type RecoverOptions,
   type ReportOptions,
+  type SetupOptions,
   type TestOptions,
 } from "./args.js";
 import {
   buildEnvelope,
   type CliEnvelope,
-  type EnvelopeStatus,
   type NextAction,
   type PlatformInfo,
+  type SetupStepReport,
   type TargetInfo,
 } from "./envelope.js";
 import { EXIT, type ExitCode } from "./exit-code.js";
@@ -214,50 +212,135 @@ function usageFailure(
   return EXIT.usage;
 }
 
-function unimplemented(
-  command: Exclude<CommandName, "doctor" | "test" | "recover" | "report">,
-  options: CommandOptions,
+function setupStepReports(
+  planned: Awaited<ReturnType<PlatformAdapter["plan"]>>,
+  outcomes: Awaited<ReturnType<PlatformAdapter["apply"]>>["outcomes"],
+  dryRun: boolean,
+): readonly SetupStepReport[] {
+  const byId = new Map(outcomes.map((outcome) => [outcome.id, outcome]));
+  const reports: SetupStepReport[] = planned.map((step) => {
+    const outcome = byId.get(step.id);
+    return {
+      id: step.id,
+      // An adapter that reports nothing for a planned step has not shown the
+      // step was done; that is a failure, never a silent pass.
+      state: outcome?.state ?? (dryRun ? "planned" : "failed"),
+      reason: step.reason,
+      action: step.action,
+      automatable: step.automatable,
+      detail: outcome?.detail ?? "the adapter reported no outcome for this step",
+    };
+  });
+  // An outcome the plan does not describe (for example "the state file is
+  // unreadable") still has to reach the user; dropping it would hide a refusal.
+  for (const outcome of outcomes) {
+    if (planned.some((step) => step.id === outcome.id)) {
+      continue;
+    }
+    reports.push({
+      id: outcome.id,
+      state: outcome.state,
+      reason: outcome.detail,
+      action: null,
+      automatable: false,
+      detail: outcome.detail,
+    });
+  }
+  return reports;
+}
+
+async function setup(
+  options: SetupOptions,
   startedAt: Date,
   deps: RequiredDependencies,
-): ExitCode {
-  const target = targetFrom(options as {
-    readonly target: string | null;
-    readonly user: string | null;
-    readonly host: string | null;
-  });
+): Promise<ExitCode> {
+  const target = targetFrom(options);
   let selection: AdapterSelection;
   try {
     selection = deps.select({ target });
-  } catch {
-    selection = { ok: false, platform: "unknown", check: {
-      code: "A8N-ENV-001",
-      severity: "blocker",
-      title: "Unsupported OS or architecture",
-      detail: "the platform could not be selected",
-      remedy: "Run ae-a8n on a supported platform.",
-      remedyKind: "human",
-      evidence: {},
-    } };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const envelope = buildEnvelope({
+      command: "setup",
+      status: "failed",
+      exitCode: EXIT.failed,
+      startedAt,
+      finishedAt: deps.now(),
+      platform: UNKNOWN_PLATFORM,
+      target: targetInfo(target),
+      checks: [],
+      notice:
+        `setup could not select a platform backend: ${message}. ` +
+        "Nothing was changed and no step is being reported as done.",
+      env: deps.env,
+    });
+    emit(envelope, options.json, deps);
+    return EXIT.failed;
   }
-  const status: EnvelopeStatus = "setup-incomplete";
-  const exitCode: ExitCode = EXIT.setupIncomplete;
-  const notice =
-    `${command} is not implemented in this increment (issue #56); ` +
-    "nothing was run or changed.";
-  const envelope = buildEnvelope({
-    command,
-    status,
-    exitCode,
-    startedAt,
-    finishedAt: deps.now(),
-    platform: platformFromSelection(selection, target),
-    target: targetInfo(target),
-    checks: [],
-    notice,
-    env: deps.env,
-  });
-  emit(envelope, options.json, deps);
-  return exitCode;
+
+  if (!selection.ok) {
+    const envelope = buildEnvelope({
+      command: "setup",
+      status: "blocked",
+      exitCode: EXIT.blocked,
+      startedAt,
+      finishedAt: deps.now(),
+      platform: platformFromSelection(selection, target),
+      target: targetInfo(target),
+      checks: [selection.check],
+      env: deps.env,
+    });
+    emit(envelope, options.json, deps);
+    return EXIT.blocked;
+  }
+
+  try {
+    const planned = await selection.adapter.plan(target);
+    const applied = await selection.adapter.apply(planned, {
+      yes: options.yes,
+      dryRun: options.dryRun,
+    });
+    const steps = setupStepReports(planned, applied.outcomes, options.dryRun);
+    const incomplete = steps.some(
+      (step) => step.state === "needs-human" || step.state === "failed",
+    );
+    const exitCode = incomplete ? EXIT.setupIncomplete : EXIT.ok;
+    const envelope = buildEnvelope({
+      command: "setup",
+      status: incomplete ? "setup-incomplete" : "ok",
+      exitCode,
+      startedAt,
+      finishedAt: deps.now(),
+      platform: platformFromProbe(selection.adapter, null, target.host !== null),
+      target: targetInfo(target),
+      checks: [],
+      steps,
+      stateFile: applied.stateFile,
+      ...(options.dryRun
+        ? { notice: "dry run: nothing was changed; the steps below are what setup would do." }
+        : {}),
+      env: deps.env,
+    });
+    emit(envelope, options.json, deps);
+    return exitCode;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const envelope = buildEnvelope({
+      command: "setup",
+      status: "failed",
+      exitCode: EXIT.failed,
+      startedAt,
+      finishedAt: deps.now(),
+      platform: platformFromProbe(selection.adapter, null, target.host !== null),
+      target: targetInfo(target),
+      checks: [],
+      notice:
+        `setup could not finish: ${message}. No step is being reported as done.`,
+      env: deps.env,
+    });
+    emit(envelope, options.json, deps);
+    return EXIT.failed;
+  }
 }
 
 async function doctor(
@@ -730,8 +813,8 @@ export async function runCli(
     return report(parsed.options as ReportOptions, startedAt, deps);
   }
 
-  if (parsed.command !== "doctor") {
-    return unimplemented(parsed.command, parsed.options, startedAt, deps);
+  if (parsed.command === "setup") {
+    return setup(parsed.options as SetupOptions, startedAt, deps);
   }
 
   return doctor(parsed.options as DoctorOptions, startedAt, deps);

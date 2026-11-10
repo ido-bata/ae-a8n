@@ -73,6 +73,53 @@ class RecordingAdapter extends FakeAdapter {
   }
 }
 
+type ApplyOptions = { readonly yes: boolean; readonly dryRun: boolean };
+
+class SetupAdapter extends FakeAdapter {
+  readonly planTargets: TargetSpec[] = [];
+  readonly applies: ApplyOptions[] = [];
+  readonly #steps: readonly SetupStep[];
+  readonly #apply: (steps: readonly SetupStep[], options: ApplyOptions) => Promise<SetupResult>;
+
+  constructor(
+    steps: readonly SetupStep[],
+    apply: (steps: readonly SetupStep[], options: ApplyOptions) => Promise<SetupResult>,
+  ) {
+    super("darwin");
+    this.#steps = steps;
+    this.#apply = apply;
+  }
+
+  override plan(target: TargetSpec): Promise<readonly SetupStep[]> {
+    this.planTargets.push(target);
+    return Promise.resolve(this.#steps);
+  }
+
+  override apply(
+    steps: readonly SetupStep[],
+    options: ApplyOptions,
+  ): Promise<SetupResult> {
+    this.applies.push(options);
+    return this.#apply(steps, options);
+  }
+}
+
+const DONE_STEP: SetupStep = {
+  id: "macos.ae",
+  state: "done",
+  reason: "After Effects 24.0 is installed",
+  action: null,
+  automatable: true,
+};
+
+const HUMAN_STEP: SetupStep = {
+  id: "macos.signin",
+  state: "needs-human",
+  reason: "the Adobe sign-in has not been completed",
+  action: "Sign in to Creative Cloud in the target account",
+  automatable: false,
+};
+
 class ThrowingAdapter implements PlatformAdapter {
   readonly platform = "darwin" as const;
   readonly id = "broken";
@@ -363,18 +410,66 @@ describe("usage errors and help", () => {
   });
 });
 
-describe("commands not implemented in this increment", () => {
-  it("fails setup closed with exit 7 and a notice", async () => {
-    const adapter = new FakeAdapter("darwin");
+describe("the setup command", () => {
+  it("plans, applies, reports every step and exits 0 when all are done", async () => {
+    const adapter = new SetupAdapter([DONE_STEP], () =>
+      Promise.resolve({
+        stateFile: "/tmp/ae-a8n/setup-state.json",
+        outcomes: [{ id: "macos.ae", state: "done", detail: "already installed" }],
+      }),
+    );
     const test = harness({ ok: true, adapter });
+
+    const code = await runCli(["setup", "--json", "--target", "mac-1"], test.deps);
+
+    expect(code).toBe(EXIT.ok);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.command).toBe("setup");
+    expect(envelope.status).toBe("ok");
+    expect(envelope.exitCode).toBe(0);
+    expect(envelope.stateFile).toBe("/tmp/ae-a8n/setup-state.json");
+    expect(envelope.steps).toEqual([
+      {
+        id: "macos.ae",
+        state: "done",
+        reason: "After Effects 24.0 is installed",
+        action: null,
+        automatable: true,
+        detail: "already installed",
+      },
+    ]);
+    expect(adapter.planTargets).toEqual([
+      { name: "mac-1", isolation: "session", user: null, host: null },
+    ]);
+    expect(adapter.applies).toEqual([{ yes: false, dryRun: false }]);
+    expect(test.err()).toBe("");
+  });
+
+  it("exits 7 and names the human action when a step needs a person", async () => {
+    const adapter = new SetupAdapter([DONE_STEP, HUMAN_STEP], () =>
+      Promise.resolve({
+        stateFile: "/tmp/state.json",
+        outcomes: [
+          { id: "macos.ae", state: "done", detail: "already installed" },
+          { id: "macos.signin", state: "needs-human", detail: "not signed in" },
+        ],
+      }),
+    );
+    const test = harness({ ok: true, adapter });
+
     const code = await runCli(["setup", "--json"], test.deps);
 
     expect(code).toBe(EXIT.setupIncomplete);
     const envelope = jsonEnvelope(test.out());
     expect(envelope.status).toBe("setup-incomplete");
     expect(envelope.exitCode).toBe(7);
-    expect(envelope.notice).toContain("not implemented in this increment");
-    expect(adapter.calls).toEqual([]);
+    const signin = envelope.steps?.find((step) => step.id === "macos.signin");
+    expect(signin).toMatchObject({
+      state: "needs-human",
+      automatable: false,
+      action: "Sign in to Creative Cloud in the target account",
+      detail: "not signed in",
+    });
   });
 
 });

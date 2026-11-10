@@ -18,7 +18,7 @@ export function generalHelp(): string {
     "",
     "Commands:",
     "  doctor   Read-only environment check; never starts After Effects",
-    "  setup    Prepare the isolated session (not implemented in this increment)",
+    "  setup    Guided, idempotent preparation of the isolated session",
     "  test     Run a command in the isolated session",
     "  recover  Inspect a prior run and release what can be released safely",
     "  report   Print or re-render a prior run's report; never runs After Effects",
@@ -65,8 +65,27 @@ const COMMAND_HELP: Record<CommandName, string> = {
   setup: [
     "Usage: ae-a8n setup [--json] [--target <name>] [--user <name>] [--host <name>] [--yes] [--resume] [--dry-run]",
     "",
-    "Guided setup is not implemented in this increment (issue #55). The command",
-    "fails closed with exit 7 and changes nothing.",
+    "Guided, idempotent preparation of the isolated session. Setup reports each",
+    "step as done, skipped, needs-human, failed or planned; it changes nothing",
+    "with --dry-run, and it never performs an action that needs OS or Adobe",
+    "consent, never records a credential, and never modifies TCC or SIP.",
+    "",
+    "Re-running after success is safe: completed steps are read back from the",
+    "state file and skipped. Interrupting setup leaves that file consistent.",
+    "",
+    "Options:",
+    "  --json             Print exactly one JSON document on stdout",
+    "  --target <name>    Target name from the configuration",
+    "  --user <name>      OS account that runs After Effects",
+    "  --host <name>      Windows host; selects the remote-host backend",
+    "  --yes              Permit automatable steps that change the machine",
+    "  --resume           Continue from the saved state (implied: state is always read)",
+    "  --dry-run          Probe and plan only; change nothing",
+    "  --help, -h         Show this help",
+    "",
+    "Exit codes: 0 when every step is done or skipped; 7 when a step needs a",
+    "human or failed; 3 when the environment is blocked; 1 when setup could not",
+    "finish; 2 for a usage error.",
   ].join("\n"),
   test: [
     "Usage: ae-a8n test [--json] [--target <name>] [--user <name>] [--host <name>] [--timeout <ms>] [--keep] -- <command...>",
@@ -232,6 +251,24 @@ function renderCapabilities(capabilities: CliEnvelope["capabilities"]): string[]
   ];
 }
 
+function renderSteps(steps: CliEnvelope["steps"], stateFile: string | undefined): string[] {
+  if (steps === undefined) {
+    return [];
+  }
+  const lines = ["", "steps:"];
+  for (const step of steps) {
+    lines.push(`  [${step.state}] ${step.id}`);
+    lines.push(`    ${step.detail}`);
+    if (step.action !== null) {
+      lines.push(`    action (${step.automatable ? "automatic" : "human"}): ${step.action}`);
+    }
+  }
+  if (stateFile !== undefined) {
+    lines.push("", `state file: ${stateFile}`);
+  }
+  return lines;
+}
+
 export function renderEnvelope(
   envelope: CliEnvelope,
   options: { readonly verbose?: boolean } = {},
@@ -270,6 +307,7 @@ export function renderEnvelope(
 
   lines.push(...renderCapabilities(envelope.capabilities));
   lines.push(...renderFacts(envelope.facts));
+  lines.push(...renderSteps(envelope.steps, envelope.stateFile));
   lines.push(...renderVerdicts(envelope));
   lines.push(...renderFindings(envelope));
   lines.push(...renderArtifacts(envelope));
