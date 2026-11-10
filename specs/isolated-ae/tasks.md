@@ -91,6 +91,13 @@ prove it owns; an agent that is not in an interactive session refuses to start.
 
 **Verification:** `automated test` against a fake host; real Windows pending.
 
+**Delivered 2026-11-10 (#69, PR #76):** the job protocol (`job.ts`,
+`channel.ts`, `agent.ts`, `remote.ts`) with exclusive claim, SHA-256 payload
+binding, replay-age refusal, publish-by-rename, and `unknown` on timeout.
+The setup steps, the agent entry point and the logon task moved to T088: they
+cannot name a real agent command until the executor exists, and a stub would
+not be completion.
+
 **Depends on:** T086.
 
 ### T088 — Windows isolated runner
