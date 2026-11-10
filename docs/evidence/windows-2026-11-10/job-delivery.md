@@ -118,7 +118,19 @@ The 60 s probe budget is also close to the mark on this host: a run costs
 ~40–50 s because the seven probe commands travel as jobs, twice per run,
 and the agent claims one job at a time on a 1 s poll.
 
-## 7. Not reached
+## 7. The gate on both hosts, and the packed artifact
+
+| Host | Commit | Command | Result |
+| --- | --- | --- | --- |
+| macOS | `8d64c2d` | `npm run check` | exit 0; **56 files, 887 passed, 5 skipped (892)** |
+| Windows 11 `UUU` | `18a0a7d` (fetched and archived, not the host's working tree) | `npm ci` → `npm run check` | exit 0; **56 files, 886 passed, 6 skipped (892)** |
+
+The packed artifact at `18a0a7d` is
+`ido-bata-ae-a8n-0.1.0-alpha.1.tgz`, sha256
+`5bd8fb7e…b1cc2`; it was installed on the host with `npm install` and its
+`dist/cli.js` answers `ae-a8n 0.1.0-alpha.1` and the documented agent usage.
+
+## 8. Not reached
 
 - An After Effects job over this channel. the acceptance plan's AE step needs approval
   before AE is started at all.
