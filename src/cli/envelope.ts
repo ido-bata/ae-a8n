@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 
 import type { DiagnosticCheck } from "../doctor/diagnostics.js";
-import type { Capabilities, SetupStepState } from "../platform/contract.js";
+import type { Capabilities } from "../platform/contract.js";
 
 export const SCHEMA_VERSION = "1.0";
 
@@ -44,19 +44,6 @@ export type NextAction = {
   readonly action: string;
 };
 
-/**
- * One `setup` step as the CLI reports it: the plan's description plus what
- * `apply` actually did. `state` is the outcome; `detail` says why.
- */
-export type SetupStepReport = {
-  readonly id: string;
-  readonly state: SetupStepState;
-  readonly reason: string;
-  readonly action: string | null;
-  readonly automatable: boolean;
-  readonly detail: string;
-};
-
 export type CliEnvelope = {
   readonly schemaVersion: typeof SCHEMA_VERSION;
   readonly command: string;
@@ -72,8 +59,6 @@ export type CliEnvelope = {
   readonly notice?: string;
   readonly facts?: unknown;
   readonly capabilities?: Capabilities;
-  readonly steps?: readonly SetupStepReport[];
-  readonly stateFile?: string;
 };
 
 type Manifest = { readonly name: string; readonly version: string };
@@ -131,8 +116,6 @@ export type EnvelopeInput = {
   readonly notice?: string | undefined;
   readonly facts?: unknown;
   readonly capabilities?: Capabilities | undefined;
-  readonly steps?: readonly SetupStepReport[];
-  readonly stateFile?: string | undefined;
   readonly env?: NodeJS.ProcessEnv;
 };
 
@@ -160,7 +143,5 @@ export function buildEnvelope(input: EnvelopeInput): CliEnvelope {
       : { notice: input.notice }),
     ...(input.facts === undefined ? {} : { facts: input.facts }),
     ...(input.capabilities === undefined ? {} : { capabilities: input.capabilities }),
-    ...(input.steps === undefined ? {} : { steps: input.steps }),
-    ...(input.stateFile === undefined ? {} : { stateFile: input.stateFile }),
   };
 }

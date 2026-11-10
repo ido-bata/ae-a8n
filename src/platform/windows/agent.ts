@@ -55,11 +55,6 @@ export interface JobExecutor {
 
 export type AgentRunOutcome =
   | { readonly state: "no-job" }
-  /**
-   * The run directory exists but carries no `job.json` yet: the controller is
-   * still publishing the submission. Nothing was claimed, run or refused.
-   */
-  | { readonly state: "not-ready" }
   | { readonly state: "claimed-by-other" }
   /**
    * A claim exists that this agent cannot attribute to a trusted issuer. The
@@ -140,16 +135,6 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
   const now = options.now ?? (() => new Date());
   const { channel, identity, jobId, key } = options;
   const paths = jobPaths(jobId);
-
-  // The controller creates the run directory before it publishes `job.json`, so
-  // a job directory with no manifest is a submission in progress, not a job.
-  // Claiming it here would deny the real submission to every agent and publish
-  // a refusal for work that was never offered; leave it for a later poll. The
-  // read after the claim stays authoritative, including its size refusal.
-  const preflight = await readCapped(channel, paths.manifest);
-  if (preflight.ok && preflight.bytes === null) {
-    return { state: "not-ready" };
-  }
 
   const claim = signClaim(
     {
