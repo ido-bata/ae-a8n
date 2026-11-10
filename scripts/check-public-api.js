@@ -19,7 +19,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -77,7 +77,9 @@ console.log("drove the public API; host version " + version + ", " + comps.lengt
 
   let output;
   try {
-    output = run(process.execPath, [pathToFileURL(probePath).pathname], {
+    // A file URL's `.pathname` is "/C:/…" on Windows, and node then looks for
+    // "C:\\C:\\…". The path itself is what node wants.
+    output = run(process.execPath, [probePath], {
       cwd: workdir,
       stdio: ["ignore", "pipe", "pipe"],
     });

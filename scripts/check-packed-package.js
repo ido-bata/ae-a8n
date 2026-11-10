@@ -133,7 +133,10 @@ try {
   if (!existsSync(binPath)) {
     fail(`${binRelative} is missing from the installed package — check the build and "files"`);
   }
-  if ((statSync(binPath).mode & 0o111) === 0) {
+  // Windows has no exec bit: a mode of 0666 is normal, and npm runs the bin
+  // through a generated .cmd shim. The shebang below is the property that has
+  // to hold on every platform, so the bit is only asserted where it exists.
+  if (process.platform !== "win32" && (statSync(binPath).mode & 0o111) === 0) {
     fail(`${binRelative} is not executable after install`);
   }
   const firstLine = readFileSync(binPath, "utf-8").split("\n", 1)[0];
