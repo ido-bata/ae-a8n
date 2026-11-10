@@ -115,6 +115,16 @@ host identity, AE version, agent version and job/result hashes.
 
 **Verification:** `automated test`; real Windows pending.
 
+**Delivered 2026-11-10 (#70, PR #77):** the run lock, the validated executor,
+the run manifest, `WindowsAdapter`/`WindowsSession`, the idempotent setup
+steps and the in-session agent entry (`agent-main.ts` +
+`scripts/windows-agent.mjs`). Recorded 576 tests green. Deliberate boundaries:
+`provesOwnership` and `provesDestination` stay `false` until T089/T090, and
+`recover()` reports that GUI recovery is unimplemented rather than returning a
+clean empty result. The controller submits the command; the agent runs it in
+the dedicated session, so the controller never starts `AfterFX.exe` itself.
+No row of T092 is satisfied.
+
 **Depends on:** T085, T087.
 
 ### T089 — Windows recovery and consent policy
