@@ -12,11 +12,13 @@
  * GUI-capable would be a lie the rest of the pipeline would build on.
  */
 
+import { AGENT_OPTIONS, HIDDEN_FLAG, LOG_FLAG, detachAgent } from "../platform/windows/agent-detach.js";
 import { main as runAgentMain } from "../platform/windows/agent-main.js";
 
 export const AGENT_HELP = [
   "Usage: ae-a8n agent --channel <dir> --key-file <file> --host <name> --user <name>",
   "                       [--agent-id <id>] [--session-id <n>] [--version <v>]",
+  "                       [--hidden] [--log <file>]",
   "",
   "Runs the in-session agent on the target host. It claims one job at a time",
   "from the channel, verifies the agent's own interactive session, runs the",
@@ -31,6 +33,12 @@ export const AGENT_HELP = [
   "  --user <name>      The account the agent must be running as",
   "  --session-id <n>   Defaults to the measured interactive session",
   "  --version <v>      Defaults to this package's version",
+  "  --hidden           Start a hidden, detached copy and return; no console",
+  "                     window is created. The agent must still run in the",
+  "                     signed-in session, so use this from a logon entry or",
+  "                     a shortcut, not from a service.",
+  "  --log <file>       With --hidden, where the agent's output goes",
+  "                     (default: %LOCALAPPDATA%\\ae-a8n\\logs\\agent.log)",
   "  --help, -h         Show this help",
   "",
   "Stop it with Ctrl+C or SIGTERM. It never starts or quits After Effects by",
@@ -38,15 +46,7 @@ export const AGENT_HELP = [
 ].join("\n");
 
 /** The flag names the agent accepts; anything else is a usage error. */
-const AGENT_FLAGS = new Set([
-  "--channel",
-  "--key-file",
-  "--agent-id",
-  "--host",
-  "--user",
-  "--session-id",
-  "--version",
-]);
+const AGENT_FLAGS = AGENT_OPTIONS;
 
 export type AgentCommandResult = { readonly exitCode: number };
 
@@ -67,6 +67,9 @@ export async function runAgentCommand(
       process.stderr.write(`ae-a8n agent: unknown option ${name}; run "ae-a8n agent --help"\n`);
       return { exitCode: 2 };
     }
+  }
+  if (argv.includes(HIDDEN_FLAG) || argv.includes(LOG_FLAG)) {
+    return { exitCode: detachAgent(argv) };
   }
   const controller = new AbortController();
   for (const signal of ["SIGINT", "SIGTERM"] as const) {

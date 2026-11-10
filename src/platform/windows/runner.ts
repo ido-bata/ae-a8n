@@ -562,7 +562,11 @@ export class WindowsAdapter implements PlatformAdapter {
       // register it and never stores a password.
       action: autostartExists
         ? null
-        : "Register the agent to start at the dedicated user's logon (a Startup-folder shortcut or a logon task). Sign-in stays manual.",
+        : "Register the agent to start at the dedicated user's logon (a Startup-folder " +
+          "shortcut or a logon task) with --hidden: `ae-a8n agent --hidden --channel <dir> " +
+          "--key-file <file> --host <host> --user <user>`. --hidden starts the agent with no " +
+          "console window and writes its output to a log; starting it plainly leaves a console " +
+          "window on the desktop for as long as the agent runs. Sign-in stays manual.",
       automatable: false,
     });
 

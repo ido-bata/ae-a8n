@@ -105,6 +105,16 @@ provide a separate physical host.
 - Registering the entry (Startup-folder shortcut or a logon task) and observing
   the agent actually start after a logon were not performed.
   **documented requirement, unverified**
+- The agent is a resident background process, so the entry must use
+  `ae-a8n agent --hidden …`. A plain `node.exe` started from a shortcut or a
+  logon task creates a console window at process creation, and no option of
+  the agent's own can remove it afterwards; `--hidden` starts a detached copy
+  with `windowsHide` (CREATE_NO_WINDOW) and sends its stdout, stderr and exit
+  state to one append-only log (`%LOCALAPPDATA%\ae-a8n\logs\agent.log` unless
+  `--log` says otherwise). **implemented / automated test**
+- The console window a plain start leaves on a real desktop, and the absence of
+  one under `--hidden`, are **unverified on real host** (the agent's own start
+  was not run on the Windows host in this increment).
 
 ## 7. How the controller reaches the channel
 

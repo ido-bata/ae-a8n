@@ -8,8 +8,22 @@ Windows: launch/install discovery (#17), process ownership (#40) and the session
 marker (#44) are merged; menu commands, `hostEnvironment` and Undo/Redo were run
 on a real host (#47).
 
+### Fixed
+
+- `ae-a8n agent` accepts the command its own help and the Windows setup plan
+  print: `--agent-id`, `--session-id` and `--version` were documented as
+  having defaults but were required, so the documented form failed before it
+  polled. They now default to `ae-a8n`, the measured interactive session and
+  the package version.
+
 ### Added
 
+- `ae-a8n agent --hidden`: starts the resident agent as a detached process
+  created with `windowsHide` (CREATE_NO_WINDOW), so a logon entry or a
+  shortcut does not leave a console window on the desktop for the life of the
+  agent. Its stdout, stderr and exit state go to one append-only log
+  (`%LOCALAPPDATA%\ae-a8n\logs\agent.log`, or `--log <file>`). The plain form
+  keeps its console for interactive debugging.
 - Extension methods (#61, `specs/isolated-ae/contracts/extensions.md`):
   `ae-a8n extension build --extension <module> --out <file>` writes a host
   script that declares a consumer's own methods; `AfterEffects.launch({
