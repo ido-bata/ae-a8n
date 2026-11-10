@@ -116,6 +116,7 @@ Initial set:
 | `A8N-SESSION-003` | blocker | Target session is the console session |
 | `A8N-SESSION-004` | blocker | Session identity changed during the run |
 | `A8N-SESSION-005` | blocker | The controller cannot enter the target session |
+| `A8N-SESSION-006` | blocker | The named remote host is this controller's own machine |
 | `A8N-PERM-001` | blocker | Screen Recording not granted in the target session |
 | `A8N-PERM-002` | blocker | Accessibility not granted in the target session |
 | `A8N-PERM-003` | blocker | AE script file/network permission off |
@@ -128,6 +129,9 @@ Initial set:
 | `A8N-JOB-002` | warning | Prior run left a lock or quarantine state |
 | `A8N-JOB-003` | blocker | Job or result is not from a trusted issuer (nothing executed/accepted) |
 | `A8N-JOB-004` | blocker | Job, result or payload exceeds its size limit (nothing parsed) |
+| `A8N-JOB-005` | blocker | The agent is not alive in an interactive session (nothing sent) |
+| `A8N-JOB-006` | blocker | The agent is not the host, user or version the target names (nothing sent) |
+| `A8N-JOB-007` | blocker | The channel root is not reachable from this controller (nothing sent) |
 | `A8N-SEC-001` | blocker | A licence/sign-in/permission dialog is present (never pressed) |
 | `A8N-EXT-001` | blocker | Extension registration is invalid (duplicate/unnamed method) |
 | `A8N-RELEASE-001` | blocker | Package version already exists on the registry |

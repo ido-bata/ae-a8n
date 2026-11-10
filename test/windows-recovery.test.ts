@@ -173,6 +173,8 @@ describe("WindowsAdapter.recover", () => {
       user: "a8n",
       agent: AGENT,
       probe: runner,
+      // The injected probe answers for WIN-AE-01: a fake host, not this machine.
+      simulatedHostProbe: true,
     });
   }
 

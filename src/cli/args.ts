@@ -18,6 +18,14 @@ export type CommonOptions = {
   readonly target: string | null;
   readonly user: string | null;
   readonly host: string | null;
+  /** The channel root this controller uses to reach a named host. */
+  readonly channel: string | null;
+  /** The shared channel key; the same file the agent reads. */
+  readonly keyFile: string | null;
+  /** The agent id whose heartbeat the controller verifies. */
+  readonly agentId: string | null;
+  /** Where host connection settings live; `~/.ae-a8n/hosts.json` by default. */
+  readonly hostConfig: string | null;
 };
 
 export type DoctorOptions = CommonOptions & {
@@ -91,11 +99,34 @@ const BOOLEAN_FLAGS = new Set([
   "--force",
 ]);
 
-const VALUE_FLAGS = new Set(["--target", "--user", "--host", "--timeout", "--run", "--format"]);
+const VALUE_FLAGS = new Set([
+  "--target",
+  "--user",
+  "--host",
+  "--timeout",
+  "--run",
+  "--format",
+  "--channel",
+  "--key-file",
+  "--agent-id",
+  "--host-config",
+]);
+
+/** The flags that describe how a named host is reached. */
+const CONNECTION_FLAGS = ["--channel", "--key-file", "--agent-id", "--host-config"] as const;
 
 /** Which flags each command accepts. `--json` and `--help` are common. */
 const ALLOWED: Record<CommandName, ReadonlySet<string>> = {
-  doctor: new Set(["--json", "--help", "-h", "--target", "--user", "--host", "--verbose"]),
+  doctor: new Set([
+    "--json",
+    "--help",
+    "-h",
+    "--target",
+    "--user",
+    "--host",
+    "--verbose",
+    ...CONNECTION_FLAGS,
+  ]),
   setup: new Set([
     "--json",
     "--help",
@@ -106,6 +137,7 @@ const ALLOWED: Record<CommandName, ReadonlySet<string>> = {
     "--yes",
     "--resume",
     "--dry-run",
+    ...CONNECTION_FLAGS,
   ]),
   test: new Set([
     "--json",
@@ -116,6 +148,7 @@ const ALLOWED: Record<CommandName, ReadonlySet<string>> = {
     "--host",
     "--timeout",
     "--keep",
+    ...CONNECTION_FLAGS,
   ]),
   recover: new Set([
     "--json",
@@ -127,6 +160,7 @@ const ALLOWED: Record<CommandName, ReadonlySet<string>> = {
     "--run",
     "--dry-run",
     "--force",
+    ...CONNECTION_FLAGS,
   ]),
   report: new Set(["--json", "--help", "-h", "--run", "--format"]),
 };
@@ -137,6 +171,10 @@ type Mutable = {
   target: string | null;
   user: string | null;
   host: string | null;
+  channel: string | null;
+  keyFile: string | null;
+  agentId: string | null;
+  hostConfig: string | null;
   verbose: boolean;
   yes: boolean;
   resume: boolean;
@@ -159,6 +197,10 @@ function optionsFor(command: CommandName, state: Mutable): CommandOptions {
         target: state.target,
         user: state.user,
         host: state.host,
+        channel: state.channel,
+        keyFile: state.keyFile,
+        agentId: state.agentId,
+        hostConfig: state.hostConfig,
         verbose: state.verbose,
       };
     case "setup":
@@ -168,6 +210,10 @@ function optionsFor(command: CommandName, state: Mutable): CommandOptions {
         target: state.target,
         user: state.user,
         host: state.host,
+        channel: state.channel,
+        keyFile: state.keyFile,
+        agentId: state.agentId,
+        hostConfig: state.hostConfig,
         yes: state.yes,
         resume: state.resume,
         dryRun: state.dryRun,
@@ -179,6 +225,10 @@ function optionsFor(command: CommandName, state: Mutable): CommandOptions {
         target: state.target,
         user: state.user,
         host: state.host,
+        channel: state.channel,
+        keyFile: state.keyFile,
+        agentId: state.agentId,
+        hostConfig: state.hostConfig,
         timeoutMs: state.timeoutMs,
         keep: state.keep,
         command: [],
@@ -190,6 +240,10 @@ function optionsFor(command: CommandName, state: Mutable): CommandOptions {
         target: state.target,
         user: state.user,
         host: state.host,
+        channel: state.channel,
+        keyFile: state.keyFile,
+        agentId: state.agentId,
+        hostConfig: state.hostConfig,
         runId: state.runId,
         dryRun: state.dryRun,
         force: state.force,
@@ -216,6 +270,10 @@ function parseCommand(
     target: null,
     user: null,
     host: null,
+    channel: null,
+    keyFile: null,
+    agentId: null,
+    hostConfig: null,
     verbose: false,
     yes: false,
     resume: false,
@@ -309,6 +367,18 @@ function parseCommand(
         break;
       case "--host":
         state.host = value;
+        break;
+      case "--channel":
+        state.channel = value;
+        break;
+      case "--key-file":
+        state.keyFile = value;
+        break;
+      case "--agent-id":
+        state.agentId = value;
+        break;
+      case "--host-config":
+        state.hostConfig = value;
         break;
       case "--run":
         if (!RUN_ID_PATTERN.test(value)) {

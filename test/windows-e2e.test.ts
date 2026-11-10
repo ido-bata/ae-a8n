@@ -144,6 +144,8 @@ describe("the Windows execution path end to end", () => {
       agent: AGENT,
       key: KEY,
       probe: fakeProbe(),
+      // The injected probe answers for WIN-AE-01: a fake host, not this machine.
+      simulatedHostProbe: true,
       runDirectory,
       pollMs: 5,
       sleep,

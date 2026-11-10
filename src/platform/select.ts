@@ -21,11 +21,18 @@ import { DarwinAdapter } from "./darwin/adapter.js";
 import type { FileChannel } from "./windows/channel.js";
 import { DirectoryChannel } from "./windows/channel.js";
 import type { CommandRunner } from "./windows/probe.js";
+import type { CommsOptions } from "./windows/comms.js";
 import { WindowsAdapter } from "./windows/runner.js";
 import { SpawnCommandRunner } from "./windows/spawn-runner.js";
 
 export type SelectOptions = {
   readonly target: TargetSpec;
+  /**
+   * How a named host is reached. Without it a `--host` target still selects
+   * the Windows adapter, but the adapter refuses every probe: a local probe
+   * would answer for this machine, not for the host.
+   */
+  readonly remote?: CommsOptions | null;
   /** Test seam: answers the Windows probe without a Windows host. */
   readonly probeRunner?: CommandRunner;
   /** Test seam: the Windows channel. `probe` never touches it. */
@@ -73,6 +80,10 @@ function windowsAdapter(options: SelectOptions): WindowsAdapter {
     // The probe runs the platform's own read-only commands. On a non-Windows
     // machine they fail to start; the probe reports the facts as unreadable.
     probe: options.probeRunner ?? new SpawnCommandRunner(),
+    remote: options.remote ?? null,
+    // An injected probe runner answers for the host, which is how a fake
+    // Windows host stands in for a real one in-process.
+    ...(options.probeRunner === undefined ? {} : { simulatedHostProbe: true }),
   });
 }
 

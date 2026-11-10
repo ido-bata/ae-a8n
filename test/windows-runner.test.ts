@@ -220,6 +220,8 @@ async function fixture(options: {
     agent: AGENT,
     ...(options.withoutKey === true ? {} : { key: KEY }),
     probe: options.probe ?? fakeProbe(),
+    // The injected probe answers for WIN-AE-01: a fake host, not this machine.
+    simulatedHostProbe: true,
     runDirectory,
     now: () => NOW,
     random: () => RANDOM,

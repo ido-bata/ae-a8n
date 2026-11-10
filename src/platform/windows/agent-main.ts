@@ -13,6 +13,12 @@ import { assertInteractiveIdentity, runJob, type JobExecutor } from "./agent.js"
 import { DirectoryChannel, type FileChannel } from "./channel.js";
 import { SpawnJobExecutor, spawnProcess } from "./executor.js";
 import { claimDiagnosticPath, isJobId, jobPaths, type AgentIdentity } from "./job.js";
+import {
+  PRESENCE_SCHEMA_VERSION,
+  encodePresence,
+  presencePath,
+  signPresence,
+} from "./presence.js";
 import { loadKeyFile } from "./key-store.js";
 import { measureWindowsSessionId, resolveSessionId } from "./session.js";
 
@@ -190,6 +196,29 @@ export async function main(
     return 1;
   }
 
+  const now = deps.now ?? (() => new Date());
+  // The controller's only immediate evidence that an agent is alive, in which
+  // session, at which version. Written before the first poll and refreshed
+  // every poll; a controller that finds it stale refuses to send.
+  const publishPresence = async (): Promise<void> => {
+    const presence = signPresence(
+      {
+        schemaVersion: PRESENCE_SCHEMA_VERSION,
+        agent: identity,
+        heartbeatAt: now().toISOString(),
+        interactive: identity.sessionId > 0,
+      },
+      key,
+    );
+    await channel.writeAtomic(presencePath(identity.id), encodePresence(presence));
+  };
+  try {
+    await publishPresence();
+  } catch (error) {
+    stderr(`windows-agent: the heartbeat could not be written: ${messageOf(error)}\n`);
+    return 1;
+  }
+
   const stopped = (): boolean => deps.signal?.aborted === true;
   // A quarantined job stays quarantined for this process's lifetime: the
   // forensic record is written once, and polling never retries it.
@@ -253,6 +282,12 @@ export async function main(
 
     if (stopped()) {
       return 0;
+    }
+    try {
+      await publishPresence();
+    } catch (error) {
+      stderr(`windows-agent: the heartbeat could not be written: ${messageOf(error)}\n`);
+      return 1;
     }
     await sleep(pollMs);
     if (stopped()) {

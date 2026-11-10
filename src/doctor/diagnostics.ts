@@ -40,6 +40,10 @@ export const DIAGNOSTIC_CODES = {
   "A8N-SESSION-002": { severity: "blocker", title: "Target account has no GUI session" },
   "A8N-SESSION-003": { severity: "blocker", title: "Target session is the console session" },
   "A8N-SESSION-004": { severity: "blocker", title: "Session identity changed during the run" },
+  "A8N-SESSION-006": {
+    severity: "blocker",
+    title: "The named remote host is this controller's own machine",
+  },
   "A8N-SESSION-005": {
     severity: "blocker",
     title: "The controller cannot enter the target session",
@@ -56,6 +60,9 @@ export const DIAGNOSTIC_CODES = {
   "A8N-JOB-002": { severity: "warning", title: "A prior run left a lock or quarantine state" },
   "A8N-JOB-003": { severity: "blocker", title: "Job or result is not from a trusted issuer" },
   "A8N-JOB-004": { severity: "blocker", title: "Job, result or payload exceeds its size limit" },
+  "A8N-JOB-005": { severity: "blocker", title: "The agent is not alive in an interactive session" },
+  "A8N-JOB-006": { severity: "blocker", title: "The agent is not the host, user or version the target names" },
+  "A8N-JOB-007": { severity: "blocker", title: "The channel root is not reachable from this controller" },
   "A8N-SEC-001": { severity: "blocker", title: "A licence, sign-in or permission dialog is present" },
   "A8N-EXT-001": { severity: "blocker", title: "Extension registration is invalid" },
   "A8N-RELEASE-001": { severity: "blocker", title: "Package version already exists on the registry" },
