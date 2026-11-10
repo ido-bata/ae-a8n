@@ -63,6 +63,7 @@ export function jobSigningBytes(job: UnsignedJob | Job): Uint8Array {
       JOB_DOMAIN,
       job.schemaVersion,
       job.jobId,
+      job.runId,
       job.createdAt,
       job.payloadSha256,
       job.payloadFile,

@@ -10,6 +10,7 @@ import { randomBytes } from "node:crypto";
 
 import { signJob, verifyResultAuth, type JobKey, type UnsignedJob } from "./auth.js";
 import { ChannelFileTooLargeError, type FileChannel } from "./channel.js";
+import { isRunId } from "./lock.js";
 import {
   JOB_SCHEMA_VERSION,
   MAX_RESULT_BYTES,
@@ -25,6 +26,8 @@ import {
 
 export type SubmitOptions = {
   readonly payload: Uint8Array;
+  /** The controller's run id; the job carries it so the agent can name it. */
+  readonly runId: string;
   readonly timeoutMs: number;
   readonly writer: JobWriter;
   /**
@@ -74,6 +77,9 @@ export async function submitJob(channel: FileChannel, options: SubmitOptions): P
   if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
     throw new Error("timeoutMs must be a positive number");
   }
+  if (!isRunId(options.runId)) {
+    throw new Error(`run id "${options.runId}" cannot be used as a path component`);
+  }
   const now = options.now ?? (() => new Date());
   const random = options.random ?? randomBytes;
   const sleep = options.sleep ?? defaultSleep;
@@ -83,6 +89,7 @@ export async function submitJob(channel: FileChannel, options: SubmitOptions): P
   const unsigned: UnsignedJob = {
     schemaVersion: JOB_SCHEMA_VERSION,
     jobId,
+    runId: options.runId,
     createdAt: createdAt.toISOString(),
     payloadSha256: sha256Hex(options.payload),
     payloadFile: "payload.json",

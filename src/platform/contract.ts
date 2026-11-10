@@ -76,6 +76,8 @@ export type RecoveryFinding = {
   readonly code: DiagnosticCheck["code"];
   readonly action: "reported" | "cleared" | "refused";
   readonly detail: string;
+  /** The exact action for a human, or omitted when none is required. */
+  readonly remedy?: string;
 };
 
 export type AdapterProbe = {

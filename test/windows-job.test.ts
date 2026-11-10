@@ -29,6 +29,7 @@ function validJob(overrides: Partial<Omit<Job, "auth">> = {}): Job {
     {
       schemaVersion: JOB_SCHEMA_VERSION,
       jobId: newJobId(NOW, new Uint8Array([1, 2, 3, 4])),
+      runId: "20261110T120000Z-run00001",
       createdAt: NOW.toISOString(),
       payloadSha256: sha256Hex(PAYLOAD),
       payloadFile: "payload.json",
@@ -95,6 +96,17 @@ describe("the job manifest", () => {
   it("rejects a malformed job id and hash", () => {
     expect(decodeJob(encodeJob(validJob({ jobId: "abc" }))).ok).toBe(false);
     expect(decodeJob(encodeJob(validJob({ payloadSha256: "nope" }))).ok).toBe(false);
+  });
+
+  it("requires a run id the agent can name without guessing", () => {
+    const missing = encodeJob(validJob());
+    const withoutRunId = JSON.parse(Buffer.from(missing).toString("utf-8")) as Record<string, unknown>;
+    delete withoutRunId["runId"];
+    expect(decodeJob(new TextEncoder().encode(JSON.stringify(withoutRunId)))).toEqual({
+      ok: false,
+      detail: "job.json is missing a required field",
+    });
+    expect(decodeJob(encodeJob(validJob({ runId: "../escape" })))).toMatchObject({ ok: false });
   });
 
   it("rejects invalid JSON", () => {
