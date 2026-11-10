@@ -138,8 +138,23 @@ export function killProcessTree(child: ExecutorChild): Promise<void> {
   });
 }
 
+/**
+ * "Absolute" is a property of the protocol, not of the machine that happens
+ * to decode it: a drive or UNC path is absolute on the Windows host that will
+ * run it, and must not be refused because the decoder ran elsewhere (the
+ * in-repo fake host, for example, runs on the controller's OS).
+ */
 function isAbsolutePath(value: string): boolean {
-  return value !== "" && isAbsolute(value);
+  if (value === "") {
+    return false;
+  }
+  if (/^[A-Za-z]:[\\/]/u.test(value)) {
+    return true;
+  }
+  if (/^\\\\[^\\]/u.test(value)) {
+    return true;
+  }
+  return isAbsolute(value);
 }
 
 /** Strict JSON of the one shape an executor accepts. */

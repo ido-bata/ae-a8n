@@ -108,6 +108,8 @@ async function setup(options: {
     user: "a8n",
     agent: AGENT,
     probe: options.probe ?? fakeProbe(),
+    // The injected probe answers for WIN-AE-01: a fake host, not this machine.
+    simulatedHostProbe: true,
     runDirectory: join(root, "runs-local"),
     agentEntry: "C:\\a8n\\scripts\\windows-agent.mjs",
     ...(autostartEntry === null ? {} : { autostartEntry }),

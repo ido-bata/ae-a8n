@@ -16,10 +16,10 @@
 
 import { randomBytes } from "node:crypto";
 import { access, mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { DiagnosticCheck } from "../../doctor/diagnostics.js";
+import { diagnostic, type DiagnosticCheck } from "../../doctor/diagnostics.js";
 import {
   assertProvenIdentity,
   type AdapterProbe,
@@ -37,6 +37,13 @@ import {
 } from "../contract.js";
 import { windowsCapabilities } from "./capabilities.js";
 import type { FileChannel } from "./channel.js";
+import {
+  ChannelCommandRunner,
+  openComms,
+  resolveComms,
+  type CommsOptions,
+  type CommsState,
+} from "./comms.js";
 import type { JobKey } from "./auth.js";
 import {
   acquireRunLock,
@@ -84,6 +91,39 @@ export class WindowsJobRefusedError extends Error {
     this.code = code;
     this.jobId = jobId;
   }
+}
+
+/** The agent could not be shown alive at the moment a job was about to be sent. */
+export class WindowsAgentUnavailableError extends Error {
+  readonly code = "A8N-JOB-005" as const;
+  readonly checks: readonly DiagnosticCheck[];
+
+  constructor(checks: readonly DiagnosticCheck[]) {
+    super(
+      `the agent is not available on the channel: ${checks.map((check) => check.detail).join("; ")}; ` +
+        "nothing was sent",
+    );
+    this.name = "WindowsAgentUnavailableError";
+    this.checks = checks;
+  }
+}
+
+/** Every fact unread: the host was not reached at all. */
+const UNREAD_FACTS: WindowsFacts = {
+  osCaption: null,
+  osVersion: null,
+  sessionId: null,
+  currentUser: null,
+  consoleUser: null,
+  aeInstalls: [],
+  aeProcesses: [],
+  targetUserExists: null,
+  evidence: {},
+};
+
+/** This machine's own name, for the "is `--host` actually remote?" check. */
+function ownHostName(): string {
+  return hostname();
 }
 
 /** A timed-out job is never re-sent: it may still be running. */
@@ -198,6 +238,21 @@ export type WindowsAdapterOptions = {
   readonly submit?: SubmitFunction;
   readonly pollMs?: number;
   readonly sleep?: (ms: number) => Promise<void>;
+  /**
+   * How a named host is reached. When set, the adapter probes the host through
+   * the channel with the agent instead of running the probe commands locally,
+   * and every run first proves the agent is alive, interactive and the one the
+   * target names. `null` (the default) keeps the local/no-transport behaviour:
+   * a remote target then refuses at the probe rather than pretending the
+   * controller's own PowerShell answers for the host.
+   */
+  readonly remote?: CommsOptions | null;
+  /**
+   * Set only where an injected `probe` already answers *for the host* — a fake
+   * host in an in-process test. Production never sets it, so a `--host` target
+   * there must have `remote` and cannot fall back to a local probe.
+   */
+  readonly simulatedHostProbe?: boolean;
   /** The agent entry to check in `windows.agent`; null means "not configured". */
   readonly agentEntry?: string;
   /** The logon entry that starts the agent; null means "not configured". */
@@ -336,9 +391,13 @@ export class WindowsAdapter implements PlatformAdapter {
   readonly #agentEntry: string | null;
   readonly #autostartEntry: string | null;
   readonly #exists: (path: string) => Promise<boolean>;
+  readonly #remote: CommsOptions | null;
+  readonly #simulatedHostProbe: boolean;
 
   #isolation: TargetSpec["isolation"] = "remote-host";
   #facts: WindowsFacts | null = null;
+  /** Opened once per adapter: resolving and verifying a host costs a round trip. */
+  #comms: Promise<CommsState> | null = null;
 
   constructor(options: WindowsAdapterOptions) {
     this.#channel = options.channel;
@@ -357,6 +416,8 @@ export class WindowsAdapter implements PlatformAdapter {
     this.#agentEntry = options.agentEntry ?? null;
     this.#autostartEntry = options.autostartEntry ?? null;
     this.#exists = options.exists ?? defaultExists;
+    this.#remote = options.remote ?? null;
+    this.#simulatedHostProbe = options.simulatedHostProbe ?? false;
   }
 
   capabilities(): Promise<Capabilities> {
@@ -375,6 +436,43 @@ export class WindowsAdapter implements PlatformAdapter {
     const prepared = await this.#prepare(target);
     const steps: SetupStep[] = [];
 
+    // A remote target's first question is not "does the channel directory
+    // exist" but "can this controller reach it, and is the agent alive on the
+    // other end". Each refusal is its own step so a human knows what to fix.
+    let comms: CommsState | null = null;
+    if (target.isolation === "remote-host" && this.#remote !== null && !this.#simulatedHostProbe) {
+      comms = await this.#openRemote();
+      if (comms.ok) {
+        steps.push({
+          id: "windows.comms-channel",
+          state: "done",
+          reason:
+            `the channel ${comms.config.channel} is readable and writable from this controller`,
+          action: null,
+          automatable: false,
+        });
+        steps.push({
+          id: "windows.comms-agent",
+          state: "done",
+          reason:
+            `agent ${comms.agent.id} is alive on host "${comms.agent.host}" as ` +
+            `"${comms.agent.user}", session ${String(comms.agent.sessionId)}, version ${comms.agent.version}`,
+          action: null,
+          automatable: false,
+        });
+      } else {
+        for (const check of comms.checks) {
+          steps.push({
+            id: `windows.comms-${check.code.toLowerCase()}`,
+            state: "needs-human",
+            reason: check.detail,
+            action: check.remedy,
+            automatable: false,
+          });
+        }
+      }
+    }
+
     let channelExists = false;
     try {
       channelExists = await this.#channel.isDirectory("");
@@ -390,6 +488,10 @@ export class WindowsAdapter implements PlatformAdapter {
         channelReadable = false;
       }
     }
+    if (target.isolation === "remote-host" && this.#remote !== null && !this.#simulatedHostProbe) {
+      // The channel was already proven above; a second, local directory check
+      // would measure the controller's own filesystem and prove nothing.
+    } else {
     steps.push({
       id: "windows.channel",
       state: channelReadable ? "done" : "planned",
@@ -403,6 +505,7 @@ export class WindowsAdapter implements PlatformAdapter {
         : "Make the channel root readable and writable by the controller and the agent account.",
       automatable: !channelReadable,
     });
+    }
 
     steps.push({
       id: "windows.channel-permissions",
@@ -429,7 +532,9 @@ export class WindowsAdapter implements PlatformAdapter {
           : `the agent entry ${this.#agentEntry} does not exist`,
       action: agentExists
         ? null
-        : "Install @ido-bata/ae-a8n on the target and point setup at its scripts/windows-agent.mjs.",
+        : "Install @ido-bata/ae-a8n on the target, then start the agent from the logged-in " +
+          "interactive session: npx --package @ido-bata/ae-a8n ae-a8n agent --channel <dir> " +
+          "--key-file <file> --host <host> --user <user>. No clone is needed.",
       automatable: false,
     });
 
@@ -609,12 +714,146 @@ export class WindowsAdapter implements PlatformAdapter {
     });
   }
 
+  /**
+   * Open (once) and verify the channel to a named host. The result is cached
+   * for this adapter's lifetime: a heartbeat that is live for one check is not
+   * re-verified for the next, so a caller that needs current liveness asks
+   * `#assertAgentAlive` at the moment it sends.
+   */
+  #openRemote(): Promise<CommsState> {
+    this.#comms ??= this.#freshComms();
+    return this.#comms;
+  }
+
+  /** Resolve and verify the channel again, uncached: liveness is measured now. */
+  #freshComms(): Promise<CommsState> {
+    const remote = this.#remote;
+    if (remote === null) {
+      return Promise.reject(new Error("no remote configuration"));
+    }
+    return resolveComms(remote).then((resolution) =>
+      openComms(
+        {
+          channel: this.#channel,
+          version: this.#agent.version,
+          now: this.#now,
+          random: this.#random,
+          ...(this.#pollMs === undefined ? {} : { pollMs: this.#pollMs }),
+          ...(this.#sleep === undefined ? {} : { sleep: this.#sleep }),
+        },
+        resolution,
+        resolution.ok
+          ? resolution.config
+          : {
+              host: remote.host,
+              user: remote.user,
+              channel: "",
+              keyFile: "",
+              agentId: "",
+              systemRoot: "C:\\Windows",
+            },
+      ),
+    );
+  }
+
+  /**
+   * The heartbeat that was live during `probe` may be minutes old by the time
+   * a job is about to be written. Re-verify immediately before sending; a
+   * stale or mismatched heartbeat refuses the send rather than leaving a job
+   * for an agent that is not there.
+   */
+  async #assertAgentAlive(target: TargetSpec): Promise<void> {
+    if (this.#remote === null || target.isolation !== "remote-host" || this.#simulatedHostProbe) {
+      return;
+    }
+    const comms = await this.#freshComms();
+    if (!comms.ok) {
+      throw new WindowsAgentUnavailableError(comms.checks);
+    }
+  }
+
   async #prepare(target: TargetSpec): Promise<PreparedIdentity> {
-    const result = await probeWindows(this.#probeRunner, {
+    this.#isolation = target.isolation;
+    let runner: CommandRunner = this.#probeRunner;
+    if (target.isolation === "remote-host" && this.#remote !== null && !this.#simulatedHostProbe) {
+      const comms = await this.#openRemote();
+      if (!comms.ok) {
+        // No agent, no facts about the host. Every fact stays unread and the
+        // identity is unproven; nothing here guesses at the machine's state.
+        this.#facts = UNREAD_FACTS;
+        return {
+          identity: {
+            kind: "host-and-user",
+            user: target.user ?? this.#user,
+            detail: { host: target.host ?? this.#host, sessionId: null },
+            proven: false,
+          },
+          facts: UNREAD_FACTS,
+          checks: comms.checks,
+        };
+      }
+      const sameMachine = comms.agent.host.toLowerCase() === ownHostName().toLowerCase();
+      if (sameMachine) {
+        // `remote-host` claims isolation by construction. If the "remote" host
+        // is this controller, that claim is false and must block here rather
+        // than ride on the word "remote" in a flag.
+        this.#facts = UNREAD_FACTS;
+        return {
+          identity: {
+            kind: "host-and-user",
+            user: target.user ?? this.#user,
+            detail: { host: target.host ?? this.#host, sessionId: null },
+            proven: false,
+          },
+          facts: UNREAD_FACTS,
+          checks: [
+            diagnostic("A8N-SESSION-006", {
+              detail:
+                `the agent for --host "${target.host ?? this.#host}" reports host ` +
+                `"${comms.agent.host}", which is this controller; the test session would run on the machine you are using`,
+              remedy:
+                "Use a different machine for --host, or target this machine with a separate account and no --host.",
+              remedyKind: "human",
+              evidence: { host: comms.agent.host },
+            }),
+          ],
+        };
+      }
+      runner = new ChannelCommandRunner(comms, {
+        now: this.#now,
+        random: this.#random,
+        ...(this.#pollMs === undefined ? {} : { pollMs: this.#pollMs }),
+        ...(this.#sleep === undefined ? {} : { sleep: this.#sleep }),
+      });
+    } else if (target.isolation === "remote-host" && !this.#simulatedHostProbe) {
+      // A remote target with no transport configured: the local probe would
+      // answer for this machine, not the host. Refuse instead of mislabeling.
+      this.#facts = UNREAD_FACTS;
+      return {
+        identity: {
+          kind: "host-and-user",
+          user: target.user ?? this.#user,
+          detail: { host: target.host ?? this.#host, sessionId: null },
+          proven: false,
+        },
+        facts: UNREAD_FACTS,
+        checks: [
+          diagnostic("A8N-JOB-007", {
+            detail:
+              `--host "${target.host ?? this.#host}" names a remote host, but no channel or key is configured, ` +
+              "so nothing can reach it; a local probe would answer for this machine instead",
+            remedy:
+              "Pass --channel <dir> --key-file <file> for the host's shared channel, or add it to ~/.ae-a8n/hosts.json.",
+            remedyKind: "human",
+            evidence: { host: target.host ?? this.#host },
+          }),
+        ],
+      };
+    }
+    const result = await probeWindows(runner, {
       isolation: target.isolation,
       targetUser: target.user,
     });
-    this.#isolation = target.isolation;
     this.#facts = result.facts;
     const proven = !result.checks.some((check) => check.severity === "blocker");
     const identity: SessionIdentity = {
@@ -673,6 +912,7 @@ export class WindowsAdapter implements PlatformAdapter {
       ...(this.#sleep === undefined ? {} : { sleep: this.#sleep }),
     };
 
+    await this.#assertAgentAlive(target);
     const submitted = await this.#submit(this.#channel, submitOptions);
     onRun({ runId, jobId: submitted.jobId });
     const facts = this.#facts ?? (await this.#prepare(target)).facts;

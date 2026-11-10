@@ -1,0 +1,77 @@
+/**
+ * `ae-a8n agent`: the in-session Windows agent, started from the installed
+ * package.
+ *
+ * It exists so a host needs no clone. `npm install -g @ido-bata/ae-a8n` (or
+ * `npx --package @ido-bata/ae-a8n ae-a8n agent ...`) puts this entry on the
+ * host; `scripts/windows-agent.mjs` remains as a checkout-only alias and is
+ * not part of the published surface.
+ *
+ * The agent refuses to start outside an interactive session: a process started
+ * from SSH or a service has session 0 and no desktop, and treating it as
+ * GUI-capable would be a lie the rest of the pipeline would build on.
+ */
+
+import { main as runAgentMain } from "../platform/windows/agent-main.js";
+
+export const AGENT_HELP = [
+  "Usage: ae-a8n agent --channel <dir> --key-file <file> --host <name> --user <name>",
+  "                       [--agent-id <id>] [--session-id <n>] [--version <v>]",
+  "",
+  "Runs the in-session agent on the target host. It claims one job at a time",
+  "from the channel, verifies the agent's own interactive session, runs the",
+  "job, and publishes one signed result. It writes a signed heartbeat so the",
+  "controller can see it is alive, interactive and the agent the target names.",
+  "",
+  "Options:",
+  "  --channel <dir>    The channel root both sides can read and write",
+  "  --key-file <file>  The shared channel key; never printed or sent anywhere",
+  "  --agent-id <id>    Defaults to ae-a8n",
+  "  --host <name>      The host name the controller verifies",
+  "  --user <name>      The account the agent must be running as",
+  "  --session-id <n>   Defaults to the measured interactive session",
+  "  --version <v>      Defaults to this package's version",
+  "  --help, -h         Show this help",
+  "",
+  "Stop it with Ctrl+C or SIGTERM. It never starts or quits After Effects by",
+  "itself, and it never reads a credential.",
+].join("\n");
+
+/** The flag names the agent accepts; anything else is a usage error. */
+const AGENT_FLAGS = new Set([
+  "--channel",
+  "--key-file",
+  "--agent-id",
+  "--host",
+  "--user",
+  "--session-id",
+  "--version",
+]);
+
+export type AgentCommandResult = { readonly exitCode: number };
+
+export async function runAgentCommand(
+  argv: readonly string[],
+): Promise<AgentCommandResult> {
+  if (argv.includes("--help") || argv.includes("-h")) {
+    process.stdout.write(`${AGENT_HELP}\n`);
+    return { exitCode: 0 };
+  }
+  for (let index = 0; index < argv.length; index += 1) {
+    const raw = argv[index];
+    if (raw === undefined) {
+      break;
+    }
+    const name = raw.includes("=") ? raw.slice(0, raw.indexOf("=")) : raw;
+    if (!AGENT_FLAGS.has(name)) {
+      process.stderr.write(`ae-a8n agent: unknown option ${name}; run "ae-a8n agent --help"\n`);
+      return { exitCode: 2 };
+    }
+  }
+  const controller = new AbortController();
+  for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    process.on(signal, () => controller.abort());
+  }
+  const exitCode = await runAgentMain(argv, { signal: controller.signal });
+  return { exitCode };
+}

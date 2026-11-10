@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { A8N_VERSION } from "../index.js";
 import { runDoctor } from "../doctor/index.js";
 import type { AdapterProbe, PlatformAdapter, TargetSpec } from "../platform/contract.js";
+import type { CommsOptions } from "../platform/windows/comms.js";
 import {
   selectAdapter,
   type AdapterSelection,
@@ -39,6 +40,7 @@ import {
   type SetupStepReport,
   type TargetInfo,
 } from "./envelope.js";
+import { runAgentCommand } from "./agent.js";
 import { EXIT, type ExitCode } from "./exit-code.js";
 import {
   helpFor,
@@ -104,6 +106,28 @@ function dependencies(input: CliDependencies): RequiredDependencies {
       }),
     env: input.env ?? process.env,
     stateRoot: input.stateRoot ?? join(homedir(), ".ae-a8n"),
+  };
+}
+
+/** Everything a named host needs to be reached; null when no host was named. */
+function remoteFrom(options: {
+  readonly user: string | null;
+  readonly host: string | null;
+  readonly channel: string | null;
+  readonly keyFile: string | null;
+  readonly agentId: string | null;
+  readonly hostConfig: string | null;
+}): CommsOptions | null {
+  if (options.host === null) {
+    return null;
+  }
+  return {
+    host: options.host,
+    user: options.user,
+    channel: options.channel,
+    keyFile: options.keyFile,
+    agentId: options.agentId,
+    ...(options.hostConfig === null ? {} : { configPath: options.hostConfig }),
   };
 }
 
@@ -257,7 +281,7 @@ async function setup(
   const target = targetFrom(options);
   let selection: AdapterSelection;
   try {
-    selection = deps.select({ target });
+    selection = deps.select({ target, remote: remoteFrom(options) });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const envelope = buildEnvelope({
@@ -351,7 +375,7 @@ async function doctor(
   const target = targetFrom(options);
   let selection: AdapterSelection;
   try {
-    selection = deps.select({ target });
+    selection = deps.select({ target, remote: remoteFrom(options) });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const envelope = buildEnvelope({
@@ -462,7 +486,7 @@ async function test(
   const target = targetFrom(options);
   let selection: AdapterSelection;
   try {
-    selection = deps.select({ target });
+    selection = deps.select({ target, remote: remoteFrom(options) });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     emit(
@@ -586,7 +610,7 @@ async function recover(
   const target = targetFrom(options);
   let selection: AdapterSelection;
   try {
-    selection = deps.select({ target });
+    selection = deps.select({ target, remote: remoteFrom(options) });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     emit(
@@ -778,6 +802,13 @@ export async function runCli(
   argv: readonly string[],
   input: CliDependencies = {},
 ): Promise<ExitCode> {
+  // `agent` is not one of the five contract commands: it runs the in-session
+  // agent on a Windows host and takes its own flags. It is dispatched before
+  // the contract parser, which would otherwise reject every one of them.
+  if (argv[0] === "agent") {
+    const result = await runAgentCommand(argv.slice(1));
+    return result.exitCode as ExitCode;
+  }
   const deps = dependencies(input);
   const startedAt = deps.now();
   const parsed = parseArgs(argv);
