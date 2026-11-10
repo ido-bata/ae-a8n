@@ -41,6 +41,31 @@ Requirements on the machine that runs After Effects:
 - **Settings → Scripting & Expressions → Allow Scripts to Write Files and Access Network** enabled. Without it the first call times out instead of failing fast.
 - On **After Effects 2026 (26.5)** the host also needs AE's approval to run scripts from the driver's folder: AE refuses the first `DoScriptFile` with `-1708` and shows a modal that points at its Scripting & Expressions panel. Approve the session's `staging/` folder there (the folder holds the entry script and the staged host script); the approval covers later calls.
 
+## Doctor
+
+`ae-a8n doctor` is the read-only entry point. It inspects the machine an
+isolated After Effects session would use and reports every fact it could not
+read as a blocker, never as a pass. It does not start After Effects, open a
+session, change TCC or SIP, read a credential, or send an Apple Event.
+
+```bash
+npx @ido-bata/ae-a8n doctor
+npx @ido-bata/ae-a8n doctor --json
+npx @ido-bata/ae-a8n doctor --user ae-test
+npx @ido-bata/ae-a8n doctor --host WIN-AE-01
+```
+
+Exit `0` means no blocker was found; exit `3` means at least one was. `--json`
+prints exactly one document on stdout, with `schemaVersion`, `checks[]` and
+`nextActions[]`; a warning does not by itself fail the command. A host target
+selects the Windows adapter even when you invoke the CLI on another platform.
+If the Windows probe commands cannot run there, the facts that depend on the
+host are reported as unreadable and the command exits blocked.
+
+Only `doctor` is implemented in this increment. `setup`, `test`, `recover` and
+`report` parse their contract flags and then fail closed with a notice; none of
+them reports success for work it did not do.
+
 ## What it does to your After Effects
 
 This is a tool that operates someone's desktop application. The rules it
