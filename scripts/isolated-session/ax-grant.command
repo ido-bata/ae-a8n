@@ -45,6 +45,27 @@ HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd) || {
   exit 1
 }
 SHARED=${A8N_AX_SHARED:-/Users/Shared/ae-a8n/run}
+
+# macOS ships BSD stat and shasum; CI runs these rule tests on Linux, so the
+# same checks must be available there. The helper itself still only runs on
+# macOS.
+case "$(/usr/bin/uname -s 2>/dev/null)" in
+  Darwin)
+    stat_uid() { /usr/bin/stat -f '%u' "$1" 2>/dev/null; }
+    stat_mode() { /usr/bin/stat -f '%Lp' "$1" 2>/dev/null; }
+    ;;
+  *)
+    stat_uid() { /usr/bin/stat -c '%u' "$1" 2>/dev/null; }
+    stat_mode() { /usr/bin/stat -c '%a' "$1" 2>/dev/null; }
+    ;;
+esac
+sha256_file() {
+  if [ -x /usr/bin/shasum ]; then
+    /usr/bin/shasum -a 256 "$1"
+  else
+    /usr/bin/sha256sum "$1"
+  fi
+}
 SWIFTC=${A8N_AX_SWIFTC:-/usr/bin/swiftc}
 # One log per user: the shared directory is a sticky world-writable one, so a
 # file another user already made cannot be appended to. Writing a log named
@@ -80,13 +101,13 @@ check_owned_and_not_writable() {
   if [ ! -f "$path" ]; then
     refuse "$label is not a regular file ($path)"
   fi
-  owner=$(/usr/bin/stat -f '%u' "$path" 2>/dev/null) ||
+  owner=$(stat_uid "$path") ||
     refuse "the owner of $label ($path) could not be read"
   case "$owner" in
     "$(id -u)" | 0) ;;
     *) refuse "$label ($path) is owned by uid $owner; it must be owned by root or by uid $(id -u)" ;;
   esac
-  mode=$(/usr/bin/stat -f '%Lp' "$path" 2>/dev/null) ||
+  mode=$(stat_mode "$path") ||
     refuse "the mode of $label ($path) could not be read"
   if [ $((0$mode & 022)) -ne 0 ]; then
     refuse "$label ($path) is writable by group or others (mode $mode)"
@@ -107,7 +128,7 @@ case "$expected" in
   *[!0-9a-f]*) refuse "the pinned hash in $HASH_PATH is not a lowercase SHA-256 value" ;;
 esac
 [ ${#expected} -eq 64 ] || refuse "the pinned hash in $HASH_PATH is not a SHA-256 value"
-actual=$(/usr/bin/shasum -a 256 "$SOURCE_PATH" | /usr/bin/awk '{ print tolower($1) }') ||
+actual=$(sha256_file "$SOURCE_PATH" | /usr/bin/awk '{ print tolower($1) }') ||
   refuse "the SHA-256 of $SOURCE_PATH could not be computed"
 [ "$actual" = "$expected" ] ||
   refuse "the ax-prompt source ($SOURCE_PATH) does not match the pinned SHA-256 (expected $expected, got $actual)"
