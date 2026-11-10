@@ -5,13 +5,13 @@
  * rather than an ExtendScript alert, so this checks the *generated* file, not
  * only the shipped host script, against the ES3 grammar ExtendScript parses.
  */
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as acorn from "acorn";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { writeBootstrapScript } from "../src/driver/bootstrap.js";
+import { entryScriptPath, stageHostScript, writeBootstrapScript } from "../src/driver/bootstrap.js";
 
 let dir: string;
 
@@ -69,5 +69,24 @@ describe("the generated entry script", () => {
   it("uses no syntax newer than ES3 (the parse would reject it)", () => {
     expect(() => acorn.parse("var f = () => 1;", { ecmaVersion: 3 })).toThrow();
     expect(() => acorn.parse("var o = { a: 1, };", { ecmaVersion: 3 })).toThrow();
+  });
+});
+
+describe("the staged host script", () => {
+  it("gives every call its own entry file, so a script that is still running cannot read the next request", () => {
+    const first = entryScriptPath("/sessions/x", "11111111-1111-4111-8111-111111111111");
+    const second = entryScriptPath("/sessions/x", "22222222-2222-4222-8222-222222222222");
+    expect(first).not.toBe(second);
+  });
+
+  it("copies the host script and the files next to it into the session's staging folder", () => {
+    const source = mkdtempSync(join(tmpdir(), "a8n-host-src-"));
+    writeFileSync(join(source, "a8n-host.js"), "// host\n");
+    writeFileSync(join(source, "a8n-json.js"), "// codec\n");
+    const staged = stageHostScript(dir, join(source, "a8n-host.js"));
+    expect(staged).toBe(join(dir, "a8n-host.js"));
+    expect(readFileSync(staged, "utf-8")).toBe("// host\n");
+    expect(readFileSync(join(dir, "a8n-json.js"), "utf-8")).toBe("// codec\n");
+    rmSync(source, { recursive: true, force: true });
   });
 });

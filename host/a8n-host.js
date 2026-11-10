@@ -407,6 +407,24 @@
     return true;
   }
 
+  /**
+   * Shows a modal dialog in After Effects and waits until it is closed.
+   *
+   * The dialog is native, not scripted: it is the one case an ExtendScript
+   * call cannot get out of on its own. It exists so the GUI fallback — the
+   * path that closes a dialog for a host that stopped answering — can be
+   * exercised against a dialog whose appearance and dismissal are known.
+   *
+   * `alert` blocks the script, so the result is written only after the
+   * dialog has been closed. A caller that gave up on the call must not send
+   * it again; the request is still running inside After Effects.
+   */
+  methods["ui.alert"] = function (params) {
+    var message = String(requireParam(params, "message"));
+    alert(message);
+    return { dismissed: true, message: message };
+  };
+
   methods["app.quit"] = function (params) {
     if (guardUnsavedChanges(params, "quitting")) {
       // Closed first, untitled or not: a dirty project would otherwise put a
