@@ -545,7 +545,9 @@ describe("doctor on a Windows host, through the same CLI", () => {
     expect(envelope.capabilities).toMatchObject({
       nonInterference: "by-construction",
       provesOwnership: false,
-      provesDestination: false,
+      // T090's session marker proves which agent ran the job; ownership of
+      // the AE process is still unproven on Windows.
+      provesDestination: true,
       guiRecovery: false,
       sessionIdentity: "host-and-user",
     });
