@@ -135,6 +135,16 @@ agent identity comes from the verified result (`agentVerified`,
 `O_EXCL` atomicity, junction behaviour and the session measurement under the
 dedicated account remain T092 rows.
 
+**Review fix 2026-11-10 (#81):** an agent poll landing between the controller's
+run-lock acquisition and its `job.json` publication claimed the directory and
+published a `job.json is missing` refusal, turning a valid submission into a
+spurious refusal. `test/windows-e2e.test.ts` failed intermittently on exactly
+that interleaving. A run directory without a manifest is now `not-ready`: the
+agent claims nothing, refuses nothing and runs nothing; the claim is made only
+once the manifest exists. Regression: `windows-agent` (a directory with no
+`job.json` is left alone, then runs on a later poll; an absent manifest claims
+and refuses nothing). Level: `automated test` + `fake/mock only`.
+
 **Depends on:** T085, T087.
 
 ### T089 — Windows recovery and consent policy

@@ -113,6 +113,47 @@ describe("the agent", () => {
     expect(stored).toMatchObject({ ok: true, value: { jobId: JOB_ID, payloadSha256: sha256Hex(PAYLOAD) } });
   });
 
+  it("leaves a run directory with no job.json alone and runs it on a later poll", async () => {
+    // The controller creates the run directory, then publishes job.json. An
+    // agent that polls in between must not claim or refuse a job that has not
+    // been published yet: doing so used to turn a valid submission into a
+    // spurious "job.json is missing" refusal.
+    const files = await channel();
+    await files.writeAtomic(jobPaths(JOB_ID).payload("payload.json"), PAYLOAD);
+    let executions = 0;
+    const executor: JobExecutor = {
+      execute: () => {
+        executions += 1;
+        return Promise.resolve({ status: "ok", message: "ran" });
+      },
+    };
+
+    const early = await runJob({
+      channel: files,
+      identity: IDENTITY,
+      key: KEY,
+      executor,
+      jobId: JOB_ID,
+      now: () => NOW,
+    });
+    expect(early).toEqual({ state: "not-ready" });
+    expect(await files.read(jobPaths(JOB_ID).claim)).toBeNull();
+    expect(await files.read(jobPaths(JOB_ID).result)).toBeNull();
+    expect(executions).toBe(0);
+
+    await files.writeAtomic(jobPaths(JOB_ID).manifest, encodeJob(job()));
+    const outcome = await runJob({
+      channel: files,
+      identity: IDENTITY,
+      key: KEY,
+      executor,
+      jobId: JOB_ID,
+      now: () => NOW,
+    });
+    expect(outcome).toMatchObject({ state: "finished", result: { status: "ok" } });
+    expect(executions).toBe(1);
+  });
+
   it("writes the run's session marker before the executor runs", async () => {
     const files = await channel();
     await publish(files);
@@ -502,17 +543,29 @@ describe("the agent", () => {
     expect(outcome).toMatchObject({ state: "refused", result: { code: "A8N-JOB-001" } });
   });
 
-  it("refuses a missing manifest", async () => {
+  it("never runs a run directory whose manifest is absent", async () => {
+    // Nothing was published, so nothing can be run; and since the agent cannot
+    // tell a submission still being published from a withdrawn one, it claims
+    // and refuses nothing. The controller times out and quarantines the run.
     const files = await channel();
+    let executions = 0;
     const outcome = await runJob({
       channel: files,
       identity: IDENTITY,
       key: KEY,
-      executor: OK_EXECUTOR,
+      executor: {
+        execute: () => {
+          executions += 1;
+          return Promise.resolve({ status: "ok", message: "ran" });
+        },
+      },
       jobId: JOB_ID,
       now: () => NOW,
     });
-    expect(outcome).toMatchObject({ state: "refused", result: { message: "job.json is missing" } });
+    expect(outcome).toEqual({ state: "not-ready" });
+    expect(executions).toBe(0);
+    expect(await files.read(jobPaths(JOB_ID).claim)).toBeNull();
+    expect(await files.read(jobPaths(JOB_ID).result)).toBeNull();
   });
 
   it("reports an executor failure as a failed result, not an exception", async () => {
