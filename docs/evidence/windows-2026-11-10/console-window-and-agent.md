@@ -57,13 +57,19 @@ Controlled A/B, same command both times
 | `{B23D10C0-E52E-411E-9D5B-C09FDF709C7D}` (Console Host) | 1 | **0** |
 | `{00000000-0000-0000-0000-000000000000}` (system default → Windows Terminal) | 1 | **1** (`OpenConsole.exe`, pid 23292) |
 
-The value is now Console Host on this host and the A/B ended with it
-restored. **This is a change to the account's default terminal application,
-not to this repository**, and it is wider than ae-a8n: every console app in
-this profile now renders through Console Host. Reverting is one command:
+For the A/B, both values were set to Console Host. They were then **reverted**
+to the pre-investigation value — the revert first read the current value and
+acted only because it was still exactly the one this investigation had
+written (`reverted=yes`); the host now reads
+`{00000000-…}/{00000000-…}` again. **This was a change to the account's
+default terminal application, not to this repository**, and pinning Console
+Host to make ae-a8n work is explicitly not the fix; `wscript.exe` (§3) and
+`--hidden` (§1) both hold with the user's own terminal restored. The commands
+used, for the record:
 
 ```
-Set-ItemProperty 'HKCU:\Console\%%Startup' -Name DelegationConsole  -Value '{00000000-0000-0000-0000-000000000000}'
+Set-ItemProperty 'HKCU:\Console\%%Startup' -Name DelegationConsole  -Value '{B23D10C0-E52E-411E-9D5B-C09FDF709C7D}'   # the A/B
+Set-ItemProperty 'HKCU:\Console\%%Startup' -Name DelegationConsole  -Value '{00000000-0000-0000-0000-000000000000}'   # the revert
 Set-ItemProperty 'HKCU:\Console\%%Startup' -Name DelegationTerminal -Value '{00000000-0000-0000-0000-000000000000}'
 ```
 
