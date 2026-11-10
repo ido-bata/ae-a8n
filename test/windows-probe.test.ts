@@ -104,6 +104,11 @@ describe("uninstall registry output", () => {
   it("reports a missing version as null", () => {
     expect(parseInstallListing(`${INSTALL}|\r\n`)).toEqual([{ location: INSTALL, version: null }]);
   });
+
+  it("collapses the same entry registered twice with different case", () => {
+    const stdout = `${INSTALL}|26.5\r\n${INSTALL.toLowerCase()}|26.5\r\n`;
+    expect(parseInstallListing(stdout)).toEqual([{ location: INSTALL, version: "26.5" }]);
+  });
 });
 
 describe("probeWindows", () => {
@@ -200,7 +205,16 @@ describe("probeWindows", () => {
     );
     const check = twice.checks.find((entry) => entry.code === "A8N-ENV-004");
     expect(check).toMatchObject({ severity: "warning" });
-    expect(check?.detail).toContain("found 2 installations");
+    expect(check?.detail).toContain("found 2 installation locations");
+  });
+
+  it("treats two versions under one Adobe root as one installation", async () => {
+    const result = await probeWindows(
+      fakeRunner({ installs: `${INSTALL}|26.0\r\n${INSTALL}|26.5\r\n` }),
+      { isolation: "remote-host", targetUser: null },
+    );
+    expect(result.facts.aeInstalls).toHaveLength(2);
+    expect(result.checks.map((check) => check.code)).not.toContain("A8N-ENV-004");
   });
 
   it("reports a target account that does not exist", async () => {

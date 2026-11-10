@@ -67,9 +67,15 @@ const SCRIPTS = {
   sessionId: "[System.Diagnostics.Process]::GetCurrentProcess().SessionId",
   currentUser: "[System.Security.Principal.WindowsIdentity]::GetCurrent().Name",
   consoleUser: "(Get-CimInstance Win32_ComputerSystem).UserName",
+  // Adobe registers a 32-bit uninstaller, so the 64-bit view alone finds
+  // nothing. The per-user hive is included for per-user installs; the same
+  // entry can appear in more than one place, which the parser collapses.
   installs:
-    "Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | " +
-    "Where-Object { $_.DisplayName -like '*After Effects*' } | " +
+    "Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'," +
+    "'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'," +
+    "'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' " +
+    "-ErrorAction SilentlyContinue | " +
+    "Where-Object { $_.DisplayName -like 'Adobe After Effects*' } | " +
     "ForEach-Object { $_.InstallLocation + '|' + $_.DisplayVersion }",
 } as const;
 
@@ -120,8 +126,14 @@ export function parseTasklistCsv(stdout: string): AeProcess[] {
   return processes;
 }
 
+/**
+ * `InstallLocation` is the Adobe root, not the executable, and the same entry
+ * can be registered in both the machine and the per-user hive. Identical
+ * location/version pairs are collapsed.
+ */
 export function parseInstallListing(stdout: string): AeInstall[] {
   const installs: AeInstall[] = [];
+  const seen = new Set<string>();
   for (const raw of stdout.split(/\r?\n/)) {
     const line = raw.trim();
     if (line === "") {
@@ -133,6 +145,11 @@ export function parseInstallListing(stdout: string): AeInstall[] {
     if (location === "") {
       continue;
     }
+    const key = `${location.toLowerCase()}|${version}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
     installs.push({ location, version: version === "" ? null : version });
   }
   return installs;
@@ -246,6 +263,11 @@ export async function probeWindows(
     );
   }
 
+  // Several versions under one Adobe root are a normal upgrade, and the
+  // existing resolver picks the newest usable one. Only distinct locations
+  // make the destination ambiguous.
+  const installLocations = [...new Set(aeInstalls.map((install) => install.location.toLowerCase()))];
+
   if (aeInstalls.length === 0) {
     checks.push(
       diagnostic("A8N-ENV-003", {
@@ -255,10 +277,10 @@ export async function probeWindows(
         evidence: { installs: evidence.installs },
       }),
     );
-  } else if (aeInstalls.length > 1) {
+  } else if (installLocations.length > 1) {
     checks.push(
       diagnostic("A8N-ENV-004", {
-        detail: `found ${aeInstalls.length} installations: ${aeInstalls
+        detail: `found ${installLocations.length} installation locations: ${aeInstalls
           .map((install) => `${install.location} ${install.version ?? "(no version)"}`)
           .join("; ")}`,
         remedy: "Configure the runner's installDir so the selected install is explicit.",
