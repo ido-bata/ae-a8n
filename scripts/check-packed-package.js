@@ -21,7 +21,14 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -39,7 +46,16 @@ const EXPECTED = {
 };
 
 /** Paths that must survive packing. `host/` is not produced by tsc. */
-const REQUIRED_FILES = ["dist", "host", "package.json"];
+const REQUIRED_FILES = [
+  "dist",
+  "host",
+  "package.json",
+  // The first user-facing entry point and the adapters behind it.
+  "dist/cli.js",
+  "dist/platform/select.js",
+  "dist/platform/darwin/adapter.js",
+  "dist/platform/windows/runner.js",
+];
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: "utf-8", ...options });
@@ -106,7 +122,31 @@ try {
   }
   console.log(`installed package contains ${REQUIRED_FILES.join(", ")}`);
 
-  // 3. Both entry points resolve through the published exports map, with no
+  // 3. The installed bin is the documented entry point and can be executed.
+  //    A `bin` that points at a file the build does not emit, or that lost its
+  //    shebang, installs cleanly and then fails on `npx @ido-bata/ae-a8n`.
+  const binRelative = manifest.bin?.["ae-a8n"];
+  if (typeof binRelative !== "string") {
+    fail('package.json has no bin entry for "ae-a8n"');
+  }
+  const binPath = join(installed, binRelative);
+  if (!existsSync(binPath)) {
+    fail(`${binRelative} is missing from the installed package — check the build and "files"`);
+  }
+  if ((statSync(binPath).mode & 0o111) === 0) {
+    fail(`${binRelative} is not executable after install`);
+  }
+  const firstLine = readFileSync(binPath, "utf-8").split("\n", 1)[0];
+  if (firstLine !== "#!/usr/bin/env node") {
+    fail(`${binRelative} does not start with "#!/usr/bin/env node"`);
+  }
+  const help = run(process.execPath, [binPath, "--help"], { cwd: workdir });
+  if (!help.includes("doctor")) {
+    fail(`${binRelative} --help does not describe doctor`);
+  }
+  console.log(`bin ae-a8n is executable and resolves to ${binRelative}`);
+
+  // 4. Both entry points resolve through the published exports map, with no
   //    source tree in sight. This is the assertion that would have caught the
   //    `./testing` regression.
   //
@@ -128,7 +168,7 @@ try {
   }
   console.log(`  ${String(output).trim()}`);
 
-  // 4. The installed copy is the build, not a stale one.
+  // 5. The installed copy is the build, not a stale one.
   const installedManifest = JSON.parse(
     readFileSync(join(installed, "package.json"), "utf-8"),
   );
