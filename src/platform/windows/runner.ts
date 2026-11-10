@@ -36,7 +36,7 @@ import {
   type TargetSpec,
 } from "../contract.js";
 import { windowsCapabilities } from "./capabilities.js";
-import type { FileChannel } from "./channel.js";
+import { DirectoryChannel, type FileChannel } from "./channel.js";
 import {
   ChannelCommandRunner,
   openComms,
@@ -217,7 +217,12 @@ export class WindowsKeyNotConfiguredError extends Error {
 }
 
 export type WindowsAdapterOptions = {
-  readonly channel: FileChannel;
+  /**
+   * The channel, when the caller supplies one. On a remote target it is
+   * omitted and built from the host's configuration instead: a channel rooted
+   * at the controller's tmpdir cannot reach the host.
+   */
+  readonly channel?: FileChannel;
   /** The controller-side host name recorded in jobs and manifests. */
   readonly host: string;
   /** The controller-side user name recorded in jobs and manifests. */
@@ -375,7 +380,8 @@ export class WindowsAdapter implements PlatformAdapter {
   readonly platform = "win32" as const;
   readonly id = "windows-remote-host";
 
-  readonly #channel: FileChannel;
+  #channel: FileChannel;
+  readonly #channelInjected: boolean;
   readonly #host: string;
   readonly #user: string;
   readonly #agent: AgentIdentity;
@@ -400,7 +406,8 @@ export class WindowsAdapter implements PlatformAdapter {
   #comms: Promise<CommsState> | null = null;
 
   constructor(options: WindowsAdapterOptions) {
-    this.#channel = options.channel;
+    this.#channel = options.channel ?? new DirectoryChannel(join(tmpdir(), "ae-a8n-cli-channel"));
+    this.#channelInjected = options.channel !== undefined;
     this.#host = options.host;
     this.#user = options.user;
     this.#agent = options.agent;
@@ -731,8 +738,14 @@ export class WindowsAdapter implements PlatformAdapter {
     if (remote === null) {
       return Promise.reject(new Error("no remote configuration"));
     }
-    return resolveComms(remote).then((resolution) =>
-      openComms(
+    return resolveComms(remote).then((resolution) => {
+      // The channel the jobs go into is the one the host configuration names.
+      // An injected channel (a test, or a caller that already resolved one)
+      // wins, and is never replaced underneath the caller.
+      if (resolution.ok && !this.#channelInjected) {
+        this.#channel = new DirectoryChannel(resolution.config.channel);
+      }
+      return openComms(
         {
           channel: this.#channel,
           version: this.#agent.version,
@@ -752,8 +765,8 @@ export class WindowsAdapter implements PlatformAdapter {
               agentId: "",
               systemRoot: "C:\\Windows",
             },
-      ),
-    );
+      );
+    });
   }
 
   /**

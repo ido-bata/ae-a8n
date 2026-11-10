@@ -11,15 +11,11 @@
  * depends on the host is reported as unreadable, so the command exits blocked.
  */
 
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-
 import { A8N_VERSION } from "../index.js";
 import { diagnostic, type DiagnosticCheck } from "../doctor/diagnostics.js";
 import type { PlatformAdapter, TargetSpec } from "./contract.js";
 import { DarwinAdapter } from "./darwin/adapter.js";
 import type { FileChannel } from "./windows/channel.js";
-import { DirectoryChannel } from "./windows/channel.js";
 import type { CommandRunner } from "./windows/probe.js";
 import type { CommsOptions } from "./windows/comms.js";
 import { WindowsAdapter } from "./windows/runner.js";
@@ -65,9 +61,9 @@ function windowsAdapter(options: SelectOptions): WindowsAdapter {
   const host = target.host ?? "local";
   const user = target.user ?? "";
   return new WindowsAdapter({
-    channel:
-      options.channel ??
-      new DirectoryChannel(join(tmpdir(), "ae-a8n-cli-channel")),
+    // No channel here for a remote target: the adapter builds it from the
+    // host's configuration, because a tmpdir on this machine cannot reach it.
+    ...(options.channel === undefined ? {} : { channel: options.channel }),
     host,
     user,
     agent: {
