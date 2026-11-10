@@ -18,6 +18,7 @@ import { AeDriver, TimeoutError } from "../src/driver/driver.js";
 import type { HostRecovery } from "../src/driver/recovery.js";
 import type { HostOwnership, HostTransport, InvokeOptions } from "../src/driver/transport.js";
 import { ScriptNotSentError } from "../src/driver/transport.js";
+import { AfterEffects, ScriptNotSentError as PublicScriptNotSentError } from "../src/index.js";
 import { TraceRecorder } from "../src/trace/trace.js";
 
 let root: string;
@@ -93,5 +94,28 @@ describe("a call that was never sent", () => {
     });
     await expect(driver.call("app.info", {})).rejects.toBeInstanceOf(ScriptNotSentError);
     expect(attempts).toBe(0);
+  });
+});
+
+describe("a not-sent error through the public entry point", () => {
+  it("exports the class and its stable code", () => {
+    expect(PublicScriptNotSentError).toBe(ScriptNotSentError);
+    expect(new PublicScriptNotSentError("nothing ran").code).toBe("A8N-AE-005");
+  });
+
+  it("survives the public API instead of being relabelled as a failure inside AE", async () => {
+    const error: unknown = await AfterEffects.launch({
+      transport: new NotSentTransport(),
+      sessionRoot: root,
+    }).then(
+      () => null,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(PublicScriptNotSentError);
+    expect(error).toBeInstanceOf(ScriptNotSentError);
+    const notSent = error as PublicScriptNotSentError;
+    expect(notSent.name).toBe("ScriptNotSentError");
+    expect(notSent.code).toBe("A8N-AE-005");
+    expect(notSent.message).toMatch(/never sent to After Effects, so nothing ran/);
   });
 });

@@ -17,6 +17,14 @@
  * timeout of the operation.
  */
 export class ScriptNotSentError extends Error {
+  /**
+   * Stable code for callers that branch on it. The call was abandoned before
+   * it reached the host, so nothing ran: that is a different fact from a
+   * failure inside After Effects, and the code keeps them apart across the
+   * public API.
+   */
+  readonly code = "A8N-AE-005";
+
   constructor(message: string) {
     super(message);
     this.name = "ScriptNotSentError";
