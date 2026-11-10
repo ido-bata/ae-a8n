@@ -261,6 +261,17 @@ describe("the Windows agent entry", () => {
     expect(messages.join("")).toContain("--agent-id is required");
   });
 
+  it("rejects an empty flag value instead of using it as a path", async () => {
+    const messages: string[] = [];
+    const code = await main(args("/ignored", { "--channel": "" }), {
+      channel: new UnreadableChannel(),
+      executor: recordingExecutor([]),
+      stderr: (text) => messages.push(text),
+    });
+    expect(code).toBe(2);
+    expect(messages.join("")).toContain("--channel needs a value");
+  });
+
   it("opens the channel from --channel when none is injected", async () => {
     const { root, channel } = await makeChannel();
     const jobId = newJobId(NOW, new Uint8Array([1, 2, 3, 4]));

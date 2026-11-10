@@ -50,7 +50,7 @@ function parseArguments(argv: readonly string[]): ParseResult {
     if (flag === undefined || !FLAGS.has(flag)) {
       return { ok: false, detail: `unknown argument "${flag ?? ""}"` };
     }
-    if (value === undefined || value.startsWith("--")) {
+    if (value === undefined || value === "" || value.startsWith("--")) {
       return { ok: false, detail: `${flag} needs a value` };
     }
     if (values.has(flag)) {
