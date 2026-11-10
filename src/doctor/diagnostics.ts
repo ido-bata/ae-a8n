@@ -50,6 +50,8 @@ export const DIAGNOSTIC_CODES = {
   "A8N-AE-004": { severity: "warning", title: "A timed-out script may still be running" },
   "A8N-JOB-001": { severity: "blocker", title: "Job or result file failed ownership or integrity checks" },
   "A8N-JOB-002": { severity: "warning", title: "A prior run left a lock or quarantine state" },
+  "A8N-JOB-003": { severity: "blocker", title: "Job or result is not from a trusted issuer" },
+  "A8N-JOB-004": { severity: "blocker", title: "Job, result or payload exceeds its size limit" },
   "A8N-SEC-001": { severity: "blocker", title: "A licence, sign-in or permission dialog is present" },
   "A8N-EXT-001": { severity: "blocker", title: "Extension registration is invalid" },
   "A8N-RELEASE-001": { severity: "blocker", title: "Package version already exists on the registry" },

@@ -24,6 +24,7 @@ const MANIFEST: RunManifest = {
   sessionId: 1,
   agentId: "agent-1",
   agentVersion: "0.1.0-alpha.1",
+  agentVerified: true,
   aeVersion: "26.5.0",
   jobId: "20261110T120000Z-12345678",
   payloadSha256: HASH,

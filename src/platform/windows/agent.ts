@@ -7,11 +7,24 @@
  * for a timeout.
  */
 
-import type { FileChannel } from "./channel.js";
+import {
+  signClaim,
+  signResult,
+  verifyClaimAuth,
+  verifyJobAuth,
+  type JobKey,
+  type UnsignedClaim,
+  type UnsignedJobResult,
+} from "./auth.js";
+import { ChannelFileTooLargeError, type FileChannel } from "./channel.js";
 import {
   JOB_SCHEMA_VERSION,
+  MAX_JOB_BYTES,
+  MAX_PAYLOAD_BYTES,
+  decodeClaim,
   decodeJob,
   decodeResult,
+  encodeClaim,
   encodeResult,
   jobPaths,
   sha256Hex,
@@ -40,6 +53,12 @@ export interface JobExecutor {
 export type AgentRunOutcome =
   | { readonly state: "no-job" }
   | { readonly state: "claimed-by-other" }
+  /**
+   * A claim exists that this agent cannot attribute to a trusted issuer. The
+   * job's state is unknown, so it is quarantined: not run, not released, and
+   * never treated as another agent working on it.
+   */
+  | { readonly state: "claim-unauthenticated"; readonly detail: string }
   | { readonly state: "already-finished"; readonly result: JobResult | null }
   | { readonly state: "refused"; readonly result: JobResult }
   | { readonly state: "finished"; readonly result: JobResult };
@@ -49,6 +68,11 @@ export type AgentRunOptions = {
   readonly identity: AgentIdentity;
   readonly executor: JobExecutor;
   readonly jobId: string;
+  /**
+   * The shared channel secret. Jobs without a valid signature from this key
+   * are refused before the executor sees them; every result is signed with it.
+   */
+  readonly key: JobKey;
   readonly now?: () => Date;
   readonly maxAgeMs?: number;
 };
@@ -74,52 +98,178 @@ function timestamp(now: () => Date): string {
   return now().toISOString();
 }
 
+type ChannelRead =
+  | { readonly ok: true; readonly bytes: Uint8Array | null }
+  | { readonly ok: false; readonly detail: string };
+
+/** A read the channel refused for size is a refusal, not a crash. */
+async function readCapped(channel: FileChannel, path: string): Promise<ChannelRead> {
+  try {
+    return { ok: true, bytes: await channel.read(path) };
+  } catch (error) {
+    if (error instanceof ChannelFileTooLargeError) {
+      return { ok: false, detail: error.message };
+    }
+    throw error;
+  }
+}
+
 async function publishResult(
   channel: FileChannel,
   jobId: string,
-  result: JobResult,
-): Promise<void> {
-  await channel.writeAtomic(jobPaths(jobId).result, encodeResult(result));
+  result: UnsignedJobResult,
+  key: JobKey,
+): Promise<JobResult> {
+  const signed = signResult(result, key);
+  await channel.writeAtomic(jobPaths(jobId).result, encodeResult(signed));
+  return signed;
 }
 
 /** Runs at most one job. Never throws for a job it refuses; throws only if the channel fails. */
 export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome> {
   const now = options.now ?? (() => new Date());
-  const { channel, identity, jobId } = options;
+  const { channel, identity, jobId, key } = options;
   const paths = jobPaths(jobId);
 
-  const claimed = await channel.createExclusive(
-    paths.claim,
-    new TextEncoder().encode(
-      `${JSON.stringify({ jobId, claimedAt: timestamp(now), agent: identity }, null, 2)}\n`,
-    ),
+  const claim = signClaim(
+    {
+      schemaVersion: JOB_SCHEMA_VERSION,
+      jobId,
+      claimedAt: timestamp(now),
+      agent: identity,
+    } satisfies UnsignedClaim,
+    key,
   );
+  const claimed = await channel.createExclusive(paths.claim, encodeClaim(claim));
   if (!claimed) {
+    // Someone else got there first. Distinguish a real agent's claim from a
+    // file that merely exists: only a signature shows that an agent holding
+    // the channel secret took the job.
+    const existingClaim = await readCapped(channel, paths.claim);
+    if (!existingClaim.ok) {
+      return {
+        state: "claim-unauthenticated",
+        detail: `the existing claim cannot be read: ${existingClaim.detail}`,
+      };
+    }
+    if (existingClaim.bytes === null) {
+      return {
+        state: "claim-unauthenticated",
+        detail: "the existing claim disappeared before it could be verified; the job's state is unknown",
+      };
+    }
+    const decodedClaim = decodeClaim(existingClaim.bytes);
+    if (!decodedClaim.ok) {
+      return {
+        state: "claim-unauthenticated",
+        detail: `the existing claim is not valid: ${decodedClaim.detail}`,
+      };
+    }
+    if (decodedClaim.value.jobId !== jobId) {
+      return {
+        state: "claim-unauthenticated",
+        detail: `the existing claim names job "${decodedClaim.value.jobId}", not "${jobId}"`,
+      };
+    }
+    const claimCheck = verifyClaimAuth(decodedClaim.value, [key]);
+    if (!claimCheck.ok) {
+      return {
+        state: "claim-unauthenticated",
+        detail: `the existing claim is not from a trusted issuer: ${claimCheck.detail}`,
+      };
+    }
     return { state: "claimed-by-other" };
   }
 
   // A result means some agent already ran this job. It is never re-sent,
   // even when the result cannot be read: that is an unknown outcome.
-  const existing = await channel.read(paths.result);
-  if (existing !== null) {
-    const decoded = decodeResult(existing);
+  const existing = await readCapped(channel, paths.result);
+  if (!existing.ok) {
+    return { state: "already-finished", result: null };
+  }
+  if (existing.bytes !== null) {
+    const decoded = decodeResult(existing.bytes);
     return { state: "already-finished", result: decoded.ok ? decoded.value : null };
   }
 
   const startedAt = timestamp(now);
-  const manifestBytes = await channel.read(paths.manifest);
+  const manifestRead = await readCapped(channel, paths.manifest);
+  if (!manifestRead.ok) {
+    const result = await refuse(
+      channel,
+      identity,
+      jobId,
+      null,
+      startedAt,
+      now,
+      manifestRead.detail,
+      key,
+      "A8N-JOB-004",
+    );
+    return { state: "refused", result };
+  }
+  const manifestBytes = manifestRead.bytes;
   if (manifestBytes === null) {
-    const result = await refuse(channel, identity, jobId, null, startedAt, now, "job.json is missing");
+    const result = await refuse(channel, identity, jobId, null, startedAt, now, "job.json is missing", key);
+    return { state: "refused", result };
+  }
+  if (manifestBytes.length > MAX_JOB_BYTES) {
+    const result = await refuse(
+      channel,
+      identity,
+      jobId,
+      null,
+      startedAt,
+      now,
+      `job.json is ${manifestBytes.length} bytes, beyond the ${MAX_JOB_BYTES}-byte limit`,
+      key,
+      "A8N-JOB-004",
+    );
     return { state: "refused", result };
   }
 
   const decoded = decodeJob(manifestBytes);
   if (!decoded.ok) {
-    const result = await refuse(channel, identity, jobId, null, startedAt, now, decoded.detail);
+    const result = await refuse(channel, identity, jobId, null, startedAt, now, decoded.detail, key);
     return { state: "refused", result };
   }
   const job = decoded.value;
-  const payload = await channel.read(paths.payload(job.payloadFile));
+
+  // A hash binds the payload to the manifest; the signature binds the
+  // manifest to an issuer that knows the channel secret. Without it any local
+  // writer could make the dedicated user execute arbitrary code.
+  const authenticated = verifyJobAuth(job, [key]);
+  if (!authenticated.ok) {
+    const result = await refuse(
+      channel,
+      identity,
+      jobId,
+      null,
+      startedAt,
+      now,
+      `the job is not from a trusted issuer: ${authenticated.detail}`,
+      key,
+      "A8N-JOB-003",
+    );
+    return { state: "refused", result };
+  }
+
+  const payloadRead = await readCapped(channel, paths.payload(job.payloadFile));
+  if (!payloadRead.ok) {
+    const result = await refuse(
+      channel,
+      identity,
+      jobId,
+      null,
+      startedAt,
+      now,
+      payloadRead.detail,
+      key,
+      "A8N-JOB-004",
+    );
+    return { state: "refused", result };
+  }
+  const payload = payloadRead.bytes;
   if (payload === null) {
     const result = await refuse(
       channel,
@@ -129,6 +279,21 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
       startedAt,
       now,
       `payload "${job.payloadFile}" is missing`,
+      key,
+    );
+    return { state: "refused", result };
+  }
+  if (payload.length > MAX_PAYLOAD_BYTES) {
+    const result = await refuse(
+      channel,
+      identity,
+      jobId,
+      sha256Hex(payload),
+      startedAt,
+      now,
+      `payload is ${payload.length} bytes, beyond the ${MAX_PAYLOAD_BYTES}-byte limit`,
+      key,
+      "A8N-JOB-004",
     );
     return { state: "refused", result };
   }
@@ -141,7 +306,7 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
     ...(options.maxAgeMs === undefined ? {} : { maxAgeMs: options.maxAgeMs }),
   });
   if (!checked.ok) {
-    const result = await refuse(channel, identity, jobId, sha256Hex(payload), startedAt, now, checked.detail);
+    const result = await refuse(channel, identity, jobId, sha256Hex(payload), startedAt, now, checked.detail, key);
     return { state: "refused", result };
   }
 
@@ -155,13 +320,16 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
     };
   }
 
-  const result: JobResult = {
+  const result: UnsignedJobResult = {
     schemaVersion: JOB_SCHEMA_VERSION,
     jobId,
     status: execution.status,
     code: execution.code ?? null,
     message: execution.message,
-    exitCode: execution.exitCode ?? null,
+    // `ok` means the process exited 0; an executor that reports ok without an
+    // exit code is recording the same fact, not a missing one.
+    exitCode:
+      execution.exitCode ?? (execution.status === "ok" ? 0 : null),
     payloadSha256: job.payloadSha256,
     agent: identity,
     startedAt,
@@ -171,8 +339,8 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
   for (const [relativePath, bytes] of Object.entries(execution.artifacts ?? {})) {
     await channel.writeAtomic(`${paths.resultDirectory}/${relativePath}`, bytes);
   }
-  await publishResult(channel, jobId, result);
-  return { state: "finished", result };
+  const signed = await publishResult(channel, jobId, result, key);
+  return { state: "finished", result: signed };
 }
 
 async function refuse(
@@ -183,12 +351,14 @@ async function refuse(
   startedAt: string,
   now: () => Date,
   detail: string,
+  key: JobKey,
+  code = "A8N-JOB-001",
 ): Promise<JobResult> {
-  const result: JobResult = {
+  const result: UnsignedJobResult = {
     schemaVersion: JOB_SCHEMA_VERSION,
     jobId,
     status: "refused",
-    code: "A8N-JOB-001",
+    code,
     message: detail,
     exitCode: null,
     payloadSha256,
@@ -196,6 +366,5 @@ async function refuse(
     startedAt,
     finishedAt: timestamp(now),
   };
-  await publishResult(channel, jobId, result);
-  return result;
+  return publishResult(channel, jobId, result, key);
 }
