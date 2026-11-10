@@ -27,6 +27,7 @@ const manifest = JSON.parse(
   types: string;
   exports: Record<string, ConditionalExport>;
   files: string[];
+  scripts: Record<string, string>;
 };
 
 /** The emit layout tsc produces, from tsconfig.build.json's rootDir/outDir. */
@@ -106,6 +107,18 @@ describe("package exports", () => {
   it("keeps main and types in step with the exports map", () => {
     expect(manifest.main).toBe(rootExport().default);
     expect(manifest.types).toBe(rootExport().types);
+  });
+
+  it("never asks a consumer's install to compile the package", () => {
+    // `prepare` runs on `npm install <tarball>`, in a tree that has no
+    // typescript. The install either fails or, worse, is skipped by npm's
+    // install-scripts policy and leaves a package built by nothing. The
+    // tarball ships dist/, so the build belongs to `prepack`, not to a
+    // consumer's install.
+    for (const script of ["preinstall", "install", "postinstall", "prepare"]) {
+      expect(manifest.scripts[script]).toBeUndefined();
+    }
+    expect(manifest.scripts["prepack"]).toBe("npm run build");
   });
 
   it("ships the host scripts, which the runtime needs and the build does not produce", () => {

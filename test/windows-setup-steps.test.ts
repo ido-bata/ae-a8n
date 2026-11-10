@@ -256,9 +256,11 @@ describe("Windows setup steps", () => {
     expect(ambiguousSteps.find((step) => step.id === "windows.ae")).toMatchObject({
       state: "needs-human",
     });
-    expect(ambiguousSteps.find((step) => step.id === "windows.ae")?.reason).toContain(
-      "cannot be proved",
-    );
+    const reason = ambiguousSteps.find((step) => step.id === "windows.ae")?.reason ?? "";
+    expect(reason).toContain("cannot be proved");
+    // A real host had 26.0 and 26.5 registered at once. Naming them is what
+    // lets a person act; "more than one version" alone does not.
+    expect(reason).toContain("26.0, 26.5");
   });
 
   it("reports a real recovery observation instead of the old placeholder", async () => {

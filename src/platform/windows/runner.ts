@@ -576,12 +576,24 @@ export class WindowsAdapter implements PlatformAdapter {
         automatable: false,
       });
     } else if (version === null) {
+      // A real host had 26.0 and 26.5 registered at once. The person reading
+      // the plan needs those numbers, not "more than one".
+      const versions = [
+        ...new Set(
+          prepared.facts.aeInstalls
+            .map((install) => install.version)
+            .filter((entry): entry is string => entry !== null),
+        ),
+      ].sort();
       steps.push({
         id: "windows.ae",
         state: "needs-human",
         reason:
-          "After Effects is installed, but more than one version is registered; the exact version cannot be proved",
-        action: "Remove or disambiguate the extra After Effects installations, then run setup again.",
+          `After Effects is installed, but ${String(versions.length)} versions are registered ` +
+          `(${versions.join(", ")}); the exact version cannot be proved`,
+        action:
+          "Leave exactly one After Effects version registered for the target account " +
+          "(uninstall or hide the others), then run setup again.",
         automatable: false,
       });
     } else {
