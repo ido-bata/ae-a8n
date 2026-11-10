@@ -1,4 +1,4 @@
-# A real job from the Mac to the Windows host — 2026-11-10 (T089 evidence)
+# A real job from the Mac to the Windows host — 2026-11-10 (T087 evidence)
 
 This is the first time a job crossed the network from this Mac to the
 Windows host `UUU` and a result came back, and the first set of refusals
@@ -120,7 +120,7 @@ and the agent claims one job at a time on a 1 s poll.
 
 ## 7. Not reached
 
-- An After Effects job over this channel. §4 of the plan needs approval
+- An After Effects job over this channel. the acceptance plan's AE step needs approval
   before AE is started at all.
 - A result *tampered with in transit* (`A8N-JOB-003` on the result path) is
   covered by `submitJob`'s unit tests only; no real-host test forged one.
