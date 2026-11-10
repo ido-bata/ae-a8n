@@ -63,6 +63,27 @@ export class HostNotOwnedError extends AfterEffectsError {
 }
 
 /**
+ * The loaded host script does not declare the method. Nothing was sent: an
+ * unknown name is refused before a request is written, so a typo cannot
+ * become an After Effects error far from its cause.
+ */
+export class ExtensionMethodNotFoundError extends AfterEffectsError {
+  readonly method: string;
+  readonly declared: readonly string[];
+
+  constructor(op: string, method: string, declared: readonly string[]) {
+    super(
+      `${op} refused: the host script declares no method "${method}"` +
+        (declared.length === 0 ? " (it declares none)" : `; declared: ${declared.join(", ")}`),
+      op,
+    );
+    this.name = "ExtensionMethodNotFoundError";
+    this.method = method;
+    this.declared = declared;
+  }
+}
+
+/**
  * A read or write of a property that has no value a script can use: a
  * NO_VALUE or CUSTOM_VALUE property, or a group. Nothing was written.
  */

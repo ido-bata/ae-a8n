@@ -951,13 +951,32 @@
     }
   }
 
+  function extensionTable() {
+    var context = this.__a8n;
+    if (context === undefined || context === null || context.extensions === undefined) {
+      return {};
+    }
+    return context.extensions;
+  }
+
   function dispatch(request) {
     if (request === null || typeof request !== "object") {
       throw new Error("request envelope is not an object");
     }
-    var method = has(methods, request.method) ? methods[request.method] : undefined;
+    // Extension methods are registered before this file loads and live in
+    // their own table: a built-in name always wins, because the build refuses
+    // a collision but the table must still not be able to replace one.
+    var extensions = extensionTable();
+    var method = has(methods, request.method)
+      ? methods[request.method]
+      : has(extensions, request.method)
+        ? extensions[request.method]
+        : undefined;
     if (method === undefined) {
       throw new Error("unknown method: " + String(request.method));
+    }
+    if (typeof method !== "function") {
+      throw new Error("the method " + String(request.method) + " is not a function");
     }
     checkSession(request);
     var result = method(request.params);

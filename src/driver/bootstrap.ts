@@ -16,7 +16,8 @@
  */
 
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Quotes a value as an ES3 string literal. `JSON.stringify` handles the common
@@ -161,6 +162,20 @@ export function stageHostScript(stagingDir: string, hostScriptPath: string): str
       continue;
     }
     copyFileSync(source, join(targetDir, name));
+  }
+  // A generated extension host sits in the consumer's directory, but it is
+  // the shipped host script plus a prelude — it still includes the shipped
+  // `a8n-json.js` as a sibling. Both directories are staged, so the one folder
+  // AE is pointed at holds every file the host loads.
+  const shippedDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "host");
+  if (shippedDir !== sourceDir && existsSync(shippedDir)) {
+    for (const name of readdirSync(shippedDir)) {
+      const source = join(shippedDir, name);
+      if (!statSync(source).isFile() || existsSync(join(targetDir, name))) {
+        continue;
+      }
+      copyFileSync(source, join(targetDir, name));
+    }
   }
   const staged = join(targetDir, basename(hostScriptPath));
   if (!existsSync(staged)) {

@@ -228,6 +228,15 @@ export type RenderOptions = OperationOptions & {
 
 export type LaunchOptions = {
   /**
+   * A host script that declares extension methods, built by
+   * `ae-a8n extension build`. Omitted, the shipped `host/a8n-host.js` runs.
+   *
+   * The file is read once at launch: the same bytes are what After Effects
+   * runs, so a file edited between launch and a call cannot change what the
+   * session does.
+   */
+  readonly hostScript?: string;
+  /**
    * Where request files, results, artifacts, and the trace live. Defaults to a
    * fresh directory under the OS temp dir.
    */

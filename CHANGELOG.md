@@ -10,6 +10,15 @@ on a real host (#47).
 
 ### Added
 
+- Extension methods (#61, `specs/isolated-ae/contracts/extensions.md`):
+  `ae-a8n extension build --extension <module> --out <file>` writes a host
+  script that declares a consumer's own methods; `AfterEffects.launch({
+  hostScript })` runs it, and `ae.call(name, params, { timeoutMs? })` calls
+  one. Every method is parsed as ES3 at build time and refused if it is not;
+  a name that would replace a built-in host method is refused; an unknown
+  name is refused before a request is written, with the declared names in
+  the error. `acorn` is now a runtime dependency: the ES3 check is what keeps
+  the feature from being an eval.
 - macOS session scoping (#49): `src/driver/mac-session.ts` reads a user's
   login session (`asid`, Aqua/Background) and the apps that live in it, and
   runs a command *inside* another user's session. `ScriptInvocationTransport`

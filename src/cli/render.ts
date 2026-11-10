@@ -23,6 +23,7 @@ export function generalHelp(): string {
     "  recover  Inspect a prior run and release what can be released safely",
     "  report   Print or re-render a prior run's report; never runs After Effects",
     "  agent    Run the in-session agent on a Windows host (setup starts this)",
+    "  extension build   Build a host script declaring the consumer's own methods",
     "",
     "Common options:",
     "  --json             Print exactly one JSON document on stdout",

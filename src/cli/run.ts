@@ -41,6 +41,7 @@ import {
   type TargetInfo,
 } from "./envelope.js";
 import { runAgentCommand } from "./agent.js";
+import { runExtensionCommand } from "./extension.js";
 import { EXIT, type ExitCode } from "./exit-code.js";
 import {
   helpFor,
@@ -807,6 +808,11 @@ export async function runCli(
   // the contract parser, which would otherwise reject every one of them.
   if (argv[0] === "agent") {
     const result = await runAgentCommand(argv.slice(1));
+    return result.exitCode as ExitCode;
+  }
+
+  if (argv[0] === "extension") {
+    const result = await runExtensionCommand(argv.slice(1));
     return result.exitCode as ExitCode;
   }
   const deps = dependencies(input);
