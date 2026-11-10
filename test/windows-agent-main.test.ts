@@ -405,21 +405,30 @@ describe("the Windows agent entry", () => {
     expect(executed).toEqual([jobId]);
   });
 
-  it("refuses a key file readable by group or others", async () => {
-    const { root, channel } = await makeChannel();
-    const keyFile = join(root, "agent.key");
-    await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o644 });
-    await chmod(keyFile, 0o644);
-    const messages: string[] = [];
-    const code = await main(args(root, { "--key-file": keyFile }), {
-      channel,
-      measureSession: () => 1,
-      executor: recordingExecutor([]),
-      stderr: (text) => messages.push(text),
-    });
-    expect(code).toBe(1);
-    expect(messages.join("")).toContain("readable by group or others");
-  });
+  // Windows does not model POSIX mode bits, so `key-store.ts` skips the
+  // readable-by-others check there (ACLs are the equivalent, and verifying
+  // them is T092 work). Asserting the refusal on Windows would not fail: the
+  // agent accepts the key, enters its job loop and never returns, so the test
+  // hangs until the timeout. Observed on a real Windows 11 host, where the
+  // full suite is not part of CI.
+  it.skipIf(process.platform === "win32")(
+    "refuses a key file readable by group or others",
+    async () => {
+      const { root, channel } = await makeChannel();
+      const keyFile = join(root, "agent.key");
+      await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o644 });
+      await chmod(keyFile, 0o644);
+      const messages: string[] = [];
+      const code = await main(args(root, { "--key-file": keyFile }), {
+        channel,
+        measureSession: () => 1,
+        executor: recordingExecutor([]),
+        stderr: (text) => messages.push(text),
+      });
+      expect(code).toBe(1);
+      expect(messages.join("")).toContain("readable by group or others");
+    },
+  );
 
   it("opens the channel from --channel when none is injected", async () => {
     const { root, channel } = await makeChannel();

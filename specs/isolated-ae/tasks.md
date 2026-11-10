@@ -312,6 +312,20 @@ tarball hash, host identity, and artifacts. Any UNVERIFIED row blocks `latest`.
 
 **Depends on:** T085–T091; Windows hardware.
 
+**Progress 2026-11-10 (open, not delivered):** the matrix now exists at
+`docs/evidence/windows-2026-11-10/README.md` with every row classified
+PASS / FAIL / BLOCKED / UNVERIFIED, plus the host identity, both source SHAs
+and the tarball hash. PASS: package build, clean-consumer install, `--version`,
+`doctor`, `test`'s console-session refusal, `report`, `recover`, and the full
+`npm test` gate on `74@d6d24fc` (46 files, 729 passed, 5 skipped) — all on a
+real host, none in CI. BLOCKED: `setup` (not implemented in the CLI line,
+#56), the isolated session, ownership, recovery and the extension call — each
+needs a second Windows account, which is a pending human decision
+(evidence §5). UNVERIFIED: non-interference, which cannot be measured while
+the only account is the console user. Three Windows-only test defects were
+found and fixed on this ticket (`a84a06c`, `054abc2`, `d6d24fc`). The task
+stays open until the blocked rows run.
+
 ### T093 — Cross-platform release gate
 
 **Files:** `.github/workflows/*`, `scripts/check-release.js`,

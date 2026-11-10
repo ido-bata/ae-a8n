@@ -527,3 +527,31 @@ share, how junctions and symlinks behave for the key and claim files, and that
 the PowerShell session measurement returns the interactive session under the
 dedicated account. Those are T092 rows; until they pass, the Windows path is
 `fake/mock only`.
+
+## 2026-11-10: what a second real host reached
+
+Evidence, host identity, tarball hash and repeat steps:
+[evidence/windows-2026-11-10/README.md](evidence/windows-2026-11-10/README.md).
+Windows 11 build 29704, After Effects 26.0 and 26.5 installed, AE **not
+running**, the only account being the console user.
+
+| Reached | Not reached |
+| --- | --- |
+| `npm ci` + build, `npm test` green (`46` files, `729` passed, `5` skipped) on `74@d6d24fc` | an isolated, non-console session (no second account yet) |
+| `npm pack` from `86@79d8ab1`, clean-consumer install, `bin` linked, `--version` | non-interference measurement |
+| `doctor` and `test` refuse with `A8N-SESSION-003` (console user), exit 3, with a human remedy | ownership and destination proof against a real AE |
+| `report` exit 1 with no runs, `recover` exit 0, `test` with no command exit 2 | recovery from a real crash or dialog |
+| CLI and package work on Windows from the installed tarball | the extension call through the Windows agent (T091) |
+
+Three defects existed only on this host and are fixed on `74`: a POSIX
+key-permission test that hangs on win32, two launch tests that reached the real
+synchronous PowerShell/CIM process list (515 ms measured, past the 5 s default
+under the suite), and the gate's POSIX-only half. See §3 of the evidence file.
+None of them is visible in CI — the Windows CI job runs six release-tooling
+files, not the suite.
+
+Correction to an earlier observation in this program: a six-step
+`setup --dry-run` printout was produced by a checkout whose `dist/` predated
+`562d8f1` (setup moved off the CLI branch). From the packaged CLI on
+`86@79d8ab1` the answer is `setup is not implemented in this increment
+(issue #56)`, exit 7. The six-step row is not claimed here.
