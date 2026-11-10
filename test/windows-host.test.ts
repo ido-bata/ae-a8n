@@ -429,6 +429,12 @@ describe("Windows session start", () => {
       shortPath: (dir) => dir,
       readyPollMs: 5,
       mainWindowVisible: () => ++polls > 3,
+      // `launch()` snapshots the process list before starting anything, and
+      // the win32 default for it is a real PowerShell/CIM query: 515 ms on an
+      // idle Windows 11 host, past this test's 5 s budget under a full suite.
+      // macOS never pays it — there `powershell.exe` is absent, so the
+      // snapshot throws at once. The window is all this test is about.
+      processes: () => [],
     });
     const driver = new AeDriver({
       transport,
@@ -472,6 +478,9 @@ describe("Windows session start", () => {
       spawnLauncher,
       readyPollMs: 5,
       mainWindowVisible: () => false,
+      // Same reason as the test above: `launch()` would otherwise ask a real
+      // Windows host for its process list.
+      processes: () => [],
     });
     const driver = new AeDriver({
       transport,
