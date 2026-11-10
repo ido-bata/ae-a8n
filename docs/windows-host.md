@@ -153,3 +153,47 @@ Two designs share one `FileChannel` interface:
 
 The end-to-end path is currently exercised only against the in-repo fake host
 (`test/windows-e2e.test.ts`), which is `automated test` + `fake/mock only`.
+
+## 9. What each isolation mode has to prove (audit, 2026-11-10)
+
+`A8N-SESSION-003` ("target session is the console session") was written for
+`isolation: "session"`: two accounts on **one** PC, where the test account
+must not be the person at the console, because the whole claim is that a test
+AE does not disturb the person using the machine.
+
+`isolation: "remote-host"` makes a different claim — the test runs on a
+**different computer** — and that claim is not proven by the same fact. The
+audit question was whether the console-session check should still apply. It
+should not, and it does not (`probe.ts` gates it on
+`isolation === "session"`). But the check was also the *only* isolation gate,
+so a `remote-host` target previously passed on the strength of a flag: on
+2026-11-10 `doctor --host ...` was asked for `isolation: "remote-host"`, where
+`A8N-SESSION-003` does not fire, on a host that was the developer's own
+desktop.
+
+The condition that replaces it for `remote-host` is three facts, each of which
+the software now measures instead of assuming:
+
+| Fact | How it is proven | Code |
+| --- | --- | --- |
+| **Host identity** | The agent's signed heartbeat names its host, user, session and version; the controller compares all four with the target. | `A8N-JOB-006` |
+| **The host is not the controller** | The same host name as this controller means the test would run on the machine the person is using; "by construction" would be false. | `A8N-SESSION-006` |
+| **Exclusive/dedicated use, as far as it can be measured** | The agent is alive in an interactive session (`sessionId > 0`), its heartbeat is fresh, and the channel is readable and writable from the controller. A stale heartbeat or session 0 is refused. | `A8N-JOB-005`, `A8N-JOB-007` |
+| **Execution target and permissions** | Every job is signed with the shared channel key and carries a run id; the destination is proven by the agent's per-run marker before any close path may quit. The key's ACL on the host is not measurable from the controller and stays a human step. | `A8N-JOB-003`, `A8N-AE-002` |
+
+What this does **not** prove, and must not be reported as proven:
+
+- that no other person is logged into that host's session at the same time
+  (a fresh signed heartbeat says the agent is in an interactive session, not
+  that nobody else shares it);
+- that the host is dedicated to testing rather than the owner's daily machine
+  opened remotely — the host name differs from the controller's, which is all
+  this check can see;
+- the key file's ACL on the host, which remains `windows.channel-permissions`
+  (`needs-human`).
+
+`A8N-SESSION-003` is therefore **kept unchanged** for `session`, and
+`remote-host` is refused on the four measured facts above rather than on the
+console-session comparison. All of it is `automated test` against the in-repo
+fake host (`test/windows-remote-comms.test.ts`); none of it is
+`verified on real host` yet.
