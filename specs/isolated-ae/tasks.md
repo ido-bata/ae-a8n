@@ -142,6 +142,18 @@ licence/sign-in class always reports and never presses; an unknown dialog is
 
 **Verification:** `automated test` + `fake/mock only`; real Windows pending.
 
+**Delivered 2026-11-10 (#71):** `src/platform/recovery-policy.ts` is the
+platform-neutral policy (measured allow list, human-only classes, unknown =>
+`A8N-SEC-001`); macOS PR #50 can adopt it later and was not moved here.
+`src/platform/windows/recovery.ts` reads only the passive `tasklist /V` window
+state. A responding or absent AE is reported; `Not Responding`, an unknown
+state or unreadable output is refused with `A8N-SEC-001` and a remedy. There is
+no code that presses, sends a key or kills. The adapter returns these findings
+instead of the old placeholder. Level: `automated test` + `fake/mock only`;
+real Windows pending. Deliberate boundary: Windows has no GUI automation, so
+even a measured dialog class is reported, not pressed, until a verified path
+exists.
+
 **Depends on:** T088.
 
 ### T090 — Windows destination proof
@@ -157,6 +169,21 @@ marker matches. Record the evidence in the manifest.
 the destination was proven or only PID-proven.
 
 **Verification:** `automated test` + `fake/mock only`; real Windows pending.
+
+**Delivered 2026-11-10 (#72):** the job protocol is 1.1 and carries the
+controller's `runId`. After verifying a job and before executing it, the agent
+writes `results/<jobId>/session-marker.json` with the run id, the job id, its
+identity and 32 random bytes. The controller reads it back; a marker that does
+not name this run, this job and this agent (or no marker) is `A8N-AE-002` and
+unproven. The close path verifies the marker before it would quit and quits
+nothing on a mismatch. The manifest records `destinationProof` (`marker` or
+`unproven`) and `ownershipProof` (`unproven`). `provesDestination` is true;
+`provesOwnership` stays false because the isolated backend never measures the
+AE process's pid and start time. The marker proves the run's delivery, not which
+AE instance a script reached; the driver's own marker (#43) still covers direct
+AE calls. Tests: `test/windows-destination.test.ts`, an agent marker test, and
+`test/windows-e2e.test.ts`. Level: `automated test` + `fake/mock only`; real
+Windows pending.
 
 **Depends on:** T088.
 
