@@ -477,6 +477,7 @@ On the Windows target, after `npm run build` (or from an installed package):
 ```bat
 node scripts\windows-agent.mjs ^
   --channel \\controller\share\a8n ^
+  --key-file C:\ProgramData\ae-a8n\agent.key ^
   --agent-id ae-a8n-agent ^
   --host WIN-AE-01 ^
   --user a8n ^
@@ -488,14 +489,38 @@ node scripts\windows-agent.mjs ^
   `jobs/<jobId>/`, claims through `claims/<jobId>.json`, and publishes through
   `results/<jobId>/result.json`. A missing or unreadable channel exits non-zero
   with the reason on stderr.
+- `--key-file` is the channel key provisioned out of band to both sides. Jobs,
+  results and claims carry an HMAC-SHA256 with domain separation; the agent
+  refuses a job it cannot attribute before the executor sees it. The key file is
+  refused if it is a symlink, larger than 4 KiB, or (on POSIX) readable by group
+  or others. Its confidentiality is the trust anchor: anyone who can read it can
+  forge work.
 - `--session-id` must be the interactive session id (not `0`); the agent checks
-  this before it polls anything.
+  this before it polls anything. The flag is a claim: the agent measures its own
+  session through `GetCurrentProcess().SessionId` and refuses when the two
+  disagree or the measurement fails.
 - Start it from the dedicated account's own logon (for example a shortcut in
   that account's Startup folder), not from a scheduled task with "Run whether
   user is logged on or not". The latter has no interactive desktop.
 - The agent never reads or writes a credential. Adobe sign-in stays a human
   setup step; GUI recovery and process ownership are T089/T090.
 
-The entry is tested through `main(argv, deps)` in
-`test/windows-agent-main.test.ts`. Level: `automated test` against the in-repo
-fake; this has **not** been run on a real Windows host.
+### What the review of the job-execution boundary changed (#70, PR #77)
+
+| Risk | Change | Test |
+| --- | --- | --- |
+| Any channel writer could make the dedicated user execute code | jobs and results are HMAC-signed; the issuer must hold the channel key | `windows-auth`, `windows-agent`, `windows-runner` |
+| A planted claim denied a job while looking like another agent | claims are signed; an unsigned, foreign-key, misplaced, oversized or vanished claim is `claim-unauthenticated`, recorded in `diagnostics/claims/<jobId>.json`, never run and never released | `windows-agent`, `windows-agent-main` |
+| A timed-out native job might run later and a recycled PID could be killed | on timeout the process creation time is read again; nothing is killed unless it still matches, and the outcome stays `unknown` | `windows-executor` |
+| The claimed session id was taken at face value | the OS measurement must agree, or the agent exits before polling | `windows-agent-main` |
+| A result could belong to another payload | the controller requires the result's `payloadSha256` to match the job | `windows-agent` |
+| Oversized documents could exhaust the agent | caps on job (64 KiB), result (1 MiB), payload (1 MiB) and claim (16 KiB), enforced before parsing and in the channel | `windows-job`, `windows-agent`, `windows-channel` |
+| The manifest repeated unverified agent facts | agent identity in the manifest comes from the verified signed result; `agentVerified` says whether it did | `windows-runner`, `windows-manifest` |
+
+Level: `automated test` against the in-repo fake. **Nothing in this section is
+`verified on real host`.** In particular, unproven on Windows: that NTFS/SMB
+ACLs keep the key file from other accounts, that `O_EXCL` is atomic over the
+share, how junctions and symlinks behave for the key and claim files, and that
+the PowerShell session measurement returns the interactive session under the
+dedicated account. Those are T092 rows; until they pass, the Windows path is
+`fake/mock only`.

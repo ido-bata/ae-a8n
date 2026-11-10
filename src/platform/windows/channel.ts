@@ -36,12 +36,37 @@ export class UnsupportedChannelPathError extends Error {
   }
 }
 
+/** A file the channel refuses to read into memory. */
+export class ChannelFileTooLargeError extends Error {
+  readonly path: string;
+  readonly size: number;
+
+  constructor(path: string, size: number, limit: number) {
+    super(`channel file "${path}" is ${size} bytes, beyond the ${limit}-byte read limit`);
+    this.name = "ChannelFileTooLargeError";
+    this.path = path;
+    this.size = size;
+  }
+}
+
+/** Backstop for every read; job/result/payload have their own tighter limits. */
+export const DEFAULT_MAX_READ_BYTES = 16 * 1024 * 1024;
+
+export type DirectoryChannelOptions = {
+  readonly maxReadBytes?: number;
+};
+
 /** A channel over a directory: a mounted share, or the same directory in a test. */
 export class DirectoryChannel implements FileChannel {
   readonly #root: string;
+  readonly #maxReadBytes: number;
 
-  constructor(root: string) {
+  constructor(root: string, options: DirectoryChannelOptions = {}) {
     this.#root = root;
+    this.#maxReadBytes =
+      options.maxReadBytes !== undefined && options.maxReadBytes > 0
+        ? options.maxReadBytes
+        : DEFAULT_MAX_READ_BYTES;
   }
 
   #resolve(path: string): string {
@@ -58,8 +83,19 @@ export class DirectoryChannel implements FileChannel {
   }
 
   async read(path: string): Promise<Uint8Array | null> {
+    const target = this.#resolve(path);
     try {
-      return new Uint8Array(await readFile(this.#resolve(path)));
+      // Refuse before allocating what a writer could make huge; check again
+      // after reading because the file can grow between stat and read.
+      const before = await stat(target);
+      if (before.size > this.#maxReadBytes) {
+        throw new ChannelFileTooLargeError(path, before.size, this.#maxReadBytes);
+      }
+      const bytes = new Uint8Array(await readFile(target));
+      if (bytes.length > this.#maxReadBytes) {
+        throw new ChannelFileTooLargeError(path, bytes.length, this.#maxReadBytes);
+      }
+      return bytes;
     } catch (error) {
       if (isMissing(error)) {
         return null;

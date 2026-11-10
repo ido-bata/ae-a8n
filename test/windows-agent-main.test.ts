@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,9 +6,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { JobExecutor } from "../src/platform/windows/agent.js";
 import { main } from "../src/platform/windows/agent-main.js";
+import { signJob, signResult, encodeKeyFile, type JobKey } from "../src/platform/windows/auth.js";
 import { DirectoryChannel, type FileChannel } from "../src/platform/windows/channel.js";
 import {
   JOB_SCHEMA_VERSION,
+  claimDiagnosticPath,
   encodeJob,
   encodeResult,
   jobPaths,
@@ -20,6 +22,7 @@ import {
 
 const NOW = new Date("2026-11-10T12:00:00.000Z");
 const PAYLOAD = new TextEncoder().encode('{"argv":["/bin/echo","hi"]}\n');
+const KEY: JobKey = { keyId: "test-key", secret: new Uint8Array(32).fill(7) };
 const IDENTITY = {
   id: "agent-1",
   host: "WIN-AE-01",
@@ -43,6 +46,7 @@ afterEach(async () => {
 function args(root: string, overrides: Partial<Record<string, string>> = {}): string[] {
   const values = {
     "--channel": root,
+    "--key-file": join(root, "agent.key"),
     "--agent-id": IDENTITY.id,
     "--host": IDENTITY.host,
     "--user": IDENTITY.user,
@@ -54,15 +58,18 @@ function args(root: string, overrides: Partial<Record<string, string>> = {}): st
 }
 
 function jobFor(jobId: string): Job {
-  return {
-    schemaVersion: JOB_SCHEMA_VERSION,
-    jobId,
-    runId: "20261110T120000Z-run00001",
-    createdAt: NOW.toISOString(),
-    payloadSha256: sha256Hex(PAYLOAD),
-    payloadFile: "payload.json",
-    writer: { host: "controller", user: "tester" },
-  };
+  return signJob(
+    {
+      schemaVersion: JOB_SCHEMA_VERSION,
+      jobId,
+      runId: "20261110T120000Z-run00001",
+      createdAt: NOW.toISOString(),
+      payloadSha256: sha256Hex(PAYLOAD),
+      payloadFile: "payload.json",
+      writer: { host: "controller", user: "tester" },
+    },
+    KEY,
+  );
 }
 
 async function publishJob(channel: DirectoryChannel, jobId: string): Promise<void> {
@@ -72,18 +79,21 @@ async function publishJob(channel: DirectoryChannel, jobId: string): Promise<voi
 }
 
 function resultFor(jobId: string): JobResult {
-  return {
-    schemaVersion: JOB_SCHEMA_VERSION,
-    jobId,
-    status: "ok",
-    code: null,
-    exitCode: 0,
-    message: "from an earlier run",
-    payloadSha256: sha256Hex(PAYLOAD),
-    agent: IDENTITY,
-    startedAt: NOW.toISOString(),
-    finishedAt: NOW.toISOString(),
-  };
+  return signResult(
+    {
+      schemaVersion: JOB_SCHEMA_VERSION,
+      jobId,
+      status: "ok",
+      code: null,
+      exitCode: 0,
+      message: "from an earlier run",
+      payloadSha256: sha256Hex(PAYLOAD),
+      agent: IDENTITY,
+      startedAt: NOW.toISOString(),
+      finishedAt: NOW.toISOString(),
+    },
+    KEY,
+  );
 }
 
 function recordingExecutor(executed: string[]): JobExecutor {
@@ -130,6 +140,8 @@ describe("the Windows agent entry", () => {
     const controller = new AbortController();
     const code = await main(args(root), {
       channel,
+      key: KEY,
+      measureSession: () => 1,
       executor: recordingExecutor(executed),
       now: () => NOW,
       pollMs: 1,
@@ -158,6 +170,8 @@ describe("the Windows agent entry", () => {
     const controller = new AbortController();
     await main(args(root), {
       channel,
+      key: KEY,
+      measureSession: () => 1,
       executor: recordingExecutor(executed),
       now: () => NOW,
       sleep: () => {
@@ -179,6 +193,8 @@ describe("the Windows agent entry", () => {
     const controller = new AbortController();
     await main(args(root), {
       channel,
+      key: KEY,
+      measureSession: () => 1,
       executor: recordingExecutor(executed),
       now: () => NOW,
       sleep: () => {
@@ -198,6 +214,8 @@ describe("the Windows agent entry", () => {
     const controller = new AbortController();
     await main(args(root), {
       channel,
+      key: KEY,
+      measureSession: () => 1,
       executor: recordingExecutor(executed),
       now: () => NOW,
       sleep: () => {
@@ -218,6 +236,10 @@ describe("the Windows agent entry", () => {
 
     const code = await main(args(root, { "--session-id": "0" }), {
       channel,
+      key: KEY,
+      // The OS agrees: this really is a session-0 process, which has no
+      // interactive desktop to show After Effects on.
+      measureSession: () => 0,
       executor: recordingExecutor(executed),
       now: () => NOW,
       stderr: (text) => messages.push(text),
@@ -228,10 +250,57 @@ describe("the Windows agent entry", () => {
     expect(await channel.read(jobPaths(jobId).claim)).toBeNull();
   });
 
+  it("quarantines a planted claim, records it, and keeps polling", async () => {
+    const { root, channel } = await makeChannel();
+    const planted = "20261110T120000Z-aaaaaaaa";
+    const healthy = "20261110T120000Z-bbbbbbbb";
+    await publishJob(channel, planted);
+    await publishJob(channel, healthy);
+    await channel.writeAtomic(
+      jobPaths(planted).claim,
+      new TextEncoder().encode(
+        JSON.stringify({ jobId: planted, claimedAt: NOW.toISOString(), agent: IDENTITY }),
+      ),
+    );
+
+    const executed: string[] = [];
+    const messages: string[] = [];
+    const controller = new AbortController();
+    const code = await main(args(root), {
+      channel,
+      key: KEY,
+      measureSession: () => 1,
+      executor: recordingExecutor(executed),
+      now: () => NOW,
+      sleep: () => {
+        controller.abort();
+        return Promise.resolve();
+      },
+      signal: controller.signal,
+      stderr: (text) => messages.push(text),
+    });
+
+    expect(code).toBe(0);
+    expect(executed).toEqual([healthy]);
+    expect(await channel.read(jobPaths(planted).result)).toBeNull();
+    expect(messages.join("")).toContain(`job ${planted} is quarantined`);
+
+    const diagnostic = await channel.read(claimDiagnosticPath(planted));
+    expect(diagnostic).not.toBeNull();
+    const parsed = JSON.parse(new TextDecoder().decode(diagnostic ?? new Uint8Array())) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed).toMatchObject({ jobId: planted, quarantinedAt: NOW.toISOString() });
+    expect(String(parsed["detail"])).toContain("not valid");
+  });
+
   it("fails non-zero with a message when the channel cannot be read", async () => {
     const messages: string[] = [];
     const code = await main(args("ignored"), {
       channel: new UnreadableChannel(),
+      key: KEY,
+      measureSession: () => 1,
       executor: recordingExecutor([]),
       stderr: (text) => messages.push(text),
     });
@@ -244,6 +313,8 @@ describe("the Windows agent entry", () => {
     roots.push(root);
     const messages: string[] = [];
     const code = await main(args(join(root, "missing")), {
+      key: KEY,
+      measureSession: () => 1,
       executor: recordingExecutor([]),
       stderr: (text) => messages.push(text),
     });
@@ -255,22 +326,99 @@ describe("the Windows agent entry", () => {
     const messages: string[] = [];
     const code = await main(["--channel", "ignored"], {
       channel: new UnreadableChannel(),
+      key: KEY,
+      measureSession: () => 1,
       executor: recordingExecutor([]),
       stderr: (text) => messages.push(text),
     });
     expect(code).toBe(2);
-    expect(messages.join("")).toContain("--agent-id is required");
+    expect(messages.join("")).toContain("--key-file is required");
   });
 
   it("rejects an empty flag value instead of using it as a path", async () => {
     const messages: string[] = [];
     const code = await main(args("/ignored", { "--channel": "" }), {
       channel: new UnreadableChannel(),
+      key: KEY,
+      measureSession: () => 1,
       executor: recordingExecutor([]),
       stderr: (text) => messages.push(text),
     });
     expect(code).toBe(2);
     expect(messages.join("")).toContain("--channel needs a value");
+  });
+
+  it("refuses when the claimed session is not the one the OS measured", async () => {
+    const { root, channel } = await makeChannel();
+    const jobId = newJobId(NOW, new Uint8Array([1, 2, 3, 4]));
+    await publishJob(channel, jobId);
+    const executed: string[] = [];
+    const messages: string[] = [];
+
+    const code = await main(args(root), {
+      channel,
+      key: KEY,
+      measureSession: () => 2,
+      executor: recordingExecutor(executed),
+      stderr: (text) => messages.push(text),
+    });
+    expect(code).toBe(1);
+    expect(executed).toEqual([]);
+    expect(messages.join("")).toContain("does not match the measured session");
+    expect(await channel.read(jobPaths(jobId).claim)).toBeNull();
+  });
+
+  it("refuses when its own session cannot be measured", async () => {
+    const messages: string[] = [];
+    const code = await main(args("/ignored"), {
+      channel: new UnreadableChannel(),
+      key: KEY,
+      measureSession: () => null,
+      executor: recordingExecutor([]),
+      stderr: (text) => messages.push(text),
+    });
+    expect(code).toBe(1);
+    expect(messages.join("")).toContain("could not be measured");
+  });
+
+  it("loads the channel key from --key-file when none is injected", async () => {
+    const { root, channel } = await makeChannel();
+    const keyFile = join(root, "agent.key");
+    await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o600 });
+    const jobId = newJobId(NOW, new Uint8Array([1, 2, 3, 4]));
+    await publishJob(channel, jobId);
+
+    const executed: string[] = [];
+    const controller = new AbortController();
+    const code = await main(args(root, { "--key-file": keyFile }), {
+      channel,
+      measureSession: () => 1,
+      executor: recordingExecutor(executed),
+      now: () => NOW,
+      sleep: () => {
+        controller.abort();
+        return Promise.resolve();
+      },
+      signal: controller.signal,
+    });
+    expect(code).toBe(0);
+    expect(executed).toEqual([jobId]);
+  });
+
+  it("refuses a key file readable by group or others", async () => {
+    const { root, channel } = await makeChannel();
+    const keyFile = join(root, "agent.key");
+    await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o644 });
+    await chmod(keyFile, 0o644);
+    const messages: string[] = [];
+    const code = await main(args(root, { "--key-file": keyFile }), {
+      channel,
+      measureSession: () => 1,
+      executor: recordingExecutor([]),
+      stderr: (text) => messages.push(text),
+    });
+    expect(code).toBe(1);
+    expect(messages.join("")).toContain("readable by group or others");
   });
 
   it("opens the channel from --channel when none is injected", async () => {
@@ -281,6 +429,8 @@ describe("the Windows agent entry", () => {
     const executed: string[] = [];
     const controller = new AbortController();
     const code = await main(args(root), {
+      key: KEY,
+      measureSession: () => 1,
       executor: recordingExecutor(executed),
       now: () => NOW,
       sleep: () => {

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DirectoryChannel, UnsupportedChannelPathError } from "../src/platform/windows/channel.js";
+import { signJob, signResult, type JobKey, type UnsignedJobResult } from "../src/platform/windows/auth.js";
 import {
   JOB_SCHEMA_VERSION,
   decodeJob,
@@ -17,23 +18,26 @@ import {
   sha256Hex,
   validateJob,
   type Job,
-  type JobResult,
 } from "../src/platform/windows/job.js";
 
 const NOW = new Date("2026-11-10T12:00:00.000Z");
 const PAYLOAD = new TextEncoder().encode('{"command":"echo hi"}\n');
+const KEY: JobKey = { keyId: "test-key", secret: new Uint8Array(32).fill(7) };
 
-function validJob(overrides: Partial<Job> = {}): Job {
-  return {
-    schemaVersion: JOB_SCHEMA_VERSION,
-    jobId: newJobId(NOW, new Uint8Array([1, 2, 3, 4])),
-    runId: "20261110T120000Z-run00001",
-    createdAt: NOW.toISOString(),
-    payloadSha256: sha256Hex(PAYLOAD),
-    payloadFile: "payload.json",
-    writer: { host: "controller", user: "tester" },
-    ...overrides,
-  };
+function validJob(overrides: Partial<Omit<Job, "auth">> = {}): Job {
+  return signJob(
+    {
+      schemaVersion: JOB_SCHEMA_VERSION,
+      jobId: newJobId(NOW, new Uint8Array([1, 2, 3, 4])),
+      runId: "20261110T120000Z-run00001",
+      createdAt: NOW.toISOString(),
+      payloadSha256: sha256Hex(PAYLOAD),
+      payloadFile: "payload.json",
+      writer: { host: "controller", user: "tester" },
+      ...overrides,
+    },
+    KEY,
+  );
 }
 
 const roots: string[] = [];
@@ -111,6 +115,27 @@ describe("the job manifest", () => {
       detail: "job.json is not valid JSON",
     });
   });
+
+  it("rejects a field this version does not know", () => {
+    const bytes = new TextEncoder().encode(
+      JSON.stringify({ ...validJob(), role: "admin" }),
+    );
+    expect(decodeJob(bytes)).toEqual({ ok: false, detail: 'unknown job field "role"' });
+  });
+
+  it("rejects a manifest without a signature", () => {
+    const { auth: _auth, ...unsigned } = validJob();
+    expect(decodeJob(new TextEncoder().encode(JSON.stringify(unsigned)))).toEqual({
+      ok: false,
+      detail: "auth is missing",
+    });
+  });
+
+  it("rejects a manifest above the size limit before parsing it", () => {
+    const bytes = new Uint8Array(70 * 1024);
+    bytes.fill(0x20);
+    expect(decodeJob(bytes)).toMatchObject({ ok: false });
+  });
 });
 
 describe("the decision to execute a job", () => {
@@ -164,7 +189,7 @@ describe("the decision to execute a job", () => {
 });
 
 describe("the result file", () => {
-  const result: JobResult = {
+  const unsignedResult = (): UnsignedJobResult => ({
     schemaVersion: JOB_SCHEMA_VERSION,
     jobId: newJobId(NOW, new Uint8Array([1, 2, 3, 4])),
     status: "ok",
@@ -175,7 +200,8 @@ describe("the result file", () => {
     agent: { id: "agent-1", host: "WIN", user: "tester", sessionId: 1, version: "0.1.0" },
     startedAt: NOW.toISOString(),
     finishedAt: NOW.toISOString(),
-  };
+  });
+  const result = signResult(unsignedResult(), KEY);
 
   it("round-trips", () => {
     expect(decodeResult(encodeResult(result))).toEqual({ ok: true, value: result });
@@ -185,6 +211,30 @@ describe("the result file", () => {
     expect(decodeResult(new TextEncoder().encode(JSON.stringify({ ...result, status: "maybe" }))).ok).toBe(false);
     expect(
       decodeResult(new TextEncoder().encode(JSON.stringify({ ...result, agent: { id: "a" } }))).ok,
+    ).toBe(false);
+  });
+
+  it("rejects a field this version does not know", () => {
+    const bytes = new TextEncoder().encode(JSON.stringify({ ...result, trusted: true }));
+    expect(decodeResult(bytes)).toEqual({ ok: false, detail: 'unknown result field "trusted"' });
+  });
+
+  it("rejects timestamps that are not dates, and an inverted interval", () => {
+    expect(
+      decodeResult(new TextEncoder().encode(JSON.stringify({ ...result, startedAt: "not-a-date" }))).ok,
+    ).toBe(false);
+    expect(
+      decodeResult(
+        new TextEncoder().encode(
+          JSON.stringify({ ...result, finishedAt: "2026-11-10T11:59:59.000Z" }),
+        ),
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("refuses an ok result that did not exit 0", () => {
+    expect(
+      decodeResult(new TextEncoder().encode(JSON.stringify({ ...result, exitCode: 1 }))).ok,
     ).toBe(false);
   });
 });

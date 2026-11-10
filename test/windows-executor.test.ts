@@ -7,6 +7,7 @@ import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { SpawnJobExecutor, type ExecutorChild, type SpawnFunction } from "../src/platform/windows/executor.js";
+import { signJob, type JobKey } from "../src/platform/windows/auth.js";
 import {
   JOB_SCHEMA_VERSION,
   sha256Hex,
@@ -15,16 +16,20 @@ import {
 
 const ROOTS: string[] = [];
 const PAYLOAD = new TextEncoder().encode('{"argv":["/bin/echo","hi"]}\n');
+const KEY: JobKey = { keyId: "test-key", secret: new Uint8Array(32).fill(7) };
 
-const JOB: Job = {
-  schemaVersion: JOB_SCHEMA_VERSION,
-  jobId: "20261110T120000Z-abcdef01",
-  runId: "20261110T120000Z-run00001",
-  createdAt: "2026-11-10T12:00:00.000Z",
-  payloadSha256: sha256Hex(PAYLOAD),
-  payloadFile: "payload.json",
-  writer: { host: "controller", user: "tester" },
-};
+const JOB: Job = signJob(
+  {
+    schemaVersion: JOB_SCHEMA_VERSION,
+    jobId: "20261110T120000Z-abcdef01",
+    runId: "20261110T120000Z-run00001",
+    createdAt: "2026-11-10T12:00:00.000Z",
+    payloadSha256: sha256Hex(PAYLOAD),
+    payloadFile: "payload.json",
+    writer: { host: "controller", user: "tester" },
+  },
+  KEY,
+);
 
 type SpawnCall = {
   readonly program: string;
@@ -184,6 +189,7 @@ describe("the spawn job executor", () => {
       spawn: plan.spawn,
       runDirectory: directory,
       timeoutMs: 5,
+      readProcessStart: () => Promise.resolve("2026-11-10T12:00:00.0000000Z"),
       kill: (child) => {
         if (child.pid !== undefined) {
           kills.push(child.pid);
@@ -213,6 +219,7 @@ describe("the spawn job executor", () => {
       spawn: plan.spawn,
       runDirectory: directory,
       timeoutMs: 5,
+      readProcessStart: () => Promise.resolve("2026-11-10T12:00:00.0000000Z"),
       kill: (child) => {
         child.kill();
       },
@@ -224,6 +231,61 @@ describe("the spawn job executor", () => {
     expect(outcome.status).toBe("unknown");
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(outcome.status).toBe("unknown");
+  });
+
+  it("does not kill a pid whose process identity changed while it ran", async () => {
+    const directory = await runDirectory();
+    const kills: number[] = [];
+    const plan = spawnPlan(() => undefined);
+    let reads = 0;
+    const executor = new SpawnJobExecutor({
+      spawn: plan.spawn,
+      runDirectory: directory,
+      timeoutMs: 5,
+      // First read is the child this run started; the second is a process
+      // that recycled the pid. Nothing may be killed.
+      readProcessStart: () => {
+        reads += 1;
+        return Promise.resolve(
+          reads === 1 ? "2026-11-10T12:00:00.0000000Z" : "2026-11-10T12:00:09.0000000Z",
+        );
+      },
+      kill: (child) => {
+        if (child.pid !== undefined) {
+          kills.push(child.pid);
+        }
+        child.kill();
+      },
+    });
+    const outcome = await executor.execute({
+      job: JOB,
+      payload: payload({ argv: ["/bin/sleep", "30"] }),
+    });
+    expect(outcome).toMatchObject({ status: "unknown", code: "A8N-AE-004" });
+    expect(outcome.message).toContain("nothing was killed");
+    expect(kills).toEqual([]);
+    expect(plan.children[0]?.killed).toBe(false);
+  });
+
+  it("does not kill when the process identity cannot be read at all", async () => {
+    const directory = await runDirectory();
+    const kills: number[] = [];
+    const plan = spawnPlan(() => undefined);
+    const executor = new SpawnJobExecutor({
+      spawn: plan.spawn,
+      runDirectory: directory,
+      timeoutMs: 5,
+      readProcessStart: () => Promise.resolve(null),
+      kill: (child) => {
+        kills.push(child.pid ?? -1);
+      },
+    });
+    const outcome = await executor.execute({
+      job: JOB,
+      payload: payload({ argv: ["/bin/sleep", "30"] }),
+    });
+    expect(outcome.status).toBe("unknown");
+    expect(kills).toEqual([]);
   });
 
   it("turns a spawn error into a failed result", async () => {

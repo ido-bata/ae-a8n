@@ -9,8 +9,8 @@ import {
   type RunOptions,
   type TargetSpec,
 } from "../src/platform/contract.js";
-import { DirectoryChannel } from "../src/platform/windows/channel.js";
-import type { FileChannel } from "../src/platform/windows/channel.js";
+import { DirectoryChannel, type FileChannel } from "../src/platform/windows/channel.js";
+import { signResult, type JobKey } from "../src/platform/windows/auth.js";
 import { decodeJobPayload } from "../src/platform/windows/executor.js";
 import {
   JOB_SCHEMA_VERSION,
@@ -38,6 +38,7 @@ import {
   WindowsAdapter,
   WindowsJobRefusedError,
   WindowsJobUnknownError,
+  WindowsKeyNotConfiguredError,
   WindowsRunLockError,
   type SubmitFunction,
 } from "../src/platform/windows/runner.js";
@@ -47,6 +48,7 @@ const RANDOM = new Uint8Array([1, 2, 3, 4]);
 const RUN_ID = newJobId(NOW, RANDOM);
 const JOB_ID = newJobId(NOW, new Uint8Array([9, 9, 9, 9]));
 const INSTALL = "D:\\4_apps\\adobe\\Adobe After Effects 2026\\Support Files";
+const KEY: JobKey = { keyId: "test-key", secret: new Uint8Array(32).fill(7) };
 
 const AGENT: AgentIdentity = {
   id: "agent-1",
@@ -147,18 +149,21 @@ function result(
   message: string,
   exitCode: number | null = status === "ok" ? 0 : 1,
 ): JobResult {
-  return {
-    schemaVersion: JOB_SCHEMA_VERSION,
-    jobId: JOB_ID,
-    status,
-    code: null,
-    exitCode,
-    message,
-    payloadSha256: "a".repeat(64),
-    agent: AGENT,
-    startedAt: NOW.toISOString(),
-    finishedAt: NOW.toISOString(),
-  };
+  return signResult(
+    {
+      schemaVersion: JOB_SCHEMA_VERSION,
+      jobId: JOB_ID,
+      status,
+      code: null,
+      exitCode,
+      message,
+      payloadSha256: "a".repeat(64),
+      agent: AGENT,
+      startedAt: NOW.toISOString(),
+      finishedAt: NOW.toISOString(),
+    },
+    KEY,
+  );
 }
 
 const roots: string[] = [];
@@ -189,6 +194,8 @@ async function fixture(options: {
   readonly probe?: CommandRunner;
   readonly submit?: SubmitFunction;
   readonly staleAfterMs?: number;
+  /** Leave the channel key unconfigured, to prove the run refuses. */
+  readonly withoutKey?: boolean;
 }): Promise<Fixture> {
   const channel = await makeChannel();
   const runDirectory = await makeRunDirectory();
@@ -202,14 +209,16 @@ async function fixture(options: {
     // marker first, then publishes the result, exactly as agent.ts does.
     await writeMarker(files, request.runId);
     const jobResult = result("ok", "exited with code 0");
-    await files.writeAtomic(jobPaths(JOB_ID).result, encodeResult(jobResult));
-    return { status: "ok", jobId: JOB_ID, result: jobResult };
+    const bytes = encodeResult(jobResult);
+    await files.writeAtomic(jobPaths(JOB_ID).result, bytes);
+    return { status: "ok", jobId: JOB_ID, result: jobResult, resultSha256: sha256Hex(bytes) };
   };
   const adapter = new WindowsAdapter({
     channel,
     host: "WIN-AE-01",
     user: "a8n",
     agent: AGENT,
+    ...(options.withoutKey === true ? {} : { key: KEY }),
     probe: options.probe ?? fakeProbe(),
     runDirectory,
     now: () => NOW,
@@ -287,6 +296,7 @@ describe("the Windows adapter", () => {
         sessionId: 1,
         agentId: AGENT.id,
         agentVersion: AGENT.version,
+        agentVerified: true,
         aeVersion: "26.5.0",
         jobId: JOB_ID,
         outcome: "ok",
@@ -309,8 +319,9 @@ describe("the Windows adapter", () => {
     const { adapter, channel } = await fixture({
       submit: async (files) => {
         const jobResult = result("failed", "exited with code 7", 7);
-        await files.writeAtomic(jobPaths(JOB_ID).result, encodeResult(jobResult));
-        return { status: "failed", jobId: JOB_ID, result: jobResult };
+        const bytes = encodeResult(jobResult);
+        await files.writeAtomic(jobPaths(JOB_ID).result, bytes);
+        return { status: "failed", jobId: JOB_ID, result: jobResult, resultSha256: sha256Hex(bytes) };
       },
     });
     const session = await adapter.open(TARGET);
@@ -334,6 +345,7 @@ describe("the Windows adapter", () => {
           jobId: JOB_ID,
           code: "A8N-JOB-001",
           message: "the payload hash did not match",
+          resultSha256: null,
         });
       },
     });
@@ -364,6 +376,7 @@ describe("the Windows adapter", () => {
           jobId: JOB_ID,
           code: "A8N-AE-004",
           message: "no result after 5000ms; the job was left in place",
+          resultSha256: null,
         });
       },
     });
@@ -399,7 +412,7 @@ describe("the Windows adapter", () => {
         await writeMarker(files, "20261110T120000Z-deadbeef");
         const jobResult = result("ok", "exited with code 0");
         await files.writeAtomic(jobPaths(JOB_ID).result, encodeResult(jobResult));
-        return { status: "ok", jobId: JOB_ID, result: jobResult };
+        return { status: "ok", jobId: JOB_ID, result: jobResult, resultSha256: "b".repeat(64) };
       },
     });
     const session = await adapter.open(TARGET);
@@ -417,6 +430,19 @@ describe("the Windows adapter", () => {
     expect(closed.reason).toContain("nothing was quit");
     // The lock is this run's own bookkeeping, not an AE process.
     expect(await channel.read(lockPath(RUN_ID))).toBeNull();
+  });
+
+  it("refuses before sending anything when no channel key is configured", async () => {
+    const { adapter, channel, submitCalls } = await fixture({ withoutKey: true });
+    const session = await adapter.open(TARGET);
+    await session.open();
+
+    await expect(session.run(["/bin/echo"], RUN_OPTIONS)).rejects.toBeInstanceOf(
+      WindowsKeyNotConfiguredError,
+    );
+    expect(submitCalls).toEqual([]);
+    expect(await channel.listDirectories("locks")).toEqual([]);
+    expect(await channel.listDirectories("runs")).toEqual([]);
   });
 
   it("refuses before writing anything when the identity is unproven", async () => {

@@ -12,7 +12,7 @@
  * `automated test` against a fake host, not a real-host verification.
  */
 
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { TargetSpec } from "../src/platform/contract.js";
 import { main } from "../src/platform/windows/agent-main.js";
+import { encodeKeyFile, type JobKey } from "../src/platform/windows/auth.js";
 import { DirectoryChannel } from "../src/platform/windows/channel.js";
 import {
   jobPaths,
@@ -45,6 +46,8 @@ const AGENT: AgentIdentity = {
   sessionId: 1,
   version: "0.1.0-e2e",
 };
+
+const KEY: JobKey = { keyId: "e2e-key", secret: new Uint8Array(32).fill(5) };
 
 const TARGET: TargetSpec = {
   name: "win-ae",
@@ -101,10 +104,12 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-function agentArguments(channelRoot: string): readonly string[] {
+function agentArguments(channelRoot: string, keyFile: string): readonly string[] {
   return [
     "--channel",
     channelRoot,
+    "--key-file",
+    keyFile,
     "--agent-id",
     AGENT.id,
     "--host",
@@ -128,6 +133,8 @@ describe("the Windows execution path end to end", () => {
     const channelRoot = await tempDirectory("a8n-e2e-channel-");
     const runDirectory = await tempDirectory("a8n-e2e-runs-");
     const logPath = join(runDirectory, "fake-host.log");
+    const keyFile = join(await tempDirectory("a8n-e2e-key-"), "agent.key");
+    await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o600 });
 
     const channel = new DirectoryChannel(channelRoot);
     const adapter = new WindowsAdapter({
@@ -135,6 +142,7 @@ describe("the Windows execution path end to end", () => {
       host: "WIN-AE-01",
       user: "a8n",
       agent: AGENT,
+      key: KEY,
       probe: fakeProbe(),
       runDirectory,
       pollMs: 5,
@@ -143,7 +151,9 @@ describe("the Windows execution path end to end", () => {
 
     // The real agent loop, with the real executor; only its child is fake.
     const controller = new AbortController();
-    const agentDone = main(agentArguments(channelRoot), {
+    const agentDone = main(agentArguments(channelRoot, keyFile), {
+      // The fake host has no desktop to measure; the probe facts say 1.
+      measureSession: () => AGENT.sessionId,
       pollMs: 5,
       sleep,
       signal: controller.signal,

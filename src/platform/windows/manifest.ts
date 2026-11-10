@@ -34,6 +34,8 @@ export type RunManifest = {
   readonly sessionId: number | null;
   readonly agentId: string;
   readonly agentVersion: string;
+  /** True only when the agent identity came from a verified signed result. */
+  readonly agentVerified: boolean;
   /** The one version the probe proved, or null when it could not. */
   readonly aeVersion: string | null;
   readonly jobId: string;
@@ -133,6 +135,13 @@ export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest>
   if (aeVersion !== null && (typeof aeVersion !== "string" || aeVersion === "")) {
     return { ok: false, detail: "aeVersion must be a non-empty string or null" };
   }
+  // Absent (a manifest written before the field existed) means unverified;
+  // it never defaults to true.
+  const rawAgentVerified = parsed["agentVerified"];
+  if (rawAgentVerified !== undefined && typeof rawAgentVerified !== "boolean") {
+    return { ok: false, detail: "agentVerified must be a boolean" };
+  }
+  const agentVerified = rawAgentVerified === true;
   const outcome = parsed["outcome"];
   if (typeof outcome !== "string" || !OUTCOMES.includes(outcome)) {
     return { ok: false, detail: `unknown outcome ${String(outcome)}` };
@@ -161,6 +170,7 @@ export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest>
       sessionId: typeof sessionId === "number" ? sessionId : null,
       agentId,
       agentVersion,
+      agentVerified,
       aeVersion: typeof aeVersion === "string" ? aeVersion : null,
       jobId,
       payloadSha256,

@@ -125,6 +125,8 @@ Initial set:
 | `A8N-AE-004` | warning | A timed-out script may still be running (run quarantined) |
 | `A8N-JOB-001` | blocker | Job or result file failed ownership/integrity checks |
 | `A8N-JOB-002` | warning | Prior run left a lock or quarantine state |
+| `A8N-JOB-003` | blocker | Job or result is not from a trusted issuer (nothing executed/accepted) |
+| `A8N-JOB-004` | blocker | Job, result or payload exceeds its size limit (nothing parsed) |
 | `A8N-SEC-001` | blocker | A licence/sign-in/permission dialog is present (never pressed) |
 | `A8N-EXT-001` | blocker | Extension registration is invalid (duplicate/unnamed method) |
 | `A8N-RELEASE-001` | blocker | Package version already exists on the registry |
