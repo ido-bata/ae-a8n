@@ -32,6 +32,7 @@ import {
   type TargetSpec,
 } from "../contract.js";
 import type { FileChannel } from "./channel.js";
+import type { JobKey } from "./auth.js";
 import {
   acquireRunLock,
   releaseRunLock,
@@ -142,6 +143,19 @@ export type SubmitFunction = (
   options: SubmitOptions,
 ) => Promise<SubmitResult>;
 
+/** No channel key: without one, a job cannot be authenticated, so nothing is sent. */
+export class WindowsKeyNotConfiguredError extends Error {
+  readonly code = "A8N-JOB-003" as const;
+
+  constructor() {
+    super(
+      "the Windows channel key is not configured, so a job could not be authenticated; " +
+        "nothing was sent. Run setup to provision the key on the controller and the agent host.",
+    );
+    this.name = "WindowsKeyNotConfiguredError";
+  }
+}
+
 export type WindowsAdapterOptions = {
   readonly channel: FileChannel;
   /** The controller-side host name recorded in jobs and manifests. */
@@ -149,6 +163,11 @@ export type WindowsAdapterOptions = {
   /** The controller-side user name recorded in jobs and manifests. */
   readonly user: string;
   readonly agent: AgentIdentity;
+  /**
+   * The shared channel secret, provisioned out of band. Without it every run
+   * refuses rather than sending an unauthenticated job.
+   */
+  readonly key?: JobKey;
   /** The read-only probe commands. */
   readonly probe: CommandRunner;
   /** Where local stdout/stderr copies are written; `tmpdir()` by default. */
@@ -249,6 +268,7 @@ export class WindowsAdapter implements PlatformAdapter {
   readonly #host: string;
   readonly #user: string;
   readonly #agent: AgentIdentity;
+  readonly #key: JobKey | undefined;
   readonly #probeRunner: CommandRunner;
   readonly #runDirectory: string;
   readonly #staleAfterMs: number | undefined;
@@ -268,6 +288,7 @@ export class WindowsAdapter implements PlatformAdapter {
     this.#host = options.host;
     this.#user = options.user;
     this.#agent = options.agent;
+    this.#key = options.key;
     this.#probeRunner = options.probe;
     this.#runDirectory = options.runDirectory ?? join(tmpdir(), "ae-a8n-runs");
     this.#staleAfterMs = options.staleAfterMs;
@@ -502,6 +523,10 @@ export class WindowsAdapter implements PlatformAdapter {
     options: RunOptions,
     onRunId: (runId: string | null) => void,
   ): Promise<CommandOutcome> {
+    const key = this.#key;
+    if (key === undefined) {
+      throw new WindowsKeyNotConfiguredError();
+    }
     const now = this.#now();
     const runId = newJobId(now, this.#random(4));
     const owner = this.#owner();
@@ -527,6 +552,7 @@ export class WindowsAdapter implements PlatformAdapter {
       payload,
       timeoutMs: options.timeoutMs,
       writer,
+      key,
       now: this.#now,
       random: this.#random,
       ...(this.#pollMs === undefined ? {} : { pollMs: this.#pollMs }),
@@ -534,21 +560,25 @@ export class WindowsAdapter implements PlatformAdapter {
     };
 
     const submitted = await this.#submit(this.#channel, submitOptions);
-    const resultBytes = await this.#channel.read(jobPaths(submitted.jobId).result);
     const facts = this.#facts ?? (await this.#prepare(target)).facts;
+    // The manifest records what was proven, not what was configured: the
+    // agent identity and session come from the signed result when there is
+    // one. `agentVerified` says which of the two this is.
+    const verified =
+      submitted.status === "ok" || submitted.status === "failed" ? submitted.result.agent : null;
     const manifest: RunManifest = {
       schemaVersion: "1.0",
       runId,
       host: this.#host,
       user: this.#user,
-      sessionId: facts.sessionId,
-      agentId: this.#agent.id,
-      agentVersion: this.#agent.version,
+      sessionId: verified === null ? facts.sessionId : verified.sessionId,
+      agentId: verified?.id ?? this.#agent.id,
+      agentVersion: verified?.version ?? this.#agent.version,
+      agentVerified: verified !== null,
       aeVersion: aeVersionFromFacts(facts),
       jobId: submitted.jobId,
       payloadSha256: sha256Hex(payload),
-      // A timeout publishes nothing; null says so rather than hashing empty bytes.
-      resultSha256: resultBytes === null ? null : sha256Hex(resultBytes),
+      resultSha256: submitted.resultSha256,
       outcome: submitted.status,
       startedAt,
       finishedAt: this.#now().toISOString(),
