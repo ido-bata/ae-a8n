@@ -86,6 +86,7 @@ quarantined, `3` environment blocked. The full table is in
 
 ```bash
 npx @ido-bata/ae-a8n report          # read the last run
+npx @ido-bata/ae-a8n report --format junit   # the same run, for CI
 npx @ido-bata/ae-a8n recover         # inspect and safely clear a stuck run
 ```
 

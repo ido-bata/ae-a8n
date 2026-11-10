@@ -1,16 +1,15 @@
 /**
  * `ae-a8n` command dispatch.
  *
- * `doctor` (issue #55) and `test` (issue #58) are implemented in this
- * increment. The remaining commands parse their contract flags, then fail
- * closed with a notice and a documented exit code. None of them reports
- * success for work it did not do.
+ * `doctor` (#55), `test` (#58), `recover` (#59) and `report` are implemented.
+ * `setup` parses its contract flags, then fails closed with a notice and a
+ * documented exit code; it never reports success for work it did not do.
  *
  * The platform choice is delegated to `select.ts`; nothing here branches on
  * the host OS.
  */
 
-import { homedir, arch as osArch, release as osRelease } from "node:os";
+import { homedir, arch as osArch, platform as osPlatform, release as osRelease } from "node:os";
 import { join } from "node:path";
 
 import { A8N_VERSION } from "../index.js";
@@ -21,7 +20,9 @@ import {
   type AdapterSelection,
   type SelectOptions,
 } from "../platform/select.js";
+import type { RunArtifacts } from "../runner/artifacts.js";
 import { recoverRun, type RecoverResult } from "../runner/recover-run.js";
+import { readRunReport, type RunReportRead } from "../runner/report-read.js";
 import { runTest, type TestRunResult } from "../runner/test-run.js";
 import {
   parseArgs,
@@ -29,6 +30,7 @@ import {
   type CommandOptions,
   type DoctorOptions,
   type RecoverOptions,
+  type ReportOptions,
   type TestOptions,
 } from "./args.js";
 import {
@@ -40,7 +42,13 @@ import {
   type TargetInfo,
 } from "./envelope.js";
 import { EXIT, type ExitCode } from "./exit-code.js";
-import { helpFor, renderEnvelope, renderUsageError } from "./render.js";
+import {
+  helpFor,
+  renderEnvelope,
+  renderRunJunit,
+  renderRunReport,
+  renderUsageError,
+} from "./render.js";
 
 export type CliDependencies = {
   /** Test seam: replaces platform selection. */
@@ -69,6 +77,11 @@ const UNKNOWN_PLATFORM: PlatformInfo = {
   arch: null,
   backend: "none",
 };
+
+/** `report` reads a stored run: no backend is chosen and none is implied. */
+function localPlatform(): PlatformInfo {
+  return { os: osPlatform(), release: osRelease(), arch: osArch(), backend: "none" };
+}
 
 const LOCAL_TARGET: TargetSpec = {
   name: "local",
@@ -202,19 +215,16 @@ function usageFailure(
 }
 
 function unimplemented(
-  command: Exclude<CommandName, "doctor" | "test" | "recover">,
+  command: Exclude<CommandName, "doctor" | "test" | "recover" | "report">,
   options: CommandOptions,
   startedAt: Date,
   deps: RequiredDependencies,
 ): ExitCode {
-  const status: EnvelopeStatus = command === "setup" ? "setup-incomplete" : "blocked";
-  const exitCode: ExitCode = command === "setup" ? EXIT.setupIncomplete : EXIT.blocked;
-  const target =
-    command === "report" ? { ...LOCAL_TARGET, name: "local" } : targetFrom(options as {
-      readonly target: string | null;
-      readonly user: string | null;
-      readonly host: string | null;
-    });
+  const target = targetFrom(options as {
+    readonly target: string | null;
+    readonly user: string | null;
+    readonly host: string | null;
+  });
   let selection: AdapterSelection;
   try {
     selection = deps.select({ target });
@@ -229,8 +239,10 @@ function unimplemented(
       evidence: {},
     } };
   }
+  const status: EnvelopeStatus = "setup-incomplete";
+  const exitCode: ExitCode = EXIT.setupIncomplete;
   const notice =
-    `${command} is not implemented in this increment (issue #55); ` +
+    `${command} is not implemented in this increment (issue #56); ` +
     "nothing was run or changed.";
   const envelope = buildEnvelope({
     command,
@@ -571,6 +583,114 @@ async function recover(
   return exitCode;
 }
 
+/** What `report` found on disk, for the envelope's `artifacts`. */
+function artifactsOf(read: Extract<RunReportRead, { readonly ok: true }>): RunArtifacts {
+  const files: string[] = [];
+  for (const captured of [read.manifest?.stdout, read.manifest?.stderr]) {
+    if (typeof captured === "string" && captured.length > 0) {
+      files.push(captured);
+    }
+  }
+  return {
+    manifest: join(read.directory, "manifest.json"),
+    report: join(read.directory, "report.json"),
+    trace: join(read.directory, "trace.jsonl"),
+    files,
+  };
+}
+
+function reportFailure(
+  read: Extract<RunReportRead, { readonly ok: false }>,
+  options: ReportOptions,
+  startedAt: Date,
+  deps: RequiredDependencies,
+): ExitCode {
+  if (options.json) {
+    emit(
+      buildEnvelope({
+        command: "report",
+        status: "failed",
+        exitCode: EXIT.failed,
+        startedAt,
+        finishedAt: deps.now(),
+        platform: localPlatform(),
+        target: targetInfo(LOCAL_TARGET),
+        checks: [],
+        notice: `${read.reason}. Nothing is being reported as a success.`,
+        ...(read.runId === null ? {} : { runId: read.runId }),
+        env: deps.env,
+      }),
+      true,
+      deps,
+    );
+  } else {
+    // A `--format` reader (CI) must not get an envelope where a report or a
+    // JUnit document was asked for: the failure goes to stderr and stdout stays
+    // empty, so a pipeline sees the exit code, not a plausible-looking file.
+    deps.writeErr(`ae-a8n: report: ${read.reason}\n`);
+  }
+  return EXIT.failed;
+}
+
+function report(
+  options: ReportOptions,
+  startedAt: Date,
+  deps: RequiredDependencies,
+): ExitCode {
+  let read: RunReportRead;
+  try {
+    read = readRunReport({ stateRoot: deps.stateRoot, runId: options.runId });
+  } catch (error) {
+    read = {
+      ok: false,
+      runId: options.runId,
+      directory: null,
+      reason: `the run state could not be read: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+  if (!read.ok) {
+    return reportFailure(read, options, startedAt, deps);
+  }
+
+  if (options.json) {
+    emit(
+      buildEnvelope({
+        command: "report",
+        status: "ok",
+        exitCode: EXIT.ok,
+        startedAt,
+        finishedAt: deps.now(),
+        platform: localPlatform(),
+        target: targetInfo(LOCAL_TARGET),
+        checks: [],
+        runId: read.runId,
+        artifacts: artifactsOf(read),
+        verdicts: read.report.verdicts,
+        report: read.report,
+        env: deps.env,
+      }),
+      true,
+      deps,
+    );
+    return EXIT.ok;
+  }
+
+  if (options.format === "json") {
+    // The stored document, byte for byte: this is what a script that already
+    // understands report.json wants, not a re-serialisation of it.
+    deps.writeOut(read.text.endsWith("\n") ? read.text : `${read.text}\n`);
+    return EXIT.ok;
+  }
+  if (options.format === "junit") {
+    deps.writeOut(`${renderRunJunit(read)}\n`);
+    return EXIT.ok;
+  }
+  deps.writeOut(`${renderRunReport(read)}\n`);
+  return EXIT.ok;
+}
+
 export async function runCli(
   argv: readonly string[],
   input: CliDependencies = {},
@@ -604,6 +724,10 @@ export async function runCli(
 
   if (parsed.command === "recover") {
     return recover(parsed.options as RecoverOptions, startedAt, deps);
+  }
+
+  if (parsed.command === "report") {
+    return report(parsed.options as ReportOptions, startedAt, deps);
   }
 
   if (parsed.command !== "doctor") {

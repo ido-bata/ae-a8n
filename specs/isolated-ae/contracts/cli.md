@@ -264,6 +264,34 @@ never modifies the run.
   fields CI does not use.
 - A missing or malformed file is an error (exit 1), never an empty success.
 
+**Decisions (T094).**
+
+- **Default run.** `--run` names a run id; without it the most recent run under
+  `~/.ae-a8n/runs` is read (run ids sort chronologically). A directory that is
+  not named like a run id is not a candidate: a stray folder never becomes the
+  "latest run".
+- **A run with no report is unknown, not empty.** The run directory exists but
+  `report.json` does not: exit 1, and the message names `ae-a8n recover`, which
+  is the command that records such a run as `unknown`. `report` does not write
+  that record itself — a reader must stay a reader.
+- **`--json` and `--format` are exclusive.** `--json` prints the common
+  envelope (with `runId`, `verdicts`, `report` and `artifacts`); `--format`
+  prints the rendered document and no envelope. Both at once is a usage error
+  (exit 2): one stream cannot be a document and an envelope about it.
+- **`--format json` is byte-for-byte.** It prints the stored file, not a
+  re-serialisation, so a script that hashes or compares it keeps working.
+- **`report` exits 0 when it read the run.** The run's own verdict lives in
+  `report.status` and in the JUnit attributes; the command's goal is to read.
+  A reader that exited 5 for a failing run would make "I can read this" and
+  "the test failed" the same signal.
+- **JUnit mapping.** One `<testcase>` per verdict, `classname="ae-a8n"`:
+  `pass` → no child element, `fail` → `<failure>`, `blocked`/`unknown` →
+  `<error>`. An indeterminate run is an error in CI, never a pass. Per-verdict
+  timing is not recorded, so `time` is omitted rather than invented.
+- **The run id is validated before it reaches the filesystem.** `--run` must
+  match the run-id format (`YYYYMMDDTHHMMSSZ-<8 hex>`); anything else, including
+  a path fragment, is a usage error. This applies to `recover` too.
+
 ## 11. Versioning
 
 The CLI contract follows the package's semver. `schemaVersion` is independent:

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -377,18 +377,6 @@ describe("commands not implemented in this increment", () => {
     expect(adapter.calls).toEqual([]);
   });
 
-  it("fails report closed with exit 3 and a notice", async () => {
-    const adapter = new FakeAdapter("darwin");
-    const test = harness({ ok: true, adapter });
-    const code = await runCli(["report", "--json"], test.deps);
-
-    expect(code).toBe(EXIT.blocked);
-    const envelope = jsonEnvelope(test.out());
-    expect(envelope.status).toBe("blocked");
-    expect(envelope.exitCode).toBe(3);
-    expect(envelope.notice).toContain("not implemented in this increment");
-    expect(adapter.calls).toEqual([]);
-  });
 });
 
 const stateRoots: string[] = [];
@@ -618,5 +606,175 @@ describe("the recover command", () => {
   it("does not accept --force on a command that never clears anything", () => {
     expect(parseArgs(["doctor", "--force"]).ok).toBe(false);
     expect(parseArgs(["recover", "--force"]).ok).toBe(true);
+  });
+});
+
+const REPORT_RUN_ID = "20261110T120000Z-4f2a8c11";
+
+type StoredVerdict = { readonly id: string; readonly verdict: string; readonly message: string };
+
+function storedRun(
+  root: string,
+  runId: string,
+  verdicts: readonly StoredVerdict[],
+  status = "test-failed",
+): string {
+  const directory = join(stateLayout(root).runs, runId);
+  mkdirSync(join(directory, "artifacts"), { recursive: true, mode: 0o700 });
+  const report = {
+    schemaVersion: "1.0",
+    runId,
+    status,
+    verdicts,
+    startedAt: "2026-11-10T12:00:00.000Z",
+    finishedAt: "2026-11-10T12:00:05.000Z",
+  };
+  writeFileSync(join(directory, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+  writeFileSync(
+    join(directory, "manifest.json"),
+    `${JSON.stringify({
+      schemaVersion: "1.0",
+      runId,
+      command: ["node", "--test"],
+      adapter: "fake",
+      startedAt: "2026-11-10T12:00:00.000Z",
+      finishedAt: "2026-11-10T12:00:05.000Z",
+      exitCode: 1,
+      timedOut: false,
+      stdout: { path: join("artifacts", "stdout.log"), sha256: "ab", bytes: 2 },
+      stderr: { path: join("artifacts", "stderr.log"), sha256: "cd", bytes: 0 },
+    })}\n`,
+  );
+  return directory;
+}
+
+const unsupported = (): AdapterSelection => ({
+  ok: false,
+  platform: "unknown",
+  check: unsupportedPlatformCheck("unknown"),
+});
+
+describe("the report command", () => {
+  it("prints one envelope and never asks for an adapter", async () => {
+    const root = stateRoot();
+    const directory = storedRun(root, REPORT_RUN_ID, [
+      { id: "command", verdict: "fail", message: "the command exited 1" },
+    ]);
+    let selected = 0;
+    const test = harness(
+      () => {
+        selected += 1;
+        return unsupported();
+      },
+      { stateRoot: root },
+    );
+
+    const code = await runCli(["report", "--json"], test.deps);
+
+    expect(code).toBe(EXIT.ok);
+    expect(selected).toBe(0);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.command).toBe("report");
+    expect(envelope.status).toBe("ok");
+    expect(envelope.exitCode).toBe(0);
+    expect(envelope.runId).toBe(REPORT_RUN_ID);
+    expect(envelope.report?.status).toBe("test-failed");
+    expect(envelope.verdicts).toEqual([
+      { id: "command", verdict: "fail", message: "the command exited 1" },
+    ]);
+    expect(envelope.artifacts?.report).toBe(join(directory, "report.json"));
+    expect(envelope.artifacts?.files).toEqual([
+      join("artifacts", "stdout.log"),
+      join("artifacts", "stderr.log"),
+    ]);
+  });
+
+  it("summarises the run in human form", async () => {
+    const root = stateRoot();
+    storedRun(root, REPORT_RUN_ID, [
+      { id: "build", verdict: "pass", message: "built" },
+      { id: "command", verdict: "fail", message: "the command exited 1" },
+    ]);
+    const test = harness(unsupported(), { stateRoot: root });
+
+    const code = await runCli(["report"], test.deps);
+
+    expect(code).toBe(EXIT.ok);
+    expect(test.out()).toContain(`ae-a8n report — run ${REPORT_RUN_ID} — test-failed`);
+    expect(test.out()).toContain("command:   node --test");
+    expect(test.out()).toContain("exit code: 1");
+    expect(test.out()).toContain("[pass] build: built");
+    expect(test.out()).toContain("[fail] command: the command exited 1");
+  });
+
+  it("prints the stored document unchanged for --format json", async () => {
+    const root = stateRoot();
+    const directory = storedRun(root, REPORT_RUN_ID, [
+      { id: "command", verdict: "fail", message: "the command exited 1" },
+    ]);
+    const stored = readFileSync(join(directory, "report.json"), "utf-8");
+    const test = harness(unsupported(), { stateRoot: root });
+
+    const code = await runCli(["report", "--format", "json"], test.deps);
+
+    expect(code).toBe(EXIT.ok);
+    expect(test.out()).toBe(stored);
+  });
+
+  it("maps verdicts to JUnit and never reports an indeterminate run as a pass", async () => {
+    const root = stateRoot();
+    storedRun(root, REPORT_RUN_ID, [
+      { id: "build", verdict: "pass", message: "built" },
+      { id: "command", verdict: "fail", message: "the command exited 1" },
+      { id: "session", verdict: "unknown", message: "the call timed out <no reply>" },
+    ]);
+    const test = harness(unsupported(), { stateRoot: root });
+
+    const code = await runCli(["report", "--format", "junit"], test.deps);
+
+    expect(code).toBe(EXIT.ok);
+    const xml = test.out();
+    expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
+    expect(xml).toContain('tests="3" failures="1" errors="1"');
+    expect(xml).toContain('<testcase classname="ae-a8n" name="build"/>');
+    expect(xml).toContain('<failure message="the command exited 1">');
+    expect(xml).toContain('<error message="the call timed out &lt;no reply&gt;">');
+  });
+
+  it("exits 1 on a missing run and keeps stdout empty", async () => {
+    const root = stateRoot();
+    const test = harness(unsupported(), { stateRoot: root });
+
+    const code = await runCli(["report"], test.deps);
+
+    expect(code).toBe(EXIT.failed);
+    expect(test.out()).toBe("");
+    expect(test.err()).toContain("no run");
+  });
+
+  it("exits 1 with exactly one JSON document when --json was asked for", async () => {
+    const root = stateRoot();
+    const test = harness(unsupported(), { stateRoot: root });
+
+    const code = await runCli(["report", "--json", "--run", REPORT_RUN_ID], test.deps);
+
+    expect(code).toBe(EXIT.failed);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.status).toBe("failed");
+    expect(envelope.exitCode).toBe(1);
+    expect(envelope.runId).toBe(REPORT_RUN_ID);
+    expect(envelope.notice).toContain("Nothing is being reported as a success");
+  });
+
+  it("refuses --json together with --format", () => {
+    expect(parseArgs(["report", "--json", "--format", "junit"]).ok).toBe(false);
+    expect(parseArgs(["report", "--format", "junit"]).ok).toBe(true);
+    expect(parseArgs(["report", "--json"]).ok).toBe(true);
+  });
+
+  it("refuses a run id that is not one", () => {
+    expect(parseArgs(["report", "--run", "../../etc"]).ok).toBe(false);
+    expect(parseArgs(["recover", "--run", "../../etc"]).ok).toBe(false);
+    expect(parseArgs(["report", "--run", REPORT_RUN_ID]).ok).toBe(true);
   });
 });

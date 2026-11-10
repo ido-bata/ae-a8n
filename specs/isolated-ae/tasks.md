@@ -330,6 +330,37 @@ release action.
 
 **Depends on:** T092, T084.
 
+### T094 — `ae-a8n report`: read a stored run
+
+**Files:** create `src/runner/report-read.ts`, `test/runner-report.test.ts`;
+extend `src/cli/args.ts` (the `--run` id check, the `--json`/`--format`
+conflict), `src/cli/run.ts`, `src/cli/envelope.ts` (`report`), `src/cli/render.ts`
+(`renderRunReport`, `renderRunJunit`), `test/cli.test.ts`.
+
+**Deliverable:** `ae-a8n report [--json] [--run <id>] [--format <summary|json|junit>]`
+per `contracts/cli.md` §10. It reads the run's `report.json` (and its manifest,
+for the summary), chooses the most recent run when no id is given, and renders
+a human table, the stored document unchanged, or JUnit. It never runs After
+Effects, acquires a lock or writes into the run.
+
+**Acceptance:** a report that is missing, not JSON, not v1.0, or stored under
+another run's id is refused with exit 1 and a reason a human can act on; a run
+directory with no report says so and names `recover`, and is never read as a
+pass; a `blocked`/`unknown` verdict becomes an `<error>` in JUnit; `--json` and
+`--format` together are a usage error; `--run` rejects anything that is not a
+run id before it reaches the filesystem.
+
+**Verification:** `automated test` (`test/runner-report.test.ts`,
+`test/cli.test.ts`). Reading needs no host, so no real-host row applies.
+
+**Delivered 2026-11-10 (this branch):** the reader lives in
+`src/runner/report-read.ts` next to the writer in `src/runner/artifacts.ts`,
+not in `src/reporter/report.ts` as `plan.md`'s file map has it; that map
+already diverges (the writer is in `src/runner`). Consolidating the pair is a
+mechanical move that no behaviour depends on.
+
+**Depends on:** T027 (the run directory and `report.json` it reads).
+
 ## Dependency notes
 
 - T085 unblocks all Windows work and the neutral-layer extraction.
@@ -343,5 +374,5 @@ release action.
 
 ## ID allocation going forward
 
-Append-only. The next free ID is **T094**. A task that changes an existing
+Append-only. The next free ID is **T095**. A task that changes an existing
 task's acceptance is a new task, not an edit that hides the change.

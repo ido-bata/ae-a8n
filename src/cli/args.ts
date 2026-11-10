@@ -7,6 +7,8 @@
  * `--user` names the account the target session must belong to.
  */
 
+import { RUN_ID_PATTERN } from "../runner/run-id.js";
+
 export const COMMANDS = ["doctor", "setup", "test", "recover", "report"] as const;
 export type CommandName = (typeof COMMANDS)[number];
 
@@ -143,6 +145,8 @@ type Mutable = {
   force: boolean;
   timeoutMs: number | null;
   runId: string | null;
+  /** Tracked separately: `--json` and `--format` are mutually exclusive. */
+  formatGiven: boolean;
   format: "summary" | "json" | "junit";
 };
 
@@ -220,6 +224,7 @@ function parseCommand(
     force: false,
     timeoutMs: null,
     runId: null,
+    formatGiven: false,
     format: "summary",
   };
   let testCommand: readonly string[] = [];
@@ -306,6 +311,12 @@ function parseCommand(
         state.host = value;
         break;
       case "--run":
+        if (!RUN_ID_PATTERN.test(value)) {
+          return usage(
+            `--run needs a run id like 20261110T120000Z-4f2a8c11, not "${value}"`,
+            wantsJson || state.json,
+          );
+        }
         state.runId = value;
         break;
       case "--timeout": {
@@ -324,8 +335,17 @@ function parseCommand(
           return usage('--format must be "summary", "json" or "junit"', wantsJson || state.json);
         }
         state.format = value;
+        state.formatGiven = true;
         break;
     }
+  }
+
+  if (command === "report" && state.json && state.formatGiven) {
+    return usage(
+      "report takes either --json or --format: --json prints the envelope, " +
+        "--format prints the stored report",
+      wantsJson || state.json,
+    );
   }
 
   if (command === "test") {

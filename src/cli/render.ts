@@ -3,6 +3,9 @@
  * exactly one JSON document and this text is not written at all.
  */
 
+import { join } from "node:path";
+
+import type { RunReportRead } from "../runner/report-read.js";
 import type { CommandName } from "./args.js";
 import type { CliEnvelope } from "./envelope.js";
 
@@ -18,7 +21,7 @@ export function generalHelp(): string {
     "  setup    Prepare the isolated session (not implemented in this increment)",
     "  test     Run a command in the isolated session",
     "  recover  Inspect a prior run and release what can be released safely",
-    "  report   Print a prior run report (not implemented in this increment)",
+    "  report   Print or re-render a prior run's report; never runs After Effects",
     "",
     "Common options:",
     "  --json             Print exactly one JSON document on stdout",
@@ -119,8 +122,24 @@ const COMMAND_HELP: Record<CommandName, string> = {
   report: [
     "Usage: ae-a8n report [--json] [--run <id>] [--format <summary|json|junit>]",
     "",
-    "Run reporting is not implemented in this increment (issue #55). The command",
-    "fails closed with exit 3 and reports no empty success.",
+    "Reads a stored run and prints or re-renders its report. The run is the most",
+    "recent one under ~/.ae-a8n/runs unless --run names one. It never runs After",
+    "Effects and never changes the run.",
+    "",
+    "Formats:",
+    "  summary   (default) human table",
+    "  json      the stored report.json, unchanged",
+    "  junit     derived for CI; one testcase per verdict",
+    "",
+    "Options:",
+    "  --json             Print the common envelope; cannot be combined with --format",
+    "  --run <id>         Read this run instead of the most recent one",
+    "  --format <f>       summary, json or junit",
+    "  --help, -h         Show this help",
+    "",
+    "A missing run, or a report that is missing or malformed, exits 1: report",
+    "never returns an empty success. A run that never wrote a report is unknown;",
+    "\"ae-a8n recover\" records it as such.",
   ].join("\n"),
 };
 
@@ -269,5 +288,101 @@ export function renderEnvelope(
     }
   }
 
+  return lines.join("\n");
+}
+
+/** `report --format summary`: what the run was, its verdicts, and its files. */
+export function renderRunReport(read: Extract<RunReportRead, { readonly ok: true }>): string {
+  const { report, manifest, directory, runId } = read;
+  const lines = [`ae-a8n report — run ${runId} — ${report.status}`, ""];
+
+  const command = manifest?.command;
+  if (command !== undefined && command !== null) {
+    lines.push(`  command:   ${command.map((part) => shellish(part)).join(" ")}`);
+  }
+  lines.push(`  started:   ${report.startedAt}`);
+  lines.push(`  finished:  ${report.finishedAt}`);
+  if (manifest?.exitCode !== undefined && manifest.exitCode !== null) {
+    lines.push(
+      `  exit code: ${String(manifest.exitCode)}` +
+        (manifest.timedOut === true ? " (the command timed out)" : ""),
+    );
+  } else if (manifest?.timedOut === true) {
+    lines.push("  exit code: unknown (the command timed out)");
+  }
+  if (manifest?.adapter !== undefined && manifest.adapter !== null) {
+    lines.push(`  backend:   ${manifest.adapter}`);
+  }
+  lines.push(`  directory: ${directory}`);
+  lines.push(`  manifest:  ${join(directory, "manifest.json")}`);
+  lines.push(`  report:    ${join(directory, "report.json")}`);
+  lines.push(`  trace:     ${join(directory, "trace.jsonl")}`);
+  for (const captured of [manifest?.stdout, manifest?.stderr]) {
+    if (captured !== undefined && captured !== null) {
+      lines.push(`  file:      ${join(directory, captured)}`);
+    }
+  }
+
+  lines.push("", "verdicts:");
+  if (report.verdicts.length === 0) {
+    lines.push("  none");
+  }
+  for (const verdict of report.verdicts) {
+    lines.push(`  [${verdict.verdict}] ${verdict.id}: ${verdict.message}`);
+  }
+
+  if (report.notice !== undefined && report.notice.length > 0) {
+    lines.push("", `notice: ${report.notice}`);
+  }
+  return lines.join("\n");
+}
+
+function shellish(part: string): string {
+  return /^[A-Za-z0-9_./:=@%+-]+$/u.test(part) ? part : JSON.stringify(part);
+}
+
+function xml(text: string): string {
+  return text
+    .replace(/&/gu, "&amp;")
+    .replace(/</gu, "&lt;")
+    .replace(/>/gu, "&gt;")
+    .replace(/"/gu, "&quot;")
+    .replace(/'/gu, "&apos;");
+}
+
+/**
+ * `report --format junit`: one testcase per verdict. A `fail` is a `<failure>`
+ * and a `blocked`/`unknown` is an `<error>`, so CI does not read an
+ * indeterminate run as a pass. Per-verdict timing is not recorded, so the
+ * `time` attribute is omitted rather than invented.
+ */
+export function renderRunJunit(read: Extract<RunReportRead, { readonly ok: true }>): string {
+  const { report, runId } = read;
+  const failures = report.verdicts.filter((verdict) => verdict.verdict === "fail").length;
+  const errors = report.verdicts.filter((verdict) => verdict.verdict !== "fail" && verdict.verdict !== "pass").length;
+  const lines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<testsuite name="ae-a8n ${xml(runId)}" tests="${String(report.verdicts.length)}" ` +
+      `failures="${String(failures)}" errors="${String(errors)}" skipped="0">`,
+    "  <properties>",
+    `    <property name="ae-a8n.status" value="${xml(report.status)}"/>`,
+    `    <property name="ae-a8n.startedAt" value="${xml(report.startedAt)}"/>`,
+    `    <property name="ae-a8n.finishedAt" value="${xml(report.finishedAt)}"/>`,
+    "  </properties>",
+  ];
+  for (const verdict of report.verdicts) {
+    const open = `  <testcase classname="ae-a8n" name="${xml(verdict.id)}"`;
+    if (verdict.verdict === "pass") {
+      lines.push(`${open}/>`);
+      continue;
+    }
+    lines.push(`${open}>`);
+    const tag = verdict.verdict === "fail" ? "failure" : "error";
+    lines.push(
+      `    <${tag} message="${xml(verdict.message)}">${xml(verdict.message)}</${tag}>`,
+    );
+    lines.push("  </testcase>");
+  }
+  lines.push("</testsuite>");
   return lines.join("\n");
 }

@@ -8,7 +8,7 @@
 import type { DiagnosticCheck } from "../doctor/diagnostics.js";
 import type { Capabilities, SessionIdentity } from "../platform/contract.js";
 import { packageInfo } from "../runner/package-info.js";
-import type { RunArtifacts, RunVerdict } from "../runner/artifacts.js";
+import type { RunArtifacts, RunReport, RunVerdict } from "../runner/artifacts.js";
 import type { Finding } from "../runner/recover-run.js";
 
 export const SCHEMA_VERSION = "1.0";
@@ -71,6 +71,8 @@ export type CliEnvelope = {
   /** `recover` only: what was found, and whether anything was cleared. */
   readonly findings?: readonly Finding[];
   readonly cleared?: boolean;
+  /** `report` only: the stored `report.json`, as it was read. */
+  readonly report?: RunReport;
 };
 
 export function nextActionsOf(checks: readonly DiagnosticCheck[]): readonly NextAction[] {
@@ -111,6 +113,7 @@ export type EnvelopeInput = {
   readonly verdicts?: readonly RunVerdict[] | undefined;
   readonly findings?: readonly Finding[] | undefined;
   readonly cleared?: boolean | undefined;
+  readonly report?: RunReport | undefined;
   /** Overrides the actions derived from `checks` (used by `recover`). */
   readonly nextActions?: readonly NextAction[] | undefined;
   readonly env?: NodeJS.ProcessEnv;
@@ -145,5 +148,6 @@ export function buildEnvelope(input: EnvelopeInput): CliEnvelope {
     ...(input.verdicts === undefined ? {} : { verdicts: input.verdicts }),
     ...(input.findings === undefined ? {} : { findings: input.findings }),
     ...(input.cleared === undefined ? {} : { cleared: input.cleared }),
+    ...(input.report === undefined ? {} : { report: input.report }),
   };
 }

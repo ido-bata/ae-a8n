@@ -98,9 +98,25 @@ clearing it takes an explicit `--force` from someone who checked. `recover`
 never quits After Effects, never re-sends a command and never deletes a run
 directory.
 
-`setup` and `report` are not implemented yet in this increment: they parse
-their contract flags and then fail closed with a notice. Neither reports
-success for work it did not do.
+## Report
+
+`ae-a8n report` reads a stored run and prints or re-renders its report. It
+never starts After Effects and never changes the run.
+
+```bash
+npx @ido-bata/ae-a8n report                     # the most recent run
+npx @ido-bata/ae-a8n report --run <id> --format json
+npx @ido-bata/ae-a8n report --format junit      # for CI
+```
+
+`--format json` prints the stored `report.json` byte for byte; `--format junit`
+maps each verdict to a testcase, and a `blocked` or `unknown` verdict becomes an
+`<error>`, never a pass. A run that never wrote a report exits 1 and names
+`recover`: `report` never returns an empty success.
+
+`setup` is not implemented yet in this increment: it parses its contract flags
+and then fails closed with a notice. It does not report success for work it did
+not do.
 
 ## What it does to your After Effects
 
