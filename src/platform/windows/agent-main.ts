@@ -8,6 +8,7 @@
 
 import { join } from "node:path";
 
+import { A8N_VERSION } from "../../version.js";
 import type { JobKey } from "./auth.js";
 import { assertInteractiveIdentity, runJob, type JobExecutor } from "./agent.js";
 import { DirectoryChannel, type FileChannel } from "./channel.js";
@@ -53,7 +54,25 @@ const FLAGS = new Set([
   "--version",
 ]);
 
-function parseArguments(argv: readonly string[]): ParseResult {
+export type AgentDefaults = {
+  /** `--agent-id` when the flag is absent. */
+  readonly agentId: string;
+  /** `--version` when the flag is absent. */
+  readonly version: string;
+  /** `--session-id` when the flag is absent; null when none can be proved. */
+  readonly sessionId: () => number | null;
+};
+
+/** The documented defaults: the command in the help runs as written. */
+export function agentDefaults(measureSession?: () => number | null): AgentDefaults {
+  return {
+    agentId: "ae-a8n",
+    version: A8N_VERSION,
+    sessionId: measureSession ?? (() => null),
+  };
+}
+
+function parseArguments(argv: readonly string[], defaults: AgentDefaults): ParseResult {
   const values = new Map<string, string>();
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
@@ -70,28 +89,37 @@ function parseArguments(argv: readonly string[]): ParseResult {
     values.set(flag, value);
   }
 
-  const required = [
-    "--channel",
-    "--key-file",
-    "--agent-id",
-    "--host",
-    "--user",
-    "--session-id",
-    "--version",
-  ] as const;
+  const required = ["--channel", "--key-file", "--host", "--user"] as const;
   for (const flag of required) {
     if (!values.has(flag)) {
       return { ok: false, detail: `${flag} is required` };
     }
   }
 
-  const sessionRaw = values.get("--session-id") ?? "";
-  if (!/^\d+$/u.test(sessionRaw)) {
-    return { ok: false, detail: "--session-id must be a non-negative integer" };
-  }
-  const sessionId = Number(sessionRaw);
-  if (!Number.isSafeInteger(sessionId)) {
-    return { ok: false, detail: "--session-id is out of range" };
+  // `--agent-id`, `--session-id` and `--version` are optional: the help says
+  // they default, and the command in the setup plan omits them. They used to
+  // be required anyway, so the documented command failed before it polled.
+  const sessionRaw = values.get("--session-id");
+  let sessionId: number;
+  if (sessionRaw === undefined) {
+    const measured = defaults.sessionId();
+    if (measured === null) {
+      return {
+        ok: false,
+        detail:
+          "--session-id was not given and no interactive session could be measured; " +
+          "the agent only runs in the signed-in session",
+      };
+    }
+    sessionId = measured;
+  } else {
+    if (!/^\d+$/u.test(sessionRaw)) {
+      return { ok: false, detail: "--session-id must be a non-negative integer" };
+    }
+    sessionId = Number(sessionRaw);
+    if (!Number.isSafeInteger(sessionId)) {
+      return { ok: false, detail: "--session-id is out of range" };
+    }
   }
 
   return {
@@ -99,11 +127,11 @@ function parseArguments(argv: readonly string[]): ParseResult {
     value: {
       channelRoot: values.get("--channel") ?? "",
       keyFile: values.get("--key-file") ?? "",
-      id: values.get("--agent-id") ?? "",
+      id: values.get("--agent-id") ?? defaults.agentId,
       host: values.get("--host") ?? "",
       user: values.get("--user") ?? "",
       sessionId,
-      version: values.get("--version") ?? "",
+      version: values.get("--version") ?? defaults.version,
     },
   };
 }
@@ -128,7 +156,8 @@ export async function main(
   deps: AgentMainDeps = {},
 ): Promise<number> {
   const stderr = deps.stderr ?? ((text: string) => void process.stderr.write(text));
-  const parsed = parseArguments(argv);
+  const defaults = agentDefaults(deps.measureSession ?? measureWindowsSessionId);
+  const parsed = parseArguments(argv, defaults);
   if (!parsed.ok) {
     stderr(`windows-agent: ${parsed.detail}\n`);
     return 2;

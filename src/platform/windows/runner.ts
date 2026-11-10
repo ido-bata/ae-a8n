@@ -360,7 +360,9 @@ export class WindowsAdapter implements PlatformAdapter {
           : `the agent entry ${this.#agentEntry} does not exist`,
       action: agentExists
         ? null
-        : "Install @ido-bata/ae-a8n on the target and point setup at its scripts/windows-agent.mjs.",
+        : "Install @ido-bata/ae-a8n on the target, then start the agent from the logged-in " +
+          "interactive session: npx --package @ido-bata/ae-a8n ae-a8n agent --channel <dir> " +
+          "--key-file <file> --host <host> --user <user>. No clone is needed.",
       automatable: false,
     });
 

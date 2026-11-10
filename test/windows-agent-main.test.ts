@@ -420,6 +420,61 @@ describe("the Windows agent entry", () => {
     expect(messages.join("")).toContain("readable by group or others");
   });
 
+  // The help and the setup plan both show this short form. The flags it omits
+  // used to be required, so the documented command failed before it polled.
+  it("starts from the four identity flags, defaulting the rest", async () => {
+    const { root, channel } = await makeChannel();
+    const jobId = newJobId(NOW, new Uint8Array([1, 2, 3, 4]));
+    await publishJob(channel, jobId);
+
+    const executed: string[] = [];
+    const controller = new AbortController();
+    const code = await main(
+      [
+        "--channel",
+        root,
+        "--key-file",
+        join(root, "agent.key"),
+        "--host",
+        IDENTITY.host,
+        "--user",
+        IDENTITY.user,
+      ],
+      {
+        channel,
+        key: KEY,
+        measureSession: () => 1,
+        executor: recordingExecutor(executed),
+        now: () => NOW,
+        sleep: () => {
+          controller.abort();
+          return Promise.resolve();
+        },
+        signal: controller.signal,
+      },
+    );
+    expect(code).toBe(0);
+    expect(executed).toEqual([jobId]);
+    const result = await channel.read(jobPaths(jobId).result);
+    expect(new TextDecoder().decode(result ?? new Uint8Array())).toContain("0.1.0-alpha.1");
+  });
+
+  it("refuses when --session-id is absent and no session can be measured", async () => {
+    const { root, channel } = await makeChannel();
+    const messages: string[] = [];
+    const code = await main(
+      ["--channel", root, "--key-file", join(root, "agent.key"), "--host", IDENTITY.host, "--user", IDENTITY.user],
+      {
+        channel,
+        key: KEY,
+        measureSession: () => null,
+        stderr: (text) => messages.push(text),
+      },
+    );
+    expect(code).toBe(2);
+    expect(messages.join("")).toContain("--session-id");
+  });
+
   it("opens the channel from --channel when none is injected", async () => {
     const { root, channel } = await makeChannel();
     const jobId = newJobId(NOW, new Uint8Array([1, 2, 3, 4]));
