@@ -208,6 +208,9 @@ describe("key files", () => {
     ).toMatchObject({ ok: false });
   });
 
+  // Mode bits, which Windows does not have. `windows-acl.test.ts` proves the
+  // same two properties there from `icacls`, which is Windows' own account of
+  // who may read the key.
   it.runIf(process.platform !== "win32")("loads an owner-only key file", async () => {
     const root = await directory();
     const path = join(root, "agent.key");

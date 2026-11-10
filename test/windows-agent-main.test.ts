@@ -405,12 +405,8 @@ describe("the Windows agent entry", () => {
     expect(executed).toEqual([jobId]);
   });
 
-  // Windows does not model POSIX mode bits, so `key-store.ts` skips the
-  // readable-by-others check there (ACLs are the equivalent, and verifying
-  // them is T092 work). Asserting the refusal on Windows would not fail: the
-  // agent accepts the key, enters its job loop and never returns, so the test
-  // hangs until the timeout. Observed on a real Windows 11 host, where the
-  // full suite is not part of CI.
+  // POSIX mode bits. Windows has no equivalent, so the same property is
+  // checked there through the ACL, in the test below.
   it.skipIf(process.platform === "win32")(
     "refuses a key file readable by group or others",
     async () => {
@@ -427,6 +423,31 @@ describe("the Windows agent entry", () => {
       });
       expect(code).toBe(1);
       expect(messages.join("")).toContain("readable by group or others");
+    },
+  );
+
+  // The Windows counterpart: the key is refused before the agent polls,
+  // because `loadKeyFile` reads the file's ACL there. This is the check that
+  // used to be skipped on Windows, which left the real host with no
+  // agent-level proof that a shared key is refused.
+  it.skipIf(process.platform !== "win32")(
+    "refuses a key file another account can read, by its ACL",
+    async () => {
+      const { root, channel } = await makeChannel();
+      const keyFile = join(root, "agent.key");
+      await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o600 });
+      const { execFileSync } = await import("node:child_process");
+      execFileSync("icacls", [keyFile, "/grant", "BUILTIN\\Users:(R)"]);
+      const messages: string[] = [];
+      const code = await main(args(root, { "--key-file": keyFile }), {
+        channel,
+        measureSession: () => 1,
+        executor: recordingExecutor([]),
+        stderr: (text) => messages.push(text),
+      });
+      expect(code).toBe(1);
+      expect(messages.join("")).toContain("BUILTIN\\Users");
+      expect(messages.join("")).toContain("nothing was polled");
     },
   );
 
