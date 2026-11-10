@@ -211,6 +211,35 @@ describe("the agent", () => {
     }
   });
 
+  it("keeps an executor's unknown outcome and its diagnostic code", async () => {
+    const files = await channel();
+    await publish(files);
+    const outcome = await runJob({
+      channel: files,
+      identity: IDENTITY,
+      executor: {
+        execute: () =>
+          Promise.resolve({
+            status: "unknown",
+            code: "A8N-AE-004",
+            message: "the child timed out; the outcome is unknown",
+          }),
+      },
+      jobId: JOB_ID,
+      now: () => NOW,
+    });
+    expect(outcome.state).toBe("finished");
+    if (outcome.state === "finished") {
+      expect(outcome.result.status).toBe("unknown");
+      expect(outcome.result.code).toBe("A8N-AE-004");
+    }
+    const stored = decodeResult((await files.read(jobPaths(JOB_ID).result)) ?? new Uint8Array());
+    expect(stored).toMatchObject({
+      ok: true,
+      value: { status: "unknown", code: "A8N-AE-004" },
+    });
+  });
+
   it("refuses to run outside an interactive session", () => {
     expect(() => assertInteractiveIdentity({ ...IDENTITY, sessionId: 0 })).toThrow(
       AgentNotInteractiveError,

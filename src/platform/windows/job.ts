@@ -65,6 +65,102 @@ export type DecodeOutcome<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly detail: string };
 
+/**
+ * What the executor is allowed to run. `argv` is never joined into a command
+ * line; the first entry is an absolute program and each following entry is one
+ * argument.
+ */
+export type JobPayload = {
+  readonly argv: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+  readonly cwd?: string;
+};
+
+export type JobPayloadRules = {
+  readonly isAbsolutePath: (value: string) => boolean;
+  readonly hasControlCharacter: (value: string) => boolean;
+};
+
+const PAYLOAD_KEYS = new Set(["argv", "env", "cwd"]);
+
+export function decodePayload(
+  bytes: Uint8Array,
+  rules: JobPayloadRules,
+): DecodeOutcome<JobPayload> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(bytes).toString("utf-8"));
+  } catch {
+    return { ok: false, detail: "the payload is not valid JSON" };
+  }
+  if (!isRecord(parsed)) {
+    return { ok: false, detail: "the payload is not an object" };
+  }
+  for (const key of Object.keys(parsed)) {
+    if (!PAYLOAD_KEYS.has(key)) {
+      return { ok: false, detail: `unknown payload field "${key}"` };
+    }
+  }
+
+  const argv = parsed["argv"];
+  if (!Array.isArray(argv) || argv.length === 0) {
+    return { ok: false, detail: "argv must be a non-empty array" };
+  }
+  const args: string[] = [];
+  for (const [index, value] of argv.entries()) {
+    if (typeof value !== "string") {
+      return { ok: false, detail: `argv[${index}] is not a string` };
+    }
+    if (rules.hasControlCharacter(value)) {
+      return { ok: false, detail: `argv[${index}] contains a control character` };
+    }
+    args.push(value);
+  }
+  const program = args[0];
+  if (program === undefined || !rules.isAbsolutePath(program)) {
+    return { ok: false, detail: "argv[0] must be an absolute path" };
+  }
+
+  let env: Record<string, string> | undefined;
+  const rawEnv = parsed["env"];
+  if (rawEnv !== undefined) {
+    if (!isRecord(rawEnv)) {
+      return { ok: false, detail: "env must be an object" };
+    }
+    env = {};
+    for (const [key, value] of Object.entries(rawEnv)) {
+      if (key === "" || rules.hasControlCharacter(key)) {
+        return { ok: false, detail: "env has an empty or invalid name" };
+      }
+      if (typeof value !== "string") {
+        return { ok: false, detail: `env["${key}"] is not a string` };
+      }
+      env[key] = value;
+    }
+  }
+
+  let cwd: string | undefined;
+  const rawCwd = parsed["cwd"];
+  if (rawCwd !== undefined) {
+    if (typeof rawCwd !== "string" || !rules.isAbsolutePath(rawCwd)) {
+      return { ok: false, detail: "cwd must be an absolute path" };
+    }
+    if (rules.hasControlCharacter(rawCwd)) {
+      return { ok: false, detail: "cwd contains a control character" };
+    }
+    cwd = rawCwd;
+  }
+
+  return {
+    ok: true,
+    value: {
+      argv: args,
+      ...(env === undefined ? {} : { env }),
+      ...(cwd === undefined ? {} : { cwd }),
+    },
+  };
+}
+
 export function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }

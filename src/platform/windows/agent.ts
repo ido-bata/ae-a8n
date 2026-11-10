@@ -22,7 +22,10 @@ import {
 } from "./job.js";
 
 export type JobExecution = {
-  readonly status: "ok" | "failed";
+  /** `unknown` means the executor could not tell what happened; never retry it. */
+  readonly status: "ok" | "failed" | "unknown";
+  /** A diagnostic code, when the executor has one; published as `code` or null. */
+  readonly code?: string;
   readonly message: string;
   /** Relative paths under the result directory, written after the result. */
   readonly artifacts?: Readonly<Record<string, Uint8Array>>;
@@ -154,7 +157,7 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
     schemaVersion: JOB_SCHEMA_VERSION,
     jobId,
     status: execution.status,
-    code: null,
+    code: execution.code ?? null,
     message: execution.message,
     payloadSha256: job.payloadSha256,
     agent: identity,
