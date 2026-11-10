@@ -35,7 +35,7 @@ installed tarball, not from a checkout.
 | 2 | Quality gate `npm test` (`mise run check`'s test half) | **PASS** | `74@d6d24fc`: 46 files, 729 passed, 5 skipped (734); POSIX-only checks printed their skip reason |
 | 3 | Windows-only test defects | **FAIL, then fixed** | 3 defects, found here and nowhere else; see §3 |
 | 4 | `npm pack` and clean-consumer install **(package)** | **PASS** | `86@79d8ab1`; installed into an empty `%TEMP%` project with `npm install <tarball>`; `node_modules/.bin/ae-a8n.cmd` linked |
-| 5 | `ae-a8n --version` **(package)** | **PASS** | exit 0, `ae-a8n 0.1.0-alpha.1` |
+| 5 | `ae-a8n --version`, and the documented `npx @ido-bata/ae-a8n --version` **(package)** | **PASS** | both exit 0, `ae-a8n 0.1.0-alpha.1` |
 | 6 | `ae-a8n doctor --json` **(package)** | **PASS** — the refusal is the result | exit 3; `status: blocked`; one finding: `A8N-SESSION-003` `Target session is the console session`, `evidence.currentUser` = `evidence.consoleUser` = `UUU\basic`, remedy `human`; `platform` = `win32 10.0.29704 x64`, `backend: windows-remote-host` |
 | 7 | `ae-a8n test -- node --version` **(package)** | **PASS** — the refusal is the result | exit 3; `A8N-SESSION-003`, "the target account UUU\basic is also the console user"; nothing was run |
 | 8 | `ae-a8n test --json` with no command **(package)** | **PASS** | exit 2, `test needs a command after "--", for example: ae-a8n test -- npm test`; one JSON document on stdout |
