@@ -488,7 +488,9 @@ node scripts\windows-agent.mjs ^
 - `--channel` is the same directory the controller uses. The agent reads
   `jobs/<jobId>/`, claims through `claims/<jobId>.json`, and publishes through
   `results/<jobId>/result.json`. A missing or unreadable channel exits non-zero
-  with the reason on stderr.
+  with the reason on stderr. The controller creates the run directory before it
+  publishes `job.json`, so a run directory with no manifest is a submission in
+  progress: the agent claims, refuses and runs nothing until `job.json` exists.
 - `--key-file` is the channel key provisioned out of band to both sides. Jobs,
   results and claims carry an HMAC-SHA256 with domain separation; the agent
   refuses a job it cannot attribute before the executor sees it. The key file is
@@ -516,6 +518,7 @@ node scripts\windows-agent.mjs ^
 | A result could belong to another payload | the controller requires the result's `payloadSha256` to match the job | `windows-agent` |
 | Oversized documents could exhaust the agent | caps on job (64 KiB), result (1 MiB), payload (1 MiB) and claim (16 KiB), enforced before parsing and in the channel | `windows-job`, `windows-agent`, `windows-channel` |
 | The manifest repeated unverified agent facts | agent identity in the manifest comes from the verified signed result; `agentVerified` says whether it did | `windows-runner`, `windows-manifest` |
+| An agent polled between the run lock and `job.json`, refusing a valid submission | a run directory with no manifest is `not-ready`: nothing is claimed, refused or run, and the job is picked up on a later poll | `windows-agent`, `windows-e2e` |
 
 Level: `automated test` against the in-repo fake. **Nothing in this section is
 `verified on real host`.** In particular, unproven on Windows: that NTFS/SMB
