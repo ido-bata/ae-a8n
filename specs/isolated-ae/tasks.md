@@ -25,6 +25,46 @@
 | T072–T077 | #62 | Quickstart, troubleshooting |
 | T078–T084 | #63 | Release |
 
+## Tasks delivered from the existing allocation
+
+### T027 — Neutral `test` run loop and `ae-a8n test`
+
+**Files:** create `src/runner/run-id.ts`, `src/runner/package-info.ts`,
+`src/runner/artifacts.ts`, `src/runner/state.ts`, `src/runner/test-run.ts`,
+`test/runner-test.test.ts`; extend `src/cli/run.ts`, `src/cli/envelope.ts`,
+`src/cli/render.ts`, `src/platform/contract.ts`, `src/driver/mac-session.ts`,
+`src/platform/darwin/adapter.ts`, `src/doctor/diagnostics.ts`.
+
+**Deliverable:** `ae-a8n test [--json] [--timeout <ms>] [--keep] -- <command>`
+per `contracts/cli.md` §8: one run per target under `~/.ae-a8n/runs/<runId>`,
+an exclusive per-target lock, a quarantine record, `manifest.json` /
+`report.json` / `trace.jsonl` / `artifacts/`, and the exit-code mapping
+0 / 5 / 4 / 3 / 6. The runner itself is platform-neutral: it asks the adapter
+and classifies by diagnostic code, so macOS and Windows share it.
+
+**Acceptance:** a passing run drops its directory unless `--keep` or `--json`;
+a failing command keeps it and exits 5; a blocker stops the run before a
+session is opened; a held lock or a quarantine record refuses without touching
+the adapter; a timeout, an uncapturable output and an uncoded exception are
+`unknown` + quarantined and never retried; an unproven identity is refused
+before the command is sent; `--json` writes exactly one document on stdout and
+the summary on stderr.
+
+**Verification:** `automated test` (`test/runner-test.test.ts`,
+`test/cli.test.ts`). Everything that needs a real session — opening AE,
+entering the target user's session, the real host command — is
+`fake/mock only` until the macOS real-host run (T035–T039) and T092.
+
+**Delivered 2026-11-10 (#58):** `A8N-SESSION-005` added for "the controller
+cannot enter the target session" — the failure `MacSessionError` raises before
+anything is sent — with the matching contract row. `CommandOutcome.timedOut`
+is how an adapter reports its own deadline; `SessionCommandResult.timedOut`
+reads `error.killed` only, so a child signalled from outside is not a timeout.
+The Windows job id now uses the same run-id generator (`src/runner/run-id.ts`)
+instead of a second implementation.
+
+**Depends on:** T006–T011 (doctor's checks), T085 (adapter contract).
+
 ## New tasks: cross-platform contract and Windows backend
 
 ### T085 — Platform adapter contract and fake adapter

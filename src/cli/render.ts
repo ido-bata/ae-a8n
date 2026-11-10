@@ -16,7 +16,7 @@ export function generalHelp(): string {
     "Commands:",
     "  doctor   Read-only environment check; never starts After Effects",
     "  setup    Prepare the isolated session (not implemented in this increment)",
-    "  test     Run a command in the isolated session (not implemented in this increment)",
+    "  test     Run a command in the isolated session",
     "  recover  Inspect or recover a prior run (not implemented in this increment)",
     "  report   Print a prior run report (not implemented in this increment)",
     "",
@@ -68,8 +68,27 @@ const COMMAND_HELP: Record<CommandName, string> = {
   test: [
     "Usage: ae-a8n test [--json] [--target <name>] [--user <name>] [--host <name>] [--timeout <ms>] [--keep] -- <command...>",
     "",
-    "The isolated test runner is not implemented in this increment (issue #55).",
-    "The command fails closed with exit 3 and runs nothing.",
+    "Runs the command in the isolated target session, exactly once, and collects",
+    "manifest.json, report.json, trace.jsonl and the command's output under the",
+    "run directory (~/.ae-a8n/runs/<runId>).",
+    "",
+    "Before it opens anything it refuses if a prior run left a lock or a",
+    "quarantine record, and it stops when doctor would report a blocker. A",
+    "timeout or an indeterminate outcome is quarantined, never retried.",
+    "",
+    "Options:",
+    "  --json             Print exactly one JSON document on stdout",
+    "  --target <name>    Target name from the configuration",
+    "  --user <name>      OS account that runs After Effects",
+    "  --host <name>      Windows host; selects the remote-host backend",
+    "  --timeout <ms>     Deadline for the command (default 1800000)",
+    "  --keep             Keep the run directory even when the run passes",
+    "  --help, -h         Show this help",
+    "",
+    "The run directory is kept when the run fails, and always with --json.",
+    "",
+    "Exit codes: 0 pass; 5 test failed; 4 refused for safety; 3 environment",
+    "blocked; 6 unknown and quarantined; 1 when the run could not be started.",
   ].join("\n"),
   recover: [
     "Usage: ae-a8n recover [--json] [--target <name>] [--user <name>] [--host <name>] [--run <id>] [--dry-run]",
@@ -110,6 +129,36 @@ function renderFacts(facts: unknown): string[] {
     const text =
       typeof value === "string" ? value : value === null ? "unknown" : JSON.stringify(value);
     lines.push(`  ${key}: ${text}`);
+  }
+  return lines;
+}
+
+function renderVerdicts(envelope: CliEnvelope): string[] {
+  const verdicts = envelope.verdicts;
+  if (verdicts === undefined) {
+    return [];
+  }
+  const lines = ["", "verdicts:"];
+  for (const verdict of verdicts) {
+    lines.push(`  [${verdict.verdict}] ${verdict.id}: ${verdict.message}`);
+  }
+  return lines;
+}
+
+function renderArtifacts(envelope: CliEnvelope): string[] {
+  const artifacts = envelope.artifacts;
+  if (artifacts === undefined) {
+    return envelope.runId === undefined ? [] : ["", `run: ${envelope.runId} (directory not kept)`];
+  }
+  const lines = [
+    "",
+    `run: ${envelope.runId ?? "unknown"}`,
+    `  manifest: ${artifacts.manifest}`,
+    `  report:   ${artifacts.report}`,
+    `  trace:    ${artifacts.trace}`,
+  ];
+  for (const file of artifacts.files) {
+    lines.push(`  file:     ${file}`);
   }
   return lines;
 }
@@ -167,6 +216,8 @@ export function renderEnvelope(
 
   lines.push(...renderCapabilities(envelope.capabilities));
   lines.push(...renderFacts(envelope.facts));
+  lines.push(...renderVerdicts(envelope));
+  lines.push(...renderArtifacts(envelope));
 
   if (options.verbose === true && envelope.facts !== undefined) {
     lines.push("", "facts (raw):");

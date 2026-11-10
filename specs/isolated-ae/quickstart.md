@@ -73,7 +73,7 @@ directory:
 
 ```text
 manifest.json   what ran, with hashes, versions and identities
-report.json     pass / fail / blocked / unknown per check
+report.json     pass / fail / blocked / unknown per verdict
 trace.jsonl     ordered events, including refusals
 artifacts/      PNGs and other outputs
 ```

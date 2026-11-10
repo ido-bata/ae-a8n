@@ -115,6 +115,7 @@ Initial set:
 | `A8N-SESSION-002` | blocker | Target account has no GUI session |
 | `A8N-SESSION-003` | blocker | Target session is the console session |
 | `A8N-SESSION-004` | blocker | Session identity changed during the run |
+| `A8N-SESSION-005` | blocker | The controller cannot enter the target session |
 | `A8N-PERM-001` | blocker | Screen Recording not granted in the target session |
 | `A8N-PERM-002` | blocker | Accessibility not granted in the target session |
 | `A8N-PERM-003` | blocker | AE script file/network permission off |
@@ -183,21 +184,38 @@ variables documented in `quickstart.md`, then collects:
   "schemaVersion": "1.0",
   "command": "test",
   "status": "ok | test-failed | unknown | refused | blocked",
-  "runId": "20261110T120000Z-4f2a",
+  "runId": "20261110T120000Z-4f2a8c11",
   "target": { "name": "…", "isolation": "session", "identity": { "uid": 502, "asid": 109086 } },
-  "host": { "version": "26.5x89", "build": "…", "ownership": "owned", "evidence": "…" },
-  "checks": [ { "id": "…", "verdict": "pass | fail | blocked | unknown", "message": "…" } ],
+  "verdicts": [ { "id": "…", "verdict": "pass | fail | blocked | unknown", "message": "…" } ],
   "artifacts": { "manifest": "…", "report": "…", "trace": "…", "files": [] }
 }
 ```
+
+**Decision (T027):** the run's per-check verdicts are the field `verdicts[]`,
+not `checks[]`. `checks[]` is fixed by §4 as the diagnostic list (code,
+severity, remedy), and a test outcome has none of those fields; naming both
+`checks` would make one key carry two shapes. `report.json` stores the same
+`verdicts[]`. `target.identity` is present only when a session was opened, so a
+run stopped at `doctor`'s blockers reports no identity rather than a guessed
+one. The host/ownership facts named in the earlier draft live in
+`manifest.json` (`adapter`, `identity`, per-platform run manifest), not in the
+envelope; `recover` and `report` read them from there.
+
+`runId` has the same shape on both platforms — `YYYYMMDDTHHMMSSZ-<8 hex>` —
+and is the name of the run directory under the state root.
 
 - The run is refused before launching AE if `doctor`'s blockers are present.
 - The lock is exclusive per target. A second `test` on the same target exits 4
   or waits, never runs concurrently.
 - A timeout or an unprovable outcome sets `status: "unknown"` and quarantines
-  the run; the next run refuses until `recover` clears it.
+  the run; the next run refuses until `recover` clears it (T034–T039; until
+  then the remedy text names the files by path and calls that a manual step).
 - The test command's own stdout/stderr are captured into the run directory and
   summarized on stderr, not mixed into the JSON document.
+- A run that reaches a diagnostic `blocker` exits 3 without opening a session;
+  a safety refusal (unproven destination, another AE running) exits 4; a
+  command that exits non-zero is `test-failed` (5). Only timeout, an
+  uncapturable output and an exception with no diagnostic code are `unknown`.
 
 ## 9. `recover`
 

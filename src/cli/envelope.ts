@@ -5,10 +5,10 @@
  * renaming or removing one is a breaking change.
  */
 
-import { readFileSync } from "node:fs";
-
 import type { DiagnosticCheck } from "../doctor/diagnostics.js";
-import type { Capabilities } from "../platform/contract.js";
+import type { Capabilities, SessionIdentity } from "../platform/contract.js";
+import { packageInfo } from "../runner/package-info.js";
+import type { RunArtifacts, RunVerdict } from "../runner/artifacts.js";
 
 export const SCHEMA_VERSION = "1.0";
 
@@ -17,6 +17,8 @@ export type EnvelopeStatus =
   | "blocked"
   | "failed"
   | "unknown"
+  | "refused"
+  | "test-failed"
   | "setup-incomplete";
 
 export type PlatformInfo = {
@@ -36,6 +38,8 @@ export type PackageInfo = {
 export type TargetInfo = {
   readonly name: string;
   readonly isolation: "session" | "remote-host";
+  /** Probed for `test`; absent for commands that do not open a session. */
+  readonly identity?: SessionIdentity;
 };
 
 export type NextAction = {
@@ -59,29 +63,11 @@ export type CliEnvelope = {
   readonly notice?: string;
   readonly facts?: unknown;
   readonly capabilities?: Capabilities;
+  /** `test` only: what the run was, where its files are, and its verdicts. */
+  readonly runId?: string;
+  readonly artifacts?: RunArtifacts;
+  readonly verdicts?: readonly RunVerdict[];
 };
-
-type Manifest = { readonly name: string; readonly version: string };
-
-let cachedManifest: Manifest | null = null;
-
-function manifest(): Manifest {
-  if (cachedManifest !== null) {
-    return cachedManifest;
-  }
-  try {
-    const parsed = JSON.parse(
-      readFileSync(new URL("../../package.json", import.meta.url), "utf-8"),
-    ) as Partial<Manifest>;
-    cachedManifest = {
-      name: typeof parsed.name === "string" ? parsed.name : "@ido-bata/ae-a8n",
-      version: typeof parsed.version === "string" ? parsed.version : "0.0.0",
-    };
-  } catch {
-    cachedManifest = { name: "@ido-bata/ae-a8n", version: "0.0.0" };
-  }
-  return cachedManifest;
-}
 
 export function nextActionsOf(checks: readonly DiagnosticCheck[]): readonly NextAction[] {
   const actions: NextAction[] = [];
@@ -116,11 +102,14 @@ export type EnvelopeInput = {
   readonly notice?: string | undefined;
   readonly facts?: unknown;
   readonly capabilities?: Capabilities | undefined;
+  readonly runId?: string | undefined;
+  readonly artifacts?: RunArtifacts | undefined;
+  readonly verdicts?: readonly RunVerdict[] | undefined;
   readonly env?: NodeJS.ProcessEnv;
 };
 
 export function buildEnvelope(input: EnvelopeInput): CliEnvelope {
-  const project = manifest();
+  const project = packageInfo();
   const env = input.env ?? process.env;
   const rawCommit = env["A8N_COMMIT"];
   const commit =
@@ -143,5 +132,8 @@ export function buildEnvelope(input: EnvelopeInput): CliEnvelope {
       : { notice: input.notice }),
     ...(input.facts === undefined ? {} : { facts: input.facts }),
     ...(input.capabilities === undefined ? {} : { capabilities: input.capabilities }),
+    ...(input.runId === undefined ? {} : { runId: input.runId }),
+    ...(input.artifacts === undefined ? {} : { artifacts: input.artifacts }),
+    ...(input.verdicts === undefined ? {} : { verdicts: input.verdicts }),
   };
 }

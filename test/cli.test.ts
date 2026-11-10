@@ -1,16 +1,26 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
 
 import { parseArgs } from "../src/cli/args.js";
 import type { CliEnvelope } from "../src/cli/envelope.js";
 import { EXIT } from "../src/cli/exit-code.js";
 import { runCli, type CliDependencies } from "../src/cli/run.js";
 import { diagnostic } from "../src/doctor/diagnostics.js";
-import { FakeAdapter, FAKE_CAPABILITIES } from "../src/platform/fake-adapter.js";
+import {
+  FakeAdapter,
+  FAKE_CAPABILITIES,
+  FAKE_IDENTITY,
+  type FakeAdapterOptions,
+} from "../src/platform/fake-adapter.js";
 import type { AdapterSelection, SelectOptions } from "../src/platform/select.js";
 import { unsupportedPlatformCheck } from "../src/platform/select.js";
 import type {
   AdapterProbe,
   Capabilities,
+  CommandOutcome,
   IsolatedSession,
   PlatformAdapter,
   RecoveryFinding,
@@ -27,6 +37,7 @@ type Harness = {
 
 function harness(
   selection: AdapterSelection | ((options: SelectOptions) => AdapterSelection),
+  extra: Partial<Pick<CliDependencies, "stateRoot">> = {},
 ): Harness {
   let out = "";
   let err = "";
@@ -41,6 +52,7 @@ function harness(
         err += text;
       },
       env: { A8N_COMMIT: "deadbeef" },
+      ...extra,
     },
     out: () => out,
     err: () => err,
@@ -364,15 +376,12 @@ describe("commands not implemented in this increment", () => {
     expect(adapter.calls).toEqual([]);
   });
 
-  it.each(["test", "recover", "report"] as const)(
+  it.each(["recover", "report"] as const)(
     "fails %s closed with exit 3 and a notice",
     async (command) => {
       const adapter = new FakeAdapter("darwin");
       const test = harness({ ok: true, adapter });
-      const argv =
-        command === "test"
-          ? [command, "--json", "--", "node", "test.js"]
-          : [command, "--json"];
+      const argv = [command, "--json"];
       const code = await runCli(argv, test.deps);
 
       expect(code).toBe(EXIT.blocked);
@@ -383,4 +392,149 @@ describe("commands not implemented in this increment", () => {
       expect(adapter.calls).toEqual([]);
     },
   );
+});
+
+const stateRoots: string[] = [];
+
+function stateRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), "a8n-cli-state-"));
+  stateRoots.push(root);
+  return root;
+}
+
+afterEach(() => {
+  for (const root of stateRoots.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/** A session whose command writes the output files the runner copies. */
+class RunningAdapter extends FakeAdapter {
+  readonly sent: string[] = [];
+
+  constructor(
+    private readonly result: {
+      readonly exitCode: number;
+      readonly stdout: string;
+      readonly stderr: string;
+    },
+    options: FakeAdapterOptions = {},
+  ) {
+    super("darwin", options);
+  }
+
+  override open(target: TargetSpec): Promise<IsolatedSession> {
+    this.calls.push(`open:${target.name}`);
+    const session: IsolatedSession = {
+      identity: FAKE_IDENTITY,
+      open: (): Promise<void> => {
+        this.calls.push("session.open");
+        return Promise.resolve();
+      },
+      run: (argv: readonly string[]): Promise<CommandOutcome> => {
+        this.sent.push(argv.join(" "));
+        const output = mkdtempSync(join(tmpdir(), "a8n-cli-out-"));
+        stateRoots.push(output);
+        const stdoutPath = join(output, "stdout.log");
+        const stderrPath = join(output, "stderr.log");
+        writeFileSync(stdoutPath, this.result.stdout);
+        writeFileSync(stderrPath, this.result.stderr);
+        return Promise.resolve({
+          exitCode: this.result.exitCode,
+          stdoutPath,
+          stderrPath,
+        });
+      },
+      close: (): Promise<{ readonly closed: boolean; readonly reason: string | null }> =>
+        Promise.resolve({ closed: true, reason: null }),
+    };
+    return Promise.resolve(session);
+  }
+}
+
+describe("the test command", () => {
+  it("runs the command once and prints exactly one JSON document", async () => {
+    const adapter = new RunningAdapter({ exitCode: 0, stdout: "hello\n", stderr: "" });
+    const test = harness({ ok: true, adapter }, { stateRoot: stateRoot() });
+    const code = await runCli(
+      ["test", "--json", "--target", "local-test-user", "--", "node", "test.js"],
+      test.deps,
+    );
+
+    expect(code).toBe(EXIT.ok);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.schemaVersion).toBe("1.0");
+    expect(envelope.command).toBe("test");
+    expect(envelope.status).toBe("ok");
+    expect(envelope.exitCode).toBe(0);
+    expect(envelope.runId).toMatch(/^\d{8}T\d{6}Z-[0-9a-f]{8}$/u);
+    expect(envelope.verdicts).toEqual([
+      { id: "command", verdict: "pass", message: "the command exited 0" },
+    ]);
+    expect(envelope.artifacts?.report).toContain("report.json");
+    expect(envelope.artifacts?.files).toEqual([
+      "artifacts/stdout.log",
+      "artifacts/stderr.log",
+    ]);
+    expect(envelope.target.identity).toEqual(FAKE_IDENTITY);
+    expect(adapter.sent).toEqual(["node test.js"]);
+    // The human summary is written to stderr; stdout stays one JSON document.
+    expect(test.err()).toContain(`run ${String(envelope.runId)}`);
+    expect(test.err()).toContain("report:");
+  });
+
+  it("maps a failing command to exit 5 and keeps the run directory", async () => {
+    const adapter = new RunningAdapter({ exitCode: 3, stdout: "", stderr: "boom\n" });
+    const test = harness({ ok: true, adapter }, { stateRoot: stateRoot() });
+    const code = await runCli(["test", "--json", "--", "node", "test.js"], test.deps);
+
+    expect(code).toBe(EXIT.testFailed);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.status).toBe("test-failed");
+    expect(envelope.exitCode).toBe(5);
+    expect(envelope.verdicts).toEqual([
+      { id: "command", verdict: "fail", message: "the command exited 3" },
+    ]);
+    expect(envelope.artifacts?.manifest).toContain(String(envelope.runId));
+  });
+
+  it("stops at a blocker with exit 3 before opening the session", async () => {
+    const adapter = new RunningAdapter(
+      { exitCode: 0, stdout: "", stderr: "" },
+      {
+        checks: [
+          diagnostic("A8N-ENV-003", {
+            detail: "no After Effects installation was found",
+            remedy: "Install After Effects.",
+            remedyKind: "human",
+          }),
+        ],
+      },
+    );
+    const test = harness({ ok: true, adapter }, { stateRoot: stateRoot() });
+    const code = await runCli(["test", "--json", "--", "node", "test.js"], test.deps);
+
+    expect(code).toBe(EXIT.blocked);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.status).toBe("blocked");
+    expect(envelope.exitCode).toBe(3);
+    expect(envelope.checks[0]?.code).toBe("A8N-ENV-003");
+    expect(envelope.verdicts?.[0]?.id).toBe("environment");
+    expect(adapter.sent).toEqual([]);
+    expect(adapter.calls).not.toContain("open:local");
+  });
+
+  it("prints the run and its verdicts in human mode and says when the directory was dropped", async () => {
+    const adapter = new RunningAdapter({ exitCode: 0, stdout: "", stderr: "" });
+    const test = harness({ ok: true, adapter }, { stateRoot: stateRoot() });
+    const code = await runCli(["test", "--", "node", "test.js"], test.deps);
+
+    expect(code).toBe(EXIT.ok);
+    expect(test.out()).toContain("ae-a8n test — ok (exit 0)");
+    expect(test.out()).toContain("verdicts:");
+    expect(test.out()).toContain("[pass] command: the command exited 0");
+    expect(test.out()).toContain("(directory not kept)");
+    expect(test.err()).toContain("the run directory was not kept");
+    expect(adapter.sent).toEqual(["node test.js"]);
+  });
 });

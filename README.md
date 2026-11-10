@@ -62,8 +62,26 @@ selects the Windows adapter even when you invoke the CLI on another platform.
 If the Windows probe commands cannot run there, the facts that depend on the
 host are reported as unreadable and the command exits blocked.
 
-Only `doctor` is implemented in this increment. `setup`, `test`, `recover` and
-`report` parse their contract flags and then fail closed with a notice; none of
+## Test
+
+`ae-a8n test -- <command>` runs the command inside the target session, once,
+and keeps what it saw under `~/.ae-a8n/runs/<runId>/`: `manifest.json`,
+`report.json`, `trace.jsonl` and `artifacts/`. It refuses before it opens
+anything when `doctor` would report a blocker, when another run holds the
+target's lock, or when a prior run left a quarantine record.
+
+```bash
+npx @ido-bata/ae-a8n test -- ./node_modules/.bin/vitest run
+npx @ido-bata/ae-a8n test --json --timeout 600000 -- ./run-e2e.sh
+```
+
+Exit `0` pass, `5` test failed, `4` refused for safety, `3` environment
+blocked, `6` unknown and quarantined. A timeout is `unknown`, never a failed
+test, and a run that timed out is never re-sent automatically. With `--json`
+stdout is exactly one document and the human summary goes to stderr.
+
+`setup`, `recover` and `report` are not implemented yet in this increment:
+they parse their contract flags and then fail closed with a notice. None of
 them reports success for work it did not do.
 
 ## What it does to your After Effects

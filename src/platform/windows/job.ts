@@ -12,6 +12,7 @@
 
 import { createHash } from "node:crypto";
 
+import { newRunId } from "../../runner/run-id.js";
 import { isRunId } from "./lock.js";
 import { JOB_AUTH_ALG, KEY_ID_PATTERN, SIGNATURE_PATTERN, type JobAuth } from "./auth.js";
 
@@ -205,9 +206,9 @@ export function sha256Hex(bytes: Uint8Array): string {
 
 /** `<UTC timestamp>-<random>`; sortable and unique enough for one controller. */
 export function newJobId(now: Date, random: Uint8Array): string {
-  const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
-  const suffix = Buffer.from(random).toString("hex").slice(0, 8);
-  return `${stamp}-${suffix}`;
+  // One implementation, shared with the CLI's run ids: a job id and a run id
+  // have the same shape and the same collision argument.
+  return newRunId(now, random);
 }
 
 export function isJobId(value: string): boolean {

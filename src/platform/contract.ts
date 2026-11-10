@@ -89,6 +89,12 @@ export type CommandOutcome = {
   readonly exitCode: number;
   readonly stdoutPath: string;
   readonly stderrPath: string;
+  /**
+   * True when the adapter itself stopped the command at its deadline. Such a
+   * run is indeterminate: the runner quarantines it instead of reporting a
+   * test failure or retrying.
+   */
+  readonly timedOut?: boolean;
 };
 
 export type RunOptions = {

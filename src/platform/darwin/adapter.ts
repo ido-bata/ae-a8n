@@ -615,7 +615,12 @@ function defaultRunCommand(
   const stderrPath = join(directory, "stderr.log");
   writeFileSync(stdoutPath, result.stdout);
   writeFileSync(stderrPath, result.stderr);
-  return Promise.resolve({ exitCode: result.status, stdoutPath, stderrPath });
+  return Promise.resolve({
+    exitCode: result.status,
+    stdoutPath,
+    stderrPath,
+    ...(result.timedOut ? { timedOut: true } : {}),
+  });
 }
 
 type ResolvedSession = {

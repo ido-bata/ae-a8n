@@ -40,6 +40,10 @@ export const DIAGNOSTIC_CODES = {
   "A8N-SESSION-002": { severity: "blocker", title: "Target account has no GUI session" },
   "A8N-SESSION-003": { severity: "blocker", title: "Target session is the console session" },
   "A8N-SESSION-004": { severity: "blocker", title: "Session identity changed during the run" },
+  "A8N-SESSION-005": {
+    severity: "blocker",
+    title: "The controller cannot enter the target session",
+  },
   "A8N-PERM-001": { severity: "blocker", title: "Screen Recording not granted in the target session" },
   "A8N-PERM-002": { severity: "blocker", title: "Accessibility not granted in the target session" },
   "A8N-PERM-003": { severity: "blocker", title: "After Effects script file/network permission is off" },

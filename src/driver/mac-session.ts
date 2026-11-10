@@ -46,6 +46,9 @@ export type MacAppInstance = {
 };
 
 export class MacSessionError extends Error {
+  /** The runner classifies an adapter throw by this code (`cli.md` §5). */
+  readonly code = "A8N-SESSION-005" as const;
+
   constructor(message: string) {
     super(message);
     this.name = "MacSessionError";
@@ -237,6 +240,8 @@ export type SessionCommandResult = {
   readonly status: number;
   readonly stdout: string;
   readonly stderr: string;
+  /** True when the deadline stopped the command (`error.killed`). */
+  readonly timedOut: boolean;
 };
 
 /**
@@ -380,13 +385,22 @@ function run(
       input: options.input,
       stdio: ["pipe", "pipe", "pipe"],
     });
-    return { status: 0, stdout, stderr: "" };
+    return { status: 0, stdout, stderr: "", timedOut: false };
   } catch (error) {
-    const failure = error as { status?: number; stdout?: string; stderr?: string; message?: string };
+    const failure = error as {
+      status?: number;
+      stdout?: string;
+      stderr?: string;
+      message?: string;
+      killed?: boolean;
+    };
     return {
       status: typeof failure.status === "number" ? failure.status : 1,
       stdout: failure.stdout ?? "",
       stderr: failure.stderr ?? failure.message ?? "",
+      // Only Node stopping the child at its deadline sets `killed`; a child
+      // that was signalled from outside is not a timeout.
+      timedOut: failure.killed === true,
     };
   }
 }
