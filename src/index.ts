@@ -31,6 +31,7 @@ export {
   ParameterValueError,
   PropertyHasNoValueError,
   ProtocolError,
+  ScriptNotSentError,
   TimeoutError,
   UnsavedChangesError,
 } from "./api/errors.js";

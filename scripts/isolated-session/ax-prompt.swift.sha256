@@ -1,0 +1,6 @@
+# SHA-256 of ax-prompt.swift, the helper ax-grant.command and
+# ax-grant-all.command compile. Both refuse to compile a source that does not
+# match this value. When ax-prompt.swift changes, update this file with:
+#
+#   shasum -a 256 scripts/isolated-session/ax-prompt.swift
+dbb36446cdd30bfbe95153e27bf58e443df49ca31ab25d0507f140e09c006de6  ax-prompt.swift

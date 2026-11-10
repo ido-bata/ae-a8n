@@ -33,9 +33,21 @@ with the bundle and script paths passed as `argv` so neither is spliced into
 AppleScript source.
 | UI automation / image recognition | yes | fragile | fragile | no | last resort, never for model operations |
 
-A prerequisite both adopted paths share: **After Effects → Preferences → General →
-*Allow Scripts to Write Files and Access Network*** must be enabled. Without it the
-host cannot read the request file or write the result.
+A prerequisite both adopted paths share: **After Effects → Settings → Scripting &
+Expressions → *Allow Scripts to Write Files and Access Network*** must be enabled.
+Without it the host cannot read the request file or write the result. The setting
+lives in AE's own preferences file (`Pref_SCRIPTING_FILE_NETWORK_SECURITY` in
+`~/Library/Preferences/Adobe/After Effects/<version>/… 環境設定.txt` on macOS).
+
+On AE 2026 (26.5) that one setting is **not** enough: AE decides from the
+script's own location whether it may run it, and it answers `DoScriptFile` with
+`-1708` and shows a modal naming the line it refused. What AE asks for is a
+human approval in its Scripting & Expressions panel, so the driver keeps every
+file AE is pointed at inside one folder of the session (`staging/`), with the
+host script staged next to the entry script, so that one approval covers every
+call. The entry script itself keeps a unique name per call: AE reads the file
+when the script runs, which may be after the caller stopped waiting, and a
+shared name would let a still-running script read the *next* request.
 
 ## The constraint that decides the design
 

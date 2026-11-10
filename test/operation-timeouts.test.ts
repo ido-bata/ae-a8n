@@ -10,7 +10,7 @@
 
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { TimeoutError } from "../src/driver/driver.js";
@@ -66,9 +66,23 @@ class SlowScriptsTransport implements HostTransport {
   }
 }
 
+/**
+ * The request the entry script belongs to.
+ *
+ * The entry script's name is unique per call, so the id is read from the
+ * script itself: it carries the path of its request.
+ */
+function requestIdOf(entry: string): string | null {
+  const source = readFileSync(entry, "utf-8");
+  const match = /inbox[/\\]([^"\\/]+)\.request\.json/.exec(source);
+  return match?.[1] ?? null;
+}
+
 function methodOf(entry: string): string {
-  // <root>/staging/<id>.entry.jsx → <root>/inbox/<id>.request.json
-  const id = basename(entry).replace(/\.entry\.jsx$/, "");
+  const id = requestIdOf(entry);
+  if (id === null) {
+    return "?";
+  }
   const request = join(entry, "..", "..", "inbox", `${id}.request.json`);
   return existsSync(request) ? (JSON.parse(readFileSync(request, "utf-8")) as { method: string }).method : "?";
 }
@@ -97,7 +111,10 @@ function launch(timeoutMs = 5_000): Promise<AfterEffects> {
 /** Request envelopes the driver sent for a method. */
 function sent(method: string): number {
   const inbox = join(root, "session", "inbox");
-  return readdirSync(inbox).filter((name) => methodOf(join(root, "session", "staging", name.replace(".request.json", ".entry.jsx"))) === method).length;
+  return readdirSync(inbox).filter((name) => {
+    const request = JSON.parse(readFileSync(join(inbox, name), "utf-8")) as { method: string };
+    return request.method === method;
+  }).length;
 }
 
 async function timesOut(promise: Promise<unknown>): Promise<AfterEffectsError> {

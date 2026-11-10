@@ -7,6 +7,30 @@
  * After Effects process or the in-repo fake.
  */
 
+/**
+ * The call was abandoned before it reached the host.
+ *
+ * A transport that can only send one script at a time (macOS `DoScriptFile`
+ * is synchronous) has to wait for the running script to finish before it may
+ * send the next one. If the call's deadline passes during that wait, the
+ * script was never sent: nothing ran, and nothing may be reported as a
+ * timeout of the operation.
+ */
+export class ScriptNotSentError extends Error {
+  /**
+   * Stable code for callers that branch on it. The call was abandoned before
+   * it reached the host, so nothing ran: that is a different fact from a
+   * failure inside After Effects, and the code keeps them apart across the
+   * public API.
+   */
+  readonly code = "A8N-AE-005";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "ScriptNotSentError";
+  }
+}
+
 export type InvokeOptions = {
   /**
    * Aborted when the call's deadline passes. A transport that waits for the
@@ -28,6 +52,11 @@ export type HostOwnership = {
   readonly kind: "owned" | "attached" | "unknown";
   /** What the decision rests on, for the trace and for a human. */
   readonly evidence: string;
+  /**
+   * A stable code for a refusal a caller may act on. `A8N-AE-004`: the
+   * After Effects could not be tied to this run, so it was left running.
+   */
+  readonly code?: string;
 };
 
 export interface HostTransport {

@@ -22,6 +22,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { AeDriver } from "../driver/driver.js";
+import { readGuiSession, readGuiSessionFailure, type MacSession } from "../driver/mac-session.js";
+import { MacHostRecovery } from "../driver/recovery.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
 import { TraceRecorder, type TraceEvent } from "../trace/trace.js";
 import {
@@ -105,6 +107,45 @@ function optionalTimeout(value: unknown): number | undefined {
     throw new TypeError("timeoutMs must be a positive number");
   }
   return value;
+}
+
+/**
+ * The login session of a uid, for the GUI fallback.
+ *
+ * A user who is not logged in has no session, and a session that is not an
+ * Aqua session has no screen. Both are refused here rather than discovered
+ * halfway through a recovery.
+ */
+function requireSession(uid: number): MacSession {
+  const session = readGuiSession(uid);
+  if (session === null) {
+    // A refusal to answer is not an answer. `launchctl print gui/<other uid>`
+    // is "Operation not permitted" for a non-root process outside that
+    // session, and telling a logged-in user to log in sends the caller in
+    // entirely the wrong direction.
+    const failure = readGuiSessionFailure(uid);
+    if (failure !== null && /operation not permitted|not permitted/i.test(failure)) {
+      throw new AfterEffectsError(
+        `uid ${uid}'s login session could not be read: macOS refused this process (launchctl: ${failure}). ` +
+          "The user may well be logged in; only a process running in that session (or root) can ask about it. " +
+          "Nothing was started.",
+        "session.launch",
+      );
+    }
+    throw new AfterEffectsError(
+      `uid ${uid} has no login session on this Mac, so no After Effects of that user could be reached. ` +
+        "Log that user in — a fast user switch is enough — and try again. Nothing was started.",
+      "session.launch",
+    );
+  }
+  if (session.kind !== "Aqua") {
+    throw new AfterEffectsError(
+      `uid ${uid} has a ${session.kind} session, not a graphical one, so there is no screen to recover. ` +
+        "The GUI fallback is not available for it. Nothing was started.",
+      "session.launch",
+    );
+  }
+  return session;
 }
 
 /** A finite number, or an array of finite numbers; the host checks the shape. */
@@ -223,15 +264,29 @@ export class AfterEffects {
     const trace = new TraceRecorder({ file: join(sessionRoot, "trace.jsonl") });
     const transport =
       options.transport ??
-      new ScriptInvocationTransport(
-        options.installDir === undefined ? {} : { installDir: options.installDir },
-      );
+      new ScriptInvocationTransport({
+        ...(options.installDir === undefined ? {} : { installDir: options.installDir }),
+        ...(options.session === undefined ? {} : { sessionUid: options.session.uid }),
+      });
+
+    // The GUI fallback is only wired when the caller asks for it, and it only
+    // ever acts inside the session that owns the After Effects.
+    const recovery =
+      options.session?.recover === true && transport instanceof ScriptInvocationTransport
+        ? new MacHostRecovery({
+            session: requireSession(options.session.uid),
+            pid: () => transport.recoveryTargetPid(),
+            verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
+            screenshotDir: join(sessionRoot, "artifacts"),
+          })
+        : undefined;
 
     const driver = new AeDriver({
       transport,
       sessionRoot,
       trace,
       ...(options.timeoutMs === undefined ? {} : { defaultTimeoutMs: options.timeoutMs }),
+      ...(recovery === undefined ? {} : { recovery }),
     });
 
     // The session subscribes before the probe runs, so the live view and the
@@ -266,6 +321,23 @@ export class AfterEffects {
   async version(): Promise<string> {
     const info = await this.#session.call<ApplicationInfo>("app.info", "app.info");
     return info.version;
+  }
+
+  /**
+   * Shows a native modal dialog in After Effects and waits for it to be
+   * closed.
+   *
+   * The dialog is the one thing an ExtendScript call cannot get out of on its
+   * own: the script stays blocked until the dialog is closed, so the call
+   * times out while the host is perfectly alive.
+   *
+   * With a session that has `recover` enabled, the timed-out call is
+   * followed by the GUI fallback, which closes the dialog *inside that
+   * session* and lets the original call finish. The request is never sent
+   * again — it is still running inside After Effects.
+   */
+  async showModalDialog(message: string, options: OperationOptions = {}): Promise<void> {
+    await this.#session.call("ui.alert", "ui.alert", { message }, options);
   }
 
   /**

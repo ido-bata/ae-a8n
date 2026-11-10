@@ -8,8 +8,7 @@ description: Drive a real Adobe After Effects from Node with @ido-bata/ae-a8n �
 `@ido-bata/ae-a8n` runs ExtendScript inside a real After Effects and gives you
 a typed API over it. Everything below matches the package's public types; if
 a call you want is not listed here, check `dist/index.d.ts` rather than guess —
-there is, for example, **no save, no layer creation, and no arbitrary-script
-API**.
+there is, for example, **no save and no arbitrary-script API**.
 
 Verified on macOS (After Effects 2026 / 26.5, Japanese UI). **Windows has not
 been run at all**; on Windows the package will not quit After Effects for you
@@ -31,6 +30,13 @@ been run at all**; on Windows the package will not quit After Effects for you
 6. **Do not leave long-running work inside AE.** A script that runs for
    seconds lets other installed extensions run inside it; one has been seen to
    raise a modal alert that blocks AE until a person clicks it.
+
+## macOS: UIフォーカスとモーダルダイアログ
+
+- **普段のmacOSユーザーでGUI操作をフォールバックしない。** Aeがモーダルで止まっても、システム全体のカーソル移動、`osascript`のGUIクリック、CGEvent、Accessibility操作で物理デスクトップを乗っ取らない。タイムアウトしたら状態と証跡を残して停止する。
+- 隔離実行は別のOSユーザーのGUIセッション（別フレームバッファ・別HID）で行う。`offstage` の session lane がその代表で、[docs/offstage-macos.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/offstage-macos.md) と #49 を参照。**macOS実機の受入とトランスポートのセッション宛先確認が終わるまで、本番の標準経路として扱わない。**
+- `offstage` の `session setup` は `sudo` と端末を必要とするため**人間が実行する**。TCCデータベースの直接書き込みやSIPの無効化は**自動では行わない**。
+- ライセンス上、同じMacの別ユーザーは追加のデバイス認証にカウントされないが、Adobeアプリを使うOSユーザーは同時に1人だけ。自動サインアウト、ライセンス上限ダイアログの勝手な処理は禁止。
 
 ## Before you start
 
@@ -213,9 +219,10 @@ work:
 
 ## Not covered
 
-Saving projects, creating comps or layers, expressions, keyframes, render
-queue output modules, audio, Windows behaviour. Do not improvise these
-through other channels without the human's agreement.
+Saving projects, expressions, keyframes, render queue output modules, audio,
+Windows behaviour. Creating a comp and adding a text layer **are** covered
+(`project.createComp(...)`, `comp.addTextLayer(...)`); do not improvise the
+rest through other channels without the human's agreement.
 
 ## Worked examples
 

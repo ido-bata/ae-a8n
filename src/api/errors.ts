@@ -8,9 +8,10 @@
 
 import { HostError, ProtocolError } from "../protocol/envelope.js";
 import { HostUnavailableError, TimeoutError } from "../driver/driver.js";
+import { ScriptNotSentError } from "../driver/transport.js";
 import type { PropertyKind } from "./types.js";
 
-export { HostUnavailableError, ProtocolError, TimeoutError };
+export { HostUnavailableError, ProtocolError, ScriptNotSentError, TimeoutError };
 
 export class AfterEffectsError extends Error {
   /** Operation that failed, as it appears in the trace. */
@@ -111,6 +112,12 @@ export { HostError };
  * original as `cause` so nothing is lost.
  */
 export function contextualise(op: string, error: unknown): never {
+  if (error instanceof ScriptNotSentError) {
+    // "The script was never sent" is not "the operation failed inside After
+    // Effects". Flattening it would claim something ran, send the caller
+    // looking in the wrong place, and invite a retry that is not needed.
+    throw error;
+  }
   if (error instanceof EntityNotFoundError) {
     throw error;
   }
