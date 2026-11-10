@@ -15,6 +15,10 @@ on a real host (#47).
   having defaults but were required, so the documented form failed before it
   polled. They now default to `ae-a8n`, the measured interactive session and
   the package version.
+- The same command no longer fails with `unknown option <path>`: the CLI's
+  argument check read every token as a flag, so the channel root, the key file
+  and the host name were refused before the agent started. Values are now
+  skipped; only flag tokens are checked.
 
 ### Added
 

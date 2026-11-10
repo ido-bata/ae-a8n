@@ -48,6 +48,34 @@ export const AGENT_HELP = [
 /** The flag names the agent accepts; anything else is a usage error. */
 const AGENT_FLAGS = AGENT_OPTIONS;
 
+/** Every agent flag but `--hidden` is followed by its value. */
+const VALUE_FLAGS = new Set([...AGENT_OPTIONS].filter((flag) => flag !== HIDDEN_FLAG));
+
+/**
+ * The first token that is not an agent flag, or null.
+ *
+ * Values are skipped, not inspected. They are paths and names — a channel
+ * root, a key file, a host — and a check that read every token as a flag
+ * rejected the documented command with "unknown option <path>" before the
+ * agent ever saw it. The flags themselves are still checked here so a usage
+ * error is reported without the agent starting.
+ */
+export function unknownAgentOption(argv: readonly string[]): string | null {
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === undefined) {
+      break;
+    }
+    if (!AGENT_FLAGS.has(token)) {
+      return token;
+    }
+    if (VALUE_FLAGS.has(token)) {
+      index += 1;
+    }
+  }
+  return null;
+}
+
 export type AgentCommandResult = { readonly exitCode: number };
 
 export async function runAgentCommand(
@@ -57,16 +85,10 @@ export async function runAgentCommand(
     process.stdout.write(`${AGENT_HELP}\n`);
     return { exitCode: 0 };
   }
-  for (let index = 0; index < argv.length; index += 1) {
-    const raw = argv[index];
-    if (raw === undefined) {
-      break;
-    }
-    const name = raw.includes("=") ? raw.slice(0, raw.indexOf("=")) : raw;
-    if (!AGENT_FLAGS.has(name)) {
-      process.stderr.write(`ae-a8n agent: unknown option ${name}; run "ae-a8n agent --help"\n`);
-      return { exitCode: 2 };
-    }
+  const unknown = unknownAgentOption(argv);
+  if (unknown !== null) {
+    process.stderr.write(`ae-a8n agent: unknown option ${unknown}; run "ae-a8n agent --help"\n`);
+    return { exitCode: 2 };
   }
   if (argv.includes(HIDDEN_FLAG) || argv.includes(LOG_FLAG)) {
     return { exitCode: detachAgent(argv) };
