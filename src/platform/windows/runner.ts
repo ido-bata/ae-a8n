@@ -35,7 +35,6 @@ import type { FileChannel } from "./channel.js";
 import {
   acquireRunLock,
   releaseRunLock,
-  type AcquireRunLockResult,
   type RunOwner,
 } from "./lock.js";
 import {
@@ -521,7 +520,7 @@ export class WindowsAdapter implements PlatformAdapter {
     });
     if (lock.state !== "acquired") {
       // The session never owned this lock, so close() must not release it.
-      throw lockFailure(lock);
+      throw new WindowsRunLockError(lock.state, runId);
     }
     onRunId(runId);
 
@@ -637,8 +636,4 @@ export class WindowsAdapter implements PlatformAdapter {
       Buffer.from(`${JSON.stringify(state, null, 2)}\n`, "utf-8"),
     );
   }
-}
-
-function lockFailure(lock: Exclude<AcquireRunLockResult, { state: "acquired" }>): WindowsRunLockError {
-  return new WindowsRunLockError(lock.state, lock.lock?.runId ?? "unknown");
 }

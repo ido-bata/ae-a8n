@@ -399,6 +399,9 @@ describe("the Windows adapter", () => {
       code: "A8N-JOB-002",
       state: "stale",
     });
+    await expect(session.run(["/bin/echo"], RUN_OPTIONS)).rejects.toThrow(
+      `run lock ${RUN_ID} is stale`,
+    );
     expect(submitCalls).toEqual([]);
     expect(await channel.read(lockPath(RUN_ID))).toEqual(before);
   });
