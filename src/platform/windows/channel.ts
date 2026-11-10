@@ -10,7 +10,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, sep } from "node:path";
 
 export interface FileChannel {
@@ -22,6 +22,10 @@ export interface FileChannel {
   createExclusive(path: string, bytes: Uint8Array): Promise<boolean>;
   /** Names in a directory; empty when it does not exist. */
   list(directory: string): Promise<readonly string[]>;
+  /** Subdirectory names; empty when the directory does not exist. */
+  listDirectories(directory: string): Promise<readonly string[]>;
+  /** True only when the path is a readable directory. */
+  isDirectory(path: string): Promise<boolean>;
   remove(path: string): Promise<void>;
 }
 
@@ -102,6 +106,29 @@ export class DirectoryChannel implements FileChannel {
     } catch (error) {
       if (isMissing(error)) {
         return [];
+      }
+      throw error;
+    }
+  }
+
+  async listDirectories(directory: string): Promise<readonly string[]> {
+    try {
+      const entries = await readdir(this.#resolve(directory), { withFileTypes: true });
+      return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+    } catch (error) {
+      if (isMissing(error)) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async isDirectory(path: string): Promise<boolean> {
+    try {
+      return (await stat(this.#resolve(path))).isDirectory();
+    } catch (error) {
+      if (isMissing(error)) {
+        return false;
       }
       throw error;
     }
