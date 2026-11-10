@@ -142,7 +142,7 @@ licence/sign-in class always reports and never presses; an unknown dialog is
 
 **Verification:** `automated test` + `fake/mock only`; real Windows pending.
 
-**Delivered 2026-11-10 (#71):** `src/platform/recovery-policy.ts` is the
+**Delivered 2026-11-10 (#71, PR #79):** `src/platform/recovery-policy.ts` is the
 platform-neutral policy (measured allow list, human-only classes, unknown =>
 `A8N-SEC-001`); macOS PR #50 can adopt it later and was not moved here.
 `src/platform/windows/recovery.ts` reads only the passive `tasklist /V` window
@@ -170,7 +170,7 @@ the destination was proven or only PID-proven.
 
 **Verification:** `automated test` + `fake/mock only`; real Windows pending.
 
-**Delivered 2026-11-10 (#72):** the job protocol is 1.1 and carries the
+**Delivered 2026-11-10 (#72, PR #79):** the job protocol is 1.1 and carries the
 controller's `runId`. After verifying a job and before executing it, the agent
 writes `results/<jobId>/session-marker.json` with the run id, the job id, its
 identity and 32 random bytes. The controller reads it back; a marker that does
