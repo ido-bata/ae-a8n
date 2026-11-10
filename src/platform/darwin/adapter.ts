@@ -850,7 +850,12 @@ export class DarwinAdapter implements PlatformAdapter {
         state: sessionReady ? "done" : "needs-human",
         reason: sessionReady
           ? `the account has an Aqua session (asid ${String(gui.asid)})`
-          : (facts.guiSessionFailure ?? "the target account has no GUI session to run After Effects in"),
+          : !accountKnown
+            ? user === null
+              ? "no target account was named, so its session cannot be looked for"
+              : `the account ${user} could not be resolved, so its session cannot be looked for`
+            : (facts.guiSessionFailure ??
+              "the target account has no GUI session to run After Effects in"),
         action: sessionReady
           ? null
           : "Log in as the target account once (fast user switching is enough), then switch back. " +
