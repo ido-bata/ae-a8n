@@ -141,6 +141,7 @@ Adobe公式（別OSアカウント × 同一PC）: 追加のデバイスアク�
 - `launchctl print gui/<uid>` から `asid` と `session`（Aqua / Background / …）を読む。
 - `lsappinfo list` から各アプリの `pid` / `uid` / `asid` を読む（セッションIDの同定）。
 - `runInSession` / `spawnInSession`: 自分のセッションなら直接実行、別セッションなら `launchctl asuser`（root 時のみ）。**宛先のセッションが不明でuidが違う場合は送らない**（"Nothing was sent."）。
+- `startInSession`: `launch()` が Ae を明示的に起動するための同経路。子プロセスを返すので、起動した Ae 自身の pid を記録できる（`launchctl asuser` はコマンドを in-place で exec する；ローカルで spawned child の pid がコマンドの pid と一致することを確認）。
 - `isInsideSession`: uid と asid の**両方**が一致しない对方的セッションはForeign。
 
 `src/driver/script-invocation.ts`:
@@ -148,7 +149,8 @@ Adobe公式（別OSアカウント × 同一PC）: 追加のデバイスアク�
 - プロセス一覧を `ps -axo pid=,uid=,lstart=,comm=` で取り、**uid で絞り込む**。
 - macOS でも `verifiesDestination` を true に（セッションマーカーで「応答したインスタンス」が自分のprobeの物だと証明できる）。
 - `osascript` の DoScriptFile は**対象セッションの中で**実行する。宛先不明なら拒否。
-- `recoveryTargetPid()`: **probe が応答する前に**、この transport が出したホストの pid を返す。macOS の `DoScriptFile` は **Ae をオンデマンド起動する**ので、`launch()` は何も起動せず、Ae は最初の DoScriptFile で現れる。所有権（`#owned`）は probe 成功後の `confirmLaunched()` でしか立たないため、起動モーダルで probe がタイムアウトすると pid を知れず、GUI 復旧が「ホストプロセス無し」で終わって**生きた Ae を放置していた**。起動開始後に現れ、起動前に動いていなかった Ae が**ちょうど 1 個**ならその pid を返す（0個・2個以上はclaimerしない）。**所有権そのものは従来どおり probe の証明を要求する**（quit は fail-closed のまま）。
+- `launch()` は macOS でも Ae を**明示的に起動する**（オンデマンド起動に任せない）。起動したプロセス自身の pid を `#spawnedPid` に記録する。所有権（`#owned`）は probe 成功後の `confirmLaunched()` で、**一覧の唯一のインスタンスの pid が `#spawnedPid` と一致した時だけ**立つ。一致しなければ `unknown`（`A8N-AE-004`）で、**quit しない**。
+- `recoveryTargetPid()`: **probe が応答する前に**、この transport が起動した pid を返す。一覧に `#spawnedPid` と一致するプロセスが**ちょうど 1 個**あり、最初に見た起動時刻と一致する場合だけ返す（0個・2個以上・pid だけ一致して起動時刻が違う場合は返さない）。「起動後に現れた唯一の Ae」は、人間が直後に起動した Ae と区別できないため**証拠にしない**。**所有権そのものは従来どおり probe の証明を要求する**（quit は fail-closed のまま）。
 
 `src/driver/gui-recovery.ts`（新規）と `src/driver/recovery.ts`（新規）:
 
@@ -312,7 +314,7 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 | 1 | 03:31–03:35 | FAIL。Ae は起動した（pid 69349）が probe が応答せず、GUI 復旧が「ホストプロセス無し」で終了 | `sessions/run-1793590265115/trace.jsonl` |
 | 2 | 04:22:38–04:23:49 | FAIL。`-1743: Adobe After Effects 2026にApple Eventsを送信する権限がありません` | `sessions/run-1793593358745/trace.jsonl` |
 
-1 回目で原因が分かった: macOS の `DoScriptFile` は Ae をオンデマンド起動し、`#owned` は probe 成功後の `confirmLaunched()` でしか立たないため、probe が落ちると pid を知れなかった。これを `recoveryTargetPid()` で直した（§4）。所有権の証明自体は緩めていない。
+1 回目で原因が分かった: macOS の `DoScriptFile` は Ae をオンデマンド起動し、`#owned` は probe 成功後の `confirmLaunched()` でしか立たないため、probe が落ちると pid を知れなかった。これを `recoveryTargetPid()` で直した（§4）。所有権の証明自体は緩めていない。**（後のレビューで訂正）** 当時の「起動後に現れた唯一の Ae」という判定は、人間が直後に起動した Ae を quit し得るため廃止した。現在は `launch()` が起動した pid と一致する場合だけを recovery 対象にし、所有権もその pid が唯一のインスタンスであることを要求する（§4）。
 
 2 回目は別の壁に当たった。**この 2 つの `-1743` は「TCC が拒否した」のではなく「Ae が答えない」ことを意味する。** 同じイベントを、**起動済みの** Ae に対して Terminal.app の子から送ると **届いて `-1712`（タイムアウト）** になる（§10.3）。つまり壁は**Ae の起動モーダル**で、**人が `警告` を解くまで脚本は一枚も通らない**。
 

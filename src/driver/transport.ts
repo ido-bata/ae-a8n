@@ -44,6 +44,11 @@ export type HostOwnership = {
   readonly kind: "owned" | "attached" | "unknown";
   /** What the decision rests on, for the trace and for a human. */
   readonly evidence: string;
+  /**
+   * A stable code for a refusal a caller may act on. `A8N-AE-004`: the
+   * After Effects could not be tied to this run, so it was left running.
+   */
+  readonly code?: string;
 };
 
 export interface HostTransport {

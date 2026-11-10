@@ -324,6 +324,50 @@ export function spawnInSession(
   child.on("close", (code) => options.onClose?.(code, stderr));
 }
 
+/**
+ * Starts a command inside `target`'s session and returns the child process
+ * without waiting for it to exit.
+ *
+ * Unlike `spawnInSession`, this returns the child so the caller can remember
+ * the pid of the process it actually created. `launchctl asuser <uid> <cmd>`
+ * execs the command in place rather than forking a wrapper that would own a
+ * different pid (verified locally: the spawned child's pid was the command's),
+ * so `child.pid` is the started application's own pid. That is what lets a
+ * transport tie an After Effects it observes to the process it started.
+ *
+ * The same two ways in as `runInSession`, and nothing else: the process is
+ * already inside the session, or it is root and enters with `launchctl`. Any
+ * other caller is refused, so a start meant for the isolated session can never
+ * land on the console user's desktop.
+ */
+export function startInSession(
+  target: MacSession,
+  command: string,
+  args: readonly string[],
+  options: { readonly cwd?: string } = {},
+): ChildProcess {
+  if (isInsideSession(target)) {
+    return spawn(command, [...args], {
+      cwd: options.cwd ?? "/",
+      detached: true,
+      stdio: "ignore",
+    });
+  }
+  if (isRoot()) {
+    return spawn("launchctl", ["asuser", String(target.uid), command, ...args], {
+      cwd: options.cwd ?? "/",
+      detached: true,
+      stdio: "ignore",
+    });
+  }
+  throw new MacSessionError(
+    `cannot start ${command} in the session of ${target.username} (uid ${target.uid}): this process runs as ` +
+      `uid ${currentSession().uid} and is not root, so it cannot enter another user's session. ` +
+      "Run the test from inside that user's session, or as root with launchctl asuser. " +
+      "Nothing was started in the console session.",
+  );
+}
+
 function run(
   command: string,
   args: readonly string[],

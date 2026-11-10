@@ -22,7 +22,7 @@ import {
   isBlockingWindow,
   parseUiListing,
 } from "../src/driver/gui-recovery.js";
-import { consoleSessionUid, parseLaunchctlGuiSession, parseLsappinfo } from "../src/driver/mac-session.js";
+import { consoleSessionUid, parseLaunchctlGuiSession, parseLsappinfo, startInSession } from "../src/driver/mac-session.js";
 import { RECOVERY_BUTTONS, describeWindow, isHumanOnlyWindow } from "../src/driver/recovery.js";
 
 describe("the login session of a user", () => {
@@ -268,5 +268,24 @@ describe("the GUI recovery", () => {
           pid: 4242,
         }),
     ).toThrow(/no Aqua session/);
+  });
+});
+
+describe("starting a process in another user's session", () => {
+  it("refuses when this process can neither be inside it nor enter it as root", () => {
+    const target = { uid: 9999, username: "someone-else", asid: 1234, kind: "Aqua" as const };
+    const patched = process as { getuid?: (() => number) | undefined };
+    const original = patched.getuid;
+    patched.getuid = () => 501;
+    try {
+      expect(() => startInSession(target, "/bin/true", [])).toThrow(
+        /cannot start \/bin\/true in the session of someone-else/,
+      );
+      expect(() => startInSession(target, "/bin/true", [])).toThrow(
+        /Nothing was started in the console session/,
+      );
+    } finally {
+      patched.getuid = original;
+    }
   });
 });

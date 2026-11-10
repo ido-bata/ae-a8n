@@ -13,11 +13,15 @@ already running. `AfterEffects.ownership()` reports which:
 
 How it is decided on macOS: just before launching, the transport lists the
 processes of this install's executable (pid and start time). If any exist,
-the session is `attached`. If none existed and, once the readiness probe has
-answered, exactly one is running and it started after the launch began, the
-session owns that process. At `close()` the check is repeated: the same pid
-with the same start time must still be the only instance — a restarted AE, a
-reused pid, or a second instance all make it `unknown`.
+the session is `attached`. If none existed, the transport starts After Effects
+itself and keeps the pid of the process it created. Once the readiness probe
+has answered, exactly one instance must be running and its pid must be that
+recorded pid; otherwise the session is `unknown`. At `close()` the check is
+repeated: the same pid with the same start time must still be the only
+instance — a restarted AE, a reused pid, or a second instance all make it
+`unknown`. If the transport cannot record a pid, the session is `unknown` even
+when a single instance appeared after the snapshot: that alone cannot tell the
+run's After Effects from one the person started a moment later.
 
 Windows has no process check yet, so a Windows session is `unknown` and
 `close()` does not quit AE there. That is deliberate: no evidence, no quit.

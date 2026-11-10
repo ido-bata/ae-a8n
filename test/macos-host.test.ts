@@ -250,6 +250,7 @@ describe("closing a session", () => {
       exitTimeoutMs,
       now: () => T0,
       processes: () => lists[Math.min(polls++, lists.length - 1)] as ReturnType<typeof ae>[],
+      launchMacHost: () => Promise.resolve(42),
     });
     await transport.launch();
     transport.confirmLaunched();
@@ -287,12 +288,17 @@ describe("who owns the After Effects process", () => {
   const ae = (pid: number, startedAt = T0 + 1_000, exe = executable): P => ({ pid, startedAt, executable: exe });
 
   function transportSeeing(...lists: P[][]) {
+    return transportLaunched(42, ...lists);
+  }
+
+  function transportLaunched(launchedPid: number | null, ...lists: P[][]) {
     let i = 0;
     return new ScriptInvocationTransport({
       platform: "darwin",
       install,
       now: () => T0,
       processes: () => lists[Math.min(i++, lists.length - 1)] as P[],
+      launchMacHost: () => Promise.resolve(launchedPid === null ? undefined : launchedPid),
     });
   }
 
@@ -301,6 +307,33 @@ describe("who owns the After Effects process", () => {
     await t.launch();
     t.confirmLaunched();
     expect(t.ownership().kind).toBe("owned");
+  });
+
+  it("claims the process this run started, and does not quit anything else", async () => {
+    const t = transportLaunched(42, [], [ae(42)], [ae(42)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership()).toMatchObject({ kind: "owned" });
+    expect(t.hostPid()).toBe(42);
+  });
+
+  it("does not claim an After Effects the run did not start", async () => {
+    // The run started pid 99, but the only instance is pid 42 — an After
+    // Effects the human started after the snapshot. It must not be quit.
+    const t = transportLaunched(99, [], [ae(42)], [ae(42)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership()).toMatchObject({ kind: "unknown", code: "A8N-AE-004" });
+    expect(t.hostPid()).toBeNull();
+  });
+
+  it("claims nothing when the launch recorded no pid", async () => {
+    // Without a pid from the start, "the only instance" proves nothing about
+    // who started it, so it is not ours to quit.
+    const t = transportLaunched(null, [], [ae(42)], [ae(42)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership()).toMatchObject({ kind: "unknown", code: "A8N-AE-004" });
   });
 
   it("is attached to a host that was already running", async () => {
@@ -323,14 +356,14 @@ describe("who owns the After Effects process", () => {
     const t = transportSeeing([], [ae(42, T0 - 30_000)]);
     await t.launch();
     t.confirmLaunched();
-    expect(t.ownership().kind).toBe("unknown");
+    expect(t.ownership()).toMatchObject({ kind: "unknown", code: "A8N-AE-004" });
   });
 
   it("stops owning a host whose pid now belongs to a different start", async () => {
     const t = transportSeeing([], [ae(42)], [ae(42, T0 + 90_000)]);
     await t.launch();
     t.confirmLaunched();
-    expect(t.ownership()).toMatchObject({ kind: "unknown" });
+    expect(t.ownership()).toMatchObject({ kind: "unknown", code: "A8N-AE-004" });
   });
 
   it("stops owning once a second instance is running", async () => {
@@ -362,11 +395,10 @@ describe("who owns the After Effects process", () => {
 });
 
 describe("finding the host before it has answered", () => {
-  // On macOS `DoScriptFile` starts After Effects on demand, so the process
-  // appears after launch() returned — and when a start-up dialog blocks it, the
-  // readiness probe never answers, so the ownership bookkeeping never runs.
-  // The GUI fallback still has to find that process: it was this transport
-  // that caused it to start.
+  // On macOS launch() starts After Effects itself, but when a start-up dialog
+  // blocks it the readiness probe never answers, so the ownership bookkeeping
+  // never runs. The GUI fallback still has to find that process: it is the one
+  // this transport started, at the pid launch() recorded.
   const executable = "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects";
   const install = { executable, versionName: "Adobe After Effects 2026.app", renderExecutable: null };
   const T0 = Date.parse("2026-10-15T00:00:00Z");
@@ -374,12 +406,17 @@ describe("finding the host before it has answered", () => {
   const ae = (pid: number, startedAt = T0 + 1_000, exe = executable): P => ({ pid, startedAt, executable: exe });
 
   function transportSeeing(...lists: P[][]) {
+    return transportLaunched(42, ...lists);
+  }
+
+  function transportLaunched(launchedPid: number | null, ...lists: P[][]) {
     let i = 0;
     return new ScriptInvocationTransport({
       platform: "darwin",
       install,
       now: () => T0,
       processes: () => lists[Math.min(i++, lists.length - 1)] as P[],
+      launchMacHost: () => Promise.resolve(launchedPid === null ? undefined : launchedPid),
     });
   }
 
@@ -400,6 +437,27 @@ describe("finding the host before it has answered", () => {
   it("claims nothing when two hosts appeared", async () => {
     const t = transportSeeing([], [ae(42), ae(43)]);
     await t.launch();
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("does not hand the GUI fallback a host the run did not start", async () => {
+    // The run started pid 99; the only instance is a human's pid 42.
+    const t = transportLaunched(99, [], [ae(42)]);
+    await t.launch();
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("claims nothing when the launch recorded no pid", async () => {
+    const t = transportLaunched(null, [], [ae(42)]);
+    await t.launch();
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("stops claiming the pid once it names a different process", async () => {
+    const t = transportSeeing([], [ae(42)], [ae(42, T0 + 90_000)]);
+    await t.launch();
+    // The start time is pinned the first time the pid is seen.
+    expect(t.recoveryTargetPid()).toBe(42);
     expect(t.recoveryTargetPid()).toBeNull();
   });
 
