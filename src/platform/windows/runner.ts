@@ -31,6 +31,7 @@ import {
   type StepOutcome,
   type TargetSpec,
 } from "../contract.js";
+import { windowsCapabilities } from "./capabilities.js";
 import type { FileChannel } from "./channel.js";
 import {
   acquireRunLock,
@@ -50,24 +51,18 @@ import {
 } from "./job.js";
 import {
   probeWindows,
+  type CommandResult,
   type CommandRunner,
   type WindowsFacts,
 } from "./probe.js";
+import {
+  assessWindowsRecovery,
+  interpretWindowsRecoveryResult,
+  WINDOWS_RECOVERY_COMMAND,
+} from "./recovery.js";
 import { submitJob, type SubmitOptions, type SubmitResult } from "./remote.js";
 
 export const SETUP_STATE_PATH = "setup/state.json";
-
-/** The capabilities this backend can honestly claim today. */
-export function windowsCapabilities(isolation: TargetSpec["isolation"]): Capabilities {
-  return {
-    nonInterference: isolation === "remote-host" ? "by-construction" : "unproven",
-    // T089/T090 own these proofs; claiming them now would be a lie.
-    provesOwnership: false,
-    provesDestination: false,
-    guiRecovery: false,
-    sessionIdentity: "host-and-user",
-  };
-}
 
 export class WindowsJobRefusedError extends Error {
   readonly code: string;
@@ -459,16 +454,19 @@ export class WindowsAdapter implements PlatformAdapter {
     return new WindowsSession(target, prepared.identity, backend);
   }
 
-  recover(runDir: string): Promise<readonly RecoveryFinding[]> {
-    return Promise.resolve([
-      {
-        code: "A8N-JOB-002",
-        action: "reported",
-        detail:
-          `GUI recovery is not implemented on Windows (T089); nothing was acted on in ${runDir}. ` +
-          "The run is left for a human to inspect.",
-      },
-    ]);
+  async recover(runDir: string): Promise<readonly RecoveryFinding[]> {
+    let result: CommandResult;
+    try {
+      result = await this.#probeRunner.run(WINDOWS_RECOVERY_COMMAND);
+    } catch (error) {
+      result = {
+        stdout: "",
+        stderr: error instanceof Error ? error.message : String(error),
+        exitCode: 127,
+      };
+    }
+    const observation = interpretWindowsRecoveryResult(result);
+    return assessWindowsRecovery(observation, { runDir });
   }
 
   #owner(): RunOwner {

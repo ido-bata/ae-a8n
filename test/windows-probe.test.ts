@@ -130,8 +130,8 @@ describe("probeWindows", () => {
     });
     expect(result.capabilities).toEqual({
       nonInterference: "by-construction",
-      provesOwnership: true,
-      provesDestination: true,
+      provesOwnership: false,
+      provesDestination: false,
       guiRecovery: false,
       sessionIdentity: "host-and-user",
     });

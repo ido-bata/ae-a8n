@@ -212,12 +212,13 @@ describe("Windows setup steps", () => {
     );
   });
 
-  it("reports GUI recovery as not implemented instead of an empty list", async () => {
+  it("reports a real recovery observation instead of the old placeholder", async () => {
     const { adapter } = await setup();
     const findings = await adapter.recover("runs/20261110T120000Z-abcdef01");
     expect(findings).toHaveLength(1);
     expect(findings[0]).toMatchObject({ code: "A8N-JOB-002", action: "reported" });
-    expect(findings[0]?.detail).toContain("not implemented on Windows");
+    expect(findings[0]?.detail).toContain("no AfterFX.exe process was running");
     expect(findings[0]?.detail).toContain("nothing was acted on");
+    expect(findings[0]?.detail).not.toContain("not implemented");
   });
 });
