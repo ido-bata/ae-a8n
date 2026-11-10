@@ -274,9 +274,14 @@ describe("the GUI recovery", () => {
     // A pid is not an identity. The process is re-read immediately before the
     // Accessibility query; a recycled pid is refused with A8N-AE-004 rather
     // than queried or clicked.
+    //
+    // The console-session refusal is exercised by its own test; this one is
+    // about the process check, so it opts out of a guard that depends on the
+    // host having a readable /dev/console (CI's Linux runner has none).
     const gui = new MacGuiRecovery({
       session: { uid: 502, username: "test", asid: 100040, kind: "Aqua" },
       pid: 4242,
+      allowConsoleSession: true,
       verifyProcess: () => false,
     });
     expect(() => gui.listWindows()).toThrow(/A8N-AE-004/);
