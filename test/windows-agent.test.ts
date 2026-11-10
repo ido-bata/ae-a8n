@@ -337,6 +337,7 @@ describe("the agent", () => {
       writeAtomic: (path, bytes) => files.writeAtomic(path, bytes),
       createExclusive: (path, bytes) =>
         path === jobPaths(JOB_ID).claim ? Promise.resolve(false) : files.createExclusive(path, bytes),
+      ensureDirectory: (path) => files.ensureDirectory(path),
       list: (directory) => files.list(directory),
       listDirectories: (directory) => files.listDirectories(directory),
       isDirectory: (path) => files.isDirectory(path),

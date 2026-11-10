@@ -10,6 +10,19 @@ on a real host (#47).
 
 ### Fixed
 
+- A job whose result was already in the channel was reported as a timeout: the
+  controller polled `results/<jobId>/result.json` while that directory did not
+  yet exist, and a macOS SMB client caches "no such directory" and keeps
+  answering it for about a minute after the directory appears. On the real host
+  the controller gave up 57 s after the agent had published its refusal. The
+  controller now creates the job's result directory before it publishes the
+  job, so no poll walks through a directory the agent has not created yet.
+- The polling loop now records what it saw (polls, absent, failed, slowest
+  read) and says so in the timeout, treats a read that throws or never answers
+  as a failed observation instead of crashing or outliving the deadline, and
+  makes one last look after the deadline. A result found there is recorded as
+  `lateResult` — the run stays `unknown` and quarantined, and the job is never
+  re-sent.
 - `ae-a8n test --host <name>` refused every run with "the Windows channel key
   is not configured" even when the channel was reachable and the agent was
   heartbeating: the adapter verified the host's key file and then signed the

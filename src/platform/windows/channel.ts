@@ -20,6 +20,15 @@ export interface FileChannel {
   writeAtomic(path: string, bytes: Uint8Array): Promise<void>;
   /** Create the file only if it does not exist; false when it already did. */
   createExclusive(path: string, bytes: Uint8Array): Promise<boolean>;
+  /**
+   * Create a directory, and its parents.
+   *
+   * Existence is not only a protocol question. A client caches the answer "no
+   * such directory" and keeps giving it after the directory appears; the
+   * controller on a mounted share was blind to a result for a minute because
+   * of exactly that. Making the directory before anyone polls it is the cure.
+   */
+  ensureDirectory(path: string): Promise<void>;
   /** Names in a directory; empty when it does not exist. */
   list(directory: string): Promise<readonly string[]>;
   /** Subdirectory names; empty when the directory does not exist. */
@@ -133,6 +142,10 @@ export class DirectoryChannel implements FileChannel {
       }
       throw error;
     }
+  }
+
+  async ensureDirectory(path: string): Promise<void> {
+    await mkdir(this.#resolve(path), { recursive: true });
   }
 
   async list(directory: string): Promise<readonly string[]> {
