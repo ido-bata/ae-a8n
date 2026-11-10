@@ -141,7 +141,10 @@ describe("resolveNpmCli", () => {
   });
 });
 
-describe("staging with the real npm CLI", () => {
+// Windows spawns npm noticeably slower than Linux does, and a locked file in
+// %TEMP% refuses removal until the child's handles close. Both are real, and
+// both belong in the timeouts here rather than in a weaker assertion.
+describe("staging with the real npm CLI", { timeout: 30_000 }, () => {
   let dir: string;
   let pkg: string;
   let tarball: string;
@@ -258,7 +261,7 @@ describe("staging with the real npm CLI", () => {
 
   afterEach(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   it("uploads to the stage queue, tagged next, the exact verified tarball", async () => {
