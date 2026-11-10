@@ -368,6 +368,20 @@ describe("the agent heartbeat", () => {
       new Date(NOW.getTime() + 31_000),
     );
     expect(verdict).toMatchObject({ ok: false, code: "A8N-JOB-005" });
+    // A stopped agent reads as "31s ago", not as a heartbeat dated in the
+    // future: the report said "52s from now" on the real host.
+    expect(verdict.ok ? "" : verdict.detail).toMatch(/last checked in 31s ago/u);
+  });
+
+  it("refuses a heartbeat dated in the future as a clock disagreement", () => {
+    const verdict = checkPresence(
+      signed(),
+      [KEY],
+      { host: "WIN-AE-01", user: "a8n", version: AGENT.version },
+      new Date(NOW.getTime() - 31_000),
+    );
+    expect(verdict).toMatchObject({ ok: false, code: "A8N-JOB-005" });
+    expect(verdict.ok ? "" : verdict.detail).toMatch(/31s in the future/u);
   });
 
   it("refuses a non-interactive session, whatever the host says", () => {

@@ -245,13 +245,25 @@ export function checkPresence(
     return { ok: false, code: "A8N-JOB-001", detail: "the heartbeat time is not an ISO timestamp" };
   }
   const ageMs = now.getTime() - heardAt;
-  if (ageMs > PRESENCE_MAX_AGE_MS || ageMs < -PRESENCE_MAX_AGE_MS) {
+  if (ageMs > PRESENCE_MAX_AGE_MS) {
     return {
       ok: false,
       code: "A8N-JOB-005",
       detail:
-        `the agent last checked in ${String(Math.round(ageMs / 1000))}s from now ` +
+        `the agent last checked in ${String(Math.round(ageMs / 1000))}s ago ` +
         `(limit ${String(PRESENCE_MAX_AGE_MS / 1000)}s); it is not running, or its clock is wrong`,
+    };
+  }
+  if (ageMs < -PRESENCE_MAX_AGE_MS) {
+    // A heartbeat dated in the future is not a fresh one. Saying "52s from
+    // now" made a stopped agent read as an early one.
+    return {
+      ok: false,
+      code: "A8N-JOB-005",
+      detail:
+        `the agent's heartbeat is dated ${String(Math.round(-ageMs / 1000))}s in the future ` +
+        `(limit ${String(PRESENCE_MAX_AGE_MS / 1000)}s); the two clocks disagree, so liveness ` +
+        "cannot be measured from here",
     };
   }
   if (!presence.interactive || presence.agent.sessionId <= 0) {
