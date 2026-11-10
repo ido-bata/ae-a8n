@@ -88,14 +88,20 @@ class UnreadableChannel extends DirectoryChannel {
 
 const roots: string[] = [];
 
+const AUTOSTART =
+  "C:\\Users\\a8n\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\a8n-agent.lnk";
+
 async function setup(options: {
   readonly probe?: CommandRunner;
   readonly agentExists?: boolean;
+  readonly autostartExists?: boolean;
+  readonly autostartEntry?: string | null;
   readonly channel?: DirectoryChannel;
 } = {}): Promise<{ readonly channel: DirectoryChannel; readonly adapter: WindowsAdapter }> {
   const root = await mkdtemp(join(tmpdir(), "a8n-setup-"));
   roots.push(root);
   const channel = options.channel ?? new DirectoryChannel(root);
+  const autostartEntry = options.autostartEntry === undefined ? AUTOSTART : options.autostartEntry;
   const adapter = new WindowsAdapter({
     channel,
     host: "WIN-AE-01",
@@ -104,7 +110,13 @@ async function setup(options: {
     probe: options.probe ?? fakeProbe(),
     runDirectory: join(root, "runs-local"),
     agentEntry: "C:\\a8n\\scripts\\windows-agent.mjs",
-    exists: () => Promise.resolve(options.agentExists ?? true),
+    ...(autostartEntry === null ? {} : { autostartEntry }),
+    exists: (path) =>
+      Promise.resolve(
+        path === autostartEntry
+          ? options.autostartExists ?? true
+          : options.agentExists ?? true,
+      ),
   });
   return { channel, adapter };
 }
@@ -114,22 +126,34 @@ afterEach(async () => {
 });
 
 describe("Windows setup steps", () => {
-  it("plans the four idempotent steps and never automates sign-in", async () => {
+  it("plans the six idempotent steps and never automates sign-in", async () => {
     const { adapter } = await setup();
     const steps = await adapter.plan(TARGET);
     expect(steps.map((step) => step.id)).toEqual([
       "windows.channel",
+      "windows.channel-permissions",
       "windows.agent",
+      "windows.agent-autostart",
       "windows.ae",
       "windows.signin",
     ]);
-    expect(steps.slice(0, 3).map((step) => step.state)).toEqual(["done", "done", "done"]);
-    expect(steps[2]?.reason).toContain("26.5.0");
-    expect(steps[3]).toMatchObject({
+    expect(steps.slice(0, 5).map((step) => step.state)).toEqual([
+      "done",
+      "needs-human",
+      "done",
+      "done",
+      "done",
+    ]);
+    expect(steps[4]?.reason).toContain("26.5.0");
+    expect(steps[5]).toMatchObject({
       state: "needs-human",
       automatable: false,
     });
-    expect(steps[3]?.action).toContain("Sign in");
+    expect(steps[5]?.action).toContain("Sign in");
+    expect(steps.find((step) => step.id === "windows.channel-permissions")).toMatchObject({
+      state: "needs-human",
+      automatable: false,
+    });
   });
 
   it("changes nothing on a dry run", async () => {
@@ -150,6 +174,8 @@ describe("Windows setup steps", () => {
     expect(first.stateFile).toBe(SETUP_STATE_PATH);
     expect(first.outcomes.map((outcome) => outcome.state)).toEqual([
       "done",
+      "needs-human",
+      "done",
       "done",
       "done",
       "needs-human",
@@ -163,10 +189,31 @@ describe("Windows setup steps", () => {
     const second = await adapter.apply(steps, { yes: true, dryRun: false });
     expect(second.outcomes.map((outcome) => outcome.state)).toEqual([
       "skipped",
+      "needs-human",
+      "skipped",
       "skipped",
       "skipped",
       "needs-human",
     ]);
+  });
+
+  it("checks the logon entry instead of registering it", async () => {
+    const missing = await setup({ autostartExists: false });
+    const missingSteps = await missing.adapter.plan(TARGET);
+    const step = missingSteps.find((entry) => entry.id === "windows.agent-autostart");
+    expect(step).toMatchObject({ state: "planned", automatable: false });
+    expect(step?.reason).toContain("does not exist");
+    const applied = await missing.adapter.apply(missingSteps, { yes: true, dryRun: false });
+    expect(applied.outcomes.find((outcome) => outcome.id === "windows.agent-autostart")).toMatchObject({
+      state: "failed",
+    });
+
+    const none = await setup({ autostartEntry: null });
+    const noneSteps = await none.adapter.plan(TARGET);
+    expect(noneSteps.find((entry) => entry.id === "windows.agent-autostart")).toMatchObject({
+      state: "planned",
+      reason: "no agent logon entry is configured",
+    });
   });
 
   it("plans a missing agent entry and fails it without pretending", async () => {

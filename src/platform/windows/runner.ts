@@ -156,6 +156,8 @@ export type WindowsAdapterOptions = {
   readonly sleep?: (ms: number) => Promise<void>;
   /** The agent entry to check in `windows.agent`; null means "not configured". */
   readonly agentEntry?: string;
+  /** The logon entry that starts the agent; null means "not configured". */
+  readonly autostartEntry?: string;
   readonly exists?: (path: string) => Promise<boolean>;
 };
 
@@ -253,6 +255,7 @@ export class WindowsAdapter implements PlatformAdapter {
   readonly #pollMs: number | undefined;
   readonly #sleep: ((ms: number) => Promise<void>) | undefined;
   readonly #agentEntry: string | null;
+  readonly #autostartEntry: string | null;
   readonly #exists: (path: string) => Promise<boolean>;
 
   #isolation: TargetSpec["isolation"] = "remote-host";
@@ -272,6 +275,7 @@ export class WindowsAdapter implements PlatformAdapter {
     this.#pollMs = options.pollMs;
     this.#sleep = options.sleep;
     this.#agentEntry = options.agentEntry ?? null;
+    this.#autostartEntry = options.autostartEntry ?? null;
     this.#exists = options.exists ?? defaultExists;
   }
 
@@ -320,6 +324,17 @@ export class WindowsAdapter implements PlatformAdapter {
       automatable: !channelReadable,
     });
 
+    steps.push({
+      id: "windows.channel-permissions",
+      state: "needs-human",
+      reason:
+        "the controller account and the agent account must both be able to read and write the channel root; one account's write probe cannot prove the other's access",
+      action:
+        "Grant Modify on the channel root to the controller account and to the agent account " +
+        "(for example with icacls). Granting it is a human decision; setup never records a credential.",
+      automatable: false,
+    });
+
     let agentExists = false;
     if (this.#agentEntry !== null) {
       agentExists = await this.#exists(this.#agentEntry).catch(() => false);
@@ -335,6 +350,27 @@ export class WindowsAdapter implements PlatformAdapter {
       action: agentExists
         ? null
         : "Install @ido-bata/ae-a8n on the target and point setup at its scripts/windows-agent.mjs.",
+      automatable: false,
+    });
+
+    let autostartExists = false;
+    if (this.#autostartEntry !== null) {
+      autostartExists = await this.#exists(this.#autostartEntry).catch(() => false);
+    }
+    steps.push({
+      id: "windows.agent-autostart",
+      state: autostartExists ? "done" : "planned",
+      reason: autostartExists
+        ? `the agent's logon entry ${this.#autostartEntry} exists`
+        : this.#autostartEntry === null
+          ? "no agent logon entry is configured"
+          : `the agent's logon entry ${this.#autostartEntry} does not exist`,
+      // The agent must run in the dedicated user's interactive session, so it
+      // starts at that user's logon. Setup checks the entry; it does not
+      // register it and never stores a password.
+      action: autostartExists
+        ? null
+        : "Register the agent to start at the dedicated user's logon (a Startup-folder shortcut or a logon task). Sign-in stays manual.",
       automatable: false,
     });
 
