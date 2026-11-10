@@ -45,6 +45,7 @@ import { fileURLToPath } from "node:url";
 import {
   assertOutcomeSession,
   assertNoRunningAfterEffects,
+  assertReportIsolation,
   assertResultSession,
   assertTargetSession,
   parseAeProcesses,
@@ -489,12 +490,10 @@ function readReport(path, targetUid) {
   assertTrustedSharedFile(path, targetUid, "report");
   const report = JSON.parse(readFileSync(path, "utf-8"));
   assertResultSession(report, targetUid);
-  if (report.session?.isolated !== true) {
-    throw new Error(
-      `the run reported that it was not isolated (uid ${report.session?.uid}, console uid ` +
-        `${report.session?.consoleUid}); the result is not trusted.`,
-    );
-  }
+  // The report's own `isolated` flag is not evidence on its own: check the
+  // console owner it recorded. An unreadable /dev/console is -1, which must
+  // never read as a proven difference from the run's uid.
+  assertReportIsolation(report);
   return report;
 }
 

@@ -282,6 +282,65 @@ export function targetSessionFrom(offstageStatus, localSession) {
 }
 
 /**
+ * Whether this session is demonstrably off the console.
+ *
+ * `consoleUid !== uid` is not enough on its own: when `/dev/console` cannot
+ * be read the owner is -1, which is different from every real uid. That is an
+ * unknown owner, not a second user, and unknown is not isolated. A claim of
+ * isolation therefore needs both a readable console owner and a proven
+ * difference from this session's uid.
+ */
+export function sessionIsolation({ uid, consoleUid }) {
+  if (!Number.isInteger(uid) || uid < 0) {
+    return {
+      isolated: false,
+      reason: `this process's uid (${uid}) could not be read, so its session cannot be shown to be off the console.`,
+    };
+  }
+  if (!Number.isInteger(consoleUid) || consoleUid < 0) {
+    return {
+      isolated: false,
+      reason:
+        "the owner of /dev/console could not be read, so this session cannot be shown to be off the " +
+        "console the user is looking at.",
+    };
+  }
+  if (consoleUid === uid) {
+    return {
+      isolated: false,
+      reason: `uid ${uid} owns the console session, which is the screen the user is looking at.`,
+    };
+  }
+  return { isolated: true };
+}
+
+/**
+ * A report may only be believed when isolation is both claimed and provable.
+ *
+ * The report is written by the job, so its `isolated: true` is the job's own
+ * account. The console owner it recorded is checked again here: a report
+ * written on a machine where `/dev/console` was unreadable cannot be read as
+ * an isolated run, whatever it says about itself.
+ */
+export function assertReportIsolation(report) {
+  const isolation = sessionIsolation({
+    uid: report?.session?.uid,
+    consoleUid: report?.session?.consoleUid,
+  });
+  if (report?.session?.isolated !== true || !isolation.isolated) {
+    const reason =
+      isolation.isolated === true
+        ? "the report does not say that it was isolated."
+        : isolation.reason;
+    throw new Error(
+      `the run is not proven isolated (uid ${report?.session?.uid}, console uid ` +
+        `${report?.session?.consoleUid}): ${reason} The result is not trusted.`,
+    );
+  }
+  return report;
+}
+
+/**
  * Whether a shared directory already has the mode both accounts expect.
  *
  * The sticky bit is part of the requirement, not decoration: in a directory

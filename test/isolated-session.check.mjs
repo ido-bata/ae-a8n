@@ -31,12 +31,14 @@ import {
   assertJobSession,
   assertNoRunningAfterEffects,
   assertOutcomeSession,
+  assertReportIsolation,
   assertResultSession,
   assertTargetSession,
   jobFileIsTrusted,
   parseAeProcesses,
   parseTerminalResult,
   sessionFromOffstageStatus,
+  sessionIsolation,
   sharedDirIsUsable,
   sharedDirIsUsableForOthers,
   shellCommandLine,
@@ -92,6 +94,33 @@ test("a user with no login domain is reported as not logged in, with a remedy", 
   const error = describeMissingSession(502, "Bad request.\nCould not find domain for user gui: 502");
   assert.match(error.message, /has no login session/);
   assert.match(error.message, /fast user switch/);
+});
+
+test("an unreadable console owner never yields an isolated session", () => {
+  // -1 is not "somebody else". When /dev/console cannot be read, a difference
+  // cannot be proven, so the session is not isolated.
+  const unknown = sessionIsolation({ uid: 502, consoleUid: -1 });
+  assert.equal(unknown.isolated, false);
+  assert.match(unknown.reason, /could not be read/);
+  assert.equal(sessionIsolation({ uid: 501, consoleUid: 501 }).isolated, false);
+  assert.equal(sessionIsolation({ uid: 502, consoleUid: 501 }).isolated, true);
+});
+
+test("a report claiming isolation with an unknown console owner is rejected", () => {
+  assert.throws(
+    () => assertReportIsolation({ session: { uid: 502, consoleUid: -1, isolated: true } }),
+    /could not be read/,
+  );
+  assert.throws(
+    () => assertReportIsolation({ session: { uid: 501, consoleUid: 501, isolated: true } }),
+    /owns the console session/,
+  );
+  assert.throws(
+    () => assertReportIsolation({ session: { uid: 502, consoleUid: 501, isolated: false } }),
+    /not proven isolated/,
+  );
+  const report = { session: { uid: 502, consoleUid: 501, isolated: true } };
+  assert.equal(assertReportIsolation(report), report);
 });
 
 test("a result from another session is not trusted", () => {
