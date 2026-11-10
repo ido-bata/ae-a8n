@@ -26,6 +26,8 @@ export type JobExecution = {
   readonly status: "ok" | "failed" | "unknown";
   /** A diagnostic code, when the executor has one; published as `code` or null. */
   readonly code?: string;
+  /** The process's exit code, or null/absent when it did not exit normally. */
+  readonly exitCode?: number | null;
   readonly message: string;
   /** Relative paths under the result directory, written after the result. */
   readonly artifacts?: Readonly<Record<string, Uint8Array>>;
@@ -159,6 +161,7 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
     status: execution.status,
     code: execution.code ?? null,
     message: execution.message,
+    exitCode: execution.exitCode ?? null,
     payloadSha256: job.payloadSha256,
     agent: identity,
     startedAt,
@@ -187,6 +190,7 @@ async function refuse(
     status: "refused",
     code: "A8N-JOB-001",
     message: detail,
+    exitCode: null,
     payloadSha256,
     agent: identity,
     startedAt,

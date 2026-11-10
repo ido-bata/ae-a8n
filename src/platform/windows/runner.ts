@@ -171,13 +171,6 @@ function defaultExists(path: string): Promise<boolean> {
   );
 }
 
-function exitCodeFromMessage(status: "ok" | "failed", message: string): number {
-  const match = /exited with code (-?\d+)/u.exec(message);
-  if (match?.[1] !== undefined) {
-    return Number(match[1]);
-  }
-  return status === "ok" ? 0 : 1;
-}
 
 /**
  * The one version the probe proved. Two versions or an unreadable one is
@@ -548,15 +541,14 @@ export class WindowsAdapter implements PlatformAdapter {
       runId,
       host: this.#host,
       user: this.#user,
-      sessionId: facts.sessionId ?? 0,
+      sessionId: facts.sessionId,
       agentId: this.#agent.id,
       agentVersion: this.#agent.version,
       aeVersion: aeVersionFromFacts(facts),
       jobId: submitted.jobId,
       payloadSha256: sha256Hex(payload),
-      // No published result (a timeout) is bound to the empty byte string; the
-      // outcome says why.
-      resultSha256: sha256Hex(resultBytes ?? new Uint8Array()),
+      // A timeout publishes nothing; null says so rather than hashing empty bytes.
+      resultSha256: resultBytes === null ? null : sha256Hex(resultBytes),
       outcome: submitted.status,
       startedAt,
       finishedAt: this.#now().toISOString(),
@@ -576,7 +568,9 @@ export class WindowsAdapter implements PlatformAdapter {
     const artifacts = await this.#writeLocalArtifacts(submitted.jobId, runId);
     await releaseRunLock(this.#channel, runId, owner);
     return {
-      exitCode: exitCodeFromMessage(submitted.status, submitted.result.message),
+      // The published exit code is authoritative; 1 is the conventional
+      // fallback when the process did not exit normally (signal or kill).
+      exitCode: submitted.result.exitCode ?? (submitted.status === "ok" ? 0 : 1),
       stdoutPath: artifacts.stdoutPath,
       stderrPath: artifacts.stderrPath,
     };

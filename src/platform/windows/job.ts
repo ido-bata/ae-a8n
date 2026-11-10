@@ -55,6 +55,8 @@ export type JobResult = {
   /** `A8N-*` code when the run was refused or indoubt; null otherwise. */
   readonly code: string | null;
   readonly message: string;
+  /** The executed process's exit code, or null when it did not exit normally. */
+  readonly exitCode: number | null;
   readonly payloadSha256: string | null;
   readonly agent: AgentIdentity;
   readonly startedAt: string;
@@ -345,6 +347,14 @@ export function decodeResult(bytes: Uint8Array): DecodeOutcome<JobResult> {
   if (rawCode !== null && rawCode !== undefined && typeof rawCode !== "string") {
     return { ok: false, detail: "code must be a string or null" };
   }
+  const rawExitCode = parsed["exitCode"];
+  if (
+    rawExitCode !== null &&
+    rawExitCode !== undefined &&
+    (typeof rawExitCode !== "number" || !Number.isInteger(rawExitCode))
+  ) {
+    return { ok: false, detail: "exitCode must be an integer or null" };
+  }
   const rawHash = parsed["payloadSha256"];
   if (rawHash !== null && rawHash !== undefined && (typeof rawHash !== "string" || !HASH_PATTERN.test(rawHash))) {
     return { ok: false, detail: "payloadSha256 must be a SHA-256 hex digest or null" };
@@ -372,6 +382,7 @@ export function decodeResult(bytes: Uint8Array): DecodeOutcome<JobResult> {
       status: statusValue,
       code: typeof rawCode === "string" ? rawCode : null,
       message,
+      exitCode: typeof rawExitCode === "number" ? rawExitCode : null,
       payloadSha256: typeof rawHash === "string" ? rawHash : null,
       agent: { id, host, user, sessionId, version },
       startedAt,

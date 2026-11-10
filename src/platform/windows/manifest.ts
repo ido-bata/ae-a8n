@@ -19,14 +19,16 @@ export type RunManifest = {
   readonly runId: string;
   readonly host: string;
   readonly user: string;
-  readonly sessionId: number;
+  /** Null when the probe could not read it; 0 would claim session 0. */
+  readonly sessionId: number | null;
   readonly agentId: string;
   readonly agentVersion: string;
   /** The one version the probe proved, or null when it could not. */
   readonly aeVersion: string | null;
   readonly jobId: string;
   readonly payloadSha256: string;
-  readonly resultSha256: string;
+  /** Null when no result was published (a timeout); never a hash of nothing. */
+  readonly resultSha256: string | null;
   readonly outcome: RunOutcome;
   readonly startedAt: string;
   readonly finishedAt: string;
@@ -79,7 +81,7 @@ export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest>
   const agentVersion = stringField(parsed, "agentVersion");
   const jobId = stringField(parsed, "jobId");
   const payloadSha256 = stringField(parsed, "payloadSha256");
-  const resultSha256 = stringField(parsed, "resultSha256");
+  const rawResultSha256 = parsed["resultSha256"];
   const startedAt = stringField(parsed, "startedAt");
   const finishedAt = stringField(parsed, "finishedAt");
   if (
@@ -90,7 +92,6 @@ export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest>
     agentVersion === null ||
     jobId === null ||
     payloadSha256 === null ||
-    resultSha256 === null ||
     startedAt === null ||
     finishedAt === null
   ) {
@@ -100,8 +101,18 @@ export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest>
     return { ok: false, detail: `runId "${runId}" is not in the expected form` };
   }
   const sessionId = parsed["sessionId"];
-  if (typeof sessionId !== "number" || !Number.isInteger(sessionId) || sessionId < 0) {
-    return { ok: false, detail: "sessionId must be a non-negative integer" };
+  if (
+    sessionId !== null &&
+    (typeof sessionId !== "number" || !Number.isInteger(sessionId) || sessionId < 0)
+  ) {
+    return { ok: false, detail: "sessionId must be a non-negative integer or null" };
+  }
+  const resultSha256 = rawResultSha256;
+  if (
+    resultSha256 !== null &&
+    (typeof resultSha256 !== "string" || !HASH_PATTERN.test(resultSha256))
+  ) {
+    return { ok: false, detail: "resultSha256 must be a SHA-256 hex digest or null" };
   }
   const aeVersion = parsed["aeVersion"];
   if (aeVersion !== null && (typeof aeVersion !== "string" || aeVersion === "")) {
@@ -111,8 +122,8 @@ export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest>
   if (typeof outcome !== "string" || !OUTCOMES.includes(outcome)) {
     return { ok: false, detail: `unknown outcome ${String(outcome)}` };
   }
-  if (!HASH_PATTERN.test(payloadSha256) || !HASH_PATTERN.test(resultSha256)) {
-    return { ok: false, detail: "payloadSha256 and resultSha256 must be SHA-256 hex digests" };
+  if (!HASH_PATTERN.test(payloadSha256)) {
+    return { ok: false, detail: "payloadSha256 must be a SHA-256 hex digest" };
   }
   if (!validDate(startedAt) || !validDate(finishedAt)) {
     return { ok: false, detail: "startedAt and finishedAt must be ISO-8601 timestamps" };
@@ -124,7 +135,7 @@ export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest>
       runId,
       host,
       user,
-      sessionId,
+      sessionId: typeof sessionId === "number" ? sessionId : null,
       agentId,
       agentVersion,
       aeVersion: typeof aeVersion === "string" ? aeVersion : null,

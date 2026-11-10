@@ -233,7 +233,7 @@ export class SpawnJobExecutor implements JobExecutor {
       const writeArtifacts = async (
         status: JobExecution["status"],
         message: string,
-        code?: string,
+        options: { readonly exitCode?: number | null; readonly code?: string } = {},
       ): Promise<void> => {
         if (settled) {
           return;
@@ -256,7 +256,8 @@ export class SpawnJobExecutor implements JobExecutor {
         }
         resolve({
           status,
-          ...(code === undefined ? {} : { code }),
+          ...(options.code === undefined ? {} : { code: options.code }),
+          exitCode: options.exitCode ?? null,
           message: `${message}${artifactNote}`,
           ...(artifacts === undefined ? {} : { artifacts }),
         });
@@ -277,7 +278,7 @@ export class SpawnJobExecutor implements JobExecutor {
             "unknown",
             `timed out after ${this.#timeoutMs}ms; the child was killed and the outcome is unknown` +
               truncationNote(stdoutTruncated, stderrTruncated, this.#maxOutputBytes),
-            "A8N-AE-004",
+            { exitCode: null, code: "A8N-AE-004" },
           );
         })();
       }, this.#timeoutMs);
@@ -299,13 +300,14 @@ export class SpawnJobExecutor implements JobExecutor {
         }
         const note = truncationNote(stdoutTruncated, stderrTruncated, this.#maxOutputBytes);
         if (code === 0) {
-          void writeArtifacts("ok", `exited with code 0${note}`);
+          void writeArtifacts("ok", `exited with code 0${note}`, { exitCode: 0 });
         } else if (code !== null) {
-          void writeArtifacts("failed", `exited with code ${code}${note}`);
+          void writeArtifacts("failed", `exited with code ${code}${note}`, { exitCode: code });
         } else {
           void writeArtifacts(
             "failed",
             `terminated by signal ${signal ?? "unknown"}${note}`,
+            { exitCode: null },
           );
         }
       });

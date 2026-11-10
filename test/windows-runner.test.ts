@@ -114,12 +114,17 @@ function fakeProbe(overrides: HostFacts = {}): CommandRunner {
   };
 }
 
-function result(status: "ok" | "failed", message: string): JobResult {
+function result(
+  status: "ok" | "failed",
+  message: string,
+  exitCode: number | null = status === "ok" ? 0 : 1,
+): JobResult {
   return {
     schemaVersion: JOB_SCHEMA_VERSION,
     jobId: JOB_ID,
     status,
     code: null,
+    exitCode,
     message,
     payloadSha256: "a".repeat(64),
     agent: AGENT,
@@ -269,7 +274,7 @@ describe("the Windows adapter", () => {
   it("returns the executor's exit code from a failed job", async () => {
     const { adapter, channel } = await fixture({
       submit: async (files) => {
-        const jobResult = result("failed", "exited with code 7");
+        const jobResult = result("failed", "exited with code 7", 7);
         await files.writeAtomic(jobPaths(JOB_ID).result, encodeResult(jobResult));
         return { status: "failed", jobId: JOB_ID, result: jobResult };
       },
@@ -335,9 +340,11 @@ describe("the Windows adapter", () => {
     await expect(failure).rejects.toBeInstanceOf(WindowsJobUnknownError);
     await expect(failure).rejects.toMatchObject({ code: "A8N-AE-004", jobId: JOB_ID });
     expect(calls).toBe(1);
+    // No result was published, so the manifest must say null rather than
+    // hashing an empty byte string and looking like a real result.
     expect(await readRunManifest(channel, RUN_ID)).toMatchObject({
       ok: true,
-      value: { outcome: "unknown" },
+      value: { outcome: "unknown", resultSha256: null },
     });
     // The job may still be running, so the run's lock stays until close().
     expect(await channel.read(lockPath(RUN_ID))).not.toBeNull();

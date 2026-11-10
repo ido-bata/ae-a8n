@@ -157,6 +157,7 @@ describe("the result file", () => {
     jobId: newJobId(NOW, new Uint8Array([1, 2, 3, 4])),
     status: "ok",
     code: null,
+    exitCode: 0,
     message: "done",
     payloadSha256: sha256Hex(PAYLOAD),
     agent: { id: "agent-1", host: "WIN", user: "tester", sessionId: 1, version: "0.1.0" },

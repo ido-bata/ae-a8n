@@ -76,6 +76,7 @@ function resultFor(jobId: string): JobResult {
     jobId,
     status: "ok",
     code: null,
+    exitCode: 0,
     message: "from an earlier run",
     payloadSha256: sha256Hex(PAYLOAD),
     agent: IDENTITY,
