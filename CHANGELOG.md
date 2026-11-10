@@ -153,3 +153,11 @@ ExtendScript; composition lookup; one-frame rendering via `saveFrameToPng`;
 `close()` waiting for the process to exit; call deadlines covering the
 invocation; never abandoning an AppleEvent mid-script; script errors no
 longer leave a modal dialog in After Effects.
+
+ExtendScript's nested conditional (#61): measured on AE 26.5x89, the host's
+extension-aware `dispatch` evaluated `a ? x : b ? y : undefined` with the
+second test deciding the whole expression, so a built-in name found in
+`methods` came back as `extensions[name]` and *every* request failed with
+`unknown method`. The lookup is statements now, and a check on the shipped
+host text refuses a conditional inside a conditional, because Node evaluates
+the ungrouped form correctly and the fake host cannot see the difference.
