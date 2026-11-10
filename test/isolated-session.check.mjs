@@ -24,6 +24,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { assertTrustedResult, cancelJob } from "../scripts/isolated-session/dispatch.mjs";
+import { describeMissingSession } from "../scripts/isolated-session/run-in-isolated-session.mjs";
 
 import {
   assertJobRunnable,
@@ -74,6 +75,23 @@ test("an unreadable console owner is a refusal, not a pass", () => {
 
 test("a separate graphical session is accepted", () => {
   assert.equal(assertTargetSession(aqua, 502, 501), aqua);
+});
+
+test("a session that cannot be read from here is not reported as a logged-out user", () => {
+  // From the console, launchctl may refuse another user's domain. That is a
+  // limit of the observer, not evidence that the account has no session; the
+  // message must not send the caller to log in again.
+  const error = describeMissingSession(502, "Operation not permitted");
+  assert.match(error.message, /could not be verified from this session/);
+  assert.match(error.message, /may still be logged in/);
+  assert.match(error.message, /session agent/);
+  assert.doesNotMatch(error.message, /has no login session/);
+});
+
+test("a user with no login domain is reported as not logged in, with a remedy", () => {
+  const error = describeMissingSession(502, "Bad request.\nCould not find domain for user gui: 502");
+  assert.match(error.message, /has no login session/);
+  assert.match(error.message, /fast user switch/);
 });
 
 test("a result from another session is not trusted", () => {

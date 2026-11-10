@@ -110,7 +110,7 @@ function commandOutput(bin, args) {
   return execFileSync(bin, args, { encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
-/** The login session of a uid, or null when that user is not logged in. */
+/** The login session of a uid, or null when it could not be read. */
 export function readGuiSession(uid) {
   try {
     const text = execFileSync("launchctl", ["print", `gui/${uid}`], { encoding: "utf-8" });
@@ -125,6 +125,59 @@ export function readGuiSession(uid) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Why `readGuiSession` could not answer, or null when it could.
+ *
+ * A null from `readGuiSession` covers two different facts: the account has no
+ * login session, and macOS refused this process the right to ask about
+ * another user's. They have different fixes, so the message must not guess.
+ */
+export function readGuiSessionFailure(uid) {
+  try {
+    execFileSync("launchctl", ["print", `gui/${uid}`], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return null;
+  } catch (error) {
+    const stderr = error?.stderr;
+    const text =
+      typeof stderr === "string" ? stderr : stderr instanceof Buffer ? stderr.toString("utf-8") : "";
+    return text.trim().length > 0 ? text.trim() : error instanceof Error ? error.message : String(error);
+  }
+}
+
+/**
+ * The refusal for a session that could not be read, with the true reason.
+ *
+ * "Operation not permitted" is the observer's limit: `launchctl print
+ * gui/<other uid>` is unreadable from outside that session. Reporting it as
+ * "not logged in" sends the caller to do the wrong thing. Only a missing
+ * domain is evidence that there is no login session to enter.
+ */
+export function describeMissingSession(uid, failure) {
+  const detail = typeof failure === "string" ? failure.trim() : "";
+  if (/operation not permitted|not permitted|EPERM/i.test(detail)) {
+    return new Error(
+      `the session of uid ${uid} could not be verified from this session: macOS refused this process ` +
+        `(launchctl: ${detail}). The user may still be logged in; only a process running in that session ` +
+        "(or root) can ask about it. Start the session agent inside that session, or run this from inside it. " +
+        "Nothing was run.",
+    );
+  }
+  if (/could not find domain|no such process|not found|invalid|does not exist/i.test(detail)) {
+    return new Error(
+      `uid ${uid} has no login session on this Mac (launchctl: ${detail}). Log that user in — a fast user ` +
+        "switch is enough — and try again. Nothing was run.",
+    );
+  }
+  return new Error(
+    `the session of uid ${uid} could not be confirmed from this session` +
+      (detail.length === 0 ? "" : ` (launchctl: ${detail})`) +
+      ". Check `offstage session status`, or run this inside the target session. Nothing was run.",
+  );
 }
 
 function consoleUid() {
@@ -458,6 +511,12 @@ function main() {
   const binary = options.substrate === "native" ? "native" : offstageBinary();
   const offstageStatus = binary === "native" ? null : readOffstageStatus(options.user);
   const session = resolveTargetSession(options.user, targetUid, offstageStatus);
+  if (session === null) {
+    // The launchd fallback is unreadable from the console for another user,
+    // and native normally has no offstage answer. Report which happened
+    // instead of turning "cannot verify from here" into "not logged in".
+    throw describeMissingSession(targetUid, readGuiSessionFailure(targetUid));
+  }
   preflight({
     user: options.user,
     targetUid,
