@@ -139,8 +139,43 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # The release gate includes the Windows job: a version that cannot pass its
+  # own suite on Windows is not releasable, whatever the Linux run says.
+  verify-windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Quality gate
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - name: Check the ES3 host script parses
+        run: |
+          node --check host/a8n-host.js
+          node --check host/a8n-json.js
+
+      - name: Verify the tarball is usable as published
+        run: |
+          node scripts/check-packed-package.js
+          node scripts/check-public-api.js
+
   stage:
-    needs: verify
+    needs: [verify, verify-windows]
     if: needs.verify.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10

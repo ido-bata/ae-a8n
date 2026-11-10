@@ -27,6 +27,7 @@ import type { DiagnosticCheck } from "../../doctor/diagnostics.js";
 import { diagnostic } from "../../doctor/diagnostics.js";
 import type { JobKey } from "./auth.js";
 import { ChannelFileTooLargeError, type FileChannel } from "./channel.js";
+import { channelAclVerdict, parseIcacls, type AccessControlEntry } from "./acl.js";
 import { loadKeyFile } from "./key-store.js";
 import { encodeJobPayload } from "./executor.js";
 import { jobPaths, newJobId, sha256Hex, type AgentIdentity } from "./job.js";
@@ -259,6 +260,18 @@ export type CommsState =
     }
   | { readonly ok: false; readonly checks: readonly DiagnosticCheck[]; readonly detail: string };
 
+/** The OS's own ACL, or null when it cannot be read. */
+async function defaultAclReader(path: string): Promise<readonly AccessControlEntry[] | null> {
+  try {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const { stdout } = await promisify(execFile)("icacls", [path], { windowsHide: true });
+    return parseIcacls(stdout);
+  } catch {
+    return null;
+  }
+}
+
 export type OpenCommsOptions = {
   readonly channel: FileChannel;
   readonly submit?: SubmitFunction;
@@ -268,6 +281,8 @@ export type OpenCommsOptions = {
   readonly sleep?: (ms: number) => Promise<void>;
   /** The version this controller is; the agent must match exactly. */
   readonly version: string;
+  /** Injected in tests. Defaults to `icacls` on Windows, unused elsewhere. */
+  readonly acl?: (path: string) => Promise<readonly AccessControlEntry[] | null>;
 };
 
 /**
@@ -343,9 +358,35 @@ export async function openComms(
     );
   }
 
-  // 2. The shared key. Without it a job would be unauthenticated, so nothing
+  // 2. On Windows the channel's own ACL is the sticky-bit equivalent: an
+  //    account that can write there can plant a job, so a channel left open
+  //    to Users or Everyone is refused before the key is even considered.
+  if (process.platform === "win32") {
+    const readAcl = options.acl ?? defaultAclReader;
+    const entries = await readAcl(config.channel);
+    const verdict =
+      entries === null
+        ? { ok: false as const, detail: "the channel's access control list could not be read" }
+        : channelAclVerdict(entries);
+    if (!verdict.ok) {
+      checks.push(
+        diagnostic("A8N-PERM-006", {
+          detail: `${verdict.detail}; channel ${config.channel}`,
+          remedy:
+            "Remove write access to the channel for every account but the controller's and the agent's, then run doctor again.",
+          remedyKind: "human",
+          evidence: { channel: config.channel },
+        }),
+      );
+    }
+  }
+
+  // 3. The shared key. Without it a job would be unauthenticated, so nothing
   //    is sent — this is the same refusal the adapter already makes.
-  const loaded = await loadKeyFile(config.keyFile);
+  const loaded = await loadKeyFile(
+    config.keyFile,
+    options.acl === undefined ? {} : { acl: options.acl },
+  );
   if (!loaded.ok) {
     checks.push(
       diagnostic("A8N-JOB-003", {

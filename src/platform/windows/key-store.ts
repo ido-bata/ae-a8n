@@ -3,12 +3,22 @@
  *
  * The key's confidentiality is the trust anchor for the whole Windows job
  * boundary: a process that can read it can forge jobs. This module therefore
- * refuses the shapes it can prove are unsafe — a symlink, a non-regular file,
- * group/other read access — and leaves the shapes it cannot prove (Windows
- * ACLs) to the real-host verification in T092 rather than claiming them.
+ * refuses the shapes it can prove are unsafe: a symlink, a non-regular file,
+ * group/other read access on POSIX, and an ACL that names accounts other than
+ * the owner on Windows. The Windows check is `icacls` — the OS's own account
+ * of the ACL — not a promise deferred to real-host verification.
  */
 
+import { execFile } from "node:child_process";
 import { lstat, readFile } from "node:fs/promises";
+import { userInfo } from "node:os";
+import { promisify } from "node:util";
+
+import {
+  keyFileAclVerdict,
+  parseIcacls,
+  type AccessControlEntry,
+} from "./acl.js";
 
 import {
   MAX_KEY_FILE_BYTES,
@@ -17,36 +27,96 @@ import {
   type JobKey,
 } from "./auth.js";
 
-export type KeyFileLoad =
-  | { readonly ok: true; readonly key: JobKey }
-  | { readonly ok: false; readonly detail: string };
+const run = promisify(execFile);
 
-export async function loadKeyFile(path: string): Promise<KeyFileLoad> {
+/** Reads a path's access-control entries, or null when they cannot be read. */
+export type AclReader = (path: string) => Promise<readonly AccessControlEntry[] | null>;
+
+/**
+ * The OS's own ACL for a path. `icacls` needs no elevation to read an ACL, and
+ * on a machine that does not have it the check fails closed: null, refused.
+ */
+async function readAclWithIcacls(path: string): Promise<readonly AccessControlEntry[] | null> {
+  try {
+    const { stdout } = await run("icacls", [path], { windowsHide: true });
+    return parseIcacls(stdout);
+  } catch {
+    return null;
+  }
+}
+
+export type KeyFileOptions = {
+  /** Injected in tests. Defaults to `icacls` on Windows, unused elsewhere. */
+  readonly acl?: AclReader;
+  /** The account the key must belong to. Defaults to this process's user. */
+  readonly owner?: string | null;
+};
+
+function currentUser(): string | null {
+  try {
+    return userInfo().username;
+  } catch {
+    return null;
+  }
+}
+
+export type KeyFileRefusal = {
+  readonly ok: false;
+  readonly detail: string;
+  /** The diagnostic to report it under; permission refusals say so. */
+  readonly code: "A8N-JOB-003" | "A8N-PERM-005";
+};
+
+export type KeyFileLoad = { readonly ok: true; readonly key: JobKey } | KeyFileRefusal;
+
+export async function loadKeyFile(
+  path: string,
+  options: KeyFileOptions = {},
+): Promise<KeyFileLoad> {
   let info;
   try {
     info = await lstat(path);
   } catch (error) {
     const code =
       typeof error === "object" && error !== null && "code" in error ? String(error.code) : "unknown";
-    return { ok: false, detail: `the key file ${path} could not be read (${code})` };
+    return { ok: false, code: "A8N-JOB-003", detail: `the key file ${path} could not be read (${code})` };
   }
   if (info.isSymbolicLink()) {
-    return { ok: false, detail: `the key file ${path} is a symlink; a link is not a key` };
+    return { ok: false, code: "A8N-JOB-003", detail: `the key file ${path} is a symlink; a link is not a key` };
   }
   if (!info.isFile()) {
-    return { ok: false, detail: `the key file ${path} is not a regular file` };
+    return { ok: false, code: "A8N-JOB-003", detail: `the key file ${path} is not a regular file` };
   }
   if (info.size > MAX_KEY_FILE_BYTES) {
     return {
       ok: false,
+      code: "A8N-JOB-003",
       detail: `the key file ${path} is ${info.size} bytes, beyond the ${MAX_KEY_FILE_BYTES}-byte limit`,
     };
   }
-  // Windows does not model POSIX mode bits; ACLs are checked by the real-host
-  // verification instead. Elsewhere a readable-by-others key is refused.
+  if (process.platform === "win32") {
+    const readAcl = options.acl ?? readAclWithIcacls;
+    const entries = await readAcl(path);
+    if (entries === null) {
+      // No ACL read means no proof, and an unproven key is not accepted.
+      return {
+        ok: false,
+        code: "A8N-PERM-005",
+        detail:
+          `the key file ${path} has no readable access control list; ` +
+          "run icacls on it to see why",
+      };
+    }
+    const verdict = keyFileAclVerdict(entries, options.owner ?? currentUser());
+    if (!verdict.ok) {
+      return { ok: false, code: "A8N-PERM-005", detail: `the key file ${path} ${verdict.detail}` };
+    }
+  }
+  // A readable-by-others key is refused on the platforms that model mode bits.
   if (process.platform !== "win32" && (info.mode & 0o077) !== 0) {
     return {
       ok: false,
+      code: "A8N-PERM-005",
       detail:
         `the key file ${path} is readable by group or others (mode ${(info.mode & 0o777).toString(8)}); ` +
         "a shared secret must be readable only by its owner",
@@ -54,10 +124,10 @@ export async function loadKeyFile(path: string): Promise<KeyFileLoad> {
   }
   const decoded = decodeKeyFile(new Uint8Array(await readFile(path)));
   if (!decoded.ok) {
-    return { ok: false, detail: `the key file ${path} is invalid: ${decoded.detail}` };
+    return { ok: false, code: "A8N-JOB-003", detail: `the key file ${path} is invalid: ${decoded.detail}` };
   }
   if (!isValidKey(decoded.value)) {
-    return { ok: false, detail: `the key file ${path} does not contain a usable key` };
+    return { ok: false, code: "A8N-JOB-003", detail: `the key file ${path} does not contain a usable key` };
   }
   return { ok: true, key: decoded.value };
 }
