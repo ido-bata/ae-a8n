@@ -17,9 +17,16 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
-import { tmpdir, userInfo } from "node:os";
-import { join } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir, tmpdir, userInfo } from "node:os";
+import { dirname, join } from "node:path";
 
 import {
   NODE_FLOOR_MAJOR,
@@ -592,7 +599,70 @@ export type DarwinAdapterOptions = {
   readonly readFacts?: (user: string | null) => DarwinFacts;
   /** Test seam: replaces the in-session command runner. */
   readonly runCommand?: DarwinRunCommand;
+  /** Test seam: where setup records completed step ids. Never holds secrets. */
+  readonly setupStateFile?: string;
 };
+
+/** Only step ids and outcomes are stored; no credential ever reaches this file. */
+export const MAC_SETUP_STATE_SCHEMA = "1.0";
+export const MAC_SETUP_STATE_FILE = join(homedir(), ".ae-a8n", "setup-state.json");
+
+type SetupStateRead =
+  | { readonly ok: true; readonly completed: ReadonlySet<string> }
+  | { readonly ok: false; readonly detail: string };
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readSetupState(stateFile: string): SetupStateRead {
+  let text: string;
+  try {
+    text = readFileSync(stateFile, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { ok: true, completed: new Set() };
+    }
+    return {
+      ok: false,
+      detail: `the setup state file ${stateFile} could not be read: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { ok: false, detail: `the setup state file ${stateFile} is not valid JSON` };
+  }
+  if (!isRecordValue(parsed) || parsed["schemaVersion"] !== MAC_SETUP_STATE_SCHEMA) {
+    return {
+      ok: false,
+      detail: `the setup state file ${stateFile} has an unsupported schema`,
+    };
+  }
+  const completed = parsed["completed"];
+  if (!Array.isArray(completed) || !completed.every((id) => typeof id === "string")) {
+    return {
+      ok: false,
+      detail: `the setup state file ${stateFile} does not hold a list of step ids`,
+    };
+  }
+  return { ok: true, completed: new Set(completed) };
+}
+
+function writeSetupState(stateFile: string, completed: ReadonlySet<string>): void {
+  mkdirSync(dirname(stateFile), { recursive: true, mode: 0o700 });
+  const body = `${JSON.stringify(
+    { schemaVersion: MAC_SETUP_STATE_SCHEMA, completed: [...completed].sort() },
+    null,
+    2,
+  )}\n`;
+  // The file records no secret, but it names the user's machine layout; keep it
+  // private anyway.
+  writeFileSync(stateFile, body, { mode: 0o600 });
+}
 
 function defaultRunCommand(
   session: MacSession,
@@ -727,10 +797,12 @@ export class DarwinAdapter implements PlatformAdapter {
 
   readonly #readFacts: (user: string | null) => DarwinFacts;
   readonly #runCommand: DarwinRunCommand;
+  readonly #setupStateFile: string;
 
   constructor(options: DarwinAdapterOptions = {}) {
     this.#readFacts = options.readFacts ?? ((user) => readDarwinFacts(user));
     this.#runCommand = options.runCommand ?? defaultRunCommand;
+    this.#setupStateFile = options.setupStateFile ?? MAC_SETUP_STATE_FILE;
   }
 
   capabilities(): Promise<Capabilities> {
@@ -744,45 +816,189 @@ export class DarwinAdapter implements PlatformAdapter {
     return Promise.resolve().then(() => probeDarwin(this.#readFacts(target.user)));
   }
 
-  plan(_target: TargetSpec): Promise<readonly SetupStep[]> {
-    return Promise.resolve([
-      {
-        id: "macos.setup",
-        state: "needs-human",
-        reason: "guided macOS setup is not implemented in this increment (issue #56)",
-        action: "Follow issue #56 for the guided setup flow; nothing is automated here.",
+  plan(target: TargetSpec): Promise<readonly SetupStep[]> {
+    return Promise.resolve().then(() => {
+      const facts = this.#readFacts(target.user);
+      const user = target.user;
+      const accountKnown =
+        user !== null && facts.targetUser === user && facts.targetUid !== null;
+      const steps: SetupStep[] = [];
+
+      steps.push({
+        id: "macos.target-user",
+        state: accountKnown ? "done" : "needs-human",
+        reason:
+          user === null
+            ? "no target account was named; the isolated session must belong to a separate OS account"
+            : accountKnown
+              ? `the account ${user} exists (uid ${String(facts.targetUid)})`
+              : facts.targetUserFailure !== null
+                ? `the account ${user} could not be resolved: ${facts.targetUserFailure}`
+                : `the account ${user} could not be resolved`,
+        action: accountKnown
+          ? null
+          : "Create a dedicated macOS account for the isolated session (System Settings > Users & Groups, " +
+            "or sysadminctl as an administrator), then pass --user <name>. Setup never creates an account.",
         automatable: false,
-      },
-      {
+      });
+
+      const gui = facts.guiSession;
+      const sessionReady =
+        accountKnown && gui !== null && gui.uid === facts.targetUid && gui.kind === "Aqua";
+      steps.push({
+        id: "macos.session",
+        state: sessionReady ? "done" : "needs-human",
+        reason: sessionReady
+          ? `the account has an Aqua session (asid ${String(gui.asid)})`
+          : !accountKnown
+            ? user === null
+              ? "no target account was named, so its session cannot be looked for"
+              : `the account ${user} could not be resolved, so its session cannot be looked for`
+            : (facts.guiSessionFailure ??
+              "the target account has no GUI session to run After Effects in"),
+        action: sessionReady
+          ? null
+          : "Log in as the target account once (fast user switching is enough), then switch back. " +
+            "The session must stay logged in while tests run.",
+        automatable: false,
+      });
+
+      const separated =
+        facts.targetUid !== null &&
+        facts.consoleUid !== null &&
+        facts.targetUid !== facts.consoleUid;
+      steps.push({
+        id: "macos.console-separation",
+        state: separated ? "done" : "needs-human",
+        reason: separated
+          ? `the target uid ${String(facts.targetUid)} is not the console user ${String(facts.consoleUid)}`
+          : facts.consoleUid === null
+            ? "the console session owner could not be read, so separation cannot be proven"
+            : `the target account is the console user (uid ${String(facts.consoleUid)}); tests would appear on the screen a person is using`,
+        action: separated
+          ? null
+          : "Run tests in a separate OS account, or on a dedicated host; do not run them on the console desktop.",
+        automatable: false,
+      });
+
+      const installs = facts.aeInstalls;
+      const installed = installs.length === 1 && installs[0]?.version !== null;
+      steps.push({
+        id: "macos.ae",
+        state: installed ? "done" : "needs-human",
+        reason: installed
+          ? `After Effects ${String(installs[0]?.version)} is installed at ${String(installs[0]?.location)}`
+          : facts.installLookupFailure !== null
+            ? `the installation folder could not be read: ${facts.installLookupFailure}`
+            : installs.length === 0
+              ? "no After Effects installation was found"
+              : "more than one After Effects version is installed, so the version cannot be proven",
+        action: installed
+          ? null
+          : installs.length === 0
+            ? "Install After Effects for the target account."
+            : "Disambiguate the installed After Effects versions, then run setup again.",
+        automatable: false,
+      });
+
+      steps.push({
         id: "macos.permissions",
         state: "needs-human",
         reason:
-          "Screen Recording, Accessibility, Automation and Adobe sign-in are human actions " +
-          "(issues #56/#57), and this increment does not attempt them",
+          "Screen Recording and Accessibility must be granted in the target session; setup cannot " +
+          "grant them and never writes TCC.db",
         action:
-          "In the target session, grant Screen Recording, Accessibility and Automation to the " +
-          "runner, enable After Effects' file/network scripting permission, and sign in to Adobe once.",
+          "In the target session, open System Settings > Privacy & Security and allow Screen Recording " +
+          "and Accessibility for the runner (the terminal or Node process that runs ae-a8n). Approve the " +
+          "Automation prompt on the first run.",
         automatable: false,
-      },
-    ]);
+      });
+
+      steps.push({
+        id: "macos.ae-scripting",
+        state: "needs-human",
+        reason:
+          "After Effects only runs scripts that write files when its own scripting preference allows it",
+        action:
+          "In After Effects for the target account: Settings > Scripting & Expressions, enable " +
+          '"Allow Scripts to Write Files and Access Network".',
+        automatable: false,
+      });
+
+      steps.push({
+        id: "macos.signin",
+        state: "needs-human",
+        reason: "Adobe sign-in is never automated and setup never reads or writes a credential",
+        action: "Sign in to Adobe in the target account's interactive session.",
+        automatable: false,
+      });
+
+      return steps;
+    });
   }
 
   apply(
     steps: readonly SetupStep[],
     options: { readonly yes: boolean; readonly dryRun: boolean },
   ): Promise<SetupResult> {
-    const outcomes: StepOutcome[] = steps.map((step) => ({
-      id: step.id,
-      state: options.dryRun ? "planned" : "needs-human",
-      detail: options.dryRun
-        ? "dry run: nothing was changed"
-        : `not implemented in this increment (issues #56/#57): ${step.reason}`,
-    }));
-    return Promise.resolve({
-      // No state file is written, and the value says so rather than naming a
-      // path a caller might then try to read.
-      stateFile: "not written: guided setup is issue #56",
-      outcomes,
+    return Promise.resolve().then(() => {
+      if (options.dryRun) {
+        return {
+          stateFile: this.#setupStateFile,
+          outcomes: steps.map((step) => ({
+            id: step.id,
+            state: step.state === "planned" ? "planned" : step.state,
+            detail: "dry run: nothing was changed",
+          })),
+        };
+      }
+
+      const state = readSetupState(this.#setupStateFile);
+      if (!state.ok) {
+        // A state file that exists but cannot be read is not "no state":
+        // resetting it would silently forget what an earlier setup did.
+        return {
+          stateFile: this.#setupStateFile,
+          outcomes: [
+            { id: "macos.setup-state", state: "failed", detail: state.detail },
+          ],
+        };
+      }
+
+      const completed = new Set(state.completed);
+      const outcomes: StepOutcome[] = [];
+      let changed = false;
+      for (const step of steps) {
+        if (step.state === "needs-human" || step.state === "failed") {
+          outcomes.push({ id: step.id, state: step.state, detail: step.reason });
+          continue;
+        }
+        if (completed.has(step.id)) {
+          outcomes.push({
+            id: step.id,
+            state: "skipped",
+            detail: "already applied in an earlier setup",
+          });
+          continue;
+        }
+        if (step.state === "done") {
+          completed.add(step.id);
+          changed = true;
+          outcomes.push({ id: step.id, state: "done", detail: step.reason });
+          continue;
+        }
+        // `planned`: this increment has no automatable macOS step, so a
+        // planned step that reached here is one the adapter cannot perform.
+        outcomes.push({
+          id: step.id,
+          state: "failed",
+          detail: `${step.reason}; setup cannot perform this step`,
+        });
+      }
+      if (changed) {
+        writeSetupState(this.#setupStateFile, completed);
+      }
+      return { stateFile: this.#setupStateFile, outcomes };
     });
   }
 

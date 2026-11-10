@@ -60,6 +60,53 @@ class RecordingAdapter extends FakeAdapter {
   }
 }
 
+type ApplyOptions = { readonly yes: boolean; readonly dryRun: boolean };
+
+class SetupAdapter extends FakeAdapter {
+  readonly planTargets: TargetSpec[] = [];
+  readonly applies: ApplyOptions[] = [];
+  readonly #steps: readonly SetupStep[];
+  readonly #apply: (steps: readonly SetupStep[], options: ApplyOptions) => Promise<SetupResult>;
+
+  constructor(
+    steps: readonly SetupStep[],
+    apply: (steps: readonly SetupStep[], options: ApplyOptions) => Promise<SetupResult>,
+  ) {
+    super("darwin");
+    this.#steps = steps;
+    this.#apply = apply;
+  }
+
+  override plan(target: TargetSpec): Promise<readonly SetupStep[]> {
+    this.planTargets.push(target);
+    return Promise.resolve(this.#steps);
+  }
+
+  override apply(
+    steps: readonly SetupStep[],
+    options: ApplyOptions,
+  ): Promise<SetupResult> {
+    this.applies.push(options);
+    return this.#apply(steps, options);
+  }
+}
+
+const DONE_STEP: SetupStep = {
+  id: "macos.ae",
+  state: "done",
+  reason: "After Effects 24.0 is installed",
+  action: null,
+  automatable: true,
+};
+
+const HUMAN_STEP: SetupStep = {
+  id: "macos.signin",
+  state: "needs-human",
+  reason: "the Adobe sign-in has not been completed",
+  action: "Sign in to Creative Cloud in the target account",
+  automatable: false,
+};
+
 class ThrowingAdapter implements PlatformAdapter {
   readonly platform = "darwin" as const;
   readonly id = "broken";
@@ -350,20 +397,185 @@ describe("usage errors and help", () => {
   });
 });
 
-describe("commands not implemented in this increment", () => {
-  it("fails setup closed with exit 7 and a notice", async () => {
-    const adapter = new FakeAdapter("darwin");
+describe("the setup command", () => {
+  it("plans, applies, reports every step and exits 0 when all are done", async () => {
+    const adapter = new SetupAdapter([DONE_STEP], () =>
+      Promise.resolve({
+        stateFile: "/tmp/ae-a8n/setup-state.json",
+        outcomes: [{ id: "macos.ae", state: "done", detail: "already installed" }],
+      }),
+    );
     const test = harness({ ok: true, adapter });
+
+    const code = await runCli(["setup", "--json", "--target", "mac-1"], test.deps);
+
+    expect(code).toBe(EXIT.ok);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.command).toBe("setup");
+    expect(envelope.status).toBe("ok");
+    expect(envelope.exitCode).toBe(0);
+    expect(envelope.stateFile).toBe("/tmp/ae-a8n/setup-state.json");
+    expect(envelope.steps).toEqual([
+      {
+        id: "macos.ae",
+        state: "done",
+        reason: "After Effects 24.0 is installed",
+        action: null,
+        automatable: true,
+        detail: "already installed",
+      },
+    ]);
+    expect(adapter.planTargets).toEqual([
+      { name: "mac-1", isolation: "session", user: null, host: null },
+    ]);
+    expect(adapter.applies).toEqual([{ yes: false, dryRun: false }]);
+    expect(test.err()).toBe("");
+  });
+
+  it("exits 7 and names the human action when a step needs a person", async () => {
+    const adapter = new SetupAdapter([DONE_STEP, HUMAN_STEP], () =>
+      Promise.resolve({
+        stateFile: "/tmp/state.json",
+        outcomes: [
+          { id: "macos.ae", state: "done", detail: "already installed" },
+          { id: "macos.signin", state: "needs-human", detail: "not signed in" },
+        ],
+      }),
+    );
+    const test = harness({ ok: true, adapter });
+
     const code = await runCli(["setup", "--json"], test.deps);
 
     expect(code).toBe(EXIT.setupIncomplete);
     const envelope = jsonEnvelope(test.out());
     expect(envelope.status).toBe("setup-incomplete");
     expect(envelope.exitCode).toBe(7);
-    expect(envelope.notice).toContain("not implemented in this increment");
-    expect(adapter.calls).toEqual([]);
+    const signin = envelope.steps?.find((step) => step.id === "macos.signin");
+    expect(signin).toMatchObject({
+      state: "needs-human",
+      automatable: false,
+      action: "Sign in to Creative Cloud in the target account",
+      detail: "not signed in",
+    });
   });
 
+  it("treats an adapter outcome the plan omits as a failure, never a silent pass", async () => {
+    const adapter = new SetupAdapter([DONE_STEP, HUMAN_STEP], () =>
+      Promise.resolve({ stateFile: "/tmp/state.json", outcomes: [] }),
+    );
+    const test = harness({ ok: true, adapter });
+
+    const code = await runCli(["setup", "--json"], test.deps);
+
+    expect(code).toBe(EXIT.setupIncomplete);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.status).toBe("setup-incomplete");
+    expect(envelope.steps?.map((step) => step.state)).toEqual(["failed", "failed"]);
+    expect(envelope.steps?.[0]?.detail).toContain("reported no outcome");
+  });
+
+  it("keeps an outcome the plan does not describe visible in the report", async () => {
+    const adapter = new SetupAdapter([DONE_STEP], () =>
+      Promise.resolve({
+        stateFile: "/tmp/state.json",
+        outcomes: [
+          { id: "macos.ae", state: "done", detail: "already installed" },
+          { id: "macos.setup-state", state: "failed", detail: "the state file is unreadable" },
+        ],
+      }),
+    );
+    const test = harness({ ok: true, adapter });
+
+    const code = await runCli(["setup", "--json"], test.deps);
+
+    expect(code).toBe(EXIT.setupIncomplete);
+    const envelope = jsonEnvelope(test.out());
+    const refusal = envelope.steps?.find((step) => step.id === "macos.setup-state");
+    expect(refusal).toMatchObject({ state: "failed", detail: "the state file is unreadable" });
+  });
+
+  it("passes --yes and --dry-run through and reports planned steps on a dry run", async () => {
+    const adapter = new SetupAdapter([HUMAN_STEP], (steps, options) =>
+      Promise.resolve({
+        stateFile: "/tmp/state.json",
+        outcomes: steps.map((step) => ({
+          id: step.id,
+          state: options.dryRun ? "planned" : "done",
+          detail: "not changed",
+        })),
+      }),
+    );
+    const test = harness({ ok: true, adapter });
+
+    const code = await runCli(["setup", "--json", "--yes", "--dry-run"], test.deps);
+
+    expect(code).toBe(EXIT.ok);
+    expect(adapter.applies).toEqual([{ yes: true, dryRun: true }]);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.status).toBe("ok");
+    expect(envelope.steps?.[0]?.state).toBe("planned");
+    expect(envelope.notice).toContain("dry run");
+  });
+
+  it("exits 1 and claims nothing when apply throws", async () => {
+    const adapter = new SetupAdapter([DONE_STEP], () =>
+      Promise.reject(new Error("the state file could not be written")),
+    );
+    const test = harness({ ok: true, adapter });
+
+    const code = await runCli(["setup", "--json"], test.deps);
+
+    expect(code).toBe(EXIT.failed);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.status).toBe("failed");
+    expect(envelope.exitCode).toBe(1);
+    expect(envelope.notice).toContain("could not finish");
+    expect(envelope.notice).toContain("No step is being reported as done");
+    expect(envelope.steps).toBeUndefined();
+  });
+
+  it("exits 3 when the platform cannot be selected, before plan or apply", async () => {
+    const test = harness({
+      ok: false,
+      platform: "unknown",
+      check: unsupportedPlatformCheck("unknown"),
+    });
+
+    const code = await runCli(["setup", "--json"], test.deps);
+
+    expect(code).toBe(EXIT.blocked);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.status).toBe("blocked");
+    expect(envelope.checks).toHaveLength(1);
+    expect(envelope.steps).toBeUndefined();
+  });
+
+  it("prints the steps and the state file in the human output", async () => {
+    const adapter = new SetupAdapter([DONE_STEP, HUMAN_STEP], () =>
+      Promise.resolve({
+        stateFile: "/tmp/state.json",
+        outcomes: [
+          { id: "macos.ae", state: "done", detail: "already installed" },
+          { id: "macos.signin", state: "needs-human", detail: "not signed in" },
+        ],
+      }),
+    );
+    const test = harness({ ok: true, adapter });
+
+    const code = await runCli(["setup"], test.deps);
+
+    expect(code).toBe(EXIT.setupIncomplete);
+    const text = test.out();
+    expect(text).toContain("ae-a8n setup — setup-incomplete (exit 7)");
+    expect(text).toContain("[done] macos.ae");
+    expect(text).toContain("[needs-human] macos.signin");
+    expect(text).toContain("action (human): Sign in to Creative Cloud");
+    expect(text).toContain("state file: /tmp/state.json");
+    expect(test.err()).toBe("");
+  });
+});
+
+describe("commands not implemented in this increment", () => {
   it.each(["test", "recover", "report"] as const)(
     "fails %s closed with exit 3 and a notice",
     async (command) => {
