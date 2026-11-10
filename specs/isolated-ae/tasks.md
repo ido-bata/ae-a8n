@@ -118,12 +118,22 @@ host identity, AE version, agent version and job/result hashes.
 **Delivered 2026-11-10 (#70, PR #77):** the run lock, the validated executor,
 the run manifest, `WindowsAdapter`/`WindowsSession`, the idempotent setup
 steps and the in-session agent entry (`agent-main.ts` +
-`scripts/windows-agent.mjs`). Recorded 576 tests green. Deliberate boundaries:
-`provesOwnership` and `provesDestination` stay `false` until T089/T090, and
-`recover()` reports that GUI recovery is unimplemented rather than returning a
-clean empty result. The controller submits the command; the agent runs it in
-the dedicated session, so the controller never starts `AfterFX.exe` itself.
-No row of T092 is satisfied.
+`scripts/windows-agent.mjs`). Deliberate boundaries: `provesOwnership` and
+`provesDestination` stay `false` until T089/T090, and `recover()` reports that
+GUI recovery is unimplemented rather than returning a clean empty result. The
+controller submits the command; the agent runs it in the dedicated session, so
+the controller never starts `AfterFX.exe` itself. No row of T092 is satisfied.
+
+**Review fixes 2026-11-10 (#70, PR #77):** the job-execution review's findings
+are closed at `automated test` level — HMAC-SHA256 signing of jobs, results and
+claims with domain separation (A8N-JOB-003), quarantine of unsigned, foreign,
+misplaced, oversized or vanished claims with a record at
+`diagnostics/claims/<jobId>.json`, a measured session identity, pid-reuse-safe
+timeout handling, size caps before parsing (A8N-JOB-004), and a manifest whose
+agent identity comes from the verified result (`agentVerified`,
+`resultSha256`). Everything is `fake/mock only` on Windows: key-file ACLs, SMB
+`O_EXCL` atomicity, junction behaviour and the session measurement under the
+dedicated account remain T092 rows.
 
 **Depends on:** T085, T087.
 
@@ -142,6 +152,18 @@ licence/sign-in class always reports and never presses; an unknown dialog is
 
 **Verification:** `automated test` + `fake/mock only`; real Windows pending.
 
+**Delivered 2026-11-10 (#71, PR #79):** `src/platform/recovery-policy.ts` is the
+platform-neutral policy (measured allow list, human-only classes, unknown =>
+`A8N-SEC-001`); macOS PR #50 can adopt it later and was not moved here.
+`src/platform/windows/recovery.ts` reads only the passive `tasklist /V` window
+state. A responding or absent AE is reported; `Not Responding`, an unknown
+state or unreadable output is refused with `A8N-SEC-001` and a remedy. There is
+no code that presses, sends a key or kills. The adapter returns these findings
+instead of the old placeholder. Level: `automated test` + `fake/mock only`;
+real Windows pending. Deliberate boundary: Windows has no GUI automation, so
+even a measured dialog class is reported, not pressed, until a verified path
+exists.
+
 **Depends on:** T088.
 
 ### T090 — Windows destination proof
@@ -157,6 +179,21 @@ marker matches. Record the evidence in the manifest.
 the destination was proven or only PID-proven.
 
 **Verification:** `automated test` + `fake/mock only`; real Windows pending.
+
+**Delivered 2026-11-10 (#72, PR #79):** the job protocol is 1.1 and carries the
+controller's `runId`. After verifying a job and before executing it, the agent
+writes `results/<jobId>/session-marker.json` with the run id, the job id, its
+identity and 32 random bytes. The controller reads it back; a marker that does
+not name this run, this job and this agent (or no marker) is `A8N-AE-002` and
+unproven. The close path verifies the marker before it would quit and quits
+nothing on a mismatch. The manifest records `destinationProof` (`marker` or
+`unproven`) and `ownershipProof` (`unproven`). `provesDestination` is true;
+`provesOwnership` stays false because the isolated backend never measures the
+AE process's pid and start time. The marker proves the run's delivery, not which
+AE instance a script reached; the driver's own marker (#43) still covers direct
+AE calls. Tests: `test/windows-destination.test.ts`, an agent marker test, and
+`test/windows-e2e.test.ts`. Level: `automated test` + `fake/mock only`; real
+Windows pending.
 
 **Depends on:** T088.
 

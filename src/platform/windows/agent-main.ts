@@ -8,26 +8,38 @@
 
 import { join } from "node:path";
 
+import type { JobKey } from "./auth.js";
 import { assertInteractiveIdentity, runJob, type JobExecutor } from "./agent.js";
 import { DirectoryChannel, type FileChannel } from "./channel.js";
 import { SpawnJobExecutor, spawnProcess } from "./executor.js";
-import { isJobId, jobPaths, type AgentIdentity } from "./job.js";
+import { claimDiagnosticPath, isJobId, jobPaths, type AgentIdentity } from "./job.js";
+import { loadKeyFile } from "./key-store.js";
+import { measureWindowsSessionId, resolveSessionId } from "./session.js";
 
 export type AgentMainDeps = {
   /** Injected in tests; otherwise a `DirectoryChannel` over `--channel`. */
   readonly channel?: FileChannel;
   /** Injected in tests; otherwise a `SpawnJobExecutor`. */
   readonly executor?: JobExecutor;
+  /** Injected in tests; otherwise loaded from `--key-file`. */
+  readonly key?: JobKey;
+  /** Injected in tests; otherwise the OS measurement. */
+  readonly measureSession?: () => number | null;
   readonly sleep?: (ms: number) => Promise<void>;
   readonly pollMs?: number;
   readonly now?: () => Date;
   readonly maxAgeMs?: number;
+  /** The marker secret; injected in tests, `randomBytes` otherwise. */
+  readonly random?: (size: number) => Uint8Array;
   readonly signal?: AbortSignal;
   /** Diagnostics; defaults to `process.stderr`. */
   readonly stderr?: (text: string) => void;
 };
 
-type ParsedArguments = AgentIdentity & { readonly channelRoot: string };
+type ParsedArguments = AgentIdentity & {
+  readonly channelRoot: string;
+  readonly keyFile: string;
+};
 
 type ParseResult =
   | { readonly ok: true; readonly value: ParsedArguments }
@@ -35,6 +47,7 @@ type ParseResult =
 
 const FLAGS = new Set([
   "--channel",
+  "--key-file",
   "--agent-id",
   "--host",
   "--user",
@@ -61,6 +74,7 @@ function parseArguments(argv: readonly string[]): ParseResult {
 
   const required = [
     "--channel",
+    "--key-file",
     "--agent-id",
     "--host",
     "--user",
@@ -86,6 +100,7 @@ function parseArguments(argv: readonly string[]): ParseResult {
     ok: true,
     value: {
       channelRoot: values.get("--channel") ?? "",
+      keyFile: values.get("--key-file") ?? "",
       id: values.get("--agent-id") ?? "",
       host: values.get("--host") ?? "",
       user: values.get("--user") ?? "",
@@ -120,13 +135,37 @@ export async function main(
     stderr(`windows-agent: ${parsed.detail}\n`);
     return 2;
   }
-  const { channelRoot, ...identity } = parsed.value;
+  const { channelRoot, keyFile, ...claimedIdentity } = parsed.value;
+
+  // The flag is a claim; the OS measurement is the fact. A session-0 task can
+  // claim any number, so a mismatch or an unmeasurable session refuses.
+  const measured = resolveSessionId(
+    claimedIdentity.sessionId,
+    deps.measureSession ?? measureWindowsSessionId,
+  );
+  if (!measured.ok) {
+    stderr(`windows-agent: ${measured.detail}; nothing was polled\n`);
+    return 1;
+  }
+  const identity: AgentIdentity = { ...claimedIdentity, sessionId: measured.sessionId };
 
   try {
     assertInteractiveIdentity(identity);
   } catch (error) {
     stderr(`windows-agent: ${messageOf(error)}\n`);
     return 1;
+  }
+
+  let key: JobKey;
+  if (deps.key !== undefined) {
+    key = deps.key;
+  } else {
+    const loaded = await loadKeyFile(keyFile);
+    if (!loaded.ok) {
+      stderr(`windows-agent: ${loaded.detail}; nothing was polled\n`);
+      return 1;
+    }
+    key = loaded.key;
   }
 
   const channel = deps.channel ?? new DirectoryChannel(channelRoot);
@@ -152,6 +191,9 @@ export async function main(
   }
 
   const stopped = (): boolean => deps.signal?.aborted === true;
+  // A quarantined job stays quarantined for this process's lifetime: the
+  // forensic record is written once, and polling never retries it.
+  const quarantined = new Set<string>();
 
   for (;;) {
     let jobIds: readonly string[];
@@ -167,19 +209,42 @@ export async function main(
       if (!isJobId(jobId)) {
         continue;
       }
+      if (quarantined.has(jobId)) {
+        continue;
+      }
       const result = await channel.read(jobPaths(jobId).result);
       if (result !== null) {
         continue;
       }
       try {
-        await runJob({
+        const outcome = await runJob({
           channel,
           identity,
           executor,
           jobId,
+          key,
           ...(deps.now === undefined ? {} : { now: deps.now }),
           ...(deps.maxAgeMs === undefined ? {} : { maxAgeMs: deps.maxAgeMs }),
+          ...(deps.random === undefined ? {} : { random: deps.random }),
         });
+        if (outcome.state === "claim-unauthenticated") {
+          quarantined.add(jobId);
+          await channel.writeAtomic(
+            claimDiagnosticPath(jobId),
+            new TextEncoder().encode(
+              `${JSON.stringify(
+                {
+                  jobId,
+                  quarantinedAt: (deps.now ?? (() => new Date()))().toISOString(),
+                  detail: outcome.detail,
+                },
+                null,
+                2,
+              )}\n`,
+            ),
+          );
+          stderr(`windows-agent: job ${jobId} is quarantined: ${outcome.detail}\n`);
+        }
       } catch (error) {
         stderr(`windows-agent: job ${jobId} could not be processed: ${messageOf(error)}\n`);
         return 1;

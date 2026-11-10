@@ -10,9 +10,20 @@ import type { FileChannel } from "./channel.js";
 import { isRunId } from "./lock.js";
 import type { DecodeOutcome } from "./job.js";
 
-export const RUN_MANIFEST_SCHEMA_VERSION = "1.0";
+export const RUN_MANIFEST_SCHEMA_VERSION = "1.1";
 
 export type RunOutcome = "ok" | "failed" | "refused" | "unknown";
+
+/**
+ * What the manifest can say about the run's session marker and about the AE
+ * process. 1.1 added both: a manifest that cannot name its proof says
+ * "unproven" rather than leaving the reader to assume one.
+ */
+export type DestinationProof = "marker" | "pid-and-start-time" | "unproven";
+export type OwnershipProof = "pid-and-start-time" | "unproven";
+
+const DESTINATION_PROOFS: readonly string[] = ["marker", "pid-and-start-time", "unproven"];
+const OWNERSHIP_PROOFS: readonly string[] = ["pid-and-start-time", "unproven"];
 
 export type RunManifest = {
   readonly schemaVersion: typeof RUN_MANIFEST_SCHEMA_VERSION;
@@ -23,6 +34,8 @@ export type RunManifest = {
   readonly sessionId: number | null;
   readonly agentId: string;
   readonly agentVersion: string;
+  /** True only when the agent identity came from a verified signed result. */
+  readonly agentVerified: boolean;
   /** The one version the probe proved, or null when it could not. */
   readonly aeVersion: string | null;
   readonly jobId: string;
@@ -30,6 +43,10 @@ export type RunManifest = {
   /** Null when no result was published (a timeout); never a hash of nothing. */
   readonly resultSha256: string | null;
   readonly outcome: RunOutcome;
+  /** How the run's destination was proven; `unproven` when it was not. */
+  readonly destinationProof: DestinationProof;
+  /** How the AE process was proven to be this run's; `unproven` here. */
+  readonly ownershipProof: OwnershipProof;
   readonly startedAt: string;
   readonly finishedAt: string;
 };
@@ -118,9 +135,24 @@ export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest>
   if (aeVersion !== null && (typeof aeVersion !== "string" || aeVersion === "")) {
     return { ok: false, detail: "aeVersion must be a non-empty string or null" };
   }
+  // Absent (a manifest written before the field existed) means unverified;
+  // it never defaults to true.
+  const rawAgentVerified = parsed["agentVerified"];
+  if (rawAgentVerified !== undefined && typeof rawAgentVerified !== "boolean") {
+    return { ok: false, detail: "agentVerified must be a boolean" };
+  }
+  const agentVerified = rawAgentVerified === true;
   const outcome = parsed["outcome"];
   if (typeof outcome !== "string" || !OUTCOMES.includes(outcome)) {
     return { ok: false, detail: `unknown outcome ${String(outcome)}` };
+  }
+  const destinationProof = parsed["destinationProof"];
+  if (typeof destinationProof !== "string" || !DESTINATION_PROOFS.includes(destinationProof)) {
+    return { ok: false, detail: `unknown destinationProof ${String(destinationProof)}` };
+  }
+  const ownershipProof = parsed["ownershipProof"];
+  if (typeof ownershipProof !== "string" || !OWNERSHIP_PROOFS.includes(ownershipProof)) {
+    return { ok: false, detail: `unknown ownershipProof ${String(ownershipProof)}` };
   }
   if (!HASH_PATTERN.test(payloadSha256)) {
     return { ok: false, detail: "payloadSha256 must be a SHA-256 hex digest" };
@@ -138,11 +170,14 @@ export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest>
       sessionId: typeof sessionId === "number" ? sessionId : null,
       agentId,
       agentVersion,
+      agentVerified,
       aeVersion: typeof aeVersion === "string" ? aeVersion : null,
       jobId,
       payloadSha256,
       resultSha256,
       outcome: outcome as RunOutcome,
+      destinationProof: destinationProof as DestinationProof,
+      ownershipProof: ownershipProof as OwnershipProof,
       startedAt,
       finishedAt,
     },

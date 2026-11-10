@@ -51,6 +51,38 @@ export type SpawnFunction = (
 
 export type KillFunction = (child: ExecutorChild) => void | Promise<void>;
 
+/** Reads a process's creation time; null when it does not exist or cannot be read. */
+export type ProcessStartReader = (pid: number) => Promise<string | null>;
+
+const START_TIME_TIMEOUT_MS = 5_000;
+
+/**
+ * The process creation time, as the OS reports it. A bare pid is not an
+ * identity: between the timeout and `taskkill`, the child can exit and its pid
+ * be reused by an unrelated process.
+ */
+export function readWindowsProcessStart(pid: number): Promise<string | null> {
+  if (process.platform !== "win32" || !Number.isInteger(pid) || pid <= 0) {
+    return Promise.resolve(null);
+  }
+  const script = `(Get-Process -Id ${String(pid)}).StartTime.ToUniversalTime().ToString('o')`;
+  return new Promise((resolve) => {
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", script],
+      { encoding: "utf-8", timeout: START_TIME_TIMEOUT_MS, windowsHide: true },
+      (error, stdout) => {
+        if (error !== null) {
+          resolve(null);
+          return;
+        }
+        const text = stdout.trim();
+        resolve(text === "" ? null : text);
+      },
+    );
+  });
+}
+
 export type SpawnJobExecutorOptions = {
   /** Injected so tests can observe the spawn call and drive its events. */
   readonly spawn: SpawnFunction;
@@ -62,6 +94,12 @@ export type SpawnJobExecutorOptions = {
   readonly timeoutMs?: number;
   /** Injected so tests can observe the tree kill; defaults to `taskkill /T /F`. */
   readonly kill?: KillFunction;
+  /**
+   * Injected so tests can model pid reuse. A timeout kills only when the
+   * process's identity (its creation time) is the same before and at kill
+   * time; otherwise nothing is killed and the outcome stays unknown.
+   */
+  readonly readProcessStart?: ProcessStartReader;
 };
 
 /** NUL and the C0 control range, plus DEL. */
@@ -137,6 +175,7 @@ export class SpawnJobExecutor implements JobExecutor {
   readonly #maxOutputBytes: number;
   readonly #timeoutMs: number;
   readonly #kill: KillFunction;
+  readonly #readProcessStart: ProcessStartReader;
 
   constructor(options: SpawnJobExecutorOptions) {
     this.#spawn = options.spawn;
@@ -150,6 +189,7 @@ export class SpawnJobExecutor implements JobExecutor {
         ? options.timeoutMs
         : DEFAULT_EXECUTOR_TIMEOUT_MS;
     this.#kill = options.kill ?? killProcessTree;
+    this.#readProcessStart = options.readProcessStart ?? readWindowsProcessStart;
   }
 
   async execute(input: {
@@ -194,6 +234,13 @@ export class SpawnJobExecutor implements JobExecutor {
         message: `the process could not be started: ${describe(error)}`,
       };
     }
+
+    // Capture the process identity now, before any timeout can fire. A pid
+    // alone cannot be re-checked later: it may name a different process.
+    const startedIdentity: Promise<string | null> =
+      child.pid === undefined
+        ? Promise.resolve(null)
+        : this.#readProcessStart(child.pid).catch(() => null);
 
     const collect = (
       stream: NodeJS.ReadableStream | null,
@@ -269,17 +316,31 @@ export class SpawnJobExecutor implements JobExecutor {
         }
         timedOut = true;
         void (async () => {
-          try {
-            await this.#kill(child);
-          } catch {
-            // The kill failing does not make the outcome less unknown.
+          // Kill only the process this run started. If either identity read
+          // fails, or the creation time changed, the pid now names something
+          // else and nothing is killed: the outcome is already unknown, and
+          // killing an unrelated process is worse than leaving this one.
+          const before = await startedIdentity;
+          const current =
+            child.pid === undefined
+              ? null
+              : await this.#readProcessStart(child.pid).catch(() => null);
+          const sameProcess = before !== null && current !== null && before === current;
+          if (sameProcess) {
+            try {
+              await this.#kill(child);
+            } catch {
+              // The kill failing does not make the outcome less unknown.
+            }
           }
-          await writeArtifacts(
-            "unknown",
-            `timed out after ${this.#timeoutMs}ms; the child was killed and the outcome is unknown` +
-              truncationNote(stdoutTruncated, stderrTruncated, this.#maxOutputBytes),
-            { exitCode: null, code: "A8N-AE-004" },
-          );
+          const outcome = sameProcess
+            ? `timed out after ${this.#timeoutMs}ms; the child was killed and the outcome is unknown`
+            : `timed out after ${this.#timeoutMs}ms; the child's identity could not be re-checked, ` +
+              "so nothing was killed and it may still be running";
+          await writeArtifacts("unknown", outcome + truncationNote(stdoutTruncated, stderrTruncated, this.#maxOutputBytes), {
+            exitCode: null,
+            code: "A8N-AE-004",
+          });
         })();
       }, this.#timeoutMs);
 

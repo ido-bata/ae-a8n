@@ -4,10 +4,14 @@
  * One `run` acquires the per-run lock, submits exactly one job through the
  * file channel, and maps the result to a command outcome or a typed error. A
  * refusal and a timeout are different errors, and neither is retried. The run
- * manifest records the identities, versions and hashes the decision rests on.
+ * manifest records the identities, versions, hashes and destination proof the
+ * decision rests on.
  *
- * Recovery, destination proof and process ownership are deliberately absent:
- * they are T089/T090. `recover` says so instead of returning an empty list.
+ * Recovery (T089) reports observable blocking states and never presses
+ * anything. Destination proof (T090) is the agent's per-run session marker:
+ * the close path verifies it before it would quit anything, and a marker that
+ * names another run means nothing is quit. Ownership is not measured by this
+ * backend, so the manifest says `ownershipProof: "unproven"`.
  */
 
 import { randomBytes } from "node:crypto";
@@ -31,13 +35,16 @@ import {
   type StepOutcome,
   type TargetSpec,
 } from "../contract.js";
+import { windowsCapabilities } from "./capabilities.js";
 import type { FileChannel } from "./channel.js";
+import type { JobKey } from "./auth.js";
 import {
   acquireRunLock,
   releaseRunLock,
   type RunOwner,
 } from "./lock.js";
 import {
+  RUN_MANIFEST_SCHEMA_VERSION,
   writeRunManifest,
   type RunManifest,
 } from "./manifest.js";
@@ -49,25 +56,23 @@ import {
   type AgentIdentity,
 } from "./job.js";
 import {
+  proveRunDestination,
+  type DestinationVerdict,
+} from "./session-marker.js";
+import {
   probeWindows,
+  type CommandResult,
   type CommandRunner,
   type WindowsFacts,
 } from "./probe.js";
+import {
+  assessWindowsRecovery,
+  interpretWindowsRecoveryResult,
+  WINDOWS_RECOVERY_COMMAND,
+} from "./recovery.js";
 import { submitJob, type SubmitOptions, type SubmitResult } from "./remote.js";
 
 export const SETUP_STATE_PATH = "setup/state.json";
-
-/** The capabilities this backend can honestly claim today. */
-export function windowsCapabilities(isolation: TargetSpec["isolation"]): Capabilities {
-  return {
-    nonInterference: isolation === "remote-host" ? "by-construction" : "unproven",
-    // T089/T090 own these proofs; claiming them now would be a lie.
-    provesOwnership: false,
-    provesDestination: false,
-    guiRecovery: false,
-    sessionIdentity: "host-and-user",
-  };
-}
 
 export class WindowsJobRefusedError extends Error {
   readonly code: string;
@@ -126,21 +131,50 @@ export type PreparedIdentity = {
   readonly checks: readonly DiagnosticCheck[];
 };
 
+/** What the backend has learned about the run so far. */
+export type RunBinding = {
+  readonly runId: string;
+  /** Null until a job has been submitted. */
+  readonly jobId: string | null;
+};
+
 export interface WindowsSessionBackend {
   prepare(): Promise<PreparedIdentity>;
   run(
     identity: SessionIdentity,
     argv: readonly string[],
     options: RunOptions,
-    onRunId: (runId: string | null) => void,
+    onRun: (run: RunBinding) => void,
   ): Promise<CommandOutcome>;
+  /** Read and verify the run's session marker; this never acts on AE. */
+  destination(run: RunBinding): Promise<DestinationVerdict>;
+  /** Release this run's own lock. This is not an action on After Effects. */
   release(runId: string): Promise<void>;
+  /**
+   * Quit the After Effects this run started, only ever after a proven
+   * destination. The Windows backend starts no AE of its own, so it omits
+   * this; a future GUI path must implement it behind the same check.
+   */
+  quit?: () => Promise<void>;
 }
 
 export type SubmitFunction = (
   channel: FileChannel,
   options: SubmitOptions,
 ) => Promise<SubmitResult>;
+
+/** No channel key: without one, a job cannot be authenticated, so nothing is sent. */
+export class WindowsKeyNotConfiguredError extends Error {
+  readonly code = "A8N-JOB-003" as const;
+
+  constructor() {
+    super(
+      "the Windows channel key is not configured, so a job could not be authenticated; " +
+        "nothing was sent. Run setup to provision the key on the controller and the agent host.",
+    );
+    this.name = "WindowsKeyNotConfiguredError";
+  }
+}
 
 export type WindowsAdapterOptions = {
   readonly channel: FileChannel;
@@ -149,6 +183,11 @@ export type WindowsAdapterOptions = {
   /** The controller-side user name recorded in jobs and manifests. */
   readonly user: string;
   readonly agent: AgentIdentity;
+  /**
+   * The shared channel secret, provisioned out of band. Without it every run
+   * refuses rather than sending an unauthenticated job.
+   */
+  readonly key?: JobKey;
   /** The read-only probe commands. */
   readonly probe: CommandRunner;
   /** Where local stdout/stderr copies are written; `tmpdir()` by default. */
@@ -161,6 +200,8 @@ export type WindowsAdapterOptions = {
   readonly sleep?: (ms: number) => Promise<void>;
   /** The agent entry to check in `windows.agent`; null means "not configured". */
   readonly agentEntry?: string;
+  /** The logon entry that starts the agent; null means "not configured". */
+  readonly autostartEntry?: string;
   readonly exists?: (path: string) => Promise<boolean>;
 };
 
@@ -192,7 +233,8 @@ export class WindowsSession implements IsolatedSession {
   #identity: SessionIdentity;
   #opened = false;
   #closed = false;
-  #runId: string | null = null;
+  #run: RunBinding | null = null;
+  #closedWith: { readonly closed: boolean; readonly reason: string | null } | null = null;
 
   constructor(
     target: TargetSpec,
@@ -224,20 +266,53 @@ export class WindowsSession implements IsolatedSession {
     }
     // Before the lock, before the payload, before anything is written.
     assertProvenIdentity(this.#identity);
-    return this.#backend.run(this.#identity, argv, options, (runId) => {
-      this.#runId = runId;
+    return this.#backend.run(this.#identity, argv, options, (run) => {
+      this.#run = run;
     });
   }
 
+  /**
+   * Closes the run, never After Effects. A quit happens only after the
+   * session marker names this run; when it does not, nothing is quit and the
+   * close is refused with `A8N-AE-002`. The run's own lock is still released:
+   * it is this run's bookkeeping, not an action on a shared process.
+   */
   async close(): Promise<{ readonly closed: boolean; readonly reason: string | null }> {
-    if (this.#runId !== null) {
-      await this.#backend.release(this.#runId);
-      this.#runId = null;
+    // A second close must not turn a refusal into a clean close.
+    if (this.#closedWith !== null) {
+      return this.#closedWith;
+    }
+    const run = this.#run;
+    let closed = true;
+    let reason: string | null = null;
+    if (run !== null) {
+      let destination: DestinationVerdict;
+      try {
+        destination = await this.#backend.destination(run);
+      } catch (error) {
+        destination = {
+          proven: false,
+          code: "A8N-AE-002",
+          detail: `the session marker could not be checked: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        };
+      }
+      if (destination.proven) {
+        if (this.#backend.quit !== undefined) {
+          await this.#backend.quit();
+        }
+      } else {
+        closed = false;
+        reason = `${destination.code}: ${destination.detail}; nothing was quit`;
+      }
+      await this.#backend.release(run.runId);
+      this.#run = null;
     }
     this.#opened = false;
     this.#closed = true;
-    // Ownership is T090: this closes the run, not After Effects.
-    return { closed: true, reason: null };
+    this.#closedWith = { closed, reason };
+    return this.#closedWith;
   }
 }
 
@@ -249,6 +324,7 @@ export class WindowsAdapter implements PlatformAdapter {
   readonly #host: string;
   readonly #user: string;
   readonly #agent: AgentIdentity;
+  readonly #key: JobKey | undefined;
   readonly #probeRunner: CommandRunner;
   readonly #runDirectory: string;
   readonly #staleAfterMs: number | undefined;
@@ -258,6 +334,7 @@ export class WindowsAdapter implements PlatformAdapter {
   readonly #pollMs: number | undefined;
   readonly #sleep: ((ms: number) => Promise<void>) | undefined;
   readonly #agentEntry: string | null;
+  readonly #autostartEntry: string | null;
   readonly #exists: (path: string) => Promise<boolean>;
 
   #isolation: TargetSpec["isolation"] = "remote-host";
@@ -268,6 +345,7 @@ export class WindowsAdapter implements PlatformAdapter {
     this.#host = options.host;
     this.#user = options.user;
     this.#agent = options.agent;
+    this.#key = options.key;
     this.#probeRunner = options.probe;
     this.#runDirectory = options.runDirectory ?? join(tmpdir(), "ae-a8n-runs");
     this.#staleAfterMs = options.staleAfterMs;
@@ -277,6 +355,7 @@ export class WindowsAdapter implements PlatformAdapter {
     this.#pollMs = options.pollMs;
     this.#sleep = options.sleep;
     this.#agentEntry = options.agentEntry ?? null;
+    this.#autostartEntry = options.autostartEntry ?? null;
     this.#exists = options.exists ?? defaultExists;
   }
 
@@ -325,6 +404,17 @@ export class WindowsAdapter implements PlatformAdapter {
       automatable: !channelReadable,
     });
 
+    steps.push({
+      id: "windows.channel-permissions",
+      state: "needs-human",
+      reason:
+        "the controller account and the agent account must both be able to read and write the channel root; one account's write probe cannot prove the other's access",
+      action:
+        "Grant Modify on the channel root to the controller account and to the agent account " +
+        "(for example with icacls). Granting it is a human decision; setup never records a credential.",
+      automatable: false,
+    });
+
     let agentExists = false;
     if (this.#agentEntry !== null) {
       agentExists = await this.#exists(this.#agentEntry).catch(() => false);
@@ -340,6 +430,27 @@ export class WindowsAdapter implements PlatformAdapter {
       action: agentExists
         ? null
         : "Install @ido-bata/ae-a8n on the target and point setup at its scripts/windows-agent.mjs.",
+      automatable: false,
+    });
+
+    let autostartExists = false;
+    if (this.#autostartEntry !== null) {
+      autostartExists = await this.#exists(this.#autostartEntry).catch(() => false);
+    }
+    steps.push({
+      id: "windows.agent-autostart",
+      state: autostartExists ? "done" : "planned",
+      reason: autostartExists
+        ? `the agent's logon entry ${this.#autostartEntry} exists`
+        : this.#autostartEntry === null
+          ? "no agent logon entry is configured"
+          : `the agent's logon entry ${this.#autostartEntry} does not exist`,
+      // The agent must run in the dedicated user's interactive session, so it
+      // starts at that user's logon. Setup checks the entry; it does not
+      // register it and never stores a password.
+      action: autostartExists
+        ? null
+        : "Register the agent to start at the dedicated user's logon (a Startup-folder shortcut or a logon task). Sign-in stays manual.",
       automatable: false,
     });
 
@@ -450,29 +561,52 @@ export class WindowsAdapter implements PlatformAdapter {
     const prepared = await this.#prepare(target);
     const backend: WindowsSessionBackend = {
       prepare: () => this.#prepare(target),
-      run: (identity, argv, options, onRunId) =>
-        this.#runInSession(target, identity, argv, options, onRunId),
+      run: (identity, argv, options, onRun) =>
+        this.#runInSession(target, identity, argv, options, onRun),
+      destination: (run) => this.#verifyDestination(run),
       release: async (runId) => {
         await releaseRunLock(this.#channel, runId, this.#owner());
       },
+      // No `quit`: this backend never starts After Effects itself, so there is
+      // no process it may quit. A future GUI path must add one behind the
+      // same marker check.
     };
     return new WindowsSession(target, prepared.identity, backend);
   }
 
-  recover(runDir: string): Promise<readonly RecoveryFinding[]> {
-    return Promise.resolve([
-      {
-        code: "A8N-JOB-002",
-        action: "reported",
-        detail:
-          `GUI recovery is not implemented on Windows (T089); nothing was acted on in ${runDir}. ` +
-          "The run is left for a human to inspect.",
-      },
-    ]);
+  async recover(runDir: string): Promise<readonly RecoveryFinding[]> {
+    let result: CommandResult;
+    try {
+      result = await this.#probeRunner.run(WINDOWS_RECOVERY_COMMAND);
+    } catch (error) {
+      result = {
+        stdout: "",
+        stderr: error instanceof Error ? error.message : String(error),
+        exitCode: 127,
+      };
+    }
+    const observation = interpretWindowsRecoveryResult(result);
+    return assessWindowsRecovery(observation, { runDir });
   }
 
   #owner(): RunOwner {
     return { host: this.#host, user: this.#user };
+  }
+
+  /** The marker must name this run, this job and the configured agent. */
+  #verifyDestination(run: RunBinding): Promise<DestinationVerdict> {
+    if (run.jobId === null) {
+      return Promise.resolve({
+        proven: false,
+        code: "A8N-AE-002",
+        detail: "no job was submitted for this run, so it has no destination",
+      });
+    }
+    return proveRunDestination(this.#channel, {
+      runId: run.runId,
+      jobId: run.jobId,
+      agent: this.#agent,
+    });
   }
 
   async #prepare(target: TargetSpec): Promise<PreparedIdentity> {
@@ -500,8 +634,12 @@ export class WindowsAdapter implements PlatformAdapter {
     _identity: SessionIdentity,
     argv: readonly string[],
     options: RunOptions,
-    onRunId: (runId: string | null) => void,
+    onRun: (run: RunBinding) => void,
   ): Promise<CommandOutcome> {
+    const key = this.#key;
+    if (key === undefined) {
+      throw new WindowsKeyNotConfiguredError();
+    }
     const now = this.#now();
     const runId = newJobId(now, this.#random(4));
     const owner = this.#owner();
@@ -515,7 +653,7 @@ export class WindowsAdapter implements PlatformAdapter {
       // The session never owned this lock, so close() must not release it.
       throw new WindowsRunLockError(lock.state, runId);
     }
-    onRunId(runId);
+    onRun({ runId, jobId: null });
 
     const payload = encodeJobPayload({
       argv: [...argv],
@@ -525,8 +663,10 @@ export class WindowsAdapter implements PlatformAdapter {
     const writer = owner;
     const submitOptions: SubmitOptions = {
       payload,
+      runId,
       timeoutMs: options.timeoutMs,
       writer,
+      key,
       now: this.#now,
       random: this.#random,
       ...(this.#pollMs === undefined ? {} : { pollMs: this.#pollMs }),
@@ -534,22 +674,34 @@ export class WindowsAdapter implements PlatformAdapter {
     };
 
     const submitted = await this.#submit(this.#channel, submitOptions);
-    const resultBytes = await this.#channel.read(jobPaths(submitted.jobId).result);
+    onRun({ runId, jobId: submitted.jobId });
     const facts = this.#facts ?? (await this.#prepare(target)).facts;
+    // Read the agent's marker back. Only a marker naming this run counts;
+    // anything else is recorded as unproven, never as a measured destination.
+    const destination = await this.#verifyDestination({ runId, jobId: submitted.jobId });
+    // The manifest records what was proven, not what was configured: the
+    // agent identity and session come from the signed result when there is
+    // one. `agentVerified` says which of the two this is.
+    const verified =
+      submitted.status === "ok" || submitted.status === "failed" ? submitted.result.agent : null;
     const manifest: RunManifest = {
-      schemaVersion: "1.0",
+      schemaVersion: RUN_MANIFEST_SCHEMA_VERSION,
       runId,
       host: this.#host,
       user: this.#user,
-      sessionId: facts.sessionId,
-      agentId: this.#agent.id,
-      agentVersion: this.#agent.version,
+      sessionId: verified === null ? facts.sessionId : verified.sessionId,
+      agentId: verified?.id ?? this.#agent.id,
+      agentVersion: verified?.version ?? this.#agent.version,
+      agentVerified: verified !== null,
       aeVersion: aeVersionFromFacts(facts),
       jobId: submitted.jobId,
       payloadSha256: sha256Hex(payload),
-      // A timeout publishes nothing; null says so rather than hashing empty bytes.
-      resultSha256: resultBytes === null ? null : sha256Hex(resultBytes),
+      resultSha256: submitted.resultSha256,
       outcome: submitted.status,
+      destinationProof: destination.proven ? destination.proof : "unproven",
+      // The isolated backend never measured the AE process's pid and start
+      // time, so it may not claim ownership.
+      ownershipProof: "unproven",
       startedAt,
       finishedAt: this.#now().toISOString(),
     };
