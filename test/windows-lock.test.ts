@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { DirectoryChannel } from "../src/platform/windows/channel.js";
+import { DirectoryChannel, type FileChannel } from "../src/platform/windows/channel.js";
 import {
   DEFAULT_STALE_AFTER_MS,
   acquireRunLock,
@@ -32,6 +32,34 @@ afterEach(async () => {
 
 function text(bytes: Uint8Array | null): string {
   return new TextDecoder().decode(bytes ?? new Uint8Array());
+}
+
+/** The same channel, with the second read answering something else. */
+function withSecondRead(
+  inner: FileChannel,
+  second: () => Promise<Uint8Array | null>,
+): { channel: FileChannel; removed: string[] } {
+  let reads = 0;
+  const removed: string[] = [];
+  return {
+    removed,
+    channel: {
+      read: (path) => {
+        reads += 1;
+        return reads === 2 ? second() : inner.read(path);
+      },
+      writeAtomic: (path, bytes) => inner.writeAtomic(path, bytes),
+      createExclusive: (path, bytes) => inner.createExclusive(path, bytes),
+      ensureDirectory: (path) => inner.ensureDirectory(path),
+      list: (directory) => inner.list(directory),
+      listDirectories: (directory) => inner.listDirectories(directory),
+      isDirectory: (path) => inner.isDirectory(path),
+      remove: (path) => {
+        removed.push(path);
+        return inner.remove(path);
+      },
+    },
+  };
 }
 
 describe("the run lock", () => {
@@ -127,6 +155,32 @@ describe("the run lock", () => {
 
     expect(await releaseRunLock(files, RUN_ID, OWNER)).toBe(true);
     expect(await files.read(lockPath(RUN_ID))).toBeNull();
+  });
+
+  it("leaves a lock that changed after it was validated", async () => {
+    // Between validating the lock and unlinking it, a recovery deletes our
+    // stale lock and another controller takes it. The delayed remove must not
+    // delete that controller's lock.
+    const files = await channel();
+    await acquireRunLock(files, { runId: RUN_ID, owner: OWNER, now: () => NOW });
+    const fresh = encodeRunLock({
+      schemaVersion: "1.0",
+      runId: RUN_ID,
+      owner: { host: "OTHER", user: "someone" },
+      acquiredAt: NOW.toISOString(),
+    });
+    const raced = withSecondRead(files, () => Promise.resolve(fresh));
+    expect(await releaseRunLock(raced.channel, RUN_ID, OWNER)).toBe(false);
+    expect(raced.removed).toEqual([]);
+    expect(await files.read(lockPath(RUN_ID))).not.toBeNull();
+  });
+
+  it("leaves nothing to remove when the lock vanished between the reads", async () => {
+    const files = await channel();
+    await acquireRunLock(files, { runId: RUN_ID, owner: OWNER, now: () => NOW });
+    const raced = withSecondRead(files, () => Promise.resolve(null));
+    expect(await releaseRunLock(raced.channel, RUN_ID, OWNER)).toBe(false);
+    expect(raced.removed).toEqual([]);
   });
 
   it("decodes only a complete lock document", () => {

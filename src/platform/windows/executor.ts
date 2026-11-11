@@ -49,7 +49,15 @@ export type SpawnFunction = (
   options: SpawnCallOptions,
 ) => ExecutorChild;
 
-export type KillFunction = (child: ExecutorChild) => void | Promise<void>;
+/**
+ * What a kill attempt achieved. `killed: true` means the OS accepted the
+ * request; it does not prove the process has exited.
+ */
+export type KillOutcome =
+  | { readonly killed: true }
+  | { readonly killed: false; readonly detail: string };
+
+export type KillFunction = (child: ExecutorChild) => KillOutcome | Promise<KillOutcome>;
 
 /** Reads a process's creation time; null when it does not exist or cannot be read. */
 export type ProcessStartReader = (pid: number) => Promise<string | null>;
@@ -119,20 +127,26 @@ export const spawnProcess: SpawnFunction = (program, args, options) =>
 
 /**
  * Kill the child and everything it started. `taskkill` is invoked directly,
- * never through a shell, and its failure does not change the outcome.
+ * never through a shell, and its own refusal is reported: a timeout must not
+ * say the child was killed when the OS refused to kill it.
  */
-export function killProcessTree(child: ExecutorChild): Promise<void> {
+export function killProcessTree(child: ExecutorChild): Promise<KillOutcome> {
   const pid = child.pid;
   if (pid === undefined) {
-    return Promise.resolve();
+    return Promise.resolve({ killed: false, detail: "the child has no pid" });
   }
   return new Promise((resolve) => {
     execFile(
       "taskkill.exe",
       ["/pid", String(pid), "/T", "/F"],
       { windowsHide: true, timeout: 5000 },
-      () => {
-        resolve();
+      (error, _stdout, stderr) => {
+        if (error === null) {
+          resolve({ killed: true });
+          return;
+        }
+        const text = String(stderr ?? "").trim();
+        resolve({ killed: false, detail: text === "" ? describe(error) : text });
       },
     );
   });
@@ -341,17 +355,33 @@ export class SpawnJobExecutor implements JobExecutor {
               ? null
               : await this.#readProcessStart(child.pid).catch(() => null);
           const sameProcess = before !== null && current !== null && before === current;
+          let kill: KillOutcome | null = null;
           if (sameProcess) {
             try {
-              await this.#kill(child);
-            } catch {
-              // The kill failing does not make the outcome less unknown.
+              kill = await this.#kill(child);
+            } catch (error) {
+              kill = { killed: false, detail: describe(error) };
             }
           }
-          const outcome = sameProcess
-            ? `timed out after ${this.#timeoutMs}ms; the child was killed and the outcome is unknown`
-            : `timed out after ${this.#timeoutMs}ms; the child's identity could not be re-checked, ` +
-              "so nothing was killed and it may still be running";
+          // A pid stops naming this child once it exits. Record the identity
+          // that was read — it is all a human has to find a child nobody
+          // could kill.
+          const identity =
+            child.pid === undefined
+              ? ""
+              : ` (pid ${String(child.pid)}${before === null ? "" : `, started ${before}`})`;
+          const outcome =
+            kill === null
+              ? before !== null && current !== null
+                ? `timed out after ${this.#timeoutMs}ms; the pid now names a different process, ` +
+                  `so nothing was killed${identity} and it may still be running`
+                : `timed out after ${this.#timeoutMs}ms; the child's identity could not be re-checked, ` +
+                  `so nothing was killed${identity} and it may still be running`
+              : kill.killed
+                ? `timed out after ${this.#timeoutMs}ms; the child's process tree was sent a kill request` +
+                  `${identity} and the outcome is unknown`
+                : `timed out after ${this.#timeoutMs}ms; the kill of the child's process tree failed` +
+                  `${identity}: ${kill.detail}; it may still be running and the outcome is unknown`;
           await writeArtifacts("unknown", outcome + truncationNote(stdoutTruncated, stderrTruncated, this.#maxOutputBytes), {
             exitCode: null,
             code: "A8N-AE-004",

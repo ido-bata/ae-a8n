@@ -147,14 +147,11 @@ export async function acquireRunLock(
 }
 
 /**
- * Remove the lock only when the file still names `owner` and `runId`. A
- * mismatched or unreadable lock is left untouched.
+ * Remove the lock only when the file still names `owner` and `runId`, and its
+ * bytes are unchanged since that check. A mismatched or unreadable lock is
+ * left untouched.
  */
-export async function releaseRunLock(
-  channel: FileChannel,
-  runId: string,
-  owner: RunOwner,
-): Promise<boolean> {
+export async function releaseRunLock(channel: FileChannel, runId: string, owner: RunOwner): Promise<boolean> {
   const path = lockPath(runId);
   const bytes = await channel.read(path);
   if (bytes === null) {
@@ -162,6 +159,16 @@ export async function releaseRunLock(
   }
   const lock = decodeRunLock(bytes);
   if (lock === null || lock.runId !== runId || !sameOwner(lock.owner, owner)) {
+    return false;
+  }
+  // Re-read immediately before unlinking. `remove` is a plain unlink, so the
+  // lock this call validated may no longer be the one on disk: a recovery can
+  // delete our stale lock and another controller can take it in between, and
+  // this delayed remove would then delete a lock it never owned. The window is
+  // narrowed, not closed — the channel has no compare-and-delete — but a lock
+  // whose bytes changed is left alone.
+  const fresh = await channel.read(path);
+  if (fresh === null || Buffer.compare(Buffer.from(fresh), Buffer.from(bytes)) !== 0) {
     return false;
   }
   await channel.remove(path);

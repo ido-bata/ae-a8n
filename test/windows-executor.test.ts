@@ -195,6 +195,7 @@ describe("the spawn job executor", () => {
           kills.push(child.pid);
         }
         child.kill();
+        return { killed: true };
       },
     });
 
@@ -222,6 +223,7 @@ describe("the spawn job executor", () => {
       readProcessStart: () => Promise.resolve("2026-11-10T12:00:00.0000000Z"),
       kill: (child) => {
         child.kill();
+        return { killed: true };
       },
     });
     const outcome = await executor.execute({
@@ -255,6 +257,7 @@ describe("the spawn job executor", () => {
           kills.push(child.pid);
         }
         child.kill();
+        return { killed: true };
       },
     });
     const outcome = await executor.execute({
@@ -262,6 +265,7 @@ describe("the spawn job executor", () => {
       payload: payload({ argv: ["/bin/sleep", "30"] }),
     });
     expect(outcome).toMatchObject({ status: "unknown", code: "A8N-AE-004" });
+    expect(outcome.message).toContain("the pid now names a different process");
     expect(outcome.message).toContain("nothing was killed");
     expect(kills).toEqual([]);
     expect(plan.children[0]?.killed).toBe(false);
@@ -278,6 +282,7 @@ describe("the spawn job executor", () => {
       readProcessStart: () => Promise.resolve(null),
       kill: (child) => {
         kills.push(child.pid ?? -1);
+        return { killed: true };
       },
     });
     const outcome = await executor.execute({
@@ -286,6 +291,57 @@ describe("the spawn job executor", () => {
     });
     expect(outcome.status).toBe("unknown");
     expect(kills).toEqual([]);
+    // Without a verified identity nothing is killed; the record still names
+    // the child a human would have to find.
+    expect(outcome.message).toContain("nothing was killed (pid 4242)");
+    expect(outcome.message).toContain("may still be running");
+  });
+
+  it("does not claim a kill the OS refused", async () => {
+    // `taskkill` can fail (access denied, the reader lacks the right). The
+    // outcome is unknown either way, but the message must not assert a kill
+    // nobody observed.
+    const directory = await runDirectory();
+    const plan = spawnPlan(() => undefined);
+    const executor = new SpawnJobExecutor({
+      spawn: plan.spawn,
+      runDirectory: directory,
+      timeoutMs: 5,
+      readProcessStart: () => Promise.resolve("2026-11-10T12:00:00.0000000Z"),
+      kill: () => Promise.resolve({ killed: false, detail: "Access is denied." }),
+    });
+    const outcome = await executor.execute({
+      job: JOB,
+      payload: payload({ argv: ["/bin/sleep", "30"] }),
+    });
+    expect(outcome).toMatchObject({ status: "unknown", code: "A8N-AE-004" });
+    expect(outcome.message).toContain("the kill of the child's process tree failed");
+    expect(outcome.message).toContain("Access is denied.");
+    expect(outcome.message).toContain("pid 4242");
+    expect(outcome.message).toContain("started 2026-11-10T12:00:00.0000000Z");
+    expect(outcome.message).not.toContain("was sent a kill request");
+    expect(outcome.message).toContain("may still be running");
+  });
+
+  it("treats a kill that throws as a failed kill, not as a killed child", async () => {
+    const directory = await runDirectory();
+    const plan = spawnPlan(() => undefined);
+    const executor = new SpawnJobExecutor({
+      spawn: plan.spawn,
+      runDirectory: directory,
+      timeoutMs: 5,
+      readProcessStart: () => Promise.resolve("2026-11-10T12:00:00.0000000Z"),
+      kill: () => {
+        throw new Error("spawn taskkill.exe ENOENT");
+      },
+    });
+    const outcome = await executor.execute({
+      job: JOB,
+      payload: payload({ argv: ["/bin/sleep", "30"] }),
+    });
+    expect(outcome.status).toBe("unknown");
+    expect(outcome.message).toContain("the kill of the child's process tree failed");
+    expect(outcome.message).toContain("spawn taskkill.exe ENOENT");
   });
 
   it("turns a spawn error into a failed result", async () => {
