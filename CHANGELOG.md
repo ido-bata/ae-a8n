@@ -161,3 +161,13 @@ second test deciding the whole expression, so a built-in name found in
 `unknown method`. The lookup is statements now, and a check on the shipped
 host text refuses a conditional inside a conditional, because Node evaluates
 the ungrouped form correctly and the fake host cannot see the difference.
+
+### Fixed (found by the Windows CI job)
+
+The packed-package and public-API checks started npm by name
+(`execFileSync("npm", …)`). On Windows `npm` is `npm.cmd`, which Node will
+not start without a shell, so the Windows job died on `spawn npm ENOENT`
+before checking anything. Both now resolve the npm CLI and run it as
+`node <npm-cli.js>` (scripts/npm-cli.js), the same way staging does: no
+shell, no bare `npm`, no argument re-parsing. A test refuses a script that
+goes back to either form.
