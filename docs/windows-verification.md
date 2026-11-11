@@ -555,3 +555,46 @@ Correction to an earlier observation in this program: a six-step
 `562d8f1` (setup moved off the CLI branch). From the packaged CLI on
 `86@79d8ab1` the answer is `setup is not implemented in this increment
 (issue #56)`, exit 7. The six-step row is not claimed here.
+
+## 2026-11-11: the basic isolated path ran on this host
+
+Correction to the paragraph above: the sentence "until they pass, the Windows
+path is `fake/mock only`" described the job-execution boundary at the time it
+was written. On 2026-11-11 the basic path crossed it on the real host, twice.
+The evidence is
+[evidence/windows-2026-11-10/README.md](evidence/windows-2026-11-10/README.md)
+("Update, 2026-11-11") and `FINDINGS.md` there.
+
+| | |
+| --- | --- |
+| Build | `integration/win-cli` `d5dea95` + PR #91 `c857a4c`, merged as `4bf9ea0` |
+| Tarball | `0.1.0-alpha.1`, sha256 `1729e255463b0aa8ed8a730b701de8bfc2d49133b51895adb163a2aafe8b7563` |
+| Runs | `20261110T155448Z-9190f1a0`, `20261110T155806Z-3f927bed` — both `ok`, no problems |
+| `AfterFX.exe` | 0 before / 1 during / 0 after, both runs |
+| Ownership | `owned`, a pid this run started, the only instance |
+| Steps | launch, ownership, version, project, project info, create comp, add text layer, comp info, layers, render frame 0, ownership, close — all `ok`; frames byte-identical between runs |
+| Quit | `quit: true`, ownership still `owned` at the moment of quitting |
+
+Level: **`verified on real host` for this basic path only.**
+
+### What this does not prove
+
+- **The session was not isolated from a dedicated account.** The agent ran as
+  `UUU\basic`, session 1, which is also the console user. The backend delivered
+  a signed job to an in-session agent and that agent started AE; it did not
+  create or use a second, non-console session. Non-interference (row 13) is
+  still **UNVERIFIED** and the dedicated-account properties above (SMB ACLs,
+  `O_EXCL` atomicity, junctions, PowerShell session measurement under another
+  account) are still unmeasured.
+- Destination and ownership proof: `manifest.json` recorded
+  `destinationProof: "unproven"` and `ownershipProof: "unproven"` (T090/#72).
+- Recovery from a crash or a hung dialog was not induced (row 15).
+- No `ae.call` / extension method ran on this host (T091); extension methods
+  remain `fake/mock only`.
+- The release tarball for `0.1.0-alpha.2` is not this one. It differs by the
+  version string, the late-result fix (#90) and the `icacls` path fix; the
+  acceptance was **not** re-run against it.
+
+Rows 12–17 of the 2026-11-10 matrix keep the status they had, except row 14
+(ownership against a real AE on the isolated backend) is now **PASS for the
+basic path**, with the ownership proof still unproven.
