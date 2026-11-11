@@ -12,11 +12,13 @@
  * GUI-capable would be a lie the rest of the pipeline would build on.
  */
 
+import { AGENT_OPTIONS, HIDDEN_FLAG, LOG_FLAG, detachAgent } from "../platform/windows/agent-detach.js";
 import { main as runAgentMain } from "../platform/windows/agent-main.js";
 
 export const AGENT_HELP = [
   "Usage: ae-a8n agent --channel <dir> --key-file <file> --host <name> --user <name>",
   "                       [--agent-id <id>] [--session-id <n>] [--version <v>]",
+  "                       [--hidden] [--log <file>]",
   "",
   "Runs the in-session agent on the target host. It claims one job at a time",
   "from the channel, verifies the agent's own interactive session, runs the",
@@ -31,6 +33,12 @@ export const AGENT_HELP = [
   "  --user <name>      The account the agent must be running as",
   "  --session-id <n>   Defaults to the measured interactive session",
   "  --version <v>      Defaults to this package's version",
+  "  --hidden           Start a hidden, detached copy and return; no console",
+  "                     window is created. The agent must still run in the",
+  "                     signed-in session, so use this from a logon entry or",
+  "                     a shortcut, not from a service.",
+  "  --log <file>       With --hidden, where the agent's output goes",
+  "                     (default: %LOCALAPPDATA%\\ae-a8n\\logs\\agent.log)",
   "  --help, -h         Show this help",
   "",
   "Stop it with Ctrl+C or SIGTERM. It never starts or quits After Effects by",
@@ -38,15 +46,35 @@ export const AGENT_HELP = [
 ].join("\n");
 
 /** The flag names the agent accepts; anything else is a usage error. */
-const AGENT_FLAGS = new Set([
-  "--channel",
-  "--key-file",
-  "--agent-id",
-  "--host",
-  "--user",
-  "--session-id",
-  "--version",
-]);
+const AGENT_FLAGS = AGENT_OPTIONS;
+
+/** Every agent flag but `--hidden` is followed by its value. */
+const VALUE_FLAGS = new Set([...AGENT_OPTIONS].filter((flag) => flag !== HIDDEN_FLAG));
+
+/**
+ * The first token that is not an agent flag, or null.
+ *
+ * Values are skipped, not inspected. They are paths and names — a channel
+ * root, a key file, a host — and a check that read every token as a flag
+ * rejected the documented command with "unknown option <path>" before the
+ * agent ever saw it. The flags themselves are still checked here so a usage
+ * error is reported without the agent starting.
+ */
+export function unknownAgentOption(argv: readonly string[]): string | null {
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === undefined) {
+      break;
+    }
+    if (!AGENT_FLAGS.has(token)) {
+      return token;
+    }
+    if (VALUE_FLAGS.has(token)) {
+      index += 1;
+    }
+  }
+  return null;
+}
 
 export type AgentCommandResult = { readonly exitCode: number };
 
@@ -57,16 +85,13 @@ export async function runAgentCommand(
     process.stdout.write(`${AGENT_HELP}\n`);
     return { exitCode: 0 };
   }
-  for (let index = 0; index < argv.length; index += 1) {
-    const raw = argv[index];
-    if (raw === undefined) {
-      break;
-    }
-    const name = raw.includes("=") ? raw.slice(0, raw.indexOf("=")) : raw;
-    if (!AGENT_FLAGS.has(name)) {
-      process.stderr.write(`ae-a8n agent: unknown option ${name}; run "ae-a8n agent --help"\n`);
-      return { exitCode: 2 };
-    }
+  const unknown = unknownAgentOption(argv);
+  if (unknown !== null) {
+    process.stderr.write(`ae-a8n agent: unknown option ${unknown}; run "ae-a8n agent --help"\n`);
+    return { exitCode: 2 };
+  }
+  if (argv.includes(HIDDEN_FLAG) || argv.includes(LOG_FLAG)) {
+    return { exitCode: detachAgent(argv) };
   }
   const controller = new AbortController();
   for (const signal of ["SIGINT", "SIGTERM"] as const) {

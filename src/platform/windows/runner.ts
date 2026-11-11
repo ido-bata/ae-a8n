@@ -562,7 +562,11 @@ export class WindowsAdapter implements PlatformAdapter {
       // register it and never stores a password.
       action: autostartExists
         ? null
-        : "Register the agent to start at the dedicated user's logon (a Startup-folder shortcut or a logon task). Sign-in stays manual.",
+        : "Register the agent to start at the dedicated user's logon (a Startup-folder " +
+          "shortcut or a logon task) with --hidden: `ae-a8n agent --hidden --channel <dir> " +
+          "--key-file <file> --host <host> --user <user>`. --hidden starts the agent with no " +
+          "console window and writes its output to a log; starting it plainly leaves a console " +
+          "window on the desktop for as long as the agent runs. Sign-in stays manual.",
       automatable: false,
     });
 
@@ -576,12 +580,24 @@ export class WindowsAdapter implements PlatformAdapter {
         automatable: false,
       });
     } else if (version === null) {
+      // A real host had 26.0 and 26.5 registered at once. The person reading
+      // the plan needs those numbers, not "more than one".
+      const versions = [
+        ...new Set(
+          prepared.facts.aeInstalls
+            .map((install) => install.version)
+            .filter((entry): entry is string => entry !== null),
+        ),
+      ].sort();
       steps.push({
         id: "windows.ae",
         state: "needs-human",
         reason:
-          "After Effects is installed, but more than one version is registered; the exact version cannot be proved",
-        action: "Remove or disambiguate the extra After Effects installations, then run setup again.",
+          `After Effects is installed, but ${String(versions.length)} versions are registered ` +
+          `(${versions.join(", ")}); the exact version cannot be proved`,
+        action:
+          "Leave exactly one After Effects version registered for the target account " +
+          "(uninstall or hide the others), then run setup again.",
         automatable: false,
       });
     } else {

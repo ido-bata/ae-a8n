@@ -31,7 +31,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -133,7 +133,10 @@ try {
   if (!existsSync(binPath)) {
     fail(`${binRelative} is missing from the installed package — check the build and "files"`);
   }
-  if ((statSync(binPath).mode & 0o111) === 0) {
+  // Windows has no exec bit: a mode of 0666 is normal, and npm runs the bin
+  // through a generated .cmd shim. The shebang below is the property that has
+  // to hold on every platform, so the bit is only asserted where it exists.
+  if (process.platform !== "win32" && (statSync(binPath).mode & 0o111) === 0) {
     fail(`${binRelative} is not executable after install`);
   }
   const firstLine = readFileSync(binPath, "utf-8").split("\n", 1)[0];
@@ -155,7 +158,9 @@ try {
   // than a stack trace pointing into a temporary directory.
   let output;
   try {
-    output = run(process.execPath, [pathToFileURL(probePath).pathname], {
+    // A file URL's `.pathname` is "/C:/…" on Windows, and node then looks for
+    // "C:\\C:\\…". The path itself is what node wants.
+    output = run(process.execPath, [probePath], {
       cwd: workdir,
       // The child's stack trace points into a temporary directory that is about
       // to disappear. The useful line is re-emitted by `fail` below.

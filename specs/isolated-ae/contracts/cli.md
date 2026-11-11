@@ -121,6 +121,8 @@ Initial set:
 | `A8N-PERM-002` | blocker | Accessibility not granted in the target session |
 | `A8N-PERM-003` | blocker | AE script file/network permission off |
 | `A8N-PERM-004` | blocker | Adobe sign-in required in the target session |
+| `A8N-PERM-005` | blocker | The channel key file is readable by another account (nothing sent) |
+| `A8N-PERM-006` | blocker | The channel directory is writable by another account (nothing sent) |
 | `A8N-AE-001` | blocker | Another AE is running on the target (run refused) |
 | `A8N-AE-002` | blocker | The AE is not owned by this run (lifecycle refused) |
 | `A8N-AE-003` | blocker | The script destination could not be proven (nothing sent) |

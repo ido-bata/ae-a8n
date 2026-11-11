@@ -67,7 +67,10 @@ module; the same file also runs against the in-repo fake host.
 
 - `source` that is not ES3: parsed with `acorn` at `ecmaVersion: 3` after
   stripping the function expression; a syntax error is fatal;
-- a name that does not match `/^[a-z][a-z0-9]*(\.[a-z0-9]+)+$/`;
+- a name that does not match `/^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)+$/`
+  (the pattern first written here, `[a-z0-9]+` per segment, refused this
+  document's own example `aulymo.buildScene`; the example is what consumers
+  use, so a segment starts lower-case and may continue in camelCase);
 - a name equal to a built-in host method or to another extension method;
 - a method without a `source`;
 - an extension whose `name`/`version` are missing.

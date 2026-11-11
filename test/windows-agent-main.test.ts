@@ -408,12 +408,8 @@ describe("the Windows agent entry", () => {
     expect(executed).toEqual([jobId]);
   });
 
-  // Windows does not model POSIX mode bits, so `key-store.ts` skips the
-  // readable-by-others check there (ACLs are the equivalent, and verifying
-  // them is T092 work). Asserting the refusal on Windows would not fail: the
-  // agent accepts the key, enters its job loop and never returns, so the test
-  // hangs until the timeout. Observed on a real Windows 11 host, where the
-  // full suite is not part of CI.
+  // POSIX mode bits. Windows has no equivalent, so the same property is
+  // checked there through the ACL, in the test below.
   it.skipIf(process.platform === "win32")(
     "refuses a key file readable by group or others",
     async () => {
@@ -432,6 +428,86 @@ describe("the Windows agent entry", () => {
       expect(messages.join("")).toContain("readable by group or others");
     },
   );
+
+  // The Windows counterpart: the key is refused before the agent polls,
+  // because `loadKeyFile` reads the file's ACL there. This is the check that
+  // used to be skipped on Windows, which left the real host with no
+  // agent-level proof that a shared key is refused.
+  it.skipIf(process.platform !== "win32")(
+    "refuses a key file another account can read, by its ACL",
+    async () => {
+      const { root, channel } = await makeChannel();
+      const keyFile = join(root, "agent.key");
+      await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o600 });
+      const { execFileSync } = await import("node:child_process");
+      execFileSync("icacls", [keyFile, "/grant", "BUILTIN\\Users:(R)"]);
+      const messages: string[] = [];
+      const code = await main(args(root, { "--key-file": keyFile }), {
+        channel,
+        measureSession: () => 1,
+        executor: recordingExecutor([]),
+        stderr: (text) => messages.push(text),
+      });
+      expect(code).toBe(1);
+      expect(messages.join("")).toContain("BUILTIN\\Users");
+      expect(messages.join("")).toContain("nothing was polled");
+    },
+  );
+
+  // The help and the setup plan both show this short form. The flags it omits
+  // used to be required, so the documented command failed before it polled.
+  it("starts from the four identity flags, defaulting the rest", async () => {
+    const { root, channel } = await makeChannel();
+    const jobId = newJobId(NOW, new Uint8Array([1, 2, 3, 4]));
+    await publishJob(channel, jobId);
+
+    const executed: string[] = [];
+    const controller = new AbortController();
+    const code = await main(
+      [
+        "--channel",
+        root,
+        "--key-file",
+        join(root, "agent.key"),
+        "--host",
+        IDENTITY.host,
+        "--user",
+        IDENTITY.user,
+      ],
+      {
+        channel,
+        key: KEY,
+        measureSession: () => 1,
+        executor: recordingExecutor(executed),
+        now: () => NOW,
+        sleep: () => {
+          controller.abort();
+          return Promise.resolve();
+        },
+        signal: controller.signal,
+      },
+    );
+    expect(code).toBe(0);
+    expect(executed).toEqual([jobId]);
+    const result = await channel.read(jobPaths(jobId).result);
+    expect(new TextDecoder().decode(result ?? new Uint8Array())).toContain("0.1.0-alpha.1");
+  });
+
+  it("refuses when --session-id is absent and no session can be measured", async () => {
+    const { root, channel } = await makeChannel();
+    const messages: string[] = [];
+    const code = await main(
+      ["--channel", root, "--key-file", join(root, "agent.key"), "--host", IDENTITY.host, "--user", IDENTITY.user],
+      {
+        channel,
+        key: KEY,
+        measureSession: () => null,
+        stderr: (text) => messages.push(text),
+      },
+    );
+    expect(code).toBe(2);
+    expect(messages.join("")).toContain("--session-id");
+  });
 
   it("opens the channel from --channel when none is injected", async () => {
     const { root, channel } = await makeChannel();

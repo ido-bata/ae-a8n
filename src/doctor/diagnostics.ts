@@ -52,6 +52,8 @@ export const DIAGNOSTIC_CODES = {
   "A8N-PERM-002": { severity: "blocker", title: "Accessibility not granted in the target session" },
   "A8N-PERM-003": { severity: "blocker", title: "After Effects script file/network permission is off" },
   "A8N-PERM-004": { severity: "blocker", title: "Adobe sign-in required in the target session" },
+  "A8N-PERM-005": { severity: "blocker", title: "The channel key file is readable by another account" },
+  "A8N-PERM-006": { severity: "blocker", title: "The channel directory is writable by another account" },
   "A8N-AE-001": { severity: "blocker", title: "Another After Effects is running on the target" },
   "A8N-AE-002": { severity: "blocker", title: "The After Effects is not owned by this run" },
   "A8N-AE-003": { severity: "blocker", title: "The script destination could not be proven" },

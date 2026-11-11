@@ -88,7 +88,10 @@ export function captureFile(
     // Hash the copy's bytes, so the manifest describes what was kept.
     const bytes = readFileSync(destination);
     return {
-      path: join("artifacts", destinationName),
+      // Recorded with "/" on every platform: the manifest is read by another
+      // machine (a reporter, or a later run), and a Windows run's
+      // "artifacts\stdout.log" would be a different string there.
+      path: `artifacts/${destinationName}`,
       sha256: createHash("sha256").update(bytes).digest("hex"),
       bytes: bytes.length,
     };

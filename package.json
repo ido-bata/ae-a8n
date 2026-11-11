@@ -45,7 +45,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "postbuild": "node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
-    "prepare": "npm run build",
+    "prepack": "npm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p examples/tsconfig.json",
     "lint": "eslint src test examples scripts/isolated-session --no-error-on-unmatched-pattern",
     "test": "vitest run && node scripts/run-isolated-session-checks.mjs",
@@ -54,7 +54,6 @@
   "devDependencies": {
     "@eslint/js": "^9.39.0",
     "@types/node": "^24.10.1",
-    "acorn": "^8.18.0",
     "eslint": "^9.39.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.4",
@@ -67,5 +66,8 @@
     "automation",
     "testing",
     "jsx"
-  ]
+  ],
+  "dependencies": {
+    "acorn": "^8.18.0"
+  }
 }
