@@ -101,13 +101,15 @@ to `4746ff3`.
 ## Medium findings deferred
 
 The reviewer marked these real; they are recorded, not fixed on this branch.
-Each is a candidate for its own ticket (one per number-only branch).
+Each is a task in `specs/isolated-ae/tasks.md`, and a number-only branch when
+it is picked up.
 
 | # | Where | Why deferred |
 | --- | --- | --- |
 | 37, 40 | — | **by design** (unreadable result is not an answer; recovery is synchronous) |
-| 57, 58 | POSIX channel ACL, unsigned probe artifacts | design + schema |
-| 64 | unsigned manifest — the manifest has no signature, so it records what was proven without being self-authenticating |
+| 57 | POSIX channel ACL | **T106** — needs a POSIX ownership/mode design, not a Windows translation |
+| 58 | unsigned probe artifacts | **T107** — changes the signed result schema |
+| 64 | unsigned manifest | **T108** — changes the manifest schema, or binds it to the signed result |
 | 67 | session marker signing | **tracked as T098** (#93) |
 
 ## Low findings
@@ -133,4 +135,6 @@ behind each verdict is in [`TRIAGE.md`](TRIAGE.md).
   but not a refused kill.
 - T095, T097, T098, T099 and T105 change, or will change, the job/marker
   schema; they need a fresh T092 run before the version carrying them may be
-  called `verified on real host`.
+  called `verified on real host`. T107 and T108 (deferred here) change the
+  result and manifest schema and carry the same requirement; T106's POSIX
+  check has not been measured on the SMB mount the product uses.

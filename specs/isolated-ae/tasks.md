@@ -545,6 +545,78 @@ accepted on a real host, with the observed `icacls` output recorded.
 acceptance on an ordinary SMB share is `verified on real host` and belongs to
 T092's next run.
 
+## Deferred from the pre-release review of `release-0-1-0`
+
+Findings 57, 58 and 64 of the 2026-11-11 review. They were recorded, not fixed,
+on the release branch: 57 needs a POSIX design, and 58 and 64 change the
+signed-document schema. Each needs a fresh T092 run before the version that
+carries it may be called `verified on real host`.
+
+### T106 — verify the channel directory on a POSIX controller (finding 57)
+
+**Source:** `docs/evidence/review-2026-11-11/FINDINGS.md`, finding 57.
+
+**Files:** `src/platform/windows/comms.ts` (`openComms`), a new POSIX check
+next to the Windows ACL reader; tests in `test/windows-remote-comms.test.ts`.
+
+**Deliverable:** `openComms` stops gating the channel check on the controller's
+`process.platform`. An injected `acl` reader is always called; on a POSIX
+controller the channel root's owner and mode are checked instead (the
+sticky-bit-equivalent property: only the controller and the agent's account may
+write). When neither a reader nor a mode-based check is available, `openComms`
+returns an explicit `unproven` finding rather than silently omitting the check —
+the module's "there is no probably-fine state" must hold on every platform.
+
+**Acceptance:** a channel directory writable by others is refused on a POSIX
+controller; an injected reader is called on every platform; a controller that
+cannot read the ownership records says so and refuses.
+
+**Verification:** none yet. `automated test` for the verdict; a real host is not
+required, but the mode semantics must be checked on the SMB mount the product
+actually uses.
+
+### T107 — bind a job's artifacts to its signed result (finding 58)
+
+**Source:** `docs/evidence/review-2026-11-11/FINDINGS.md`, finding 58.
+
+**Files:** `src/platform/windows/job.ts` (`JobResult`), the result publication
+in `src/platform/windows/agent.ts`, the artifact read in `openComms`; tests in
+`test/windows-job.test.ts`, `test/windows-agent.test.ts`,
+`test/windows-remote-comms.test.ts`.
+
+**Deliverable:** the signed result carries the digests of the artifacts it
+published, and a reader verifies the digest before decoding. A writer without
+the secret can no longer rewrite a probe's `stdout.log` after the result is
+signed and have it read as fact. An absent digest field keeps today's behaviour
+for one release of compatibility, and says the artifacts are unproven.
+
+**Acceptance:** a rewritten artifact is refused, not decoded; an unsigned
+result still cannot be acted on; the compatibility path is observable as
+`unproven`.
+
+**Verification:** none yet. Schema change — re-run T092 before the release that
+carries it.
+
+### T108 — make the run manifest answer to the signed result (finding 64)
+
+**Source:** `docs/evidence/review-2026-11-11/FINDINGS.md`, finding 64.
+
+**Files:** `src/platform/windows/manifest.ts`, `src/platform/windows/runner.ts`
+(the writer); tests in `test/windows-manifest.test.ts` (or the runner test that
+already reads a manifest).
+
+**Deliverable:** the manifest is either signed with the channel key or
+cross-checked against the signed result it names before any consumer treats
+`outcome`, `destinationProof` or `agentVerified` as evidence. Pick one and
+document why; a reader that cannot verify returns "unproven" rather than the
+recorded claim.
+
+**Acceptance:** a manifest rewritten after publication is detected; a manifest
+that names no result is not trusted for proof fields.
+
+**Verification:** none yet. Schema change — re-run T092 before the release that
+carries it.
+
 ## Dependency notes
 
 - T085 unblocks all Windows work and the neutral-layer extraction.
@@ -563,5 +635,5 @@ T092's next run.
 
 ## ID allocation going forward
 
-Append-only. The next free ID is **T106**. A task that changes an existing
+Append-only. The next free ID is **T109**. A task that changes an existing
 task's acceptance is a new task, not an edit that hides the change.
