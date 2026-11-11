@@ -31,8 +31,13 @@ if (manifest.publishConfig?.provenance !== false) {
 if (manifest.publishConfig?.access !== "public") {
   problems.push("publishConfig.access must be public for a scoped package");
 }
-const source = readFileSync(join(root, "src", "index.ts"), "utf-8");
-const constant = /export const A8N_VERSION = "([^"]+)"/.exec(source)?.[1];
+// The constant is declared in src/version.ts and re-exported from src/index.ts
+// (#70), so the gate looks where it is declared rather than assuming the file
+// that happens to hold it today.
+const DECLARATION = /export const A8N_VERSION = "([^"]+)"/;
+const constant = ["src/version.ts", "src/index.ts"]
+  .map((file) => DECLARATION.exec(readFileSync(join(root, file), "utf-8"))?.[1])
+  .find((value) => value !== undefined);
 if (constant !== version) {
   problems.push(`A8N_VERSION is ${constant}, package.json says ${version}`);
 }

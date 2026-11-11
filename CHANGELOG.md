@@ -10,6 +10,10 @@ on a real host (#47).
 
 ### Fixed
 
+- The release gate follows `A8N_VERSION` to `src/version.ts`, where this
+  branch declares it. It looked for the literal in `src/index.ts` only, so
+  the publish job failed with `A8N_VERSION is undefined, package.json says
+  0.1.0-alpha.1` before anything was staged.
 - `ae-a8n agent` accepts the command its own help and the Windows setup plan
   print: `--agent-id`, `--session-id` and `--version` were documented as
   having defaults but were required, so the documented form failed before it
