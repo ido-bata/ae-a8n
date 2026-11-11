@@ -7,9 +7,9 @@
  * are not flags and must not be inspected.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { unknownAgentOption } from "../src/cli/agent.js";
+import { agentFlagPresent, runAgentCommand, unknownAgentOption } from "../src/cli/agent.js";
 
 const DOCUMENTED = [
   "--channel",
@@ -39,5 +39,36 @@ describe("the agent command's argument check", () => {
 
   it("does not accept --flag=value, which the agent itself cannot parse", () => {
     expect(unknownAgentOption(["--channel=C:\\ch"])).toBe("--channel=C:\\ch");
+  });
+});
+
+describe("the agent command's process mode", () => {
+  it("does not read a token in a value position as a flag", () => {
+    // `--hidden` here is the value of --key-file, not a request to detach.
+    const argv = ["--channel", "C:\\ch", "--key-file", "--hidden", "--host", "H", "--user", "u"];
+    expect(unknownAgentOption(argv)).toBeNull();
+    expect(agentFlagPresent(argv, "--hidden")).toBe(false);
+  });
+
+  it("recognises --hidden where it is a flag", () => {
+    expect(agentFlagPresent(["--hidden", ...DOCUMENTED], "--hidden")).toBe(true);
+  });
+
+  it("refuses --log without --hidden instead of detaching", async () => {
+    // The help documents --log as "With --hidden"; the documented foreground
+    // command used to run detached whenever the value `--log <file>` was
+    // given, changing process mode with exit 0.
+    const written: string[] = [];
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      written.push(String(chunk));
+      return true;
+    });
+    try {
+      const result = await runAgentCommand([...DOCUMENTED, "--log", "D:\\logs\\a.log"]);
+      expect(result.exitCode).toBe(2);
+      expect(written.join("")).toMatch(/--log needs --hidden/);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

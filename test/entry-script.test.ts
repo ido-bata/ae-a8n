@@ -5,9 +5,10 @@
  * rather than an ExtendScript alert, so this checks the *generated* file, not
  * only the shipped host script, against the ES3 grammar ExtendScript parses.
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import * as acorn from "acorn";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -79,14 +80,21 @@ describe("the staged host script", () => {
     expect(first).not.toBe(second);
   });
 
-  it("copies the host script and the files next to it into the session's staging folder", () => {
+  it("stages the host script and the shipped codec, not a stale copy beside it", () => {
     const source = mkdtempSync(join(tmpdir(), "a8n-host-src-"));
     writeFileSync(join(source, "a8n-host.js"), "// host\n");
-    writeFileSync(join(source, "a8n-json.js"), "// codec\n");
+    // A generated extension host is written into a directory the consumer
+    // chose; a codec they left there may be older than the host that loads it.
+    writeFileSync(join(source, "a8n-json.js"), "// stale codec\n");
+    writeFileSync(join(source, "notes.txt"), "the consumer's own file\n");
     const staged = stageHostScript(dir, join(source, "a8n-host.js"));
     expect(staged).toBe(join(dir, "a8n-host.js"));
     expect(readFileSync(staged, "utf-8")).toBe("// host\n");
-    expect(readFileSync(join(dir, "a8n-json.js"), "utf-8")).toBe("// codec\n");
+    // The codec the host loads is always the shipped one.
+    const shipped = fileURLToPath(new URL("../host/a8n-json.js", import.meta.url));
+    expect(readFileSync(join(dir, "a8n-json.js"), "utf-8")).toBe(readFileSync(shipped, "utf-8"));
+    // Nothing else from the consumer's directory is put where AE is pointed.
+    expect(existsSync(join(dir, "notes.txt"))).toBe(false);
     rmSync(source, { recursive: true, force: true });
   });
 });

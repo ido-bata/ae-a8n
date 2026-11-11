@@ -7,6 +7,8 @@
  * cannot start After Effects, open a session or change the machine.
  */
 
+import { hostname } from "node:os";
+
 import {
   aggregateDiagnosticStatus,
   diagnostic,
@@ -26,7 +28,15 @@ export type DoctorResult = {
   readonly status: DiagnosticStatus;
 };
 
-function nodeMajor(version: string): number | null {
+/**
+ * The major version of a Node version string, or null when it cannot be read.
+ *
+ * Exported so the macOS adapter — which reports the same floor and the same
+ * diagnostic — does not carry a second copy of this parser. Two copies would
+ * have to be fixed twice, and the edge cases (a bare `v22`, surrounding
+ * whitespace) are exactly where they would drift apart.
+ */
+export function nodeMajor(version: string): number | null {
   const match = /^v?(\d+)\./.exec(version.trim());
   return match === null ? null : Number(match[1]);
 }
@@ -47,15 +57,20 @@ export async function runDoctor(
     (major === null || major < NODE_FLOOR_MAJOR) &&
     !checks.some((check) => check.code === "A8N-ENV-002")
   ) {
+    // This checks the process running `doctor`, not the machine After Effects
+    // runs on. For a remote target that is the controller, and saying so is
+    // the difference between "install Node here" and "install Node over
+    // there" — the remedy is only actionable on the machine actually named.
+    const machine = target.host === null ? "this machine" : `the controller (${hostname()})`;
     checks.push(
       diagnostic("A8N-ENV-002", {
         detail:
           major === null
-            ? `the Node version "${process.version}" could not be parsed`
-            : `Node ${process.version} is below the package floor (${NODE_FLOOR_MAJOR}+)`,
-        remedy: `Install Node ${NODE_FLOOR_MAJOR} or later on this machine and re-run doctor.`,
+            ? `the Node version "${process.version}" on ${machine} could not be parsed`
+            : `Node ${process.version} on ${machine} is below the package floor (${NODE_FLOOR_MAJOR}+)`,
+        remedy: `Install Node ${NODE_FLOOR_MAJOR} or later on ${machine} and re-run doctor.`,
         remedyKind: "human",
-        evidence: { node: process.version, floor: NODE_FLOOR_MAJOR },
+        evidence: { node: process.version, floor: NODE_FLOOR_MAJOR, machine },
       }),
     );
   }

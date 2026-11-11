@@ -28,9 +28,7 @@ import {
 import { homedir, tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 
-import {
-  NODE_FLOOR_MAJOR,
-} from "../../doctor/index.js";
+import { NODE_FLOOR_MAJOR, nodeMajor } from "../../doctor/index.js";
 import { diagnostic, type DiagnosticCheck } from "../../doctor/diagnostics.js";
 import {
   MAC_APPLICATIONS_ROOT,
@@ -230,11 +228,6 @@ function readInstalls(exec: DarwinExec): {
     });
   }
   return { installs, failure: null };
-}
-
-function nodeMajor(version: string): number | null {
-  const match = /^v?(\d+)\./.exec(version.trim());
-  return match === null ? null : Number(match[1]);
 }
 
 /**

@@ -112,6 +112,19 @@ function optionalTimeout(value: unknown): number | undefined {
 }
 
 /**
+ * The wait after a GUI recovery, in milliseconds.
+ *
+ * Zero is meaningful — it stops waiting for the original request as soon as
+ * the dialog has been pressed — so the lower bound is 0, not 1.
+ */
+function requireGrace(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new TypeError("recoveryGraceMs must be a non-negative number");
+  }
+  return value;
+}
+
+/**
  * The login session of a uid, for the GUI fallback.
  *
  * A user who is not logged in has no session, and a session that is not an
@@ -136,6 +149,10 @@ function requireSession(uid: number): MacSession {
     }
     throw new AfterEffectsError(
       `uid ${uid} has no login session on this Mac, so no After Effects of that user could be reached. ` +
+        // The failure text is carried whenever there was one: an unexpected
+        // refusal (a transient launchctl error, launchctl missing) must not
+        // read as "the user is not logged in", which is the opposite advice.
+        (failure === null ? "" : `launchctl said: ${failure}. `) +
         "Log that user in — a fast user switch is enough — and try again. Nothing was started.",
       "session.launch",
     );
@@ -276,14 +293,37 @@ export class AfterEffects {
 
     // The GUI fallback is only wired when the caller asks for it, and it only
     // ever acts inside the session that owns the After Effects.
-    const recovery =
-      options.session?.recover === true && transport instanceof ScriptInvocationTransport
-        ? new MacHostRecovery({
-            session: requireSession(options.session.uid),
-            pid: () => transport.recoveryTargetPid(),
-            screenshotDir: join(sessionRoot, "artifacts"),
-          })
-        : undefined;
+    let recovery: MacHostRecovery | undefined;
+    if (options.session?.recover === true) {
+      // A caller-supplied transport that is not the script transport has no
+      // pid to look up, so the fallback would be silently absent from a
+      // session the caller asked to be recoverable. A requested safety
+      // behaviour that cannot be provided is refused, not dropped.
+      if (!(transport instanceof ScriptInvocationTransport)) {
+        throw new AfterEffectsError(
+          "session.recover needs the built-in script transport; the supplied transport cannot say which " +
+            "process to recover. Nothing was started.",
+          "session.launch",
+        );
+      }
+      const targetSession = requireSession(options.session.uid);
+      // The pid comes from the transport, which scopes processes by its own
+      // session uid. Pressing keys in a different session than the one the
+      // pid lives in would automate somebody else's screen.
+      if (transport.targetSession?.uid !== targetSession.uid) {
+        throw new AfterEffectsError(
+          `session.recover: uid ${targetSession.uid} is not the session the transport talks into ` +
+            `(${transport.targetSession?.uid ?? "unknown"}), so the fallback would act in another session. ` +
+            "Nothing was started.",
+          "session.launch",
+        );
+      }
+      recovery = new MacHostRecovery({
+        session: targetSession,
+        pid: () => transport.recoveryTargetPid(),
+        screenshotDir: join(sessionRoot, "artifacts"),
+      });
+    }
 
     // A host script declares extension methods. It is read here, once: the
     // names are what `call` checks against, and the driver stages a copy so
@@ -315,6 +355,9 @@ export class AfterEffects {
       ...(hostScript === null ? {} : { hostScriptPath: hostScript }),
       ...(options.timeoutMs === undefined ? {} : { defaultTimeoutMs: options.timeoutMs }),
       ...(recovery === undefined ? {} : { recovery }),
+      ...(options.recoveryGraceMs === undefined
+        ? {}
+        : { recoveryGraceMs: requireGrace(options.recoveryGraceMs) }),
     });
 
     // The session subscribes before the probe runs, so the live view and the
@@ -397,7 +440,11 @@ export class AfterEffects {
    * classified unknown and left for a human.
    */
   async showModalDialog(message: string, options: OperationOptions = {}): Promise<void> {
-    await this.#session.call("ui.alert", "ui.alert", { message }, options);
+    // Validated here like every other public method: a JavaScript caller
+    // passing a non-string would otherwise be coerced by the host's
+    // `String(...)`, or fail deep inside After Effects.
+    const text = requireString(message, "message");
+    await this.#session.call("ui.alert", "ui.alert", { message: text }, options);
   }
 
   /**

@@ -282,4 +282,15 @@ export type LaunchOptions = {
      */
     readonly recover?: boolean;
   };
+  /**
+   * How long a recovered call may then wait for the answer to the request it
+   * already sent, in milliseconds. Default 60 000; 0 stops waiting at once.
+   *
+   * Only meaningful with `session.recover`. It is *additional* time, on top of
+   * `timeoutMs`: `timeoutMs` ends the first wait, then the GUI fallback runs
+   * (which can take a while — it observes windows, takes a screenshot and
+   * presses the dialog), and only then does this grace start. Set it when the
+   * caller needs a total budget rather than a first-wait budget.
+   */
+  readonly recoveryGraceMs?: number;
 };

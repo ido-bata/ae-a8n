@@ -60,6 +60,15 @@ to `4746ff3`.
 | 25 | A log append that fails is reported to stderr and does not become an unhandled rejection that ends the agent |
 | 26 | `sessionFromOffstageStatus` reports `asid: null` at the source, so offstage's own session number can never be read as a launchd asid by any caller |
 | 27 | `parseTerminalResult` counts `onconsole` among the fields `complete` requires: silence about the console is no longer read as "off the console" |
+| 28 | A session that cannot be read carries launchctl's own text in the refusal whenever there is one, so "not permitted" is never reported as "not logged in" |
+| 29 | `session.recover` refuses a transport that is not the script transport (the fallback would silently not exist) and refuses a transport whose session is not the one asked for (the pid and the automated session must not diverge) |
+| 30 | `showModalDialog` validates `message` with `requireString` like every other public method; the `ae-a8n:` marker is added by the host (finding 13) |
+| 31 | `--log` without `--hidden` is a usage error, and the process mode is decided from flags in flag positions — a token in a value position (`--key-file --hidden`) cannot flip it |
+| 32 | A test pins `NODE_FLOOR_MAJOR` to `package.json`'s `engines.node` floor, so a bump cannot silently leave `doctor` enforcing the old one |
+| 33 | The Node-version parser lives once, in `doctor`, and the macOS adapter imports it instead of carrying a second copy |
+| 34 | `A8N-ENV-002` names the machine it measured: for a `--host` target the check is about the controller, and the remedy says so |
+| 35 | Host staging copies only the host script plus the shipped codec — a stale consumer `a8n-json.js` can no longer win, unrelated consumer files are not put where AE is pointed, and an unreadable entry refuses with context |
+| 36 | `recoveryGraceMs` is a `LaunchOptions` field (validated, default 60 s) and is documented as time *in addition to* `timeoutMs`: the first wait ends, the fallback runs, then the grace starts |
 
 ## Low findings fixed on this branch
 
@@ -74,10 +83,6 @@ Each is a candidate for its own ticket (one per number-only branch).
 
 | # | Where | Why deferred |
 | --- | --- | --- |
-| 28–31 | API/CLI message and flag paths | user-visible wording and behaviour; separate ticket |
-| 32–34 | doctor duplicated floors and node major | refactor plus a consistency assertion |
-| 35 | bootstrap copies every consumer file | codec selection design |
-| 36 | recovery grace not exposed or bounded | API option; needs a budget decision |
 | 37, 40 | — | **by design** (unreadable result is not an answer; recovery is synchronous) |
 | 38, 39, 41 | `gui-recovery.ts` label cleaning and press fallback | needs a real macOS window to verify |
 | 42 | `script-invocation` in-flight recheck | concurrency test |
