@@ -31,21 +31,34 @@ type Recorded = {
   options: DetachSpawnOptions;
 };
 
-function harness(overrides: { readonly throwOnSpawn?: boolean } = {}): {
+function harness(
+  overrides: {
+    readonly throwOnSpawn?: boolean;
+    /** Report the failure through the `error` event, not by throwing. */
+    readonly failSpawnEvent?: boolean;
+    /** Report a second error after a successful spawn. */
+    readonly errorAfterSpawn?: boolean;
+  } = {},
+): {
   readonly recorded: Recorded[];
   readonly out: string[];
   readonly err: string[];
+  /** Counts read after the start settles; the object itself is live. */
+  readonly counts: { unrefs: number; closes: number };
   readonly deps: Parameters<typeof detachAgent>[1];
 } {
   const recorded: Recorded[] = [];
   const out: string[] = [];
   const err: string[] = [];
+  const state = { unrefs: 0, closes: 0 };
   const deps = {
     platform: "win32" as const,
     entry: ENTRY,
     defaultLogPath: () => "C:\\Users\\basic\\AppData\\Local\\ae-a8n\\logs\\agent.log",
     openLog: () => 7,
-    closeLog: () => undefined,
+    closeLog: () => {
+      state.closes += 1;
+    },
     makeDirectory: () => undefined,
     writeOut: (text: string) => out.push(text),
     writeErr: (text: string) => err.push(text),
@@ -54,16 +67,37 @@ function harness(overrides: { readonly throwOnSpawn?: boolean } = {}): {
       if (overrides.throwOnSpawn === true) {
         throw new Error("EINVAL: spawn failed");
       }
-      return { pid: 4242, unref: () => undefined, on: () => undefined };
+      let onError: ((error: Error) => void) | undefined;
+      return {
+        pid: 4242,
+        unref: () => {
+          state.unrefs += 1;
+        },
+        once: ((event: "spawn" | "error", listener: (argument?: unknown) => void) => {
+          if (event === "error") {
+            onError = listener;
+            return;
+          }
+          if (overrides.failSpawnEvent === true) {
+            const failure = new Error("ENOENT: the entry point is gone");
+            queueMicrotask(() => onError?.(failure));
+            return;
+          }
+          queueMicrotask(() => listener());
+          if (overrides.errorAfterSpawn === true) {
+            queueMicrotask(() => onError?.(new Error("EPIPE: the child exited")));
+          }
+        }) as DetachChild["once"],
+      };
     },
   };
-  return { recorded, out, err, deps };
+  return { recorded, out, err, counts: state, deps };
 }
 
 describe("agent --hidden", () => {
-  it("creates the agent with no console window and the log as its output", () => {
+  it("creates the agent with no console window and the log as its output", async () => {
     const { recorded, out, deps } = harness();
-    expect(detachAgent(baseArgs(), deps)).toBe(0);
+    expect(await detachAgent(baseArgs(), deps)).toBe(0);
 
     expect(recorded).toHaveLength(1);
     const [call] = recorded;
@@ -76,52 +110,74 @@ describe("agent --hidden", () => {
     expect(out.join("")).toContain("agent.log");
   });
 
-  it("keeps --hidden and --log out of the child's arguments", () => {
+  it("keeps --hidden and --log out of the child's arguments", async () => {
     const { recorded, deps } = harness();
-    expect(detachAgent([...baseArgs(), "--hidden", "--log", "D:\\logs\\a.log"], deps)).toBe(0);
+    expect(await detachAgent([...baseArgs(), "--hidden", "--log", "D:\\logs\\a.log"], deps)).toBe(0);
     expect(recorded[0]?.args).toEqual([ENTRY, "agent", ...baseArgs()]);
   });
 
-  it("uses --log as the destination instead of the default", () => {
+  it("uses --log as the destination instead of the default", async () => {
     const { recorded, out, deps } = harness();
-    expect(detachAgent(["--hidden", "--log", "D:\\logs\\a.log", ...baseArgs()], deps)).toBe(0);
+    expect(await detachAgent(["--hidden", "--log", "D:\\logs\\a.log", ...baseArgs()], deps)).toBe(0);
     expect(recorded).toHaveLength(1);
     expect(out.join("")).toContain("D:\\logs\\a.log");
   });
 
-  it("refuses a start with a missing identity flag, and starts nothing", () => {
+  it("refuses a start with a missing identity flag, and starts nothing", async () => {
     const { recorded, err, deps } = harness();
     const argv = baseArgs().filter((token) => token !== "--host" && token !== "UUU");
-    expect(detachAgent(argv, deps)).toBe(2);
+    expect(await detachAgent(argv, deps)).toBe(2);
     expect(recorded).toEqual([]);
     expect(err.join("")).toContain("--host is required");
     expect(err.join("")).toContain("nothing was started");
   });
 
-  it("refuses an unknown option", () => {
+  it("refuses an unknown option", async () => {
     const { recorded, err, deps } = harness();
-    expect(detachAgent([...baseArgs(), "--sneaky", "1"], deps)).toBe(2);
+    expect(await detachAgent([...baseArgs(), "--sneaky", "1"], deps)).toBe(2);
     expect(recorded).toEqual([]);
     expect(err.join("")).toContain("--sneaky");
   });
 
-  it("refuses the flag on a platform where it means nothing", () => {
+  it("refuses the flag on a platform where it means nothing", async () => {
     const { recorded, err, deps } = harness();
-    expect(detachAgent(baseArgs(), { ...deps, platform: "darwin" })).toBe(2);
+    expect(await detachAgent(baseArgs(), { ...deps, platform: "darwin" })).toBe(2);
     expect(recorded).toEqual([]);
     expect(err.join("")).toContain("Windows console window");
   });
 
-  it("reports a spawn failure instead of exiting silently", () => {
+  it("reports a spawn failure instead of exiting silently", async () => {
     const { err, deps } = harness({ throwOnSpawn: true });
-    expect(detachAgent(baseArgs(), deps)).toBe(1);
+    expect(await detachAgent(baseArgs(), deps)).toBe(1);
     expect(err.join("")).toContain("could not be started");
     expect(err.join("")).toContain("EINVAL");
   });
 
-  it("reports a log that cannot be opened, and starts nothing", () => {
+  it("exits non-zero when the failure arrives as an event, not as a throw", async () => {
+    // Node reports a spawn failure on the next tick, after the constructor
+    // has returned. Answering 0 before that recorded success for a start the
+    // OS refused, and a logon task or shortcut never learns otherwise.
+    const { out, err, counts, deps } = harness({ failSpawnEvent: true });
+    expect(await detachAgent(baseArgs(), deps)).toBe(1);
+    expect(out).toEqual([]);
+    expect(counts.unrefs).toBe(0);
+    expect(counts.closes).toBe(1);
+    expect(err.join("")).toContain("could not be started");
+    expect(err.join("")).toContain("ENOENT");
+  });
+
+  it("still reports an error that arrives after a successful spawn", async () => {
+    const { out, err, deps } = harness({ errorAfterSpawn: true });
+    expect(await detachAgent(baseArgs(), deps)).toBe(0);
+    expect(out.join("")).toContain("started in the background");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(err.join("")).toContain("the hidden agent failed");
+    expect(err.join("")).toContain("EPIPE");
+  });
+
+  it("reports a log that cannot be opened, and starts nothing", async () => {
     const { recorded, err, deps } = harness();
-    const code = detachAgent(baseArgs(), {
+    const code = await detachAgent(baseArgs(), {
       ...deps,
       openLog: () => {
         throw new Error("EPERM: denied");

@@ -8,12 +8,13 @@
 
 import { randomBytes } from "node:crypto";
 
-import { signJob, verifyResultAuth, type JobKey, type UnsignedJob } from "./auth.js";
+import { signJob, verifyClaimAuth, verifyResultAuth, type JobKey, type UnsignedJob } from "./auth.js";
 import { ChannelFileTooLargeError, type FileChannel } from "./channel.js";
 import { isRunId } from "./lock.js";
 import {
   JOB_SCHEMA_VERSION,
   MAX_RESULT_BYTES,
+  decodeClaim,
   decodeResult,
   encodeJob,
   jobPaths,
@@ -377,6 +378,30 @@ export async function submitJob(channel: FileChannel, options: SubmitOptions): P
       `; a signed result for this job appeared after the deadline (status ${lateResult.status}, ` +
       `exit ${lateResult.exitCode === null ? "unknown" : String(lateResult.exitCode)})` +
       "; the run stays unknown and quarantined — review it with `ae-a8n recover`, and never re-send the job";
+  }
+  // A stranded claim is the one cause of "no result" a human can clear
+  // without touching the job: an agent that claimed the job and then died
+  // publishes nothing, and no later poll of any agent can run it. Name the
+  // claimant, so the message says exactly what has to be removed. A signed
+  // late result means the job did run, so there is nothing stranded to name.
+  if (lateResult === null) {
+    const claimed = await readResult(
+      channel,
+      paths.claim,
+      Math.min(readTimeoutMs, LATE_RECHECK_MS),
+    );
+    if (claimed.kind === "bytes") {
+      const claim = decodeClaim(claimed.bytes);
+      if (
+        claim.ok &&
+        claim.value.jobId === jobId &&
+        verifyClaimAuth(claim.value, [options.key]).ok
+      ) {
+        message +=
+          `; the job is still claimed by agent "${claim.value.agent.id}" since ${claim.value.claimedAt} ` +
+          "and no result followed — if that agent is gone, a human must remove the claim before the job can run";
+      }
+    }
   }
   return {
     status: "unknown",

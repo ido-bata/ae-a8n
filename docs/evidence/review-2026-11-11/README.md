@@ -77,6 +77,10 @@ to `4746ff3`.
 | 45 | `setup`'s session readiness requires an Aqua session **with a readable asid**, and names the unreadable-asid and non-Aqua cases separately, as `probeDarwin` does — so `setup` and `doctor` cannot disagree about the same machine |
 | 47 | A local Windows target records this machine's own hostname and account as the job writer (run-lock owner and manifest included); `""` is kept only for a remote target, whose host configuration repairs it. Test: `doctor.test.ts` "records this machine's own host and account as a local job's writer" |
 | 48 | `hasWrite` is a read-only allow list: `AD`, `GW`, word-form and `(special access:)` rights are no longer read as "no write", so an unrecognised spelling fails closed. Tests: `windows-acl.test.ts` "refuses a write spelled as a right the module does not know" |
+| 49 | `agent --hidden` answers 0 only after the OS reports the child spawned, so an asynchronous spawn failure is a failed start (exit 1, nothing started) instead of a success line for a process that never ran. Tests: `agent-detach.test.ts` (two new cases) |
+| 50 | The agent checks the stop signal between jobs, so Ctrl+C/SIGTERM is no longer held behind the whole queue; the previous job's result is already published. Test: `windows-agent-main.test.ts` "stops between jobs, not after the whole queue" |
+| 51 | The poll loop's result read is guarded: one unreadable job directory is logged and skipped instead of rejecting `main` and taking the resident agent (and its heartbeat) down. Test: "keeps polling when one job's result path cannot be read" |
+| 52 | A claim left by an agent that died is named, not silent: the agent logs the claimant and the claim file once per job, and the controller's `A8N-AE-004` message names the trusted claim and what a human must remove. Tests: `windows-agent-main.test.ts` "names a trusted claim that strands a job, once"; `windows-result-visibility.test.ts` (both directions) |
 
 ## Low findings fixed on this branch
 
@@ -92,7 +96,6 @@ Each is a candidate for its own ticket (one per number-only branch).
 | # | Where | Why deferred |
 | --- | --- | --- |
 | 37, 40 | — | **by design** (unreadable result is not an answer; recovery is synchronous) |
-| 49–52 | `agent-detach`, `agent-main`, `agent.ts` claim handling | Windows protocol tickets; each changes behaviour |
 | 54, 55 | channel read cap and unlink-then-rename | needs an SMB measurement (T100) |
 | 57, 58 | POSIX channel ACL, unsigned probe artifacts | design + schema |
 | 59 | kill errors swallowed | executor ticket |

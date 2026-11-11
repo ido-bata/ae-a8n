@@ -206,7 +206,12 @@ describe("the agent", () => {
     await publish(files);
     const options = { channel: files, identity: IDENTITY, key: KEY, executor: OK_EXECUTOR, jobId: JOB_ID };
     await runJob({ ...options, now: () => NOW });
-    expect(await runJob({ ...options, now: () => NOW })).toEqual({ state: "claimed-by-other" });
+    expect(await runJob({ ...options, now: () => NOW })).toEqual({
+      state: "claimed-by-other",
+      // The claimant is reported so a stranded claim can be named and cleared
+      // by hand: a claim with no result is a job that never runs again.
+      claim: { agent: IDENTITY.id, claimedAt: NOW.toISOString() },
+    });
   });
 
   it("writes a signed claim that another agent accepts as its own", async () => {

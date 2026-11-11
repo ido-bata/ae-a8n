@@ -19,9 +19,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { runJob, type JobExecutor } from "../src/platform/windows/agent.js";
 import { DirectoryChannel, type FileChannel } from "../src/platform/windows/channel.js";
-import { signResult, type JobKey } from "../src/platform/windows/auth.js";
+import { signClaim, signResult, type JobKey } from "../src/platform/windows/auth.js";
 import {
   JOB_SCHEMA_VERSION,
+  encodeClaim,
   encodeResult,
   jobPaths,
   newJobId,
@@ -224,6 +225,68 @@ describe("the controller's view of the result file", () => {
     }
     // The job is still there: it may be running, and is never re-sent.
     expect(await files.read(jobPaths(JOB_ID).manifest)).not.toBeNull();
+  });
+
+  it("names a trusted claim that stranded the job when no result follows", async () => {
+    // A claim left by an agent that died is the one cause of "no result" a
+    // human can clear without touching the job. Without naming it, the next
+    // run times out exactly the same way.
+    const files = await channel();
+    let clock = NOW.getTime();
+    const result = await submitJob(
+      files,
+      options({
+        timeoutMs: 10,
+        now: () => new Date(clock),
+        sleep: async () => {
+          clock += 5;
+          await files.writeAtomic(
+            jobPaths(JOB_ID).claim,
+            encodeClaim(
+              signClaim(
+                {
+                  schemaVersion: JOB_SCHEMA_VERSION,
+                  jobId: JOB_ID,
+                  claimedAt: NOW.toISOString(),
+                  agent: { ...IDENTITY, id: "agent-gone" },
+                },
+                KEY,
+              ),
+            ),
+          );
+        },
+      }),
+    );
+    expect(result).toMatchObject({ status: "unknown", code: "A8N-AE-004" });
+    if (result.status === "unknown") {
+      expect(result.message).toContain('claimed by agent "agent-gone"');
+      expect(result.message).toContain("remove the claim");
+    }
+  });
+
+  it("does not name a claim it cannot attribute to a trusted agent", async () => {
+    const files = await channel();
+    let clock = NOW.getTime();
+    const result = await submitJob(
+      files,
+      options({
+        timeoutMs: 10,
+        now: () => new Date(clock),
+        sleep: async () => {
+          clock += 5;
+          await files.writeAtomic(
+            jobPaths(JOB_ID).claim,
+            new TextEncoder().encode(
+              JSON.stringify({ jobId: JOB_ID, claimedAt: NOW.toISOString(), agent: IDENTITY }),
+            ),
+          );
+        },
+      }),
+    );
+    expect(result).toMatchObject({ status: "unknown" });
+    if (result.status === "unknown") {
+      expect(result.message).not.toContain("remove the claim");
+    }
   });
 
   it("does not hang when a read never answers", async () => {

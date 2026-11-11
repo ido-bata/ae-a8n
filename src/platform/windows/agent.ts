@@ -60,7 +60,16 @@ export type AgentRunOutcome =
    * still publishing the submission. Nothing was claimed, run or refused.
    */
   | { readonly state: "not-ready" }
-  | { readonly state: "claimed-by-other" }
+  /**
+   * A trusted claim exists, so another agent took the job. The claimant and
+   * when it claimed are carried so the caller can report a claim that never
+   * produced a result: a stranded claim is only clearable by hand, and saying
+   * nothing about it leaves a human with a job that silently never runs.
+   */
+  | {
+      readonly state: "claimed-by-other";
+      readonly claim: { readonly agent: string; readonly claimedAt: string };
+    }
   /**
    * A claim exists that this agent cannot attribute to a trusted issuer. The
    * job's state is unknown, so it is quarantined: not run, not released, and
@@ -198,7 +207,10 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
         detail: `the existing claim is not from a trusted issuer: ${claimCheck.detail}`,
       };
     }
-    return { state: "claimed-by-other" };
+    return {
+      state: "claimed-by-other",
+      claim: { agent: decodedClaim.value.agent.id, claimedAt: decodedClaim.value.claimedAt },
+    };
   }
 
   // A result means some agent already ran this job. It is never re-sent,

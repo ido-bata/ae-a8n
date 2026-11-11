@@ -126,7 +126,7 @@ export async function runAgentCommand(
     return { exitCode: 2 };
   }
   if (hidden) {
-    return { exitCode: detachAgent(argv) };
+    return { exitCode: await detachAgent(argv) };
   }
   const controller = new AbortController();
   for (const signal of ["SIGINT", "SIGTERM"] as const) {

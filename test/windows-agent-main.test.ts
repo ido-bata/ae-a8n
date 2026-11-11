@@ -7,11 +7,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { JobExecutor } from "../src/platform/windows/agent.js";
 import { A8N_VERSION } from "../src/version.js";
 import { main } from "../src/platform/windows/agent-main.js";
-import { signJob, signResult, encodeKeyFile, type JobKey } from "../src/platform/windows/auth.js";
+import { signClaim, signJob, signResult, encodeKeyFile, type JobKey } from "../src/platform/windows/auth.js";
 import { DirectoryChannel, type FileChannel } from "../src/platform/windows/channel.js";
 import {
   JOB_SCHEMA_VERSION,
   claimDiagnosticPath,
+  encodeClaim,
   encodeJob,
   encodeResult,
   jobPaths,
@@ -297,6 +298,137 @@ describe("the Windows agent entry", () => {
     >;
     expect(parsed).toMatchObject({ jobId: planted, quarantinedAt: NOW.toISOString() });
     expect(String(parsed["detail"])).toContain("not valid");
+  });
+
+  it("stops between jobs, not after the whole queue", async () => {
+    // A signal must not wait for every queued job: each can run for the
+    // executor's whole timeout, and an operator who sees Ctrl+C do nothing
+    // for minutes force-kills the process, stranding a claim.
+    const { root, channel } = await makeChannel();
+    const first = "20261110T120000Z-eeeeeeee";
+    const second = "20261110T120000Z-ffffffff";
+    await publishJob(channel, first);
+    await publishJob(channel, second);
+
+    const executed: string[] = [];
+    const controller = new AbortController();
+    const code = await main(args(root), {
+      channel,
+      key: KEY,
+      measureSession: () => 1,
+      executor: {
+        execute: (input) => {
+          executed.push(input.job.jobId);
+          controller.abort();
+          return Promise.resolve({ status: "ok", message: "ran" });
+        },
+      },
+      now: () => NOW,
+      sleep: () => Promise.resolve(),
+      signal: controller.signal,
+    });
+
+    expect(code).toBe(0);
+    expect(executed).toEqual([first]);
+    expect(await channel.read(jobPaths(second).result)).toBeNull();
+  });
+
+  it("keeps polling when one job's result path cannot be read", async () => {
+    // This read used to be the only channel operation outside a try/catch: a
+    // single unreadable directory rejected `main`, the resident agent exited,
+    // and its heartbeat stopped with it.
+    const { root, channel } = await makeChannel();
+    const broken = "20261110T120000Z-cccccccc";
+    const healthy = "20261110T120000Z-dddddddd";
+    await publishJob(channel, broken);
+    await publishJob(channel, healthy);
+
+    const executed: string[] = [];
+    const messages: string[] = [];
+    const controller = new AbortController();
+    const code = await main(args(root), {
+      channel: {
+        read: (path) =>
+          path === jobPaths(broken).result
+            ? Promise.reject(new Error("ENOENT: the directory vanished"))
+            : channel.read(path),
+        writeAtomic: (path, bytes) => channel.writeAtomic(path, bytes),
+        createExclusive: (path, bytes) => channel.createExclusive(path, bytes),
+        ensureDirectory: (path) => channel.ensureDirectory(path),
+        list: (directory) => channel.list(directory),
+        listDirectories: (directory) => channel.listDirectories(directory),
+        isDirectory: (path) => channel.isDirectory(path),
+        remove: (path) => channel.remove(path),
+      },
+      key: KEY,
+      measureSession: () => 1,
+      executor: recordingExecutor(executed),
+      now: () => NOW,
+      sleep: () => {
+        controller.abort();
+        return Promise.resolve();
+      },
+      signal: controller.signal,
+      stderr: (text) => messages.push(text),
+    });
+
+    expect(code).toBe(0);
+    expect(executed).toEqual([healthy]);
+    expect(messages.join("")).toContain(`job ${broken}'s result could not be read`);
+  });
+
+  it("names a trusted claim that strands a job, once", async () => {
+    // A claim left by an agent that died has no result and no later poll can
+    // run the job: the fail-closed direction, but silent. The notice names the
+    // claimant and the file a human has to remove.
+    const { root, channel } = await makeChannel();
+    const jobId = "20261110T120000Z-99999999";
+    await publishJob(channel, jobId);
+    await channel.writeAtomic(
+      jobPaths(jobId).claim,
+      encodeClaim(
+        signClaim(
+          {
+            schemaVersion: JOB_SCHEMA_VERSION,
+            jobId,
+            claimedAt: NOW.toISOString(),
+            agent: { ...IDENTITY, id: "agent-left" },
+          },
+          KEY,
+        ),
+      ),
+    );
+
+    const executed: string[] = [];
+    const messages: string[] = [];
+    const controller = new AbortController();
+    let sleeps = 0;
+    const code = await main(args(root), {
+      channel,
+      key: KEY,
+      measureSession: () => 1,
+      executor: recordingExecutor(executed),
+      now: () => NOW,
+      pollMs: 1,
+      sleep: () => {
+        sleeps += 1;
+        if (sleeps >= 2) {
+          controller.abort();
+        }
+        return Promise.resolve();
+      },
+      signal: controller.signal,
+      stderr: (text) => messages.push(text),
+    });
+
+    expect(code).toBe(0);
+    expect(executed).toEqual([]);
+    const notices = messages.filter((text) =>
+      text.includes(`job ${jobId} is claimed by agent "agent-left"`),
+    );
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain(jobPaths(jobId).claim);
+    expect(await channel.read(jobPaths(jobId).result)).toBeNull();
   });
 
   it("fails non-zero with a message when the channel cannot be read", async () => {

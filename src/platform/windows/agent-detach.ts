@@ -50,7 +50,13 @@ const REQUIRED = ["--channel", "--key-file", "--host", "--user"] as const;
 export type DetachChild = {
   readonly pid: number | undefined;
   unref(): void;
-  on(event: "error", listener: (error: Error) => void): unknown;
+  /**
+   * Node emits exactly one of `spawn` and `error` for a constructed child, on
+   * the next tick. The start is only known to have happened when `spawn`
+   * arrives, so the caller waits for it instead of assuming success.
+   */
+  once(event: "spawn", listener: () => void): unknown;
+  once(event: "error", listener: (error: Error) => void): unknown;
 };
 
 export type DetachSpawnOptions = {
@@ -137,13 +143,15 @@ function messageOf(error: unknown): string {
 }
 
 /**
- * Starts the hidden agent and returns this process's exit code.
+ * Starts the hidden agent and answers this process's exit code.
  *
- * The returned code is about the *start*, not the agent: 0 means a child was
- * created with its output wired to the log. What the agent does next is in the
- * log file, which the caller is told about.
+ * The code is about the *start*, not the agent: 0 means the OS reported that a
+ * child was created with its output wired to the log, and it is not returned
+ * until that report arrives — a spawn that fails asynchronously is a failed
+ * start, not a success. What the agent does next is in the log file, which the
+ * caller is told about.
  */
-export function detachAgent(argv: readonly string[], deps: DetachDeps = {}): number {
+export async function detachAgent(argv: readonly string[], deps: DetachDeps = {}): Promise<number> {
   const writeOut = deps.writeOut ?? ((text: string) => void process.stdout.write(text));
   const writeErr = deps.writeErr ?? ((text: string) => void process.stderr.write(text));
   const platform = deps.platform ?? process.platform;
@@ -200,15 +208,36 @@ export function detachAgent(argv: readonly string[], deps: DetachDeps = {}): num
     writeErr(`ae-a8n agent: the hidden agent could not be started: ${messageOf(error)}\n`);
     return 1;
   }
-  // An error after a successful spawn must still be reported, not dropped.
-  child.on("error", (error: Error) => {
-    writeErr(`ae-a8n agent: the hidden agent failed: ${messageOf(error)}\n`);
+  // A start is only proven by the `spawn` event, which arrives on the next
+  // tick. Returning 0 before it would record success for a child the OS
+  // refused moments later — the case a logon task or shortcut cannot see.
+  return new Promise<number>((resolve) => {
+    let settled = false;
+    // An error after a successful spawn must still be reported, not dropped.
+    child.once("error", (error: Error) => {
+      if (settled) {
+        writeErr(`ae-a8n agent: the hidden agent failed: ${messageOf(error)}\n`);
+        return;
+      }
+      settled = true;
+      closeLog(fd);
+      writeErr(
+        `ae-a8n agent: the hidden agent could not be started: ${messageOf(error)}; nothing was started\n`,
+      );
+      resolve(1);
+    });
+    child.once("spawn", () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      child.unref();
+      closeLog(fd);
+      writeOut(
+        `ae-a8n agent: started in the background (pid ${String(child.pid ?? "unknown")}); ` +
+          `output: ${logPath}\n`,
+      );
+      resolve(0);
+    });
   });
-  child.unref();
-  closeLog(fd);
-  writeOut(
-    `ae-a8n agent: started in the background (pid ${String(child.pid ?? "unknown")}); ` +
-      `output: ${logPath}\n`,
-  );
-  return 0;
 }

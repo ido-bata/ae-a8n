@@ -252,6 +252,8 @@ export async function main(
   // A quarantined job stays quarantined for this process's lifetime: the
   // forensic record is written once, and polling never retries it.
   const quarantined = new Set<string>();
+  /** Claims already reported, so the poll loop does not repeat the notice. */
+  const announcedClaims = new Set<string>();
 
   for (;;) {
     let jobIds: readonly string[];
@@ -263,6 +265,13 @@ export async function main(
     }
 
     for (const jobId of [...jobIds].sort()) {
+      // Stop between jobs, not after the whole queue: the previous job's
+      // result is published by now, so returning here leaves nothing
+      // half-claimed. Waiting for the queue to drain makes Ctrl+C look dead
+      // for up to a job timeout per queued job.
+      if (stopped()) {
+        return 0;
+      }
       // A directory that is not a job id is not a job; never run it.
       if (!isJobId(jobId)) {
         continue;
@@ -270,7 +279,17 @@ export async function main(
       if (quarantined.has(jobId)) {
         continue;
       }
-      const result = await channel.read(jobPaths(jobId).result);
+      let result: Uint8Array | null;
+      try {
+        result = await channel.read(jobPaths(jobId).result);
+      } catch (error) {
+        // One unreadable directory must not stop the resident agent: the
+        // heartbeat would stop with it. The job stays unexecuted, and the
+        // controller times it out to `unknown`, which is the fail-closed
+        // direction.
+        stderr(`windows-agent: job ${jobId}'s result could not be read: ${messageOf(error)}\n`);
+        continue;
+      }
       if (result !== null) {
         continue;
       }
@@ -285,6 +304,20 @@ export async function main(
           ...(deps.maxAgeMs === undefined ? {} : { maxAgeMs: deps.maxAgeMs }),
           ...(deps.random === undefined ? {} : { random: deps.random }),
         });
+        if (outcome.state === "claimed-by-other") {
+          // A claim that this agent cannot take is not run again, correctly.
+          // The silence was the problem: a claim left by an agent that died
+          // strands the job, and nothing said so. Once per job, name the
+          // claimant and the file a human has to remove.
+          if (!announcedClaims.has(jobId)) {
+            announcedClaims.add(jobId);
+            stderr(
+              `windows-agent: job ${jobId} is claimed by agent "${outcome.claim.agent}" since ` +
+                `${outcome.claim.claimedAt} and is not run again; if that agent is gone, remove ` +
+                `${jobPaths(jobId).claim} by hand\n`,
+            );
+          }
+        }
         if (outcome.state === "claim-unauthenticated") {
           quarantined.add(jobId);
           await channel.writeAtomic(
