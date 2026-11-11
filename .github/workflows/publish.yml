@@ -165,11 +165,16 @@ jobs:
         run: npm run build
 
       - name: Check the ES3 host script parses
+        # The default pwsh shell does not stop at a non-zero native exit code,
+        # and a multi-line step reports only its last command. bash -e makes
+        # each --check a gate, as it already is in the Linux job.
+        shell: bash
         run: |
           node --check host/a8n-host.js
           node --check host/a8n-json.js
 
       - name: Verify the tarball is usable as published
+        shell: bash
         run: |
           node scripts/check-packed-package.js
           node scripts/check-public-api.js

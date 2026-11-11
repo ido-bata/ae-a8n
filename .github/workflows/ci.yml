@@ -143,6 +143,11 @@ jobs:
         run: npm run build
 
       - name: Check the ES3 host script parses
+        # pwsh's default shell does not stop at a non-zero native exit code,
+        # and a multi-line step reports only its last command — a parse error
+        # in a8n-host.js would pass when a8n-json.js is fine. bash -e stops
+        # at the first failure, as the Linux job already does.
+        shell: bash
         run: |
           node --check host/a8n-host.js
           node --check host/a8n-json.js
