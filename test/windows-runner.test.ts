@@ -445,6 +445,22 @@ describe("the Windows adapter", () => {
     expect(await channel.read(lockPath(RUN_ID))).toBeNull();
   });
 
+  it("releases the run's lock when the run throws before it has an outcome", async () => {
+    // Finding 66: only the unknown outcome may keep the lock. A publish that
+    // throws leaves no outcome for a later close() (or anyone else) to act on,
+    // so its lock must not outlive the throw.
+    const { adapter, channel } = await fixture({
+      submit: () => Promise.reject(new Error("the channel root disappeared")),
+    });
+    const session = await adapter.open(TARGET);
+    await session.open();
+
+    await expect(session.run(["/bin/echo"], RUN_OPTIONS)).rejects.toThrow(
+      "the channel root disappeared",
+    );
+    expect(await channel.read(lockPath(RUN_ID))).toBeNull();
+  });
+
   it("does not act on a marker that names another run, and says so", async () => {
     const { adapter, channel } = await fixture({
       submit: async (files) => {

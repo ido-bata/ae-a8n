@@ -8,7 +8,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { mkdirSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { DIAGNOSTIC_CODES, diagnostic, type DiagnosticCheck } from "../doctor/diagnostics.js";
@@ -285,6 +285,7 @@ export async function runTest(input: TestRunInput): Promise<TestRunResult> {
     return finish();
   }
 
+  let session: IsolatedSession | null = null;
   try {
     // 2. A target left in an unknown state is never entered again by guessing.
     // The quarantine is read *under* the lock: another run writes the record
@@ -332,7 +333,6 @@ export async function runTest(input: TestRunInput): Promise<TestRunResult> {
     }
 
     // 4. Open the session. The adapter proves the identity before it sends.
-    let session: IsolatedSession;
     try {
       session = await input.adapter.open(input.target);
       await session.open();
@@ -406,6 +406,38 @@ export async function runTest(input: TestRunInput): Promise<TestRunResult> {
     // A lock is released last: the quarantine record and artifacts are written
     // before another run could be allowed in.
     lock.lock.release();
+    if (session !== null) {
+      // Closing is this run's own bookkeeping — on Windows it releases the
+      // run's channel lock — and it quits After Effects only when the session
+      // marker proves this run wrote it. It can refuse. Neither a refusal nor
+      // a throw changes the outcome already reported, so the result is
+      // recorded and never rethrown.
+      let closing: { readonly closed: boolean; readonly reason: string | null };
+      try {
+        closing = await session.close();
+      } catch (error) {
+        closing = { closed: false, reason: `the session could not be closed: ${messageOf(error)}` };
+      }
+      const detail =
+        closing.reason ?? (closing.closed ? "the session was closed" : "the session was not closed");
+      const closeEvent: TraceEvent = {
+        at: now().toISOString(),
+        event: "session.closed",
+        detail,
+        data: { closed: closing.closed },
+      };
+      trace.push(closeEvent);
+      try {
+        // The report and trace were written before this point. When the run
+        // directory was kept, append the close result so it survives with the
+        // rest of the evidence; a removed directory has no trace to append to.
+        appendFileSync(join(runDirectory, "trace.jsonl"), `${JSON.stringify(closeEvent)}\n`, {
+          mode: 0o600,
+        });
+      } catch {
+        // The run directory was not kept (or cannot be appended to).
+      }
+    }
   }
 }
 

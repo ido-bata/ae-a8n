@@ -88,6 +88,9 @@ to `4746ff3`.
 | 61 | A key file's bytes are bound to the file that was checked: after the read the path is re-`lstat`ed and a refusal is returned when the inode, size or modification time changed, or the path is now a link or not a regular file. The race is narrowed, not eliminated (the read is not `O_NOFOLLOW` on a held handle). Test: `windows-auth.test.ts` "binds the bytes to the file that was checked" |
 | 68 | Recovery no longer overwrites a report: `report.json` is created exclusively, so a report that appears between the check and the write is kept and reported; a run whose own lock is still alive is "in progress", not incomplete, and nothing is recorded for it. Tests: `runner-recover.test.ts` "does not record over a run whose lock's owner is still alive", "keeps a report path that appears between the check and the write" |
 | 69 | A lock record that parses but names no usable pid is refused as undecidable (status `unknown`, record kept), like an unreadable one; it is no longer deleted as stale, which could free a lock that still protects a run. Test: "refuses a lock record that names no owner instead of calling it stale" |
+| 65 | A remote run's channel is settled once — by an injected channel, or by the first resolution that assigns one — and a later resolution may not replace it. Before, the send-time liveness check re-read the host configuration and could move the job, the manifest and the release to a new channel root while the run lock stayed in the old one, which nothing checks again. Test: `windows-remote-comms.test.ts` "keeps a run in the channel its configuration named when the file is rewritten" (fails without the guard) |
+| 66 | Every throw after the run lock is taken releases it: the liveness check, the publish, the manifest and the local artifacts all sit inside one `try`, and the catch releases before rethrowing. The deliberate `unknown` outcome is the single exception — the job may still be executing, and `close()` releases that lock after the caller decides. A failed release never replaces the original error. Test: `windows-runner.test.ts` "releases the run's lock when the run throws before it has an outcome" |
+| 72 | The runner closes the session it opened, in a `finally`, after the lock is released. The outcome is already decided at that point, so neither a refusing close (on Windows, a session marker that is not this run's) nor a throwing one changes it; the close and its reason are recorded as `session.closed` and appended to the run's trace when the directory was kept. Tests: `runner-test.test.ts` "closes the session after the command, and keeps the result in the trace", "keeps a refusing close out of the run's verdict", "does not let a close that throws change the run" |
 
 ## Low findings fixed on this branch
 
@@ -104,7 +107,7 @@ Each is a candidate for its own ticket (one per number-only branch).
 | --- | --- | --- |
 | 37, 40 | — | **by design** (unreadable result is not an answer; recovery is synchronous) |
 | 57, 58 | POSIX channel ACL, unsigned probe artifacts | design + schema |
-| 64, 65, 66, 72 | unsigned manifest, runner lock leaks, session never closed | each is a lock/state change that needs its own tests |
+| 64 | unsigned manifest — the manifest has no signature, so it records what was proven without being self-authenticating |
 | 67 | session marker signing | **tracked as T098** (#93) |
 
 ## Low findings

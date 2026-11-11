@@ -562,6 +562,69 @@ describe("through the channel, with an agent on the other side", () => {
     }
   }, 30_000);
 
+  it("keeps a run in the channel its configuration named when the file is rewritten", async () => {
+    // Finding 65: opening the session settles the channel from the host's
+    // configuration, and the run lock is written there. The send-time liveness
+    // check resolves the configuration again; it used to replace the channel
+    // with whatever the file named now, so the lock stayed in one root while
+    // the job, the manifest and the release went to another — and nothing
+    // checks the first root again.
+    const rig = await startAgent();
+    try {
+      await waitFor(async () => {
+        const bytes = await new DirectoryChannel(rig.channelRoot).read(presencePath(AGENT.id));
+        return bytes === null ? null : bytes;
+      });
+      const elsewhere = await tempDirectory("a8n-remote-elsewhere-");
+      const configPath = join(await tempDirectory("a8n-hosts-"), "hosts.json");
+      const hosts = (channel: string): string =>
+        JSON.stringify({
+          schemaVersion: "1.0",
+          hosts: [
+            { name: AGENT.host, user: AGENT.user, channel, keyFile: rig.keyFile, agentId: AGENT.id },
+          ],
+        });
+      await writeFile(configPath, hosts(rig.channelRoot));
+
+      const adapter = new WindowsAdapter({
+        host: AGENT.host,
+        user: AGENT.user,
+        agent: AGENT,
+        probe: noLocalProbe,
+        remote: {
+          host: AGENT.host,
+          user: AGENT.user,
+          channel: null,
+          keyFile: null,
+          agentId: null,
+          configPath,
+        },
+        runDirectory: await tempDirectory("a8n-remote-runs-"),
+        pollMs: 5,
+        sleep: (ms) => new Promise((resolve) => { setTimeout(resolve, ms); }),
+      });
+      const session = await adapter.open(TARGET);
+      await session.open();
+
+      // The file now names a channel with no agent on it. The run must still
+      // go where the agent is listening.
+      await writeFile(configPath, hosts(elsewhere));
+      const outcome = await session.run(["C:\\tools\\probe.exe", "settled"], {
+        timeoutMs: 10_000,
+        env: {},
+      });
+
+      expect(outcome.exitCode).toBe(0);
+      expect(rig.executor.seen.at(-1)).toEqual(["C:\\tools\\probe.exe", "settled"]);
+      // Nothing was written to the new root, and the lock this run took in the
+      // old one was released.
+      expect(await new DirectoryChannel(elsewhere).isDirectory("jobs")).toBe(false);
+      expect(await new DirectoryChannel(rig.channelRoot).list("locks")).toEqual([]);
+    } finally {
+      await rig.stop();
+    }
+  }, 30_000);
+
   it("reads the host's recovery state through the channel, not this machine", async () => {
     const rig = await startAgent();
     try {

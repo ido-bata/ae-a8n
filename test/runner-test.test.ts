@@ -89,6 +89,8 @@ type AdapterOptions = {
   readonly checks?: readonly DiagnosticCheck[];
   readonly identity?: SessionIdentity;
   readonly probeThrows?: Error;
+  /** What `session.close()` answers; defaults to a clean close. */
+  readonly close?: () => Promise<{ readonly closed: boolean; readonly reason: string | null }>;
 };
 
 /** Records every call, so a test can prove nothing was opened or run. */
@@ -101,12 +103,14 @@ class RunnerAdapter implements PlatformAdapter {
   private readonly checksValue: readonly DiagnosticCheck[];
   private readonly identityValue: SessionIdentity;
   private readonly probeFailure: Error | null;
+  private readonly closeBehaviour: AdapterOptions["close"];
 
   constructor(options: AdapterOptions = {}) {
     this.behaviour = options.behaviour ?? outputs(0);
     this.checksValue = options.checks ?? [];
     this.identityValue = options.identity ?? IDENTITY;
     this.probeFailure = options.probeThrows ?? null;
+    this.closeBehaviour = options.close;
   }
 
   capabilities(): Promise<Capabilities> {
@@ -157,7 +161,9 @@ class RunnerAdapter implements PlatformAdapter {
       },
       close: (): Promise<{ readonly closed: boolean; readonly reason: string | null }> => {
         this.calls.push("session.close");
-        return Promise.resolve({ closed: true, reason: null });
+        return this.closeBehaviour === undefined
+          ? Promise.resolve({ closed: true, reason: null })
+          : this.closeBehaviour();
       },
     };
     return Promise.resolve(session);
@@ -245,6 +251,58 @@ describe("the test runner", () => {
     expect(dropped.result.runDir).toBeNull();
     expect(dropped.result.artifacts).toBeNull();
     expect(existsSync(join(stateLayout(dropped.stateRoot).runs, dropped.result.runId))).toBe(false);
+  });
+
+  it("closes the session after the command, and keeps the result in the trace", async () => {
+    // The Windows session holds the run's channel lock until close(); nothing
+    // else ever releases it, because every run uses a fresh run id.
+    const adapter = new RunnerAdapter();
+    const { result } = await run(adapter);
+
+    expect(adapter.calls.filter((call) => call === "session.close")).toHaveLength(1);
+    const closed = adapter.calls.indexOf("session.close");
+    const ran = adapter.calls.findIndex((call) => call.startsWith("run:"));
+    expect(closed).toBeGreaterThan(ran);
+    const artifacts = result.artifacts as NonNullable<TestRunResult["artifacts"]>;
+    const events = readFileSync(artifacts.trace, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { readonly event: string });
+    expect(events.map((event) => event.event)).toContain("session.closed");
+  });
+
+  it("keeps a refusing close out of the run's verdict", async () => {
+    // On Windows a close refuses to quit After Effects when the session marker
+    // is not this run's. That refusal is evidence; the run's own outcome
+    // stands.
+    const adapter = new RunnerAdapter({
+      behaviour: outputs(1),
+      close: () =>
+        Promise.resolve({
+          closed: false,
+          reason: "A8N-AE-002: the session marker names another run; nothing was quit",
+        }),
+    });
+    const { result } = await run(adapter);
+
+    expect(result.status).toBe("test-failed");
+    const artifacts = result.artifacts as NonNullable<TestRunResult["artifacts"]>;
+    const trace = readFileSync(artifacts.trace, "utf-8");
+    expect(trace).toContain("session.closed");
+    expect(trace).toContain("A8N-AE-002");
+  });
+
+  it("does not let a close that throws change the run", async () => {
+    const adapter = new RunnerAdapter({
+      close: () => Promise.reject(new Error("the channel dropped")),
+    });
+    const { result } = await run(adapter);
+
+    expect(result.status).toBe("ok");
+    const artifacts = result.artifacts as NonNullable<TestRunResult["artifacts"]>;
+    const trace = readFileSync(artifacts.trace, "utf-8");
+    expect(trace).toContain("the session could not be closed");
+    expect(trace).toContain("the channel dropped");
   });
 
   it("reports a non-zero exit as a test failure and keeps the run", async () => {

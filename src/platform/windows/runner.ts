@@ -381,7 +381,14 @@ export class WindowsAdapter implements PlatformAdapter {
   readonly id = "windows-remote-host";
 
   #channel: FileChannel;
-  readonly #channelInjected: boolean;
+  /**
+   * True once `#channel` is the channel this run's lock and its job both use:
+   * an injected channel is settled from the start, and a resolution settles it
+   * when it first assigns one. After that a later resolution may not replace
+   * it — the run lock is written into the old root while the job, the manifest
+   * and the release would go to a new one (finding 65).
+   */
+  #channelSettled: boolean;
   readonly #host: string;
   #user: string;
   readonly #agent: AgentIdentity;
@@ -407,7 +414,7 @@ export class WindowsAdapter implements PlatformAdapter {
 
   constructor(options: WindowsAdapterOptions) {
     this.#channel = options.channel ?? new DirectoryChannel(join(tmpdir(), "ae-a8n-cli-channel"));
-    this.#channelInjected = options.channel !== undefined;
+    this.#channelSettled = options.channel !== undefined;
     this.#host = options.host;
     this.#user = options.user;
     this.#agent = options.agent;
@@ -786,9 +793,13 @@ export class WindowsAdapter implements PlatformAdapter {
     return resolveComms(remote).then((resolution) => {
       // The channel the jobs go into is the one the host configuration names.
       // An injected channel (a test, or a caller that already resolved one)
-      // wins, and is never replaced underneath the caller.
-      if (resolution.ok && !this.#channelInjected) {
+      // wins, and is never replaced underneath the caller. Neither is a
+      // channel that has already been settled: a run may have written its lock
+      // there, and moving the job to a different root would leave that lock
+      // behind in one nothing checks again.
+      if (resolution.ok && !this.#channelSettled) {
         this.#channel = new DirectoryChannel(resolution.config.channel);
+        this.#channelSettled = true;
       }
       if (resolution.ok && this.#user === "") {
         // The account for this host comes from its configuration when the
@@ -982,80 +993,95 @@ export class WindowsAdapter implements PlatformAdapter {
       // The session never owned this lock, so close() must not release it.
       throw new WindowsRunLockError(lock.state, runId);
     }
-    onRun({ runId, jobId: null });
+    try {
+      onRun({ runId, jobId: null });
 
-    const payload = encodeJobPayload({
-      argv: [...argv],
-      env: { ...options.env },
-    });
-    const startedAt = now.toISOString();
-    const writer = owner;
-    const submitOptions: SubmitOptions = {
-      payload,
-      runId,
-      timeoutMs: options.timeoutMs,
-      writer,
-      key,
-      now: this.#now,
-      random: this.#random,
-      ...(this.#pollMs === undefined ? {} : { pollMs: this.#pollMs }),
-      ...(this.#sleep === undefined ? {} : { sleep: this.#sleep }),
-    };
+      const payload = encodeJobPayload({
+        argv: [...argv],
+        env: { ...options.env },
+      });
+      const startedAt = now.toISOString();
+      const writer = owner;
+      const submitOptions: SubmitOptions = {
+        payload,
+        runId,
+        timeoutMs: options.timeoutMs,
+        writer,
+        key,
+        now: this.#now,
+        random: this.#random,
+        ...(this.#pollMs === undefined ? {} : { pollMs: this.#pollMs }),
+        ...(this.#sleep === undefined ? {} : { sleep: this.#sleep }),
+      };
 
-    await this.#assertAgentAlive(target);
-    const submitted = await this.#submit(this.#channel, submitOptions);
-    onRun({ runId, jobId: submitted.jobId });
-    const facts = this.#facts ?? (await this.#prepare(target)).facts;
-    // Read the agent's marker back. Only a marker naming this run counts;
-    // anything else is recorded as unproven, never as a measured destination.
-    const destination = await this.#verifyDestination({ runId, jobId: submitted.jobId });
-    // The manifest records what was proven, not what was configured: the
-    // agent identity and session come from the signed result when there is
-    // one. `agentVerified` says which of the two this is.
-    const verified =
-      submitted.status === "ok" || submitted.status === "failed" ? submitted.result.agent : null;
-    const manifest: RunManifest = {
-      schemaVersion: RUN_MANIFEST_SCHEMA_VERSION,
-      runId,
-      host: this.#host,
-      user: this.#user,
-      sessionId: verified === null ? facts.sessionId : verified.sessionId,
-      agentId: verified?.id ?? this.#agent.id,
-      agentVersion: verified?.version ?? this.#agent.version,
-      agentVerified: verified !== null,
-      aeVersion: aeVersionFromFacts(facts),
-      jobId: submitted.jobId,
-      payloadSha256: sha256Hex(payload),
-      resultSha256: submitted.resultSha256,
-      outcome: submitted.status,
-      destinationProof: destination.proven ? destination.proof : "unproven",
-      // The isolated backend never measured the AE process's pid and start
-      // time, so it may not claim ownership.
-      ownershipProof: "unproven",
-      startedAt,
-      finishedAt: this.#now().toISOString(),
-    };
-    await writeRunManifest(this.#channel, runId, manifest);
+      await this.#assertAgentAlive(target);
+      const submitted = await this.#submit(this.#channel, submitOptions);
+      onRun({ runId, jobId: submitted.jobId });
+      const facts = this.#facts ?? (await this.#prepare(target)).facts;
+      // Read the agent's marker back. Only a marker naming this run counts;
+      // anything else is recorded as unproven, never as a measured destination.
+      const destination = await this.#verifyDestination({ runId, jobId: submitted.jobId });
+      // The manifest records what was proven, not what was configured: the
+      // agent identity and session come from the signed result when there is
+      // one. `agentVerified` says which of the two this is.
+      const verified =
+        submitted.status === "ok" || submitted.status === "failed" ? submitted.result.agent : null;
+      const manifest: RunManifest = {
+        schemaVersion: RUN_MANIFEST_SCHEMA_VERSION,
+        runId,
+        host: this.#host,
+        user: this.#user,
+        sessionId: verified === null ? facts.sessionId : verified.sessionId,
+        agentId: verified?.id ?? this.#agent.id,
+        agentVersion: verified?.version ?? this.#agent.version,
+        agentVerified: verified !== null,
+        aeVersion: aeVersionFromFacts(facts),
+        jobId: submitted.jobId,
+        payloadSha256: sha256Hex(payload),
+        resultSha256: submitted.resultSha256,
+        outcome: submitted.status,
+        destinationProof: destination.proven ? destination.proof : "unproven",
+        // The isolated backend never measured the AE process's pid and start
+        // time, so it may not claim ownership.
+        ownershipProof: "unproven",
+        startedAt,
+        finishedAt: this.#now().toISOString(),
+      };
+      await writeRunManifest(this.#channel, runId, manifest);
 
-    if (submitted.status === "refused") {
+      if (submitted.status === "refused") {
+        // The catch below releases the lock: this run is leaving without an
+        // outcome to point at.
+        throw new WindowsJobRefusedError(submitted.code, submitted.message, submitted.jobId);
+      }
+      if (submitted.status === "unknown") {
+        // Leave the lock: the job may still be executing. close() releases it
+        // only after the caller has decided what to do.
+        throw new WindowsJobUnknownError(submitted.message, submitted.jobId);
+      }
+
+      const artifacts = await this.#writeLocalArtifacts(submitted.jobId, runId);
       await releaseRunLock(this.#channel, runId, owner);
-      throw new WindowsJobRefusedError(submitted.code, submitted.message, submitted.jobId);
+      return {
+        // The published exit code is authoritative; 1 is the conventional
+        // fallback when the process did not exit normally (signal or kill).
+        exitCode: submitted.result.exitCode ?? (submitted.status === "ok" ? 0 : 1),
+        stdoutPath: artifacts.stdoutPath,
+        stderrPath: artifacts.stderrPath,
+      };
+    } catch (error) {
+      // Everything above acquired this run's lock: the liveness check, the
+      // publish, the manifest and the local artifacts can all throw. A run that
+      // throws wrote no outcome to point at, so its own bookkeeping must not
+      // outlive it. The `unknown` outcome is the one deliberate exception — the
+      // job may still be executing, and close() releases that lock only after
+      // the caller has decided. A failed release never replaces the original
+      // error: that error is what the caller must see.
+      if (!(error instanceof WindowsJobUnknownError)) {
+        await releaseRunLock(this.#channel, runId, owner).catch(() => undefined);
+      }
+      throw error;
     }
-    if (submitted.status === "unknown") {
-      // Leave the lock: the job may still be executing. close() releases it
-      // only after the caller has decided what to do.
-      throw new WindowsJobUnknownError(submitted.message, submitted.jobId);
-    }
-
-    const artifacts = await this.#writeLocalArtifacts(submitted.jobId, runId);
-    await releaseRunLock(this.#channel, runId, owner);
-    return {
-      // The published exit code is authoritative; 1 is the conventional
-      // fallback when the process did not exit normally (signal or kill).
-      exitCode: submitted.result.exitCode ?? (submitted.status === "ok" ? 0 : 1),
-      stdoutPath: artifacts.stdoutPath,
-      stderrPath: artifacts.stderrPath,
-    };
   }
 
   async #writeLocalArtifacts(
