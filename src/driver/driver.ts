@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { entryScriptPath, stageHostScript, writeBootstrapScript } from "./bootstrap.js";
 import type { HostRecovery } from "./recovery.js";
 import { READINESS_TIMEOUT_MS } from "./script-invocation.js";
-import type { HostOwnership, HostTransport } from "./transport.js";
+import type { HostOwnership, HostTransport, PendingLaunch } from "./transport.js";
 import { ScriptNotSentError } from "./transport.js";
 
 export type StopOptions = {
@@ -89,6 +89,48 @@ export class HostQuarantinedError extends Error {
   }
 }
 
+/**
+ * After Effects was started, then the launch failed before ownership was
+ * proven — the readiness probe was denied (`-1743`), timed out, or the host
+ * never became scriptable.
+ *
+ * The process is still this run's doing, but it is not this run's to quit:
+ * quitting needs the probe's proof. So the identity the transport kept is
+ * reported instead, and the outcome is indeterminate. This is deliberately
+ * not a timeout: nothing timed out at the caller's request, and re-sending
+ * the probe would make the same denied Apple Event again.
+ */
+export class HostLeftRunningError extends Error {
+  readonly code = "A8N-AE-005" as const;
+  /** The process this session started and could not prove. */
+  readonly launch: PendingLaunch;
+
+  constructor(launch: PendingLaunch, cause: unknown) {
+    const session = launch.session;
+    const where =
+      session === null
+        ? ""
+        : ` in the session of ${session.user ?? `uid ${String(session.uid)}`}` +
+          ` (uid ${String(session.uid)}${session.asid === null ? "" : `, asid ${String(session.asid)}`})`;
+    const started =
+      launch.startedAt === null
+        ? ""
+        : `, started ${new Date(launch.startedAt).toISOString()}`;
+    const aftermath = launch.presentAtLastLookup
+      ? "It is still running, and this session cannot prove it may quit it, so it was left running: " +
+        "quit it by hand before running again."
+      : "It was not found when the process list was last read, so whether it survived is " +
+        "unknown; check before running again.";
+    super(
+      `After Effects was started (pid ${String(launch.pid)}${started}, ${launch.executable}${where}) ` +
+        `but did not answer the readiness probe: ${messageOf(cause)}. ${aftermath}`,
+      { cause },
+    );
+    this.name = "HostLeftRunningError";
+    this.launch = launch;
+  }
+}
+
 export type DriverOptions = {
   readonly transport: HostTransport;
   /** Directory for request/result files, artifacts, and the trace. */
@@ -140,6 +182,12 @@ export class AeDriver {
   readonly #recoveryGraceMs: number;
   #started = false;
   #closed = false;
+  /**
+   * A host this driver started but never proved. Kept so a second `start()`
+   * on the same driver does not send the probe again: the first one was
+   * denied or unanswered, and repeating it would only repeat that.
+   */
+  #leftRunning: { readonly launch: PendingLaunch; readonly cause: unknown } | null = null;
   /** Random per driver; what the host remembers to tell "my instance" from another. */
   readonly #sessionId = randomUUID();
 
@@ -192,6 +240,12 @@ export class AeDriver {
     if (this.#started) {
       throw new Error("driver already started");
     }
+    const left = this.#leftRunning;
+    if (left !== null) {
+      // Nothing is re-sent: the previous launch already started a process
+      // that never answered, and the same Apple Event would be denied again.
+      throw new HostLeftRunningError(left.launch, left.cause);
+    }
     const began = Date.now();
     try {
       await this.#transport.launch();
@@ -227,11 +281,38 @@ export class AeDriver {
       });
       return info;
     } catch (error) {
-      this.#trace.record("session.launch", "error", Date.now() - began, {
+      // A launch can fail after the host process appeared: the Apple Event
+      // that carries the probe is denied, or the host never becomes
+      // scriptable. The process is then this run's doing but unowned — it is
+      // never quit on the strength of provenance, and the run must not drop
+      // the one thing that names it.
+      const pending = this.#transport.pendingLaunch?.() ?? null;
+      const detail = {
         args: { transport: this.#transport.kind },
         error: { name: nameOf(error), message: messageOf(error) },
+      };
+      if (pending === null) {
+        this.#trace.record("session.launch", "error", Date.now() - began, detail);
+        throw error;
+      }
+      this.#leftRunning = { launch: pending, cause: error };
+      const leftRunning = new HostLeftRunningError(pending, error);
+      this.#trace.record("session.launch", "error", Date.now() - began, {
+        ...detail,
+        result: {
+          pendingLaunch: {
+            pid: pending.pid,
+            startedAt: pending.startedAt,
+            executable: pending.executable,
+            presentAtLastLookup: pending.presentAtLastLookup,
+            sessionUid: pending.session?.uid ?? null,
+            sessionUser: pending.session?.user ?? null,
+            sessionAsid: pending.session?.asid ?? null,
+          },
+          ownership: this.ownership(),
+        },
       });
-      throw error;
+      throw leftRunning;
     }
   }
 
@@ -260,8 +341,21 @@ export class AeDriver {
     const ownership = this.ownership();
     try {
       let result: StopResult;
+      const left = this.#leftRunning;
       if (!this.#started) {
-        result = { quit: false, ownership, reason: "never started" };
+        // A failed launch is not "never started": a process this session
+        // started may still be running, and it is named so a human can find
+        // it. Nothing is quit — ownership was never proven.
+        result =
+          left === null
+            ? { quit: false, ownership, reason: "never started" }
+            : {
+                quit: false,
+                ownership,
+                reason:
+                  `the After Effects this session started (pid ${String(left.launch.pid)}) never answered ` +
+                  "the readiness probe, so it is not this session's to quit; it was left running",
+              };
       } else if (ownership.kind !== "owned") {
         result = { quit: false, ownership, reason: `not quitting a host this session does not own (${ownership.evidence})` };
       } else {
