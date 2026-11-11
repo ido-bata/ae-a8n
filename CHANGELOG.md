@@ -171,3 +171,11 @@ before checking anything. Both now resolve the npm CLI and run it as
 `node <npm-cli.js>` (scripts/npm-cli.js), the same way staging does: no
 shell, no bare `npm`, no argument re-parsing. A test refuses a script that
 goes back to either form.
+
+### Fixed (found by the release gate)
+
+The gate reads `A8N_VERSION` from the source text. This branch declares it in
+`src/index.ts`; the integration line this PR merges into declares it in
+`src/version.ts` and re-exports it, so the gate found nothing and failed with
+`A8N_VERSION is undefined` on the pull request's merge ref. It now looks in
+both files and skips one the tree does not have.

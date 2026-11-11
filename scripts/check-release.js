@@ -11,7 +11,7 @@
  * - A tag, when given, must be exactly `v<version>`.
  * - The exported A8N_VERSION constant must equal the package version.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,8 +31,15 @@ if (manifest.publishConfig?.provenance !== false) {
 if (manifest.publishConfig?.access !== "public") {
   problems.push("publishConfig.access must be public for a scoped package");
 }
-const source = readFileSync(join(root, "src", "index.ts"), "utf-8");
-const constant = /export const A8N_VERSION = "([^"]+)"/.exec(source)?.[1];
+// The constant is declared in src/version.ts and re-exported from src/index.ts
+// (#70), so the gate looks where it is declared rather than assuming the file
+// that happens to hold it today. A tree older than that move has no
+// src/version.ts, and the lookup keeps working there.
+const DECLARATION = /export const A8N_VERSION = "([^"]+)"/;
+const constant = ["src/version.ts", "src/index.ts"]
+  .filter((file) => existsSync(join(root, file)))
+  .map((file) => DECLARATION.exec(readFileSync(join(root, file), "utf-8"))?.[1])
+  .find((value) => value !== undefined);
 if (constant !== version) {
   problems.push(`A8N_VERSION is ${constant}, package.json says ${version}`);
 }
