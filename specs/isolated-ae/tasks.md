@@ -375,6 +375,153 @@ mechanical move that no behaviour depends on.
 
 **Depends on:** T027 (the run directory and `report.json` it reads).
 
+## Security follow-up from the 2026-11-11 review
+
+Recorded in #93 and **not started**. The review's F9 (`lateResult`, #90 /
+`952ac97`) and F8's path handling (`6036ace`) are fixed in `0.1.0-alpha.2`; the
+tasks below are the rest. T095, T097, T098 and T099 change the job or marker
+schema, so they need a fresh T092 run before any version carrying them may be
+called `verified on real host`.
+
+The IDs were allocated as T095–T104. #93 was first written with T094–T103;
+T094 is the delivered `ae-a8n report` task above, so the range was corrected
+here rather than reusing a taken ID.
+
+### T095 — bind a job to the agent that may run it (F1)
+
+**Files:** extend `src/platform/windows/job.ts` (`JOB_KEYS`, encode/decode),
+the claim path in `src/platform/windows/agent.ts`; tests in
+`test/windows-job.test.ts`, `test/windows-agent.test.ts`.
+
+**Deliverable:** the signed job carries `target: { id, host, user }`; an agent
+refuses a job addressed to another agent. An absent `target` keeps today's
+behaviour (the channel's only agent) for one release of compatibility.
+
+**Acceptance:** two agents polling one channel cannot both run one job; the
+refusal is signed and names the addressed agent; an absent field changes no
+existing test's outcome.
+
+**Verification:** none yet. Schema change — re-run T092 before the release that
+carries it.
+
+### T096 — per-call ownership gate in the driver (F2/F3)
+
+**Files:** `src/driver/` (the call path) and the `launch()` path that returns
+`attached`; tests next to the existing ownership tests.
+
+**Deliverable:** either every call re-verifies the session marker before it
+sends, or the API documents that `attached` is callable. Pick one; the two
+cannot both be true.
+
+**Acceptance:** a call never reaches an After Effects the session does not own;
+a refused call sends nothing.
+
+**Verification:** none yet. `automated test`, plus a real-host row on macOS for
+the `attached` case.
+
+### T097 — a deadline in the job, enforced by the agent (F4)
+
+**Files:** `src/platform/windows/job.ts` (the signed payload), the age check in
+`src/platform/windows/agent.ts`, the controller's publish path.
+
+**Deliverable:** the controller's deadline is part of the signed job and the
+agent refuses a job past it. `recover --force` cannot re-enable an executable
+job.
+
+**Acceptance:** a job past its deadline is refused, not run; the existing
+10-minute age refusal stays as the outer bound.
+
+**Verification:** none yet. Schema change — re-run T092.
+
+### T098 — sign the session marker (F5)
+
+**Files:** the marker writer and reader (`src/platform/windows/`), the
+destination check in `runner.ts`; tests in `test/windows-destination.test.ts`.
+
+**Deliverable:** `session-marker.json` carries `auth` and is verified with the
+channel key before the destination proof counts.
+
+**Acceptance:** a marker written without the key never counts as proof; the
+proof is still `unproven` when it cannot be established.
+
+**Verification:** none yet. Schema change — re-run T092.
+
+### T099 — destination proof uses the verified agent identity (F6, T090)
+
+**Files:** `src/platform/select.ts` (`{ id: "ae-a8n-cli", sessionId: 0 }`),
+`src/platform/windows/runner.ts`'s comparison, `src/platform/windows/remote.ts`
+(the signed result and presence heartbeat).
+
+**Deliverable:** the expected identity comes from the signed result or the
+signed presence heartbeat, not from a placeholder that can never match. This is
+the remaining half of T090/#72, which reports `destinationProof: "unproven"`.
+
+**Acceptance:** a run that can prove the destination says `proven`; one that
+cannot still says `unproven` and never `proven`.
+
+**Verification:** none yet. Schema change — re-run T092.
+
+### T100 — measure the SMB `O_EXCL` assumption (F7)
+
+**Files:** `src/platform/windows/channel.ts` (`createExclusive`), or a claim
+check that does not depend on it.
+
+**Deliverable:** measure exclusive create on the real SMB mount and record the
+result, or replace the claim with a check that does not assume it.
+
+**Acceptance:** the claim cannot be held by two agents at once under the
+measured behaviour; the evidence is recorded with a date.
+
+**Verification:** real host (SMB share), T092 row.
+
+### T101 — `icacls` parsing for other locales (F8 remainder)
+
+**Files:** `src/platform/windows/acl.ts`, `test/windows-acl.test.ts`.
+
+**Deliverable:** parse a localized `icacls` output (the host runs a Japanese
+Windows), or refuse with a named reason instead of a misleading one.
+
+**Acceptance:** a non-English output does not turn a valid key into a foreign
+account, and does not turn a foreign grant into an acceptance.
+
+**Verification:** none yet. `automated test` with a captured real output.
+
+### T102 — presence is per agent, not per channel (F10)
+
+**Files:** `src/platform/windows/presence.ts`, the controller's staleness check.
+
+**Deliverable:** one presence file per agent, so a second agent cannot refresh
+the first's heartbeat.
+
+**Acceptance:** a controller reading presence sees the agent it will address;
+two agents on a channel are both visible, or neither is claimed alive.
+
+**Verification:** none yet. `automated test`.
+
+### T103 — authenticate the claim before acting on it (F11)
+
+**Files:** the claim path in `src/platform/windows/agent.ts`.
+
+**Deliverable:** the claim's signature is decoded and checked before the claim
+decision is made final; an unsigned claim cannot block a run.
+
+**Acceptance:** the fail-closed refusal direction is unchanged, but a forged
+claim cannot deny service to a legitimate submission.
+
+**Verification:** none yet. `automated test`.
+
+### T104 — document the residual risks (F12)
+
+**Files:** `docs/windows-verification.md`.
+
+**Deliverable:** whatever T095–T103 do not fix is a named residual risk with
+the configuration in which it matters.
+
+**Acceptance:** each residual risk names the configuration (two agents, a
+hostile writer, an unreachable clock) and the level it leaves unproven.
+
+**Verification:** documentation; read against the finished code.
+
 ## Dependency notes
 
 - T085 unblocks all Windows work and the neutral-layer extraction.
@@ -385,8 +532,13 @@ mechanical move that no behaviour depends on.
 - T092 is the only task that can turn any Windows claim into
   `verified on real host`. Until it runs, every Windows deliverable is
   `implemented` or `automated test`.
+- T095, T097, T098 and T099 change the job/marker schema; each needs a fresh
+  T092 run before the version that carries it is called `verified on real
+  host`.
+- T099 completes T090; T101 is the remainder of F8, whose path half is fixed in
+  `0.1.0-alpha.2`.
 
 ## ID allocation going forward
 
-Append-only. The next free ID is **T095**. A task that changes an existing
+Append-only. The next free ID is **T105**. A task that changes an existing
 task's acceptance is a new task, not an edit that hides the change.
