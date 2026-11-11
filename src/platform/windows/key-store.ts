@@ -39,7 +39,7 @@ export type AclReader = (path: string) => Promise<readonly AccessControlEntry[] 
 async function readAclWithIcacls(path: string): Promise<readonly AccessControlEntry[] | null> {
   try {
     const { stdout } = await run("icacls", [path], { windowsHide: true });
-    return parseIcacls(stdout);
+    return parseIcacls(stdout, path);
   } catch {
     return null;
   }

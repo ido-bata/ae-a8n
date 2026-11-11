@@ -1,9 +1,13 @@
 # Releasing to npm
 
 `@ido-bata/ae-a8n` is published under the `next` dist-tag. The first version
-(`0.1.0-alpha.0`) is published by a person with 2FA. From `0.1.0-alpha.1` on,
+(`0.1.0-alpha.0`) is published by a person with 2FA. From `0.1.0-alpha.2` on,
 the `publish` workflow *stages* each version with npm Trusted Publishing
 (OIDC) and a person approves it with 2FA; no npm token exists anywhere.
+
+`0.1.0-alpha.1` is a spent number: its tag `v0.1.0-alpha.1` points at an older
+commit and the version was never published. Versions are immutable, so the
+first staged release is `0.1.0-alpha.2` and `alpha.1` is not reused.
 
 ## What stops an accidental or double publish
 
@@ -101,9 +105,9 @@ member with publish rights and 2FA on. Everything up to step 4 is merged.
 The tag comes **after** the publish, so the tag always means "this is what is
 on npm".
 
-## 0.1.0-alpha.1 and later: staged, then approved with 2FA
+## 0.1.0-alpha.2 and later: staged, then approved with 2FA
 
-From `0.1.0-alpha.1` the workflow never publishes. It **stages** the verified
+From `0.1.0-alpha.2` the workflow never publishes. It **stages** the verified
 tarball with `npm stage publish` through Trusted Publishing, and a maintainer
 publishes it by approving the staged version with 2FA
 ([staged publishing][npm-staged], [`npm stage`][npm-stage]). An OIDC token
@@ -144,15 +148,15 @@ Steps:
    not used within 2 days expires ([npm][npm-tp]), so do this when the
    release is ready. `repository.url` in `package.json` must match the
    repository.
-3. Repository variable `NPM_PUBLISH_VERSION` = `0.1.0-alpha.1`.
+3. Repository variable `NPM_PUBLISH_VERSION` = `0.1.0-alpha.2`.
 4. Tag the release commit on `main` and push the tag:
-   `git tag -a v0.1.0-alpha.1 <sha> -m "0.1.0-alpha.1" && git push origin v0.1.0-alpha.1`.
+   `git tag -a v0.1.0-alpha.2 <sha> -m "0.1.0-alpha.2" && git push origin v0.1.0-alpha.2`.
 5. The workflow verifies, the gate approves, `stage` stages. The run summary
    gives the stage id and shasum.
 6. Review and approve, with 2FA:
 
    ```bash
-   npm stage view <stage-id>         # version 0.1.0-alpha.1, tag next
+   npm stage view <stage-id>         # version 0.1.0-alpha.2, tag next
    npm stage download <stage-id>     # prints the shasum: must equal the run's
    npm stage approve <stage-id>      # 2FA; publishes to next
    ```
@@ -161,7 +165,7 @@ Steps:
    number stays taken while staged; after a rejection, check `npm stage
    list` before reusing it.
 7. Check: `npm view @ido-bata/ae-a8n@next version` and
-   `npm view @ido-bata/ae-a8n@0.1.0-alpha.1 dist.shasum`.
+   `npm view @ido-bata/ae-a8n@0.1.0-alpha.2 dist.shasum`.
 8. Delete `NPM_PUBLISH_VERSION`.
 9. Once staging has worked: package Settings → Publishing access →
    **Require two-factor authentication and disallow tokens**.

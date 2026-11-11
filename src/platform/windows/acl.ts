@@ -71,12 +71,21 @@ function looksLikePath(token: string): boolean {
  * principals that may contain spaces (`NT AUTHORITY\SYSTEM`). Anything that
  * does not parse as an entry is refused rather than skipped: a line this does
  * not understand might be the one carrying a grant.
+ *
+ * `path`, when given, is the path handed to `icacls`. The first line echoes
+ * it, and a Windows path can contain spaces — `C:\Users\First Last\key` is
+ * indistinguishable from a path followed by a principal unless the caller
+ * says which is which. With no `path`, the first token is taken as the path
+ * only when it looks like one.
  */
-export function parseIcacls(output: string): readonly AccessControlEntry[] | null {
+export function parseIcacls(
+  output: string,
+  path?: string,
+): readonly AccessControlEntry[] | null {
   const entries: AccessControlEntry[] = [];
   let first = true;
   for (const raw of output.split(/\r?\n/)) {
-    const line = raw.trim();
+    let line = raw.trim();
     if (line === "") {
       continue;
     }
@@ -85,6 +94,14 @@ export function parseIcacls(output: string): readonly AccessControlEntry[] | nul
     // never does.
     if (!line.includes(":")) {
       continue;
+    }
+    if (first && path !== undefined) {
+      const prefix = path.trim();
+      // Windows paths are case-insensitive, and icacls echoes what it was
+      // given rather than a canonical form.
+      if (prefix !== "" && line.toLowerCase().startsWith(prefix.toLowerCase())) {
+        line = line.slice(prefix.length).trimStart();
+      }
     }
     const tokens = line.split(/\s+/u).filter((token) => token !== "");
     const rightsIndex = tokens.findIndex((token) => token.includes(":("));

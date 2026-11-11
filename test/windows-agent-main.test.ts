@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { JobExecutor } from "../src/platform/windows/agent.js";
+import { A8N_VERSION } from "../src/version.js";
 import { main } from "../src/platform/windows/agent-main.js";
 import { signJob, signResult, encodeKeyFile, type JobKey } from "../src/platform/windows/auth.js";
 import { DirectoryChannel, type FileChannel } from "../src/platform/windows/channel.js";
@@ -490,7 +491,7 @@ describe("the Windows agent entry", () => {
     expect(code).toBe(0);
     expect(executed).toEqual([jobId]);
     const result = await channel.read(jobPaths(jobId).result);
-    expect(new TextDecoder().decode(result ?? new Uint8Array())).toContain("0.1.0-alpha.1");
+    expect(new TextDecoder().decode(result ?? new Uint8Array())).toContain(A8N_VERSION);
   });
 
   it("refuses when --session-id is absent and no session can be measured", async () => {

@@ -266,7 +266,7 @@ async function defaultAclReader(path: string): Promise<readonly AccessControlEnt
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     const { stdout } = await promisify(execFile)("icacls", [path], { windowsHide: true });
-    return parseIcacls(stdout);
+    return parseIcacls(stdout, path);
   } catch {
     return null;
   }

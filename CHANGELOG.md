@@ -1,12 +1,46 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-alpha.2
+
+Published under the `next` dist-tag; `latest` stays on `0.1.0-alpha.0` until a
+stable release is approved. This is the first version that carries the
+isolated-testing surface on both platforms: the macOS session backend and the
+Windows dedicated-host backend, behind one `ae-a8n` CLI.
 
 Verified on macOS against After Effects 2026 (26.5x89, ja) and on Windows 11
 (26.5x89, en) on 2026-10-21 (`docs/verification.md`, `docs/windows-verification.md`).
 Windows: launch/install discovery (#17), process ownership (#40) and the session
 marker (#44) are merged; menu commands, `hostEnvironment` and Undo/Redo were run
 on a real host (#47).
+
+On 2026-11-11 the isolated path itself ran on the Windows host twice: the
+controller published a signed job over the channel, the in-session agent
+started After Effects, built a comp and a text layer, rendered frame 0 and quit
+the process it started (`docs/evidence/windows-2026-11-10/README.md`, update
+section). That is `verified on real host` for **that basic path only**.
+
+### Not proven in this version
+
+Read this before treating a green run as more than it is.
+
+- **Extension methods are `fake/mock only`.** `hostScript`, `ae.call` and
+  `ae-a8n extension build` are covered by tests against the in-repo fake host.
+  No `ae.call` was made on a real After Effects on either platform.
+- **The Windows destination proof is `unproven`** (T090, #72). The isolated
+  backend records `destinationProof: "unproven"` and
+  `ownershipProof: "unproven"` in `manifest.json`, because it cannot yet show
+  that a scripted quit reached the instance this run started. It never reports
+  those as proven.
+- **Non-interference and recovery were not exercised on Windows.** No run was
+  measured while the console user was working, and no crash, kill or hung
+  dialog was induced (rows 13 and 15 of the T092 matrix).
+- **`ae-a8n setup` is not implemented in this version** and refuses with exit
+  7. The macOS helpers it will drive exist; the CLI wiring is #56.
+- **The isolated Windows backend does not start After Effects itself** in the
+  sense of ownership: it sends a job to an agent that starts AE. The API-level
+  `AfterEffects.launch()` ownership guarantees stay macOS-only.
+- `latest` is not published from this version. The cross-platform release gate
+  (T093, #75) is a prerequisite for that, not for this prerelease.
 
 ### Fixed
 
@@ -23,6 +57,12 @@ on a real host (#47).
   makes one last look after the deadline. A result found there is recorded as
   `lateResult` — the run stays `unknown` and quarantined, and the job is never
   re-sent.
+- A result that the **first** read found after the deadline was promoted to
+  the run's outcome. Publishing a job over a share can outlast a short
+  timeout, so that state is reachable; the result cannot have been produced in
+  time. It is now recorded as `lateResult` like any other late result — the
+  run stays `unknown` and quarantined, and the job is not re-sent. Regression
+  test: "does not promote a result the first read finds after the deadline".
 - `ae-a8n test --host <name>` refused every run with "the Windows channel key
   is not configured" even when the channel was reachable and the agent was
   heartbeating: the adapter verified the host's key file and then signed the
@@ -41,6 +81,26 @@ on a real host (#47).
   argument check read every token as a flag, so the channel root, the key file
   and the host name were refused before the agent started. Values are now
   skipped; only flag tokens are checked.
+- A key or channel under a path containing a space (`C:\Users\First Last\…`)
+  was refused: `icacls` echoes the path on its first line, and the parser
+  treated every word after the first as part of the principal, producing a
+  foreign account. The caller now hands the parser the path it asked about
+  and the echo is stripped exactly. The refusal direction is unchanged: a
+  grant to any account outside owner, SYSTEM and Administrators is still
+  refused. Regression tests: "reads a path that contains spaces when the
+  caller names it", "still refuses a foreign grant when the path has spaces".
+- `scripts/check-packed-package.js` and `scripts/check-public-api.js` started
+  `npm` as a bare command, which fails on Windows with `spawn npm ENOENT`;
+  they now start it as `node <npm-cli.js>` on every platform (no shell).
+- `scripts/check-release.js` looked for `A8N_VERSION` only in `src/index.ts`
+  and failed on a tree that declares it in `src/version.ts`. It now reads
+  either declaration and still fails when the two disagree with
+  `package.json`.
+- The ExtendScript host script no longer relies on a nested conditional
+  (`a ? x : b ? y : undefined`), which AE 26.5x89's ExtendScript 4.5.6
+  mis-evaluated and which made every request fail with `unknown method`.
+  Found on the Windows host; `test/host-script.test.ts` pins the statement
+  form.
 
 ### Added
 

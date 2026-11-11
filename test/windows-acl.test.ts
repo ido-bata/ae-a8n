@@ -76,6 +76,35 @@ describe("icacls parsing", () => {
   it("refuses output with no entries at all", () => {
     expect(parseIcacls("")).toBeNull();
   });
+
+  it("reads a path that contains spaces when the caller names it", () => {
+    // Regression: the first token was taken as the path, so a key under
+    // "C:\Users\First Last\..." parsed its principal as
+    // "Last\.ae-a8n\agent.key BUILTIN\Administrators" — a foreign account.
+    // The key was then refused on a machine whose only fault was a space in
+    // the user's name. The caller knows the path; the parser must use it.
+    const path = "C:\\Users\\First Last\\.ae-a8n\\agent.key";
+    const out = [
+      `${path} BUILTIN\\Administrators:(F)`,
+      "                              NT AUTHORITY\\SYSTEM:(F)",
+      "                              HOST\\First Last:(F)",
+      "",
+      "Successfully processed 1 files; Failed processing 0 files",
+    ].join("\r\n");
+    expect(parseIcacls(out, path)).toEqual([
+      { principal: "BUILTIN\\Administrators", rights: "F" },
+      { principal: "NT AUTHORITY\\SYSTEM", rights: "F" },
+      { principal: "HOST\\First Last", rights: "F" },
+    ]);
+  });
+
+  it("strips the named path case-insensitively", () => {
+    // icacls echoes what it was given; Windows paths are case-insensitive.
+    const out = "c:\\users\\first last\\agent.key HOST\\First Last:(F)";
+    expect(parseIcacls(out, "C:\\Users\\First Last\\agent.key")).toEqual([
+      { principal: "HOST\\First Last", rights: "F" },
+    ]);
+  });
 });
 
 describe("the key file's ACL", () => {
@@ -111,6 +140,15 @@ describe("the key file's ACL", () => {
   it("treats every unprivileged account as foreign when the owner is unknown", () => {
     const verdict = keyFileAclVerdict(entries(["BUILTIN\\Administrators", "F"], ["HOST\\x", "R"]), null);
     expect(verdict.ok).toBe(false);
+  });
+
+  it("still refuses a foreign grant when the path has spaces", () => {
+    // The path fix must not turn a refusal into an acceptance.
+    const path = "C:\\Users\\First Last\\agent.key";
+    const parsed = parseIcacls(`${path} HOST\\guest:(R)\r\n HOST\\First Last:(F)`, path) ?? [];
+    const verdict = keyFileAclVerdict(parsed, "First Last");
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok === false ? verdict.detail : "").toContain("HOST\\guest");
   });
 });
 

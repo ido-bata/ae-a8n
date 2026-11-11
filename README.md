@@ -16,18 +16,33 @@ const frame = await (await project.comp("Main")).renderFrame(0); // { path, widt
 await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to throw away
 ```
 
-> **Alpha.** `0.1.0-alpha.1` is published under the `next` dist-tag. The API
-> may change before 0.1.0.
+> **Alpha.** `0.1.0-alpha.2` is the release under the `next` dist-tag; `latest`
+> stays on `0.1.0-alpha.0` until a stable release is approved. If
+> `npm view @ido-bata/ae-a8n@next version` does not show this version, it has
+> not been published yet. The API may change before 0.1.0.
 
 ## Status
 
 | | |
 | --- | --- |
 | macOS | Verified against After Effects 2026 (26.5x89, Japanese UI) on macOS 27, arm64: launch, project/comp/layer lookup, effects by match name, parameter write/read, one-frame PNG render, typed failures, timeouts, session ownership; 20 consecutive fresh-session runs |
-| Windows | Verified against After Effects 2026 (26.5x89, English UI) on Windows 11 x64: cold launch, install discovery, process ownership and quit-only-what-this-session-started, menu commands, `hostEnvironment`, scene building, Undo/Redo, and Ae_Restro's 33-check E2E through this API (3 runs). See [docs/windows-verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/windows-verification.md) and [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md). ARM64 and non-English UIs not run |
+| Windows | Verified against After Effects 2026 (26.5x89, English UI) on Windows 11 x64: cold launch, install discovery, process ownership and quit-only-what-this-session-started, menu commands, `hostEnvironment`, scene building, Undo/Redo, and Ae_Restro's 33-check E2E through this API (3 runs). The isolated backend also ran end to end on that host on 2026-11-11: a signed job over the channel, an in-session agent, AE started, comp and text layer built, frame 0 rendered, and the started process quit — twice. See [docs/windows-verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/windows-verification.md) and [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md). ARM64 and non-English UIs not run |
 | Node | 22 or later (developed on 24) |
 
 What has been checked, and how, is in [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md).
+
+What is **not** proven in `0.1.0-alpha.2`, so a green run is not read as more
+than it is:
+
+- Extension methods (`hostScript`, `ae.call`, `ae-a8n extension build`) are
+  `fake/mock only`: no `ae.call` has run against a real After Effects.
+- On the Windows isolated backend `manifest.json` records
+  `destinationProof: "unproven"` and `ownershipProof: "unproven"`; the backend
+  never reports them as proven.
+- Non-interference with a working console user, and recovery from a crash or a
+  hung dialog, were not measured on Windows.
+- `ae-a8n setup` is not implemented in this version; it refuses and changes
+  nothing.
 
 ## Install
 

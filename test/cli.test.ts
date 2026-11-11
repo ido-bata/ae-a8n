@@ -8,6 +8,7 @@ import { parseArgs } from "../src/cli/args.js";
 import type { CliEnvelope } from "../src/cli/envelope.js";
 import { EXIT } from "../src/cli/exit-code.js";
 import { runCli, type CliDependencies } from "../src/cli/run.js";
+import { A8N_VERSION } from "../src/version.js";
 import { diagnostic } from "../src/doctor/diagnostics.js";
 import {
   FakeAdapter,
@@ -248,7 +249,7 @@ describe("the doctor command", () => {
     });
     expect(envelope.package).toEqual({
       name: "@ido-bata/ae-a8n",
-      version: "0.1.0-alpha.1",
+      version: A8N_VERSION,
       commit: "deadbeef",
     });
     expect(envelope.target).toEqual({
