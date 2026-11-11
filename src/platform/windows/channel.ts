@@ -10,7 +10,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, rename, stat, unlink, writeFile, type FileHandle } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, sep } from "node:path";
 
 export interface FileChannel {
@@ -93,23 +93,41 @@ export class DirectoryChannel implements FileChannel {
 
   async read(path: string): Promise<Uint8Array | null> {
     const target = this.#resolve(path);
+    let handle: FileHandle | undefined;
     try {
-      // Refuse before allocating what a writer could make huge; check again
-      // after reading because the file can grow between stat and read.
-      const before = await stat(target);
+      handle = await open(target, "r");
+      // Refuse a file that is already too large before reading any of it.
+      const before = await handle.stat();
       if (before.size > this.#maxReadBytes) {
         throw new ChannelFileTooLargeError(path, before.size, this.#maxReadBytes);
       }
-      const bytes = new Uint8Array(await readFile(target));
-      if (bytes.length > this.#maxReadBytes) {
-        throw new ChannelFileTooLargeError(path, bytes.length, this.#maxReadBytes);
+      // Read through the handle with a hard bound. `readFile` buffers the
+      // whole file before any post-check can run, so a writer that grows the
+      // file after this stat — the untrusted writer this cap exists for —
+      // could force an allocation far past it. Reading at most
+      // maxReadBytes + 1 bytes refuses a growing file at the cap instead.
+      const chunks: Buffer[] = [];
+      let total = 0;
+      for (;;) {
+        const chunk = Buffer.alloc(Math.min(READ_CHUNK_BYTES, this.#maxReadBytes + 1 - total));
+        const { bytesRead } = await handle.read(chunk, 0, chunk.length, total);
+        if (bytesRead === 0) {
+          break;
+        }
+        chunks.push(chunk.subarray(0, bytesRead));
+        total += bytesRead;
+        if (total > this.#maxReadBytes) {
+          throw new ChannelFileTooLargeError(path, total, this.#maxReadBytes);
+        }
       }
-      return bytes;
+      return new Uint8Array(Buffer.concat(chunks));
     } catch (error) {
       if (isMissing(error)) {
         return null;
       }
       throw error;
+    } finally {
+      await handle?.close().catch(() => undefined);
     }
   }
 
@@ -119,14 +137,10 @@ export class DirectoryChannel implements FileChannel {
     const temporary = `${target}.${randomBytes(6).toString("hex")}.tmp`;
     await writeFile(temporary, bytes);
     try {
-      await rename(temporary, target);
+      await replaceByRename(temporary, target);
     } catch (error) {
-      // Windows refuses to rename onto an existing file.
-      if (!isRenameRefused(error)) {
-        throw error;
-      }
-      await unlink(target).catch(ignoreMissing);
-      await rename(temporary, target);
+      await unlink(temporary).catch(ignoreMissing);
+      throw error;
     }
   }
 
@@ -186,6 +200,60 @@ export class DirectoryChannel implements FileChannel {
   async remove(path: string): Promise<void> {
     await unlink(this.#resolve(path)).catch(ignoreMissing);
   }
+}
+
+/** One read buffer; a bounded read never holds more than this at a time. */
+const READ_CHUNK_BYTES = 64 * 1024;
+/** How often a refused rename is retried before the destination is deleted. */
+const RENAME_ATTEMPTS = 3;
+const RENAME_RETRY_MS = 50;
+
+export type ReplaceOptions = {
+  readonly rename?: (from: string, to: string) => Promise<void>;
+  readonly unlink?: (path: string) => Promise<void>;
+  readonly delay?: (ms: number) => Promise<void>;
+  readonly attempts?: number;
+  readonly retryMs?: number;
+};
+
+/**
+ * Publish a finished temporary file at `target`.
+ *
+ * Windows normally replaces an existing destination, so a refused rename is a
+ * transient sharing violation: the destination is open. Retrying keeps the
+ * path present the whole time. Deleting the destination first makes the path
+ * absent between two calls — a reader of a heartbeat can see "no file", and a
+ * crash in that window loses it — so it is the last resort, after the retries.
+ */
+export async function replaceByRename(
+  temporary: string,
+  target: string,
+  options: ReplaceOptions = {},
+): Promise<void> {
+  const renameFile = options.rename ?? rename;
+  const unlinkFile = options.unlink ?? unlink;
+  const wait =
+    options.delay ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  // A non-positive or non-finite count would make the loop unable to end.
+  const configured = options.attempts ?? RENAME_ATTEMPTS;
+  const attempts = Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : RENAME_ATTEMPTS;
+  const retryMs = options.retryMs ?? RENAME_RETRY_MS;
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await renameFile(temporary, target);
+      return;
+    } catch (error) {
+      if (!isRenameRefused(error)) {
+        throw error;
+      }
+      if (attempt >= attempts) {
+        break;
+      }
+      await wait(retryMs);
+    }
+  }
+  await unlinkFile(target).catch(ignoreMissing);
+  await renameFile(temporary, target);
 }
 
 function errorCode(error: unknown): string | null {

@@ -81,6 +81,8 @@ to `4746ff3`.
 | 50 | The agent checks the stop signal between jobs, so Ctrl+C/SIGTERM is no longer held behind the whole queue; the previous job's result is already published. Test: `windows-agent-main.test.ts` "stops between jobs, not after the whole queue" |
 | 51 | The poll loop's result read is guarded: one unreadable job directory is logged and skipped instead of rejecting `main` and taking the resident agent (and its heartbeat) down. Test: "keeps polling when one job's result path cannot be read" |
 | 52 | A claim left by an agent that died is named, not silent: the agent logs the claimant and the claim file once per job, and the controller's `A8N-AE-004` message names the trusted claim and what a human must remove. Tests: `windows-agent-main.test.ts` "names a trusted claim that strands a job, once"; `windows-result-visibility.test.ts` (both directions) |
+| 54 | A channel read is bounded while it reads: the file is opened, its size checked, and then read through the handle in 64 KiB chunks that stop at `maxReadBytes + 1`, so a writer that grows the file after the size check is refused at the cap instead of being buffered whole. Tests: `windows-channel.test.ts` (the limit is exact at the cap, one byte over is refused, a far-over file is refused before it is read) |
+| 55 | A refused rename is retried before the destination is deleted, so a transient sharing violation no longer leaves the path absent between two calls (a heartbeat reader can see that); the delete is the last resort and, when it runs, a failed publication no longer leaves its temporary file behind. Tests: `windows-channel.test.ts` "retries a transient sharing violation…", "deletes the destination only after the retries are used up…" |
 
 ## Low findings fixed on this branch
 
@@ -96,7 +98,6 @@ Each is a candidate for its own ticket (one per number-only branch).
 | # | Where | Why deferred |
 | --- | --- | --- |
 | 37, 40 | — | **by design** (unreadable result is not an answer; recovery is synchronous) |
-| 54, 55 | channel read cap and unlink-then-rename | needs an SMB measurement (T100) |
 | 57, 58 | POSIX channel ACL, unsigned probe artifacts | design + schema |
 | 59 | kill errors swallowed | executor ticket |
 | 61, 63, 64, 65, 66, 69, 72 | key TOCTOU, lock races, unsigned manifest, runner lock leaks, recover lock handling, session never closed | each is a lock/state change that needs its own tests |
@@ -117,6 +118,10 @@ behind each verdict is in [`TRIAGE.md`](TRIAGE.md).
   Nothing in this review was verified on a real After Effects host; the Windows
   basic acceptance of 2026-11-11 (`windows-2026-11-10/`) ran on an earlier
   build (`4bf9ea0`), not on this branch's head.
+- The rename retry (finding 55) uses 3 attempts 50 ms apart. That a real SMB
+  share clears a sharing violation within that budget was not measured; the
+  behaviour under a destination held open by a reader lacking delete-sharing
+  is `automated test` only.
 - T095, T097, T098, T099 and T105 change, or will change, the job/marker
   schema; they need a fresh T092 run before the version carrying them may be
   called `verified on real host`.
