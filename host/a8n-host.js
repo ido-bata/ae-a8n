@@ -966,12 +966,22 @@
     // Extension methods are registered before this file loads and live in
     // their own table: a built-in name always wins, because the build refuses
     // a collision but the table must still not be able to replace one.
+    //
+    // Statements, not one nested conditional: measured on AE 26.5x89,
+    // ExtendScript evaluates `a ? x : b ? y : undefined` with the second test
+    // deciding the whole expression, so a name found in `methods` returned
+    // `extensions[name]` — undefined — and every call failed with "unknown
+    // method". An explicitly grouped conditional and plain `if` both evaluate
+    // correctly; this form is also correct in Node, so the fake host agrees.
     var extensions = extensionTable();
-    var method = has(methods, request.method)
-      ? methods[request.method]
-      : has(extensions, request.method)
-        ? extensions[request.method]
-        : undefined;
+    var method;
+    if (has(methods, request.method)) {
+      method = methods[request.method];
+    } else if (has(extensions, request.method)) {
+      method = extensions[request.method];
+    } else {
+      method = undefined;
+    }
     if (method === undefined) {
       throw new Error("unknown method: " + String(request.method));
     }

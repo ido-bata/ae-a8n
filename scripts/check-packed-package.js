@@ -33,6 +33,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { npmCommand } from "./npm-cli.js";
+
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
@@ -69,7 +71,11 @@ function fail(message) {
 const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf-8"));
 
 console.log(`packing ${manifest.name}@${manifest.version}…`);
-const tarballName = run("npm", ["pack", "--silent"], { cwd: PACKAGE_ROOT })
+// npm runs as `node <npm-cli.js>`, never through a shell (scripts/npm-cli.js):
+// on Windows `npm` is `npm.cmd`, which execFileSync cannot start — this script
+// failed there with `spawn npm ENOENT` — and a shell would re-parse the args.
+const npm = npmCommand();
+const tarballName = run(npm.command, [...npm.args, "pack", "--silent"], { cwd: PACKAGE_ROOT })
   .trim()
   .split("\n")
   .at(-1);
@@ -82,7 +88,7 @@ try {
     `${JSON.stringify({ name: "packed-check", private: true, type: "module" }, null, 2)}\n`,
     "utf-8",
   );
-  run("npm", ["install", "--silent", tarball], { cwd: workdir });
+  run(npm.command, [...npm.args, "install", "--silent", tarball], { cwd: workdir });
 
   const installed = join(workdir, "node_modules", manifest.name);
 
