@@ -44,15 +44,16 @@ export async function prepare(folder) {
   const root = resolve(folder);
   await mkdir(root, { recursive: true, mode: 0o700 });
   await checkChannel(root);
-  for (const name of ["inbox", "outbox"]) {
-    await mkdir(join(root, name), { mode: 0o700 });
-  }
+  // Refuse re-preparation before touching an active channel's subdirectories.
   const metadataPath = join(root, "proof.json");
   try {
     await lstat(metadataPath);
     throw new Error("channel already prepared; do not replace an active AE bridge");
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
+  }
+  for (const name of ["inbox", "outbox"]) {
+    await mkdir(join(root, name), { mode: 0o700 });
   }
 
   // This capability is intentionally only an unpredictable channel token,
