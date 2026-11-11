@@ -102,6 +102,49 @@ Read this before treating a green run as more than it is.
   Found on the Windows host; `test/host-script.test.ts` pins the statement
   form.
 
+#### Found by the pre-release review of the release diff
+
+The review (`docs/evidence/review-2026-11-11/`) found 7 high and 65 medium
+findings. These are the high ones and the mediums fixed here; the rest are
+tracked in #93 and #94.
+
+- A CLI option that forgot its value swallowed the next option:
+  `setup --channel --dry-run` set the channel to `--dry-run` and left the dry
+  run off. A value that starts with `--` is now a usage error; an explicit
+  `--flag=value` still allows one.
+- A recovery that quarantined the host (an unclassified blocking window) was
+  rethrown as a plain timeout, inviting exactly the retry the quarantine
+  exists to prevent. It now reaches the caller as `HostQuarantinedError` with
+  `A8N-SEC-001`.
+- The Windows key-file ACL accepted a domain account that merely shared the
+  owner's name (`CONTOSO\rebui` for the local `rebui`, two different
+  principals). Only the machine's or the domain's own qualifier is accepted.
+- `ae-a8n recover` on a `--host` target ran `tasklist` on the controller and
+  reported the controller's process state as the host's. Recovery now reads
+  the host's state through the channel, or refuses with `A8N-JOB-007`.
+- The test runner read the quarantine record before taking the target lock, so
+  a run that quarantined in between could still be entered. The lock is taken
+  first and the record is read under it.
+- An agent executor that throws now publishes `unknown` — the command may have
+  run — instead of `failed`, which invited a retry.
+- `resolveComms` refuses `--key-file` without `--channel` even when the hosts
+  file could supply a channel; the guard meant to do this was unreachable.
+- A key-load refusal reports its own diagnostic code (`A8N-PERM-005` for an
+  ACL failure) instead of always `A8N-JOB-003`.
+- A call abandoned before it reached After Effects is reported as not sent
+  through the public error layer; it used to become a generic failure.
+- The Windows steps in `ci.yml` and `publish.yml` ran under pwsh, which does
+  not stop at a failing native command, so a broken first `node --check`
+  passed behind a green second one. They run under `bash -e`. The full
+  Windows suite is now a required check on `main`, as its comment claimed.
+- `check-packed-package.js` accepts a CRLF shebang line, so a Windows build
+  no longer fails the release gate on the line ending alone.
+- `recover` validates the run id in a quarantine record before using it as a
+  path, and a quarantine record that cannot be written no longer aborts the
+  run report — the notice says the next run is not guarded.
+- The isolated-session helper refuses a non-numeric or non-positive
+  `--timeout` instead of turning its deadline into `NaN`.
+
 ### Added
 
 - `ae-a8n agent --hidden`: starts the resident agent as a detached process

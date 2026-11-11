@@ -383,7 +383,7 @@ tasks below are the rest. T095, T097, T098 and T099 change the job or marker
 schema, so they need a fresh T092 run before any version carrying them may be
 called `verified on real host`.
 
-The IDs were allocated as T095–T104. #93 was first written with T094–T103;
+The IDs were allocated as T095–T105. #93 was first written with T094–T103;
 T094 is the delivered `ae-a8n report` task above, so the range was corrected
 here rather than reusing a taken ID.
 
@@ -522,6 +522,29 @@ hostile writer, an unreachable clock) and the level it leaves unproven.
 
 **Verification:** documentation; read against the finished code.
 
+### T105 — close the channel ACL to unknown writable accounts (F13)
+
+**Source:** the pre-release review of the `release-0-1-0` diff (2026-11-11),
+finding 4 in `/tmp/a8n-ocr-findings.md`'s numbering — recorded here because
+the file is not in the repository.
+
+**Files:** `src/platform/windows/acl.ts`, `src/platform/windows/comms.ts`,
+`test/windows-acl.test.ts`.
+
+**Deliverable:** `channelAclVerdict` refuses a writable ACE granted to any
+account outside the controller and the agent — not only the hard-coded shared
+principals. The trusted accounts come from the resolved host configuration (or
+their SIDs); an unknown trusted set refuses, matching `keyFileAclVerdict`'s
+null-owner rule.
+
+**Acceptance:** a channel ACL naming `CONTOSO\Domain Users` or an arbitrary
+local account with write access is refused; a normal deployment's ACL is
+accepted on a real host, with the observed `icacls` output recorded.
+
+**Verification:** `automated test` for the parser and the verdict; the
+acceptance on an ordinary SMB share is `verified on real host` and belongs to
+T092's next run.
+
 ## Dependency notes
 
 - T085 unblocks all Windows work and the neutral-layer extraction.
@@ -540,5 +563,5 @@ hostile writer, an unreachable clock) and the level it leaves unproven.
 
 ## ID allocation going forward
 
-Append-only. The next free ID is **T105**. A task that changes an existing
+Append-only. The next free ID is **T106**. A task that changes an existing
 task's acceptance is a new task, not an edit that hides the change.
