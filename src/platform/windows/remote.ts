@@ -229,6 +229,8 @@ export async function submitJob(channel: FileChannel, options: SubmitOptions): P
     lastError: null as string | null,
     slowestReadMs: 0,
   };
+  /** A result the first read found after the deadline; recorded as late below. */
+  let lateBytes: Uint8Array | null = null;
 
   const judge = (bytes: Uint8Array): Judgement => {
     const sha = sha256Hex(bytes);
@@ -305,6 +307,8 @@ export async function submitJob(channel: FileChannel, options: SubmitOptions): P
     // honest than calling the run whatever the file happens to claim. The
     // first read happens even then — publishing the job over a share can
     // cost more than a short timeout, and "never looked" is not a verdict.
+    // What that first read finds is evidence too, and it is late by the same
+    // rule: a result can only have been produced after the deadline passed.
     const remaining = deadline - now().getTime();
     if (remaining <= 0 && evidence.polls > 0) {
       break;
@@ -326,6 +330,13 @@ export async function submitJob(channel: FileChannel, options: SubmitOptions): P
       };
     }
     if (attempt.kind === "bytes") {
+      if (remaining <= 0) {
+        // The read started after the deadline, so the result it found cannot
+        // have been produced in time. It is recorded below like any other late
+        // result: never promoted, the job never re-sent.
+        lateBytes = attempt.bytes;
+        break;
+      }
       return asSubmitResult(judge(attempt.bytes));
     }
     if (attempt.kind === "absent") {
@@ -339,8 +350,12 @@ export async function submitJob(channel: FileChannel, options: SubmitOptions): P
 
   // One last look, without waiting and without sending anything. A result
   // found here is recorded as evidence, never promoted to the run's outcome:
-  // the target stays quarantined and a person decides.
-  const late = await readResult(channel, paths.result, Math.min(readTimeoutMs, LATE_RECHECK_MS));
+  // the target stays quarantined and a person decides. When the first read
+  // already found one after the deadline, that read is the last look.
+  const late =
+    lateBytes === null
+      ? await readResult(channel, paths.result, Math.min(readTimeoutMs, LATE_RECHECK_MS))
+      : { kind: "bytes" as const, bytes: lateBytes, ms: 0 };
   let lateResult: LateResult | null = null;
   if (late.kind === "bytes") {
     const judged = judge(late.bytes);

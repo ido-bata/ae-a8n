@@ -305,6 +305,34 @@ describe("the controller's view of the result file", () => {
     }
   });
 
+  it("does not promote a result the first read finds after the deadline", async () => {
+    const files = await channel();
+    await files.writeAtomic(RESULT, signedResult("ok", 0));
+    // Publishing the job over a slow share can outlast a short timeout, so the
+    // first read may start after the deadline — and find a result that is
+    // already there. It cannot have been produced in time: it is evidence,
+    // not the run's outcome.
+    let ticks = 0;
+    const result = await submitJob(
+      files,
+      options({
+        timeoutMs: 5,
+        now: () => {
+          ticks += 1;
+          return new Date(NOW.getTime() + ticks * 10);
+        },
+        sleep: () => Promise.resolve(),
+      }),
+    );
+    expect(result).toMatchObject({ status: "unknown", code: "A8N-AE-004" });
+    if (result.status === "unknown") {
+      expect(result.evidence.polls).toBe(1);
+      expect(result.lateResult).toMatchObject({ status: "ok", exitCode: 0 });
+      expect(result.message).toContain("after the deadline");
+      expect(result.message).toContain("will not be re-sent");
+    }
+  });
+
   it("looks at least once, even when publishing the job used up the timeout", async () => {
     const files = await channel();
     // Publishing over a share is slow; a short timeout can be spent before the
