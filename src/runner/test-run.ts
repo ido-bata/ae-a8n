@@ -228,11 +228,23 @@ export async function runTest(input: TestRunInput): Promise<TestRunResult> {
   let quarantined = false;
   const quarantine = (detail: string): void => {
     quarantined = true;
-    const path = writeQuarantine(layout, input.target.name, {
-      runId,
-      quarantinedAt: now().toISOString(),
-      detail,
-    });
+    let path: string;
+    try {
+      path = writeQuarantine(layout, input.target.name, {
+        runId,
+        quarantinedAt: now().toISOString(),
+        detail,
+      });
+    } catch (error) {
+      // The state is unknown whether or not the record could be written. The
+      // run must still report that, and must not pretend the next run will be
+      // refused: no record means no guard.
+      event("run.quarantine-unwritten", detail, { error: messageOf(error) });
+      notice =
+        `${detail}. The quarantine record could not be written (${messageOf(error)}), ` +
+        "so the next run will not be refused by it; inspect this run before continuing.";
+      return;
+    }
     event("run.quarantined", detail, { path });
     notice = `${detail}. The target is quarantined at ${path}; nothing will run until a recovery clears it.`;
   };
@@ -250,26 +262,7 @@ export async function runTest(input: TestRunInput): Promise<TestRunResult> {
     return finish();
   };
 
-  // 1. A target left in an unknown state is never entered again by guessing.
-  const prior = readQuarantine(layout, input.target.name);
-  if (prior.quarantined) {
-    event("run.refused", `quarantine: ${prior.detail}`, { path: prior.path });
-    status = "refused";
-    checks = [
-      diagnostic("A8N-JOB-002", {
-        detail: prior.detail,
-        remedy:
-          "Inspect the quarantined run, then clear the quarantine with `ae-a8n recover` " +
-          "(not implemented in this increment) before running again.",
-        remedyKind: "human",
-        evidence: { path: prior.path },
-      }),
-    ];
-    verdicts = [{ id: "run-quarantine", verdict: "blocked", message: prior.detail }];
-    return finish();
-  }
-
-  // 2. One run per target. A lock is never taken over silently.
+  // 1. One run per target. A lock is never taken over silently.
   const lock = acquireTargetLock(layout, input.target.name, {
     runId,
     pid: input.pid ?? process.pid,
@@ -293,6 +286,28 @@ export async function runTest(input: TestRunInput): Promise<TestRunResult> {
   }
 
   try {
+    // 2. A target left in an unknown state is never entered again by guessing.
+    // The quarantine is read *under* the lock: another run writes the record
+    // while holding this same lock, so a read taken before it could miss a
+    // target quarantined a moment ago and start on it anyway.
+    const prior = readQuarantine(layout, input.target.name);
+    if (prior.quarantined) {
+      event("run.refused", `quarantine: ${prior.detail}`, { path: prior.path });
+      status = "refused";
+      checks = [
+        diagnostic("A8N-JOB-002", {
+          detail: prior.detail,
+          remedy:
+            "Inspect the quarantined run, then clear the quarantine with `ae-a8n recover` " +
+            "before running again.",
+          remedyKind: "human",
+          evidence: { path: prior.path },
+        }),
+      ];
+      verdicts = [{ id: "run-quarantine", verdict: "blocked", message: prior.detail }];
+      return finish();
+    }
+
     // 3. The environment is inspected before anything is opened.
     let probe: AdapterProbe;
     try {

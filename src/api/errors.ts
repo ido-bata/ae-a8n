@@ -7,19 +7,25 @@
  */
 
 import { HostError, ProtocolError } from "../protocol/envelope.js";
-import { HostUnavailableError, TimeoutError } from "../driver/driver.js";
+import { HostQuarantinedError, HostUnavailableError, TimeoutError } from "../driver/driver.js";
+import { ScriptNotSentError } from "../driver/transport.js";
 import type { PropertyKind } from "./types.js";
 
-export { HostUnavailableError, ProtocolError, TimeoutError };
+export { HostQuarantinedError, HostUnavailableError, ProtocolError, ScriptNotSentError, TimeoutError };
 
 export class AfterEffectsError extends Error {
   /** Operation that failed, as it appears in the trace. */
   readonly op: string;
+  /** The diagnostic code, when the failure has one the caller may act on. */
+  readonly code?: string;
 
-  constructor(message: string, op: string, options?: { cause?: unknown }) {
+  constructor(message: string, op: string, options?: { cause?: unknown; code?: string }) {
     super(message, options);
     this.name = "AfterEffectsError";
     this.op = op;
+    if (options?.code !== undefined) {
+      this.code = options.code;
+    }
   }
 }
 
@@ -148,6 +154,20 @@ export function contextualise(op: string, error: unknown): never {
   }
   if (error instanceof TimeoutError) {
     throw new AfterEffectsError(error.message, op, { cause: error });
+  }
+  if (error instanceof ScriptNotSentError) {
+    // The call never reached the host: it did not fail there, and nothing ran.
+    throw new AfterEffectsError(
+      `${op} was not sent to After Effects: ${error.message}. Nothing ran.`,
+      op,
+      { cause: error },
+    );
+  }
+  if (error instanceof HostQuarantinedError) {
+    // A licence, sign-in or permission window: the operation is blocked on a
+    // person, not late. The code travels so a caller (and the run report) can
+    // tell this apart from a timeout it may be tempted to retry.
+    throw new AfterEffectsError(error.message, op, { cause: error, code: error.code });
   }
   if (error instanceof ProtocolError) {
     throw new AfterEffectsError(

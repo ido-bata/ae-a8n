@@ -347,6 +347,13 @@ function parseCommand(
     if (!VALUE_FLAGS.has(name)) {
       return usage(`unknown option ${name}`, wantsJson || state.json);
     }
+    // A forgotten value must not swallow the next option: `setup --channel
+    // --dry-run` would set the channel to "--dry-run" and leave the dry run
+    // off, which is the one combination that changes the machine while the
+    // caller asked it not to. The agent's own parser refuses the same shape.
+    if (inline === undefined && (rest[index + 1]?.startsWith("--") ?? false)) {
+      return usage(`${name} needs a value`, wantsJson || state.json);
+    }
     const value = inline ?? rest[index + 1];
     if (value === undefined) {
       return usage(`${name} needs a value`, wantsJson || state.json);

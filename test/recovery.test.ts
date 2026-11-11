@@ -148,6 +148,33 @@ describe("a timeout followed by a recovery", () => {
     expect(transport.invocations).toBe(1);
   });
 
+  it("reports a quarantined state instead of a timeout", async () => {
+    // A licence, sign-in or permission dialog is a human's decision. The run
+    // must stop and say so; reporting a timeout invites the caller to retry
+    // the one state the policy refuses to press through.
+    const transport = new BlockedTransport();
+    const recovery: HostRecovery = {
+      attempt: () =>
+        Promise.resolve({
+          recovered: false,
+          outcome: "quarantined",
+          code: "A8N-SEC-001",
+          evidence: "a licence dialog is open; nothing was pressed",
+        }),
+    };
+    const driver = startDriver(transport, recovery);
+    const error = (await driver.call("app.info", {}).catch((reason: unknown) => reason)) as {
+      name?: string;
+      code?: string;
+      message: string;
+    };
+    expect(error).not.toBeInstanceOf(TimeoutError);
+    expect(error.code).toBe("A8N-SEC-001");
+    expect(error.message).toContain("licence dialog");
+    // The operation was not sent again.
+    expect(transport.invocations).toBe(1);
+  });
+
   it("does not repeat the operation when the recovery only half worked", async () => {
     const transport = new BlockedTransport();
     const recovery: HostRecovery = {

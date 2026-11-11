@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -321,6 +322,26 @@ describe("the test runner", () => {
     expect(again.result.checks[0]?.code).toBe("A8N-JOB-002");
     expect(second.calls).toEqual([]);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "still reports an unknown outcome when the quarantine record cannot be written",
+    async () => {
+      // The record is the guard for the *next* run. If writing it fails, the
+      // run must still say its outcome is unknown, and must not claim the next
+      // run will be refused — the guard does not exist.
+      const stateRoot = tempDir("a8n-state-");
+      mkdirSync(join(stateRoot, "quarantine"));
+      chmodSync(join(stateRoot, "quarantine"), 0o500);
+      const adapter = new RunnerAdapter({
+        behaviour: () => Promise.reject(new Error("the bridge stopped answering")),
+      });
+      const { result } = await run(adapter, { stateRoot });
+
+      expect(result.status).toBe("unknown");
+      expect(result.notice).toContain("could not be written");
+      expect(result.notice).toContain("will not be refused");
+    },
+  );
 
   it("treats a timeout as unknown and quarantined, never as a failed test", async () => {
     const adapter = new RunnerAdapter({ behaviour: outputs(0, { timedOut: true }) });

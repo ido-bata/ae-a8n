@@ -94,7 +94,14 @@ function parseArgs(argv) {
       continue;
     }
     if (arg === "--timeout") {
-      options.timeoutMs = Number(argv[index + 1]);
+      const raw = argv[index + 1];
+      const value = raw === undefined ? Number.NaN : Number(raw);
+      if (!Number.isFinite(value) || value <= 0) {
+        // NaN reaches the deadline arithmetic and turns it into "never", which
+        // is the one value this flag must not silently mean.
+        throw new Error(`--timeout needs a positive number of milliseconds, not ${String(raw)}`);
+      }
+      options.timeoutMs = value;
       index += 1;
       continue;
     }

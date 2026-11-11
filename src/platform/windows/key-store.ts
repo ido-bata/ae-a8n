@@ -16,6 +16,7 @@ import { promisify } from "node:util";
 
 import {
   keyFileAclVerdict,
+  ownerQualifiers,
   parseIcacls,
   type AccessControlEntry,
 } from "./acl.js";
@@ -107,7 +108,11 @@ export async function loadKeyFile(
           "run icacls on it to see why",
       };
     }
-    const verdict = keyFileAclVerdict(entries, options.owner ?? currentUser());
+    const verdict = keyFileAclVerdict(
+      entries,
+      options.owner ?? currentUser(),
+      ownerQualifiers(),
+    );
     if (!verdict.ok) {
       return { ok: false, code: "A8N-PERM-005", detail: `the key file ${path} ${verdict.detail}` };
     }
@@ -122,7 +127,18 @@ export async function loadKeyFile(
         "a shared secret must be readable only by its owner",
     };
   }
-  const decoded = decodeKeyFile(new Uint8Array(await readFile(path)));
+  let bytes: Uint8Array;
+  try {
+    bytes = new Uint8Array(await readFile(path));
+  } catch (error) {
+    // The path passed lstat and the ACL check, but reading it can still fail
+    // (it was replaced, permissions changed, the share dropped). That is a
+    // structured refusal like every other failure here, not a raw exception.
+    const code =
+      typeof error === "object" && error !== null && "code" in error ? String(error.code) : "unknown";
+    return { ok: false, code: "A8N-JOB-003", detail: `the key file ${path} could not be read (${code})` };
+  }
+  const decoded = decodeKeyFile(bytes);
   if (!decoded.ok) {
     return { ok: false, code: "A8N-JOB-003", detail: `the key file ${path} is invalid: ${decoded.detail}` };
   }

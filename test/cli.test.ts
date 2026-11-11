@@ -198,6 +198,17 @@ describe("argument parsing", () => {
     expect(parseArgs(["report", "--format", "xml"]).ok).toBe(false);
   });
 
+  it("refuses a flag as another flag's value", () => {
+    // `setup --channel --dry-run` would set channel = "--dry-run" and leave
+    // the dry run off — the one combination that changes the machine while
+    // the user asked it not to.
+    expect(parseArgs(["setup", "--channel", "--dry-run"]).ok).toBe(false);
+    expect(parseArgs(["doctor", "--target", "--json"]).ok).toBe(false);
+    expect(parseArgs(["recover", "--channel", "--force"]).ok).toBe(false);
+    // An inline value is explicit, so a literal that starts with -- is kept.
+    expect(parseArgs(["setup", "--channel=--odd-name"]).ok).toBe(true);
+  });
+
   it("requires test's -- delimiter and the command after it", () => {
     expect(parseArgs(["test", "./tests/example.ts"]).ok).toBe(false);
     expect(parseArgs(["test", "--"]).ok).toBe(false);

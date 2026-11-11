@@ -147,18 +147,40 @@ export type AclVerdict =
   | { readonly ok: false; readonly detail: string };
 
 /**
+ * The qualifiers this process may legitimately appear under: the machine's
+ * own name and the account's domain.
+ *
+ * `userInfo().username` is unqualified (`alice`), while `icacls` prints
+ * qualified principals (`PC1\alice`, `CONTOSO\alice`). Accepting any
+ * qualifier would let `CONTOSO\alice` stand in for the local `alice` — two
+ * different principals on a domain-joined host, which is exactly the SMB
+ * deployment this check protects.
+ */
+export function ownerQualifiers(env: NodeJS.ProcessEnv = process.env): readonly string[] {
+  return [env.COMPUTERNAME, env.USERDOMAIN].filter(
+    (value): value is string => typeof value === "string" && value.trim() !== "",
+  );
+}
+
+/**
  * The key may be read only by its owner, SYSTEM and Administrators.
  *
  * `owner` is the account running this process, as the OS reports it. A grant
  * to any other account — even a read-only one — is refused: a reader is a
  * forger. When the owner is unknown, every account that is not privileged is
  * treated as foreign, because none of them can be shown to be the owner.
+ *
+ * `qualifiers` names the machine and domain the owner may be qualified by.
+ * It defaults to none, which refuses every qualified principal: a caller that
+ * does not know the machine must not accept one by name alone.
  */
 export function keyFileAclVerdict(
   entries: readonly AccessControlEntry[],
   owner: string | null,
+  qualifiers: readonly string[] = [],
 ): AclVerdict {
   const ownerName = owner === null ? null : normalise(owner);
+  const ownQualifiers = new Set(qualifiers.map(normalise));
   const foreign = entries.filter((entry) => {
     if (isPrivileged(entry.principal)) {
       return false;
@@ -167,7 +189,15 @@ export function keyFileAclVerdict(
       return true;
     }
     const name = normalise(entry.principal);
-    return name !== ownerName && !name.endsWith(`\\${ownerName}`);
+    if (name === ownerName) {
+      return false;
+    }
+    const slash = name.lastIndexOf("\\");
+    if (slash <= 0) {
+      return true;
+    }
+    const account = name.slice(slash + 1);
+    return !(account === ownerName && ownQualifiers.has(name.slice(0, slash)));
   });
   if (foreign.length === 0) {
     return { ok: true };

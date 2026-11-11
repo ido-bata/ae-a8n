@@ -897,12 +897,16 @@ export class DarwinAdapter implements PlatformAdapter {
             ? `the installation folder could not be read: ${facts.installLookupFailure}`
             : installs.length === 0
               ? "no After Effects installation was found"
-              : "more than one After Effects version is installed, so the version cannot be proven",
+              : installs.length === 1
+                ? `After Effects was found at ${String(installs[0]?.location)} but its version could not be read`
+                : "more than one After Effects version is installed, so the version cannot be proven",
         action: installed
           ? null
           : installs.length === 0
             ? "Install After Effects for the target account."
-            : "Disambiguate the installed After Effects versions, then run setup again.",
+            : installs.length === 1
+              ? "Check that installation's version metadata, or reinstall it."
+              : "Disambiguate the installed After Effects versions, then run setup again.",
         automatable: false,
       });
 

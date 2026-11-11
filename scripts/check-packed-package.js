@@ -145,7 +145,9 @@ try {
   if (process.platform !== "win32" && (statSync(binPath).mode & 0o111) === 0) {
     fail(`${binRelative} is not executable after install`);
   }
-  const firstLine = readFileSync(binPath, "utf-8").split("\n", 1)[0];
+  // A CRLF checkout or a Windows build must not fail the gate on the line
+  // ending alone: the shebang is the property, not the EOL style.
+  const firstLine = readFileSync(binPath, "utf-8").split(/\r?\n/u, 1)[0];
   if (firstLine !== "#!/usr/bin/env node") {
     fail(`${binRelative} does not start with "#!/usr/bin/env node"`);
   }

@@ -317,6 +317,25 @@ describe("the remote host connection settings", () => {
     expect(half.ok).toBe(false);
   });
 
+  it("refuses a key file given without a channel, even when the hosts file could supply one", async () => {
+    // Borrowing the channel from the hosts file would pair one host's key with
+    // another host's channel; the flag pair is all-or-nothing by design.
+    const path = join(await tempDirectory("a8n-hosts-"), "hosts.json");
+    await writeFile(path, config("\\\\WIN-AE-01\\a8n", "C:\\keys\\a.key"));
+    const keyOnly = await resolveComms({
+      host: "WIN-AE-01",
+      user: null,
+      channel: null,
+      keyFile: "/keys/a.key",
+      agentId: null,
+      configPath: path,
+    });
+    expect(keyOnly.ok).toBe(false);
+    if (!keyOnly.ok) {
+      expect(keyOnly.detail).toContain("--key-file was given without --channel");
+    }
+  });
+
   it("says so when there is no channel and no hosts file", async () => {
     const missing = await resolveComms({
       host: "WIN-AE-09",
@@ -538,6 +557,27 @@ describe("through the channel, with an agent on the other side", () => {
       });
       expect(outcome.exitCode).toBe(0);
       expect(rig.executor.seen.at(-1)).toEqual(["C:\\tools\\probe.exe", "configured-key"]);
+    } finally {
+      await rig.stop();
+    }
+  }, 30_000);
+
+  it("reads the host's recovery state through the channel, not this machine", async () => {
+    const rig = await startAgent();
+    try {
+      await waitFor(async () => {
+        const bytes = await new DirectoryChannel(rig.channelRoot).read(presencePath(AGENT.id));
+        return bytes === null ? null : bytes;
+      });
+      const findings = await rig.adapter.recover(await tempDirectory("a8n-recover-"));
+      // The injected local probe throws if it is ever run, but `recover`
+      // catches that as an unreadable answer — so the proof is that the
+      // recovery command reached the host. Before the fix nothing was sent.
+      const programs = rig.executor.seen.map(
+        (argv) => argv[0]?.split(/[\\/]/u).at(-1)?.toLowerCase() ?? "",
+      );
+      expect(programs).toContain("tasklist.exe");
+      expect(findings.length).toBeGreaterThan(0);
     } finally {
       await rig.stop();
     }

@@ -249,6 +249,43 @@ describe("the Windows adapter", () => {
     expect((await adapter.capabilities()).nonInterference).toBe("unproven");
   });
 
+  it("refuses recovery for a remote host instead of reading this machine", async () => {
+    // `recover` used to run the probe commands locally whatever the target
+    // was. On a `--host` target that reports the controller's own `tasklist`
+    // as if it were the host's — a false "AfterFX is not running" — and on a
+    // non-Windows controller every command fails to start. With no channel to
+    // the host there is no answer to give, so it refuses and says so.
+    const calls: ProbeCommand[] = [];
+    const localProbe: CommandRunner = {
+      run(command: ProbeCommand) {
+        calls.push(command);
+        return Promise.resolve({ stdout: "", stderr: "", exitCode: 0 });
+      },
+    };
+    const adapter = new WindowsAdapter({
+      host: "WIN-AE-01",
+      user: "a8n",
+      agent: AGENT,
+      probe: localProbe,
+      remote: {
+        host: "WIN-AE-01",
+        user: "a8n",
+        channel: null,
+        keyFile: null,
+        agentId: null,
+        configPath: join(await makeRunDirectory(), "hosts.json"),
+      },
+      runDirectory: await makeRunDirectory(),
+      now: () => NOW,
+      random: () => RANDOM,
+    });
+    const findings = await adapter.recover(await makeRunDirectory());
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ code: "A8N-JOB-007", action: "refused" });
+    expect(findings[0]?.detail).toContain("not read");
+    expect(calls).toEqual([]);
+  });
+
   it("runs one job, writes the manifest and local artifacts, and releases the lock", async () => {
     const { channel, adapter, submitCalls } = await fixture({});
     const session = await adapter.open(TARGET);

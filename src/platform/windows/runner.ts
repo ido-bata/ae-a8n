@@ -703,9 +703,38 @@ export class WindowsAdapter implements PlatformAdapter {
   }
 
   async recover(runDir: string): Promise<readonly RecoveryFinding[]> {
+    // On a `--host` target the process state belongs to the host. Asking this
+    // machine would report the controller's own `tasklist` — a false "AfterFX
+    // was not running" for the host — and on a non-Windows controller every
+    // command would fail to start. `#prepare` substitutes the channel runner
+    // for exactly this reason; recovery must do the same.
+    let runner: CommandRunner = this.#probeRunner;
+    if (this.#remote !== null && !this.#simulatedHostProbe) {
+      const comms = await this.#openRemote();
+      if (!comms.ok) {
+        return [
+          {
+            code: "A8N-JOB-007",
+            action: "refused",
+            detail:
+              "the host's process state was not read: " +
+              comms.checks.map((check) => `${check.code}: ${check.detail}`).join("; "),
+            remedy:
+              "Make the channel reachable and the agent running, then run recover again. " +
+              "Nothing about the host was assumed from this machine.",
+          },
+        ];
+      }
+      runner = new ChannelCommandRunner(comms, {
+        now: this.#now,
+        random: this.#random,
+        ...(this.#pollMs === undefined ? {} : { pollMs: this.#pollMs }),
+        ...(this.#sleep === undefined ? {} : { sleep: this.#sleep }),
+      });
+    }
     let result: CommandResult;
     try {
-      result = await this.#probeRunner.run(WINDOWS_RECOVERY_COMMAND);
+      result = await runner.run(WINDOWS_RECOVERY_COMMAND);
     } catch (error) {
       result = {
         stdout: "",

@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AeDriver, TimeoutError } from "../src/driver/driver.js";
+import { AfterEffectsError, contextualise } from "../src/api/errors.js";
 import type { HostRecovery } from "../src/driver/recovery.js";
 import type { HostOwnership, HostTransport, InvokeOptions } from "../src/driver/transport.js";
 import { ScriptNotSentError } from "../src/driver/transport.js";
@@ -74,6 +75,20 @@ describe("a call that was never sent", () => {
     );
     expect(error).toBeInstanceOf(ScriptNotSentError);
     expect(error).not.toBeInstanceOf(TimeoutError);
+  });
+
+  it("keeps the not-sent meaning through the public error layer", () => {
+    // The API wraps a driver error with the operation that produced it. A
+    // generic "failed" would lose the one fact that matters: nothing ran.
+    let caught: unknown = null;
+    try {
+      contextualise("app.info", new ScriptNotSentError("it was never sent"));
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(AfterEffectsError);
+    expect(caught instanceof AfterEffectsError ? caught.message : "").toContain("was not sent");
+    expect(caught instanceof AfterEffectsError ? caught.message : "").toContain("Nothing ran");
   });
 
   it("does not run a recovery for an operation that never started", async () => {

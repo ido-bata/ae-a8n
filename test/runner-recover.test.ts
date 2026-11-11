@@ -183,6 +183,23 @@ describe("run recovery", () => {
     expect(existsSync(lockFile(stateRoot))).toBe(true);
   });
 
+  it("refuses a run id that is not one, instead of joining it into a path", async () => {
+    // The record is a file on disk; anything could have written it. Its run id
+    // becomes a path component, so `../../x` must never be followed.
+    const stateRoot = tempDir("a8n-recover-");
+    writeQuarantine(stateLayout(stateRoot), TARGET.name, {
+      runId: "../../outside",
+      quarantinedAt: NOW.toISOString(),
+      detail: "a record this tool would not have written",
+    });
+    const result = await recover(stateRoot);
+    expect(
+      result.findings.some(
+        (finding) => finding.action === "refused" && finding.detail.includes("is not a run id"),
+      ),
+    ).toBe(true);
+  });
+
   it("records an incomplete run as unknown, never as a pass, and only once", async () => {
     const stateRoot = tempDir("a8n-recover-");
     mkdirSync(join(runDirectory(stateRoot), "artifacts"), { recursive: true, mode: 0o700 });

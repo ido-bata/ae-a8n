@@ -348,9 +348,15 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
   try {
     execution = await options.executor.execute({ job, payload });
   } catch (error) {
+    // A throw says the harness lost the outcome, not that the command failed:
+    // it may have run, half-run or not started. Publishing "failed" would
+    // invite a retry of something that may have happened; "unknown" makes the
+    // controller quarantine the target, which is the contract's rule.
     execution = {
-      status: "failed",
-      message: `the executor threw: ${error instanceof Error ? error.message : String(error)}`,
+      status: "unknown",
+      message: `the executor threw, so the outcome is unknown: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     };
   }
 

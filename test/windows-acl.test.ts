@@ -116,8 +116,33 @@ describe("the key file's ACL", () => {
         ["HOST\\rebui", "R,W"],
       ),
       "rebui",
+      ["HOST"],
     );
     expect(verdict).toEqual({ ok: true });
+  });
+
+  it("refuses a qualified account that only shares the owner's name", () => {
+    // `rebui` on this machine and `rebui` in a domain are different
+    // principals. The old suffix test accepted any qualifier.
+    const verdict = keyFileAclVerdict(
+      entries(["HOST\\rebui", "F"], ["CONTOSO\\rebui", "F"]),
+      "rebui",
+      ["HOST"],
+    );
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok === false ? verdict.detail : "").toContain("CONTOSO\\rebui");
+  });
+
+  it("accepts the owner under the machine name or the domain name", () => {
+    for (const principal of ["HOST\\rebui", "CONTOSO\\rebui"]) {
+      const verdict = keyFileAclVerdict(entries([principal, "F"]), "rebui", ["HOST", "CONTOSO"]);
+      expect(verdict, principal).toEqual({ ok: true });
+    }
+  });
+
+  it("treats a qualified principal as foreign when no qualifier is known", () => {
+    const verdict = keyFileAclVerdict(entries(["HOST\\rebui", "F"]), "rebui");
+    expect(verdict.ok).toBe(false);
   });
 
   it("refuses an account outside the owner, even read-only", () => {
@@ -125,6 +150,7 @@ describe("the key file's ACL", () => {
     const verdict = keyFileAclVerdict(
       entries(["HOST\\rebui", "F"], ["HOST\\guest", "R"]),
       "rebui",
+      ["HOST"],
     );
     expect(verdict.ok).toBe(false);
     expect(verdict.ok === false ? verdict.detail : "").toContain("HOST\\guest");
@@ -132,7 +158,11 @@ describe("the key file's ACL", () => {
 
   it("refuses Users and Everyone, which is what 'group or others' is here", () => {
     for (const principal of ["BUILTIN\\Users", "Everyone", "NT AUTHORITY\\Authenticated Users"]) {
-      const verdict = keyFileAclVerdict(entries([principal, "R"], ["HOST\\rebui", "F"]), "rebui");
+      const verdict = keyFileAclVerdict(
+        entries([principal, "R"], ["HOST\\rebui", "F"]),
+        "rebui",
+        ["HOST"],
+      );
       expect(verdict.ok).toBe(false);
     }
   });
@@ -146,7 +176,7 @@ describe("the key file's ACL", () => {
     // The path fix must not turn a refusal into an acceptance.
     const path = "C:\\Users\\First Last\\agent.key";
     const parsed = parseIcacls(`${path} HOST\\guest:(R)\r\n HOST\\First Last:(F)`, path) ?? [];
-    const verdict = keyFileAclVerdict(parsed, "First Last");
+    const verdict = keyFileAclVerdict(parsed, "First Last", ["HOST"]);
     expect(verdict.ok).toBe(false);
     expect(verdict.ok === false ? verdict.detail : "").toContain("HOST\\guest");
   });

@@ -71,6 +71,24 @@ export class HostUnavailableError extends Error {
   }
 }
 
+/**
+ * The host was left in a state the recovery quarantined: a blocking window it
+ * could not classify, which it did not touch.
+ *
+ * This is *not* a timeout: the operation was not abandoned by us and must not
+ * be sent again. Reporting it as one would invite exactly the retry the
+ * recovery policy exists to prevent. The code is the diagnostic the run
+ * reports it under.
+ */
+export class HostQuarantinedError extends Error {
+  readonly code = "A8N-SEC-001" as const;
+
+  constructor(evidence: string) {
+    super(evidence);
+    this.name = "HostQuarantinedError";
+  }
+}
+
 export type DriverOptions = {
   readonly transport: HostTransport;
   /** Directory for request/result files, artifacts, and the trace. */
@@ -427,6 +445,12 @@ export class AeDriver {
       },
     });
     if (!outcome.recovered) {
+      // A quarantined state is an answer, not a timeout: the blocking window
+      // is a human's decision and the operation must not be retried. Throwing
+      // here keeps the caller from reading a licence dialog as "try again".
+      if (outcome.code !== undefined) {
+        throw new HostQuarantinedError(outcome.evidence);
+      }
       return undefined;
     }
     const result = await this.#awaitResult(id, method, params, this.#recoveryGraceMs, timeoutMs);

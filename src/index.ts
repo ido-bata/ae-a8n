@@ -27,10 +27,12 @@ export {
   EntityNotFoundError,
   HostError,
   HostNotOwnedError,
+  HostQuarantinedError,
   HostUnavailableError,
   ParameterValueError,
   PropertyHasNoValueError,
   ProtocolError,
+  ScriptNotSentError,
   TimeoutError,
   UnsavedChangesError,
 } from "./api/errors.js";

@@ -17,6 +17,7 @@ import { join } from "node:path";
 import type { DiagnosticCode } from "../doctor/diagnostics.js";
 import type { PlatformAdapter, RecoveryFinding, TargetSpec } from "../platform/contract.js";
 import type { RunReport } from "./artifacts.js";
+import { RUN_ID_PATTERN } from "./run-id.js";
 import { readQuarantine, stateLayout, targetKey, type StateLayout } from "./state.js";
 
 export type RecoveryAction = "reported" | "cleared" | "refused" | "recorded";
@@ -171,9 +172,20 @@ export async function recoverRun(input: RecoverInput): Promise<RecoverResult> {
 
   const quarantine = readQuarantine(layout, input.target.name);
   const lock = readLock(lockPathFor(layout, input.target.name));
-  const runId =
+  let runId =
     input.runId ??
     (quarantine.quarantined && quarantine.record !== null ? quarantine.record.runId : null);
+  if (runId !== null && !RUN_ID_PATTERN.test(runId)) {
+    // The id becomes a path component below. A record written by anything but
+    // this tool (`runId: "../../x"`) must not walk out of the runs directory.
+    findings.push({
+      code: "A8N-JOB-002",
+      action: "refused",
+      detail: `the run id ${JSON.stringify(runId)} is not a run id this tool writes; nothing was inspected under it`,
+      remedy: "Pass --run with the id printed by the run, or inspect the state directory yourself.",
+    });
+    runId = null;
+  }
 
   // 1. The quarantine record. It is reported, and only an explicit --force
   //    clears it: it exists because the outcome could not be proven.

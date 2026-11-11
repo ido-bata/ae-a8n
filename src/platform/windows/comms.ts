@@ -219,7 +219,10 @@ export async function resolveComms(options: CommsOptions): Promise<CommsResoluti
       detail: "--channel was given without --key-file; jobs on a remote host cannot be authenticated without a key",
     };
   }
-  if (anyFlag && options.keyFile !== null && options.channel === null && fileConfig === null) {
+  if (anyFlag && options.keyFile !== null && options.channel === null) {
+    // `fileConfig` cannot be null here in practice, but the check says what is
+    // meant: a key given alone must not borrow the channel from the hosts
+    // file, because the two may belong to different hosts.
     return {
       ok: false,
       detail: "--key-file was given without --channel; there is no channel to put a job in",
@@ -389,7 +392,10 @@ export async function openComms(
   );
   if (!loaded.ok) {
     checks.push(
-      diagnostic("A8N-JOB-003", {
+      // The refusal says which property failed: a key with a readable-by-others
+      // ACL is A8N-PERM-005, not a missing-file A8N-JOB-003. Reporting every
+      // failure as the latter buried the permission blocker.
+      diagnostic(loaded.code, {
         detail: loaded.detail,
         remedy:
           "Provision the channel key for this host: copy the same key file the agent reads, readable only by you.",

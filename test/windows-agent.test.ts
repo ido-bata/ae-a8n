@@ -569,7 +569,10 @@ describe("the agent", () => {
     expect(await files.read(jobPaths(JOB_ID).result)).toBeNull();
   });
 
-  it("reports an executor failure as a failed result, not an exception", async () => {
+  it("reports an executor that throws as unknown, so a retry is not invited", async () => {
+    // A throw says the harness lost the outcome: the command may have run.
+    // Publishing "failed" invites the controller to retry it; "unknown"
+    // quarantines the target, which is what the contract requires.
     const files = await channel();
     await publish(files);
     const outcome = await runJob({
@@ -582,8 +585,10 @@ describe("the agent", () => {
     });
     expect(outcome.state).toBe("finished");
     if (outcome.state === "finished") {
-      expect(outcome.result.status).toBe("failed");
+      expect(outcome.result.status).toBe("unknown");
       expect(outcome.result.message).toContain("AE crashed");
+      expect(outcome.result.message).toContain("outcome is unknown");
+      expect(outcome.result.exitCode).toBeNull();
     }
   });
 
