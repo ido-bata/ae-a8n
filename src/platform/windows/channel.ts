@@ -10,7 +10,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, sep } from "node:path";
 
 export interface FileChannel {
@@ -22,6 +22,10 @@ export interface FileChannel {
   createExclusive(path: string, bytes: Uint8Array): Promise<boolean>;
   /** Names in a directory; empty when it does not exist. */
   list(directory: string): Promise<readonly string[]>;
+  /** Subdirectory names; empty when the directory does not exist. */
+  listDirectories(directory: string): Promise<readonly string[]>;
+  /** True only when the path is a readable directory. */
+  isDirectory(path: string): Promise<boolean>;
   remove(path: string): Promise<void>;
 }
 
@@ -32,12 +36,37 @@ export class UnsupportedChannelPathError extends Error {
   }
 }
 
+/** A file the channel refuses to read into memory. */
+export class ChannelFileTooLargeError extends Error {
+  readonly path: string;
+  readonly size: number;
+
+  constructor(path: string, size: number, limit: number) {
+    super(`channel file "${path}" is ${size} bytes, beyond the ${limit}-byte read limit`);
+    this.name = "ChannelFileTooLargeError";
+    this.path = path;
+    this.size = size;
+  }
+}
+
+/** Backstop for every read; job/result/payload have their own tighter limits. */
+export const DEFAULT_MAX_READ_BYTES = 16 * 1024 * 1024;
+
+export type DirectoryChannelOptions = {
+  readonly maxReadBytes?: number;
+};
+
 /** A channel over a directory: a mounted share, or the same directory in a test. */
 export class DirectoryChannel implements FileChannel {
   readonly #root: string;
+  readonly #maxReadBytes: number;
 
-  constructor(root: string) {
+  constructor(root: string, options: DirectoryChannelOptions = {}) {
     this.#root = root;
+    this.#maxReadBytes =
+      options.maxReadBytes !== undefined && options.maxReadBytes > 0
+        ? options.maxReadBytes
+        : DEFAULT_MAX_READ_BYTES;
   }
 
   #resolve(path: string): string {
@@ -54,8 +83,19 @@ export class DirectoryChannel implements FileChannel {
   }
 
   async read(path: string): Promise<Uint8Array | null> {
+    const target = this.#resolve(path);
     try {
-      return new Uint8Array(await readFile(this.#resolve(path)));
+      // Refuse before allocating what a writer could make huge; check again
+      // after reading because the file can grow between stat and read.
+      const before = await stat(target);
+      if (before.size > this.#maxReadBytes) {
+        throw new ChannelFileTooLargeError(path, before.size, this.#maxReadBytes);
+      }
+      const bytes = new Uint8Array(await readFile(target));
+      if (bytes.length > this.#maxReadBytes) {
+        throw new ChannelFileTooLargeError(path, bytes.length, this.#maxReadBytes);
+      }
+      return bytes;
     } catch (error) {
       if (isMissing(error)) {
         return null;
@@ -102,6 +142,29 @@ export class DirectoryChannel implements FileChannel {
     } catch (error) {
       if (isMissing(error)) {
         return [];
+      }
+      throw error;
+    }
+  }
+
+  async listDirectories(directory: string): Promise<readonly string[]> {
+    try {
+      const entries = await readdir(this.#resolve(directory), { withFileTypes: true });
+      return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+    } catch (error) {
+      if (isMissing(error)) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async isDirectory(path: string): Promise<boolean> {
+    try {
+      return (await stat(this.#resolve(path))).isDirectory();
+    } catch (error) {
+      if (isMissing(error)) {
+        return false;
       }
       throw error;
     }

@@ -115,6 +115,26 @@ host identity, AE version, agent version and job/result hashes.
 
 **Verification:** `automated test`; real Windows pending.
 
+**Delivered 2026-11-10 (#70, PR #77):** the run lock, the validated executor,
+the run manifest, `WindowsAdapter`/`WindowsSession`, the idempotent setup
+steps and the in-session agent entry (`agent-main.ts` +
+`scripts/windows-agent.mjs`). Deliberate boundaries: `provesOwnership` and
+`provesDestination` stay `false` until T089/T090, and `recover()` reports that
+GUI recovery is unimplemented rather than returning a clean empty result. The
+controller submits the command; the agent runs it in the dedicated session, so
+the controller never starts `AfterFX.exe` itself. No row of T092 is satisfied.
+
+**Review fixes 2026-11-10 (#70, PR #77):** the job-execution review's findings
+are closed at `automated test` level — HMAC-SHA256 signing of jobs, results and
+claims with domain separation (A8N-JOB-003), quarantine of unsigned, foreign,
+misplaced, oversized or vanished claims with a record at
+`diagnostics/claims/<jobId>.json`, a measured session identity, pid-reuse-safe
+timeout handling, size caps before parsing (A8N-JOB-004), and a manifest whose
+agent identity comes from the verified result (`agentVerified`,
+`resultSha256`). Everything is `fake/mock only` on Windows: key-file ACLs, SMB
+`O_EXCL` atomicity, junction behaviour and the session measurement under the
+dedicated account remain T092 rows.
+
 **Depends on:** T085, T087.
 
 ### T089 — Windows recovery and consent policy
