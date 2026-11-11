@@ -355,6 +355,9 @@ describe("Windows script paths with whitespace", () => {
 
   // Asks Windows for real. A kana short name was once garbled by reading
   // PowerShell's CP932 output as UTF-8, which produced a path that did not exist.
+  // The lookup gives PowerShell 15 s; vitest's 5 s default is shorter than the
+  // code's own budget, so a loaded CI runner failed here while the call was
+  // still working (the same tree passed in the other workflow run).
   it.runIf(process.platform === "win32")(
     "gets a short name that exists for a directory with Japanese and a space",
     async () => {
@@ -372,6 +375,7 @@ describe("Windows script paths with whitespace", () => {
       expect(given).not.toMatch(/\s/);
       expect(existsSync(given)).toBe(true);
     },
+    25_000,
   );
 
   it("refuses before launching, saying why, when the directory has no short name", async () => {
