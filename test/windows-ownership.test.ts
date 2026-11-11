@@ -350,6 +350,9 @@ describe("the Windows process list", () => {
     expect(() => parseWindowsProcessList(text)).toThrow();
   });
 
+  // The call gives PowerShell 30 s (a cold CIM/WMI start on a loaded CI runner
+  // takes several); the test's 5 s default is shorter than the code's own
+  // budget, so a slow runner failed the test while the call was still working.
   it.runIf(process.platform === "win32")("is readable from this machine's real PowerShell", () => {
     const list = windowsProcesses();
     expect(Array.isArray(list)).toBe(true);
@@ -357,5 +360,5 @@ describe("the Windows process list", () => {
       expect(Number.isInteger(p.pid)).toBe(true);
       expect(Number.isNaN(p.startedAt)).toBe(false);
     }
-  });
+  }, 35_000);
 });
