@@ -1,4 +1,4 @@
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -17,7 +17,7 @@ import {
   type UnsignedClaim,
   type UnsignedJobResult,
 } from "../src/platform/windows/auth.js";
-import { loadKeyFile } from "../src/platform/windows/key-store.js";
+import { loadKeyFile, unchangedSince } from "../src/platform/windows/key-store.js";
 import {
   JOB_SCHEMA_VERSION,
   decodeClaim,
@@ -241,5 +241,25 @@ describe("key files", () => {
   it("reports a missing key file as a refusal, not a crash", async () => {
     const root = await directory();
     expect(await loadKeyFile(join(root, "missing.key"))).toMatchObject({ ok: false });
+  });
+
+  it("binds the bytes to the file that was checked", async () => {
+    // The checks and the read look at the path at different moments. A path
+    // that now names a different file means the bytes were never checked.
+    const root = await directory();
+    const path = join(root, "agent.key");
+    await writeFile(path, encodeKeyFile(KEY), { mode: 0o600 });
+    const before = await lstat(path);
+    expect(unchangedSince(before, await lstat(path))).toBe(true);
+
+    // Same name, different file.
+    await writeFile(path, encodeKeyFile({ ...KEY, keyId: "replacement" }), { mode: 0o600 });
+    const replaced = await lstat(path);
+    expect(unchangedSince(before, replaced)).toBe(false);
+
+    // A link is never the file that was checked, even when it points at it.
+    const link = join(root, "agent-link.key");
+    await symlink(path, link);
+    expect(unchangedSince(before, await lstat(link))).toBe(false);
   });
 });

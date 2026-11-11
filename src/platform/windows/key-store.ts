@@ -10,6 +10,7 @@
  */
 
 import { execFile } from "node:child_process";
+import type { Stats } from "node:fs";
 import { lstat, readFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { promisify } from "node:util";
@@ -70,11 +71,29 @@ export type KeyFileRefusal = {
 
 export type KeyFileLoad = { readonly ok: true; readonly key: JobKey } | KeyFileRefusal;
 
+/**
+ * True when `after` still describes the file `before` described.
+ *
+ * The checks above inspect the path at earlier moments than the read. These
+ * stats are how the read is bound to the file that was checked: a different
+ * inode, a different size or modification time, a link, or no longer a regular
+ * file means the bytes are not the ones that were proven safe.
+ */
+export function unchangedSince(before: Stats, after: Stats): boolean {
+  return (
+    !after.isSymbolicLink() &&
+    after.isFile() &&
+    after.ino === before.ino &&
+    after.size === before.size &&
+    after.mtimeMs === before.mtimeMs
+  );
+}
+
 export async function loadKeyFile(
   path: string,
   options: KeyFileOptions = {},
 ): Promise<KeyFileLoad> {
-  let info;
+  let info: Stats;
   try {
     info = await lstat(path);
   } catch (error) {
@@ -137,6 +156,24 @@ export async function loadKeyFile(
     const code =
       typeof error === "object" && error !== null && "code" in error ? String(error.code) : "unknown";
     return { ok: false, code: "A8N-JOB-003", detail: `the key file ${path} could not be read (${code})` };
+  }
+  // The path was checked before the read. Confirm it still names the file that
+  // was checked: a replacement between the checks and the read would otherwise
+  // make the accepted bytes something no check ever saw.
+  let after: Stats;
+  try {
+    after = await lstat(path);
+  } catch (error) {
+    const code =
+      typeof error === "object" && error !== null && "code" in error ? String(error.code) : "unknown";
+    return { ok: false, code: "A8N-JOB-003", detail: `the key file ${path} could not be read (${code})` };
+  }
+  if (!unchangedSince(info, after)) {
+    return {
+      ok: false,
+      code: "A8N-JOB-003",
+      detail: `the key file ${path} changed while it was being checked`,
+    };
   }
   const decoded = decodeKeyFile(bytes);
   if (!decoded.ok) {
