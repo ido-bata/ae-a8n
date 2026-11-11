@@ -193,3 +193,29 @@ ExtendScript; composition lookup; one-frame rendering via `saveFrameToPng`;
 `close()` waiting for the process to exit; call deadlines covering the
 invocation; never abandoning an AppleEvent mid-script; script errors no
 longer leave a modal dialog in After Effects.
+
+ExtendScript's nested conditional (#61): measured on AE 26.5x89, the host's
+extension-aware `dispatch` evaluated `a ? x : b ? y : undefined` with the
+second test deciding the whole expression, so a built-in name found in
+`methods` came back as `extensions[name]` and *every* request failed with
+`unknown method`. The lookup is statements now, and a check on the shipped
+host text refuses a conditional inside a conditional, because Node evaluates
+the ungrouped form correctly and the fake host cannot see the difference.
+
+### Fixed (found by the Windows CI job)
+
+The packed-package and public-API checks started npm by name
+(`execFileSync("npm", …)`). On Windows `npm` is `npm.cmd`, which Node will
+not start without a shell, so the Windows job died on `spawn npm ENOENT`
+before checking anything. Both now resolve the npm CLI and run it as
+`node <npm-cli.js>` (scripts/npm-cli.js), the same way staging does: no
+shell, no bare `npm`, no argument re-parsing. A test refuses a script that
+goes back to either form.
+
+### Fixed (found by the release gate)
+
+The gate reads `A8N_VERSION` from the source text. This branch declares it in
+`src/index.ts`; the integration line this PR merges into declares it in
+`src/version.ts` and re-exports it, so the gate found nothing and failed with
+`A8N_VERSION is undefined` on the pull request's merge ref. It now looks in
+both files and skips one the tree does not have.
