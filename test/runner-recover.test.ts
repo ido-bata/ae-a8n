@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -182,6 +183,61 @@ describe("run recovery", () => {
     expect(result.findings[0]).toMatchObject({ action: "refused" });
     expect(existsSync(lockFile(stateRoot))).toBe(true);
   });
+
+  it("refuses a lock record that names no owner instead of calling it stale", async () => {
+    // `acquireTargetLock` always writes a positive pid, so a record without
+    // one is corruption or a foreign edit — not a dead owner. Releasing it
+    // could free a lock that is still protecting a run.
+    const stateRoot = tempDir("a8n-recover-");
+    mkdirSync(stateLayout(stateRoot).locks, { recursive: true, mode: 0o700 });
+    writeFileSync(
+      lockFile(stateRoot),
+      JSON.stringify({ schemaVersion: "1.0", runId: RUN_ID, startedAt: NOW.toISOString() }),
+    );
+
+    const result = await recover(stateRoot);
+
+    expect(result.status).toBe("unknown");
+    expect(result.findings[0]).toMatchObject({ action: "refused" });
+    expect(result.findings[0]?.detail).toContain("no usable pid");
+    expect(existsSync(lockFile(stateRoot))).toBe(true);
+  });
+
+  it("does not record over a run whose lock's owner is still alive", async () => {
+    // A run that is still working has no report yet; that is not an
+    // incomplete run, and writing "unknown" over it would destroy the real
+    // outcome when it finishes.
+    const stateRoot = tempDir("a8n-recover-");
+    mkdirSync(runDirectory(stateRoot), { recursive: true, mode: 0o700 });
+    acquireTargetLock(stateLayout(stateRoot), TARGET.name, {
+      runId: RUN_ID,
+      pid: process.pid,
+      startedAt: NOW.toISOString(),
+    });
+
+    const result = await recover(stateRoot, { runId: RUN_ID });
+
+    expect(result.findings.map((finding) => finding.detail).join("\n")).toContain("in progress");
+    expect(existsSync(join(runDirectory(stateRoot), "report.json"))).toBe(false);
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "keeps a report path that appears between the check and the write",
+    async () => {
+      // The exclusive create is the guard the earlier `existsSync` cannot be:
+      // a name that appeared in between is never replaced by "unknown".
+      const stateRoot = tempDir("a8n-recover-");
+      mkdirSync(runDirectory(stateRoot), { recursive: true, mode: 0o700 });
+      symlinkSync(join(runDirectory(stateRoot), "absent.json"), join(runDirectory(stateRoot), "report.json"));
+
+      const result = await recover(stateRoot, { runId: RUN_ID });
+
+      expect(result.findings.map((finding) => finding.action)).not.toContain("recorded");
+      expect(result.findings.map((finding) => finding.detail).join("\n")).toContain(
+        "a report appeared at",
+      );
+    },
+  );
 
   it("refuses a run id that is not one, instead of joining it into a path", async () => {
     // The record is a file on disk; anything could have written it. Its run id

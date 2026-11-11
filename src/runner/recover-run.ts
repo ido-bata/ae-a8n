@@ -133,11 +133,17 @@ function removeFile(path: string): string | null {
 }
 
 /** Marks a run directory that never finished as an unknown run. */
+type RecordOutcome =
+  | { readonly state: "written" }
+  /** A report appeared between the caller's check and this write. */
+  | { readonly state: "exists" }
+  | { readonly state: "failed"; readonly detail: string };
+
 function recordUnknown(
   runDirectory: string,
   runId: string,
   now: () => Date,
-): string | null {
+): RecordOutcome {
   const reportPath = join(runDirectory, "report.json");
   const report: RunReport = {
     schemaVersion: "1.0",
@@ -155,10 +161,15 @@ function recordUnknown(
     notice: "recovered: the run was incomplete and is recorded as unknown, not as a pass",
   };
   try {
-    writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
-    return null;
+    // Exclusive create: a report that appeared since the caller's check — the
+    // run finished in between — is kept, never replaced by "unknown".
+    writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, { flag: "wx", mode: 0o600 });
+    return { state: "written" };
   } catch (error) {
-    return error instanceof Error ? error.message : String(error);
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      return { state: "exists" };
+    }
+    return { state: "failed", detail: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -244,8 +255,19 @@ export async function recoverRun(input: RecoverInput): Promise<RecoverResult> {
     });
   } else if (lock.state === "held") {
     const pid = lock.record.pid;
-    const alive = typeof pid === "number" && isAlive(pid);
-    if (alive) {
+    const ownsPid = typeof pid === "number" && Number.isInteger(pid) && pid > 0;
+    if (!ownsPid) {
+      // The record parses but names no usable pid. `acquireTargetLock` always
+      // writes one, so this is corruption or a foreign edit, not a dead owner:
+      // releasing it could free a lock that is actively protecting a run.
+      cannotDecide = true;
+      findings.push({
+        code: "A8N-JOB-002",
+        action: "refused",
+        detail: `${lock.detail}; the record names no usable pid, so its owner cannot be determined`,
+        remedy: `Inspect ${lock.path} and remove it yourself; recovery will not guess.`,
+      });
+    } else if (isAlive(pid)) {
       findings.push({
         code: "A8N-JOB-002",
         action: "reported",
@@ -281,6 +303,16 @@ export async function recoverRun(input: RecoverInput): Promise<RecoverResult> {
   // 3. The run directory itself: an incomplete run is recorded as unknown, not
   //    as a pass, and an existing report is never overwritten.
   let runDirectory: string | null = null;
+  // A run whose own lock is still alive is in progress, not incomplete. Its
+  // report just has not been written yet, and recording "unknown" over it
+  // would destroy a finished outcome.
+  const runInProgress =
+    runId !== null &&
+    lock.state === "held" &&
+    lock.record.runId === runId &&
+    typeof lock.record.pid === "number" &&
+    lock.record.pid > 0 &&
+    isAlive(lock.record.pid);
   if (runId !== null) {
     runDirectory = join(layout.runs, runId);
     if (!existsSync(runDirectory)) {
@@ -296,6 +328,13 @@ export async function recoverRun(input: RecoverInput): Promise<RecoverResult> {
         action: "reported",
         detail: `run ${runId} already has a report at ${join(runDirectory, "report.json")}`,
       });
+    } else if (runInProgress) {
+      findings.push({
+        code: "A8N-JOB-002",
+        action: "reported",
+        detail: `run ${runId} has no report yet, but its lock's owner (pid ${String(lock.record.pid)}) is still running; it is in progress, not incomplete`,
+        remedy: "Wait for the run to finish, or stop it yourself; recovery never records over a run that is still working.",
+      });
     } else if (input.dryRun) {
       findings.push({
         code: "A8N-JOB-002",
@@ -303,21 +342,27 @@ export async function recoverRun(input: RecoverInput): Promise<RecoverResult> {
         detail: `run ${runId} has no report; it would be recorded as unknown (dry run)`,
       });
     } else {
-      const failure = recordUnknown(runDirectory, runId, now);
-      findings.push(
-        failure === null
-          ? {
-              code: "A8N-JOB-002",
-              action: "recorded",
-              detail: `run ${runId} had no report; it is now recorded as unknown, not as a pass`,
-            }
-          : {
-              code: "A8N-JOB-002",
-              action: "refused",
-              detail: `the incomplete run could not be recorded: ${failure}`,
-              remedy: `Inspect ${runDirectory} yourself; it was left unchanged.`,
-            },
-      );
+      const outcome = recordUnknown(runDirectory, runId, now);
+      if (outcome.state === "written") {
+        findings.push({
+          code: "A8N-JOB-002",
+          action: "recorded",
+          detail: `run ${runId} had no report; it is now recorded as unknown, not as a pass`,
+        });
+      } else if (outcome.state === "exists") {
+        findings.push({
+          code: "A8N-JOB-002",
+          action: "reported",
+          detail: `a report appeared at ${join(runDirectory, "report.json")} while recovery was inspecting run ${runId}; it is left as it is`,
+        });
+      } else {
+        findings.push({
+          code: "A8N-JOB-002",
+          action: "refused",
+          detail: `the incomplete run could not be recorded: ${outcome.detail}`,
+          remedy: `Inspect ${runDirectory} yourself; it was left unchanged.`,
+        });
+      }
     }
   }
 

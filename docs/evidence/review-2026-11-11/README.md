@@ -86,6 +86,8 @@ to `4746ff3`.
 | 59 | A timeout no longer claims a kill nobody observed: `taskkill`'s own refusal is reported, a kill that throws is a failed kill, and a pid whose identity changed says so. The message names the pid and the creation time that was read, so a child nobody could kill is findable. Tests: `windows-executor.test.ts` "does not claim a kill the OS refused", "treats a kill that throws as a failed kill…", "the pid now names a different process" |
 | 63 | `releaseRunLock` re-reads the lock immediately before unlinking and removes it only when the bytes are still the ones it validated, so a lock taken by another controller while this one waited is not deleted. The window is narrowed, not closed: the channel has no compare-and-delete. Tests: `windows-lock.test.ts` "leaves a lock that changed after it was validated", "leaves nothing to remove when the lock vanished…" |
 | 61 | A key file's bytes are bound to the file that was checked: after the read the path is re-`lstat`ed and a refusal is returned when the inode, size or modification time changed, or the path is now a link or not a regular file. The race is narrowed, not eliminated (the read is not `O_NOFOLLOW` on a held handle). Test: `windows-auth.test.ts` "binds the bytes to the file that was checked" |
+| 68 | Recovery no longer overwrites a report: `report.json` is created exclusively, so a report that appears between the check and the write is kept and reported; a run whose own lock is still alive is "in progress", not incomplete, and nothing is recorded for it. Tests: `runner-recover.test.ts` "does not record over a run whose lock's owner is still alive", "keeps a report path that appears between the check and the write" |
+| 69 | A lock record that parses but names no usable pid is refused as undecidable (status `unknown`, record kept), like an unreadable one; it is no longer deleted as stale, which could free a lock that still protects a run. Test: "refuses a lock record that names no owner instead of calling it stale" |
 
 ## Low findings fixed on this branch
 
@@ -102,9 +104,8 @@ Each is a candidate for its own ticket (one per number-only branch).
 | --- | --- | --- |
 | 37, 40 | — | **by design** (unreadable result is not an answer; recovery is synchronous) |
 | 57, 58 | POSIX channel ACL, unsigned probe artifacts | design + schema |
-| 64, 65, 66, 69, 72 | unsigned manifest, runner lock leaks, recover lock handling, session never closed | each is a lock/state change that needs its own tests |
+| 64, 65, 66, 72 | unsigned manifest, runner lock leaks, session never closed | each is a lock/state change that needs its own tests |
 | 67 | session marker signing | **tracked as T098** (#93) |
-| 68 | recovery overwrites a just-finished report | lock/report ordering |
 
 ## Low findings
 
