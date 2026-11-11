@@ -11,9 +11,11 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { entryScriptPath, writeBootstrapScript } from "./bootstrap.js";
+import { entryScriptPath, stageHostScript, writeBootstrapScript } from "./bootstrap.js";
+import type { HostRecovery } from "./recovery.js";
 import { READINESS_TIMEOUT_MS } from "./script-invocation.js";
 import type { HostOwnership, HostTransport } from "./transport.js";
+import { ScriptNotSentError } from "./transport.js";
 
 export type StopOptions = {
   /** "discard" permits throwing away the open project's unsaved changes. */
@@ -69,6 +71,24 @@ export class HostUnavailableError extends Error {
   }
 }
 
+/**
+ * The host was left in a state the recovery quarantined: a blocking window it
+ * could not classify, which it did not touch.
+ *
+ * This is *not* a timeout: the operation was not abandoned by us and must not
+ * be sent again. Reporting it as one would invite exactly the retry the
+ * recovery policy exists to prevent. The code is the diagnostic the run
+ * reports it under.
+ */
+export class HostQuarantinedError extends Error {
+  readonly code = "A8N-SEC-001" as const;
+
+  constructor(evidence: string) {
+    super(evidence);
+    this.name = "HostQuarantinedError";
+  }
+}
+
 export type DriverOptions = {
   readonly transport: HostTransport;
   /** Directory for request/result files, artifacts, and the trace. */
@@ -78,6 +98,17 @@ export type DriverOptions = {
   readonly defaultTimeoutMs?: number;
   /** Budget for the post-launch readiness probe; a cold AE start is slow. */
   readonly readinessTimeoutMs?: number;
+  /**
+   * What to do when an operation times out and the host may be blocked by a
+   * dialog. Optional; a driver without one reports the timeout as it is.
+   */
+  readonly recovery?: HostRecovery;
+  /**
+   * How long to wait for the timed-out request's own result after a recovery.
+   * The request may still be running inside After Effects, so the driver
+   * waits for it instead of sending it again.
+   */
+  readonly recoveryGraceMs?: number;
 };
 
 export type CallOptions = {
@@ -100,9 +131,13 @@ export class AeDriver {
   readonly #transport: HostTransport;
   readonly #paths: SessionPaths;
   readonly #hostScriptPath: string;
+  /** The copy of the host script that AE is pointed at; see bootstrap.stageHostScript. */
+  readonly #stagedHostScriptPath: string;
   readonly #trace: TraceRecorder;
   readonly #defaultTimeoutMs: number;
   readonly #readinessTimeoutMs: number;
+  readonly #recovery: HostRecovery | undefined;
+  readonly #recoveryGraceMs: number;
   #started = false;
   #closed = false;
   /** Random per driver; what the host remembers to tell "my instance" from another. */
@@ -117,13 +152,21 @@ export class AeDriver {
     // A cold After Effects start is slow. Sharing the per-operation budget with
     // the probe would report a healthy-but-slow host as a broken install.
     this.#readinessTimeoutMs = options.readinessTimeoutMs ?? READINESS_TIMEOUT_MS;
+    this.#recovery = options.recovery;
+    this.#recoveryGraceMs = options.recoveryGraceMs ?? 60_000;
 
     if (!existsSync(this.#hostScriptPath)) {
       throw new HostUnavailableError(`host script not found: ${this.#hostScriptPath}`);
     }
+    // AE decides whether it may run a script from where the script sits, so
+    // every file AE is pointed at lives in one folder of this session, under
+    // stable names. A person approves that folder once and every later call
+    // runs without another approval.
+    this.#stagedHostScriptPath = stageHostScript(this.#paths.staging, this.#hostScriptPath);
     writeSessionManifest(this.#paths, {
       transport: options.transport.kind,
       hostScript: this.#hostScriptPath,
+      stagedHostScript: this.#stagedHostScriptPath,
       pid: process.pid,
     });
   }
@@ -297,7 +340,7 @@ export class AeDriver {
       const entry = entryScriptPath(this.#paths.root, id);
       writeBootstrapScript({
         entryPath: entry,
-        hostScriptPath: this.#hostScriptPath,
+        hostScriptPath: this.#stagedHostScriptPath,
         requestPath: `${this.#paths.inbox}/${id}.request.json`,
         resultPath: `${this.#paths.outbox}/${id}.result.json`,
         id,
@@ -314,6 +357,12 @@ export class AeDriver {
       try {
         await this.#transport.invoke(entry, { signal: abort.signal });
       } catch (error) {
+        // A call that never reached the host is not a timeout of the
+        // operation: nothing ran, so there is nothing to recover from and
+        // nothing to wait for. It is reported as what it is.
+        if (error instanceof ScriptNotSentError) {
+          throw error;
+        }
         if (abort.signal.aborted) {
           throw new TimeoutError(method, timeoutMs);
         }
@@ -335,6 +384,12 @@ export class AeDriver {
       }
       return outcome.value;
     } catch (error) {
+      if (error instanceof TimeoutError && this.#recovery !== undefined) {
+        const recovered = await this.#recoverAndWait(id, method, params, timeoutMs, op);
+        if (recovered !== undefined) {
+          return recovered;
+        }
+      }
       const status: TraceStatus = error instanceof TimeoutError ? "timeout" : "error";
       this.#trace.record(op, status, Date.now() - began, {
         args: { ...params },
@@ -342,6 +397,79 @@ export class AeDriver {
       });
       throw error;
     }
+  }
+
+  /**
+   * Tries to unblock the host, then waits for the *original* request.
+   *
+   * The request that timed out may still be running inside After Effects: a
+   * timeout says the answer did not arrive in time, not that the work was
+   * abandoned. Sending it again would run it twice — a render, a project
+   * open, an export. So after a recovery the driver waits for the result of
+   * the request it already sent, and only reports a failure when that result
+   * does not arrive either.
+   *
+   * Returns the recovered result. Returns undefined when no result arrived
+   * either (the caller then reports the original timeout), and throws the
+   * host's error when the original request finished with one — the recovery
+   * unblocked it, so its answer is the real outcome.
+   */
+  async #recoverAndWait(
+    id: string,
+    method: string,
+    params: Record<string, unknown>,
+    timeoutMs: number,
+    op: string,
+  ): Promise<unknown> {
+    const recovery = this.#recovery;
+    if (recovery === undefined) {
+      return undefined;
+    }
+    let outcome: Awaited<ReturnType<HostRecovery["attempt"]>>;
+    try {
+      outcome = await recovery.attempt({ requestId: id, method, timeoutMs });
+    } catch (error) {
+      this.#trace.record("session.recover", "error", 0, {
+        error: { name: nameOf(error), message: messageOf(error) },
+      });
+      return undefined;
+    }
+    this.#trace.record("session.recover", outcome.recovered ? "ok" : "error", 0, {
+      result: {
+        recovered: outcome.recovered,
+        evidence: outcome.evidence,
+        ...(outcome.outcome === undefined ? {} : { outcome: outcome.outcome }),
+        ...(outcome.code === undefined ? {} : { code: outcome.code }),
+        ...(outcome.window === undefined ? {} : { window: outcome.window }),
+        ...(outcome.screenshotPath === undefined ? {} : { screenshot: outcome.screenshotPath }),
+      },
+    });
+    if (!outcome.recovered) {
+      // A quarantined state is an answer, not a timeout: the blocking window
+      // is a human's decision and the operation must not be retried. Throwing
+      // here keeps the caller from reading a licence dialog as "try again".
+      if (outcome.code !== undefined) {
+        throw new HostQuarantinedError(outcome.evidence);
+      }
+      return undefined;
+    }
+    const result = await this.#awaitResult(id, method, params, this.#recoveryGraceMs, timeoutMs);
+    if (result.status === "ok") {
+      this.#trace.record(op, "ok", 0, {
+        result: { recovered: true, ...summariseResult(result.value) },
+      });
+      return result.value;
+    }
+    // An error the host itself sent is the answer to the request that timed
+    // out: the recovery unblocked it and the operation it had already started
+    // failed. Reporting the earlier timeout would hide the host's error and
+    // invite the caller to send the operation again. A result that never
+    // became readable is not an answer — the caller keeps the timeout.
+    if (result.error instanceof HostError) {
+      this.#trace.record(op, "error", 0, result.detail);
+      throw result.error;
+    }
+    return undefined;
   }
 
   async #awaitResult(

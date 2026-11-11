@@ -19,7 +19,9 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+
+import { npmCommand } from "./npm-cli.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -30,7 +32,11 @@ function run(command, args, options = {}) {
 const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf-8"));
 
 console.log(`packing ${manifest.name}@${manifest.version}…`);
-const tarballName = run("npm", ["pack", "--silent"], { cwd: PACKAGE_ROOT })
+// npm runs as `node <npm-cli.js>`, never through a shell (scripts/npm-cli.js):
+// on Windows `npm` is `npm.cmd`, which execFileSync cannot start — this script
+// failed there with `spawn npm ENOENT` — and a shell would re-parse the args.
+const npm = npmCommand();
+const tarballName = run(npm.command, [...npm.args, "pack", "--silent"], { cwd: PACKAGE_ROOT })
   .trim()
   .split("\n")
   .at(-1);
@@ -43,7 +49,7 @@ try {
     `${JSON.stringify({ name: "api-check", private: true, type: "module" }, null, 2)}\n`,
     "utf-8",
   );
-  run("npm", ["install", "--silent", tarball], { cwd: workdir });
+  run(npm.command, [...npm.args, "install", "--silent", tarball], { cwd: workdir });
 
   const probePath = join(workdir, "api.mjs");
   writeFileSync(
@@ -77,7 +83,9 @@ console.log("drove the public API; host version " + version + ", " + comps.lengt
 
   let output;
   try {
-    output = run(process.execPath, [pathToFileURL(probePath).pathname], {
+    // A file URL's `.pathname` is "/C:/…" on Windows, and node then looks for
+    // "C:\\C:\\…". The path itself is what node wants.
+    output = run(process.execPath, [probePath], {
       cwd: workdir,
       stdio: ["ignore", "pipe", "pipe"],
     });

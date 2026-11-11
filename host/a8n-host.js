@@ -407,6 +407,29 @@
     return true;
   }
 
+  /**
+   * Shows a modal dialog in After Effects and waits until it is closed.
+   *
+   * The dialog is native, not scripted: it is the one case an ExtendScript
+   * call cannot get out of on its own. It exists so the GUI fallback — the
+   * path that closes a dialog for a host that stopped answering — can be
+   * exercised against a dialog whose appearance and dismissal are known.
+   *
+   * `alert` blocks the script, so the result is written only after the
+   * dialog has been closed. A caller that gave up on the call must not send
+   * it again; the request is still running inside After Effects.
+   */
+  methods["ui.alert"] = function (params) {
+    var message = String(requireParam(params, "message"));
+    // The GUI fallback may only press a window it has measured. Its one known
+    // class requires a static text beginning "ae-a8n:", so the marker is put
+    // on here, whatever the caller passed: a dialog this method raises has to
+    // be closable by the fallback it exists for.
+    var text = /^\s*ae-a8n:/.test(message) ? message : "ae-a8n: " + message;
+    alert(text);
+    return { dismissed: true, message: text };
+  };
+
   methods["app.quit"] = function (params) {
     if (guardUnsavedChanges(params, "quitting")) {
       // Closed first, untitled or not: a dirty project would otherwise put a
@@ -933,13 +956,42 @@
     }
   }
 
+  function extensionTable() {
+    var context = this.__a8n;
+    if (context === undefined || context === null || context.extensions === undefined) {
+      return {};
+    }
+    return context.extensions;
+  }
+
   function dispatch(request) {
     if (request === null || typeof request !== "object") {
       throw new Error("request envelope is not an object");
     }
-    var method = has(methods, request.method) ? methods[request.method] : undefined;
+    // Extension methods are registered before this file loads and live in
+    // their own table: a built-in name always wins, because the build refuses
+    // a collision but the table must still not be able to replace one.
+    //
+    // Statements, not one nested conditional: measured on AE 26.5x89,
+    // ExtendScript evaluates `a ? x : b ? y : undefined` with the second test
+    // deciding the whole expression, so a name found in `methods` returned
+    // `extensions[name]` — undefined — and every call failed with "unknown
+    // method". An explicitly grouped conditional and plain `if` both evaluate
+    // correctly; this form is also correct in Node, so the fake host agrees.
+    var extensions = extensionTable();
+    var method;
+    if (has(methods, request.method)) {
+      method = methods[request.method];
+    } else if (has(extensions, request.method)) {
+      method = extensions[request.method];
+    } else {
+      method = undefined;
+    }
     if (method === undefined) {
       throw new Error("unknown method: " + String(request.method));
+    }
+    if (typeof method !== "function") {
+      throw new Error("the method " + String(request.method) + " is not a function");
     }
     checkSession(request);
     var result = method(request.params);

@@ -355,6 +355,9 @@ describe("Windows script paths with whitespace", () => {
 
   // Asks Windows for real. A kana short name was once garbled by reading
   // PowerShell's CP932 output as UTF-8, which produced a path that did not exist.
+  // The lookup gives PowerShell 15 s; vitest's 5 s default is shorter than the
+  // code's own budget, so a loaded CI runner failed here while the call was
+  // still working (the same tree passed in the other workflow run).
   it.runIf(process.platform === "win32")(
     "gets a short name that exists for a directory with Japanese and a space",
     async () => {
@@ -372,6 +375,7 @@ describe("Windows script paths with whitespace", () => {
       expect(given).not.toMatch(/\s/);
       expect(existsSync(given)).toBe(true);
     },
+    25_000,
   );
 
   it("refuses before launching, saying why, when the directory has no short name", async () => {
@@ -429,6 +433,12 @@ describe("Windows session start", () => {
       shortPath: (dir) => dir,
       readyPollMs: 5,
       mainWindowVisible: () => ++polls > 3,
+      // `launch()` snapshots the process list before starting anything, and
+      // the win32 default for it is a real PowerShell/CIM query: 515 ms on an
+      // idle Windows 11 host, past this test's 5 s budget under a full suite.
+      // macOS never pays it — there `powershell.exe` is absent, so the
+      // snapshot throws at once. The window is all this test is about.
+      processes: () => [],
     });
     const driver = new AeDriver({
       transport,
@@ -472,6 +482,9 @@ describe("Windows session start", () => {
       spawnLauncher,
       readyPollMs: 5,
       mainWindowVisible: () => false,
+      // Same reason as the test above: `launch()` would otherwise ask a real
+      // Windows host for its process list.
+      processes: () => [],
     });
     const driver = new AeDriver({
       transport,

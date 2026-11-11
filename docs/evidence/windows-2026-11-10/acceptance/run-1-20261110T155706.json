@@ -1,0 +1,135 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "ae-acceptance",
+  "startedAt": "2026-11-10T15:57:06.835Z",
+  "finishedAt": "2026-11-10T15:57:26.037Z",
+  "durationMs": 19202,
+  "status": "ok",
+  "facts": {
+    "package": "@ido-bata/ae-a8n",
+    "host": "UUU",
+    "user": "basic",
+    "sessionName": null,
+    "node": "v24.19.0",
+    "processesBefore": 0,
+    "processesAfterLaunch": 1,
+    "processesAfterClose": 0,
+    "version": "26.5x89",
+    "ownership": {
+      "kind": "owned",
+      "evidence": "pid 43272 is still the only instance"
+    },
+    "project": {
+      "file": null,
+      "name": null,
+      "itemCount": 0
+    },
+    "scene": {
+      "comp": {
+        "name": "A8N-ACCEPT",
+        "width": 320,
+        "height": 240,
+        "duration": 1,
+        "frameRate": 30,
+        "layerCount": 1
+      },
+      "layer": {
+        "id": 13,
+        "name": "A8N",
+        "index": 1,
+        "enabled": true,
+        "selected": true,
+        "type": "text",
+        "font": "ArialMT",
+        "fontSize": 96
+      },
+      "layers": [
+        {
+          "id": 13,
+          "name": "A8N",
+          "type": "text"
+        }
+      ]
+    },
+    "frame": {
+      "path": "C:\\Users\\rebui\\AppData\\Local\\Temp\\ae-a8n-95L1ar\\artifacts\\A8N-ACCEPT.00000.png",
+      "frame": 0,
+      "width": 320,
+      "height": 240
+    },
+    "closed": {
+      "quit": true,
+      "ownership": {
+        "kind": "owned",
+        "evidence": "pid 43272 is still the only instance"
+      }
+    }
+  },
+  "steps": [
+    {
+      "name": "launch",
+      "ms": 11561,
+      "ok": true
+    },
+    {
+      "name": "ownership",
+      "ms": 584,
+      "ok": true
+    },
+    {
+      "name": "version",
+      "ms": 473,
+      "ok": true
+    },
+    {
+      "name": "project",
+      "ms": 389,
+      "ok": true
+    },
+    {
+      "name": "project info",
+      "ms": 371,
+      "ok": true
+    },
+    {
+      "name": "create comp",
+      "ms": 388,
+      "ok": true
+    },
+    {
+      "name": "add text layer",
+      "ms": 603,
+      "ok": true
+    },
+    {
+      "name": "comp info",
+      "ms": 479,
+      "ok": true
+    },
+    {
+      "name": "layers",
+      "ms": 373,
+      "ok": true
+    },
+    {
+      "name": "render frame 0",
+      "ms": 369,
+      "ok": true
+    },
+    {
+      "name": "ownership before quit",
+      "ms": 623,
+      "ok": true
+    },
+    {
+      "name": "close",
+      "ms": 2651,
+      "ok": true
+    }
+  ],
+  "problems": [],
+  "createdFiles": [
+    "C:\\Users\\rebui\\AppData\\Local\\Temp\\a8n-accept-20261110T155706\\summary.json"
+  ],
+  "processId": 45576
+}

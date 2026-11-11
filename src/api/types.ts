@@ -228,6 +228,15 @@ export type RenderOptions = OperationOptions & {
 
 export type LaunchOptions = {
   /**
+   * A host script that declares extension methods, built by
+   * `ae-a8n extension build`. Omitted, the shipped `host/a8n-host.js` runs.
+   *
+   * The file is read once at launch: the same bytes are what After Effects
+   * runs, so a file edited between launch and a call cannot change what the
+   * session does.
+   */
+  readonly hostScript?: string;
+  /**
    * Where request files, results, artifacts, and the trace live. Defaults to a
    * fresh directory under the OS temp dir.
    */
@@ -251,4 +260,37 @@ export type LaunchOptions = {
    * rejects with `HostNotOwnedError` and leaves the running AE untouched.
    */
   readonly hostEnvironment?: Readonly<Record<string, string>>;
+  /**
+   * The macOS login session the After Effects lives in.
+   *
+   * The default is the session this process runs in. A test that runs inside
+   * an isolated OS user's session names that user here: the Apple Event is
+   * then delivered inside that user's session, the process list is scoped to
+   * it, and the console user's After Effects is neither addressed nor quit.
+   *
+   * With `recover`, a timed-out call is followed by a GUI fallback that
+   * closes what is blocking the host — *inside that session only*. The
+   * operation that timed out is never sent again.
+   */
+  readonly session?: {
+    /** The OS user whose login session owns the After Effects. */
+    readonly uid: number;
+    /**
+     * Whether a modal dialog may be closed by GUI automation when it blocks
+     * the host. Off by default: a dialog that asks for a decision belongs to
+     * a human.
+     */
+    readonly recover?: boolean;
+  };
+  /**
+   * How long a recovered call may then wait for the answer to the request it
+   * already sent, in milliseconds. Default 60 000; 0 stops waiting at once.
+   *
+   * Only meaningful with `session.recover`. It is *additional* time, on top of
+   * `timeoutMs`: `timeoutMs` ends the first wait, then the GUI fallback runs
+   * (which can take a while — it observes windows, takes a screenshot and
+   * presses the dialog), and only then does this grace start. Set it when the
+   * caller needs a total budget rather than a first-wait budget.
+   */
+  readonly recoveryGraceMs?: number;
 };

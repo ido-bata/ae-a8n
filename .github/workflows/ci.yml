@@ -105,3 +105,55 @@ jobs:
 
       - name: Check documented JSX snippets are ES3
         run: node scripts/check-doc-snippets.js docs/verification.md
+
+  # The Windows build is part of the product, not a port that follows later.
+  #
+  # This job runs the whole suite natively — node, typecheck, lint, vitest,
+  # build — because the macOS-first path let Windows-only breakage reach a
+  # release candidate before (the Windows path had never been compiled, let
+  # alone run). The POSIX-only checks in `npm test` say why they cannot run
+  # here; the safety conditions they cover are checked on Windows by
+  # test/windows-acl.test.ts (key file and channel ACLs, the counterpart of
+  # the POSIX mode-bit refusals), not skipped.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test (the full suite, natively)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Check the ES3 host script parses
+        # pwsh's default shell does not stop at a non-zero native exit code,
+        # and a multi-line step reports only its last command — a parse error
+        # in a8n-host.js would pass when a8n-json.js is fine. bash -e stops
+        # at the first failure, as the Linux job already does.
+        shell: bash
+        run: |
+          node --check host/a8n-host.js
+          node --check host/a8n-json.js
+
+      - name: Verify the packed package resolves as published
+        run: node scripts/check-packed-package.js
+
+      - name: Verify the public API from an installed package
+        run: node scripts/check-public-api.js

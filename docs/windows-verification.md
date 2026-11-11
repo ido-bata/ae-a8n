@@ -431,3 +431,170 @@ the fake now persists one per instance). ae-test (unmodified npm package, this
 branch's local build): 2 runs x 3 specs, snapshot compared equal to a baseline
 recorded in a much earlier session, typed error and deliberate failure as expected,
 0 AE processes left after each run.
+
+## Read-only host probe (T086, #67)
+
+`probeWindows` reads the facts the Windows backend has to decide on and turns
+them into `A8N-*` checks. The commands are `Get-CimInstance`, the process's own
+session id and identity, the console user, the After Effects uninstall entries,
+`tasklist /FI "IMAGENAME eq AfterFX.exe"`, and `net user <name>`. It starts
+nothing, writes nothing and sends nothing to After Effects.
+
+Run on the Windows host on 2026-11-10, `scripts/probe-windows.mjs` at commit
+`f9f87ef`:
+
+| Fact | Value |
+| --- | --- |
+| OS | Windows 11 Home Insider Preview 10.0.29704 (the machine has been updated since the table at the top) |
+| Session | 1; current and console user `UUU\basic` |
+| After Effects | registered twice under `D:\4_apps\adobe` (26.0 and 26.5) |
+| Running AE | `AfterFX.exe` pid 8028, session 1 |
+| Result | `status: "blocked"`, exit 3, one check: `A8N-AE-001` |
+
+`A8N-AE-001` is the intended result: the host is the developer's own signed-in
+session with After Effects open, so no test AE may be started. `A8N-SESSION-003`
+did not fire because the probe was asked for `isolation: "remote-host"`, where
+the console user and the agent user being the same is expected.
+
+Level: `verified on real host` for the probe's facts and for its refusal. It
+verifies no isolated backend — nothing was launched — and this host is not a
+dedicated one yet.
+
+Found by this run and fixed in `f9f87ef`: Adobe registers a 32-bit uninstaller,
+so the 64-bit `Uninstall` keys alone reported "After Effects not found" on a
+host that has it. The probe now reads `WOW6432Node` and `HKCU` too and collapses
+duplicate registrations. Two versions under one Adobe root are a normal upgrade
+and are not reported as ambiguity.
+
+## In-session agent (T088, #70)
+
+The agent is a `bin`-style entry point, not a service. It must run inside the
+dedicated user's own signed-in desktop session; a session-0 service or an SSH
+session has no GUI and the agent refuses to start there.
+
+On the Windows target, after `npm run build` (or from an installed package):
+
+```bat
+node scripts\windows-agent.mjs ^
+  --channel \\controller\share\a8n ^
+  --key-file C:\ProgramData\ae-a8n\agent.key ^
+  --agent-id ae-a8n-agent ^
+  --host WIN-AE-01 ^
+  --user a8n ^
+  --session-id 1 ^
+  --version 0.1.0-alpha.1
+```
+
+- `--channel` is the same directory the controller uses. The agent reads
+  `jobs/<jobId>/`, claims through `claims/<jobId>.json`, and publishes through
+  `results/<jobId>/result.json`. A missing or unreadable channel exits non-zero
+  with the reason on stderr. The controller creates the run directory before it
+  publishes `job.json`, so a run directory with no manifest is a submission in
+  progress: the agent claims, refuses and runs nothing until `job.json` exists.
+- `--key-file` is the channel key provisioned out of band to both sides. Jobs,
+  results and claims carry an HMAC-SHA256 with domain separation; the agent
+  refuses a job it cannot attribute before the executor sees it. The key file is
+  refused if it is a symlink, larger than 4 KiB, or (on POSIX) readable by group
+  or others. Its confidentiality is the trust anchor: anyone who can read it can
+  forge work.
+- `--session-id` must be the interactive session id (not `0`); the agent checks
+  this before it polls anything. The flag is a claim: the agent measures its own
+  session through `GetCurrentProcess().SessionId` and refuses when the two
+  disagree or the measurement fails.
+- Start it from the dedicated account's own logon (for example a shortcut in
+  that account's Startup folder), not from a scheduled task with "Run whether
+  user is logged on or not". The latter has no interactive desktop.
+- The agent never reads or writes a credential. Adobe sign-in stays a human
+  setup step; GUI recovery and process ownership are T089/T090.
+
+### What the review of the job-execution boundary changed (#70, PR #77)
+
+| Risk | Change | Test |
+| --- | --- | --- |
+| Any channel writer could make the dedicated user execute code | jobs and results are HMAC-signed; the issuer must hold the channel key | `windows-auth`, `windows-agent`, `windows-runner` |
+| A planted claim denied a job while looking like another agent | claims are signed; an unsigned, foreign-key, misplaced, oversized or vanished claim is `claim-unauthenticated`, recorded in `diagnostics/claims/<jobId>.json`, never run and never released | `windows-agent`, `windows-agent-main` |
+| A timed-out native job might run later and a recycled PID could be killed | on timeout the process creation time is read again; nothing is killed unless it still matches, and the outcome stays `unknown` | `windows-executor` |
+| The claimed session id was taken at face value | the OS measurement must agree, or the agent exits before polling | `windows-agent-main` |
+| A result could belong to another payload | the controller requires the result's `payloadSha256` to match the job | `windows-agent` |
+| Oversized documents could exhaust the agent | caps on job (64 KiB), result (1 MiB), payload (1 MiB) and claim (16 KiB), enforced before parsing and in the channel | `windows-job`, `windows-agent`, `windows-channel` |
+| The manifest repeated unverified agent facts | agent identity in the manifest comes from the verified signed result; `agentVerified` says whether it did | `windows-runner`, `windows-manifest` |
+| An agent polled between the run lock and `job.json`, refusing a valid submission | a run directory with no manifest is `not-ready`: nothing is claimed, refused or run, and the job is picked up on a later poll | `windows-agent`, `windows-e2e` |
+
+Level: `automated test` against the in-repo fake. **Nothing in this section is
+`verified on real host`.** In particular, unproven on Windows: that NTFS/SMB
+ACLs keep the key file from other accounts, that `O_EXCL` is atomic over the
+share, how junctions and symlinks behave for the key and claim files, and that
+the PowerShell session measurement returns the interactive session under the
+dedicated account. Those are T092 rows; until they pass, the Windows path is
+`fake/mock only`.
+
+## 2026-11-10: what a second real host reached
+
+Evidence, host identity, tarball hash and repeat steps:
+[evidence/windows-2026-11-10/README.md](evidence/windows-2026-11-10/README.md).
+Windows 11 build 29704, After Effects 26.0 and 26.5 installed, AE **not
+running**, the only account being the console user.
+
+| Reached | Not reached |
+| --- | --- |
+| `npm ci` + build, `npm test` green (`46` files, `729` passed, `5` skipped) on `74@d6d24fc` | an isolated, non-console session (no second account yet) |
+| `npm pack` from `86@79d8ab1`, clean-consumer install, `bin` linked, `--version` | non-interference measurement |
+| `doctor` and `test` refuse with `A8N-SESSION-003` (console user), exit 3, with a human remedy | ownership and destination proof against a real AE |
+| `report` exit 1 with no runs, `recover` exit 0, `test` with no command exit 2 | recovery from a real crash or dialog |
+| CLI and package work on Windows from the installed tarball | the extension call through the Windows agent (T091) |
+
+Three defects existed only on this host and are fixed on `74`: a POSIX
+key-permission test that hangs on win32, two launch tests that reached the real
+synchronous PowerShell/CIM process list (515 ms measured, past the 5 s default
+under the suite), and the gate's POSIX-only half. See §3 of the evidence file.
+None of them is visible in CI — the Windows CI job runs six release-tooling
+files, not the suite.
+
+Correction to an earlier observation in this program: a six-step
+`setup --dry-run` printout was produced by a checkout whose `dist/` predated
+`562d8f1` (setup moved off the CLI branch). From the packaged CLI on
+`86@79d8ab1` the answer is `setup is not implemented in this increment
+(issue #56)`, exit 7. The six-step row is not claimed here.
+
+## 2026-11-11: the basic isolated path ran on this host
+
+Correction to the paragraph above: the sentence "until they pass, the Windows
+path is `fake/mock only`" described the job-execution boundary at the time it
+was written. On 2026-11-11 the basic path crossed it on the real host, twice.
+The evidence is
+[evidence/windows-2026-11-10/README.md](evidence/windows-2026-11-10/README.md)
+("Update, 2026-11-11") and `FINDINGS.md` there.
+
+| | |
+| --- | --- |
+| Build | `integration/win-cli` `d5dea95` + PR #91 `c857a4c`, merged as `4bf9ea0` |
+| Tarball | `0.1.0-alpha.1`, sha256 `1729e255463b0aa8ed8a730b701de8bfc2d49133b51895adb163a2aafe8b7563` |
+| Runs | `20261110T155448Z-9190f1a0`, `20261110T155806Z-3f927bed` — both `ok`, no problems |
+| `AfterFX.exe` | 0 before / 1 during / 0 after, both runs |
+| Ownership | `owned`, a pid this run started, the only instance |
+| Steps | launch, ownership, version, project, project info, create comp, add text layer, comp info, layers, render frame 0, ownership, close — all `ok`; frames byte-identical between runs |
+| Quit | `quit: true`, ownership still `owned` at the moment of quitting |
+
+Level: **`verified on real host` for this basic path only.**
+
+### What this does not prove
+
+- **The session was not isolated from a dedicated account.** The agent ran as
+  `UUU\basic`, session 1, which is also the console user. The backend delivered
+  a signed job to an in-session agent and that agent started AE; it did not
+  create or use a second, non-console session. Non-interference (row 13) is
+  still **UNVERIFIED** and the dedicated-account properties above (SMB ACLs,
+  `O_EXCL` atomicity, junctions, PowerShell session measurement under another
+  account) are still unmeasured.
+- Destination and ownership proof: `manifest.json` recorded
+  `destinationProof: "unproven"` and `ownershipProof: "unproven"` (T090/#72).
+- Recovery from a crash or a hung dialog was not induced (row 15).
+- No `ae.call` / extension method ran on this host (T091); extension methods
+  remain `fake/mock only`.
+- The release tarball for `0.1.0-alpha.2` is not this one. It differs by the
+  version string, the late-result fix (#90) and the `icacls` path fix; the
+  acceptance was **not** re-run against it.
+
+Rows 12–17 of the 2026-11-10 matrix keep the status they had, except row 14
+(ownership against a real AE on the isolated backend) is now **PASS for the
+basic path**, with the ownership proof still unproven.

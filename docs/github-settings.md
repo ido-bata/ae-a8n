@@ -30,7 +30,7 @@ Publishing). The read-only default does not take that away: a job's own
 
 | Ruleset | Refs | Rules |
 | --- | --- | --- |
-| `main-branch-protection` | `refs/heads/main` | pull request required, merge commit only, 0 approvals for now, review threads resolved; checks `check` (Linux) and `release-tooling-windows` (Windows) from GitHub Actions; no force push; no deletion; no linear-history rule; no bypass |
+| `main-branch-protection` | `refs/heads/main` | pull request required, merge commit only, 0 approvals for now, review threads resolved; checks `check` (Linux), `release-tooling-windows` and `windows` (Windows) from GitHub Actions; no force push; no deletion; no linear-history rule; no bypass |
 | `release-tag-protection` | `refs/tags/v*` | no update (a tag is never moved), no force push, no deletion; creating a tag is allowed; no bypass |
 
 ```bash

@@ -16,18 +16,33 @@ const frame = await (await project.comp("Main")).renderFrame(0); // { path, widt
 await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to throw away
 ```
 
-> **Alpha.** `0.1.0-alpha.1` is published under the `next` dist-tag. The API
-> may change before 0.1.0.
+> **Alpha.** `0.1.0-alpha.2` is the release under the `next` dist-tag; `latest`
+> stays on `0.1.0-alpha.0` until a stable release is approved. If
+> `npm view @ido-bata/ae-a8n@next version` does not show this version, it has
+> not been published yet. The API may change before 0.1.0.
 
 ## Status
 
 | | |
 | --- | --- |
 | macOS | Verified against After Effects 2026 (26.5x89, Japanese UI) on macOS 27, arm64: launch, project/comp/layer lookup, effects by match name, parameter write/read, one-frame PNG render, typed failures, timeouts, session ownership; 20 consecutive fresh-session runs |
-| Windows | Verified against After Effects 2026 (26.5x89, English UI) on Windows 11 x64: cold launch, install discovery, process ownership and quit-only-what-this-session-started, menu commands, `hostEnvironment`, scene building, Undo/Redo, and Ae_Restro's 33-check E2E through this API (3 runs). See [docs/windows-verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/windows-verification.md) and [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md). ARM64 and non-English UIs not run |
+| Windows | Verified against After Effects 2026 (26.5x89, English UI) on Windows 11 x64: cold launch, install discovery, process ownership and quit-only-what-this-session-started, menu commands, `hostEnvironment`, scene building, Undo/Redo, and Ae_Restro's 33-check E2E through this API (3 runs). The isolated backend also ran end to end on that host on 2026-11-11: a signed job over the channel, an in-session agent, AE started, comp and text layer built, frame 0 rendered, and the started process quit — twice. See [docs/windows-verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/windows-verification.md) and [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md). ARM64 and non-English UIs not run |
 | Node | 22 or later (developed on 24) |
 
 What has been checked, and how, is in [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md).
+
+What is **not** proven in `0.1.0-alpha.2`, so a green run is not read as more
+than it is:
+
+- Extension methods (`hostScript`, `ae.call`, `ae-a8n extension build`) are
+  `fake/mock only`: no `ae.call` has run against a real After Effects.
+- On the Windows isolated backend `manifest.json` records
+  `destinationProof: "unproven"` and `ownershipProof: "unproven"`; the backend
+  never reports them as proven.
+- Non-interference with a working console user, and recovery from a crash or a
+  hung dialog, were not measured on Windows.
+- `ae-a8n setup` is not implemented in this version; it refuses and changes
+  nothing.
 
 ## Install
 
@@ -39,6 +54,84 @@ Requirements on the machine that runs After Effects:
 
 - After Effects installed in the default location (`/Applications/Adobe After Effects <version>/` on macOS), or pass `installDir`.
 - **Settings → Scripting & Expressions → Allow Scripts to Write Files and Access Network** enabled. Without it the first call times out instead of failing fast.
+- On **After Effects 2026 (26.5)** the host also needs AE's approval to run scripts from the driver's folder: AE refuses the first `DoScriptFile` with `-1708` and shows a modal that points at its Scripting & Expressions panel. Approve the session's `staging/` folder there (the folder holds the entry script and the staged host script); the approval covers later calls.
+
+## Doctor
+
+`ae-a8n doctor` is the read-only entry point. It inspects the machine an
+isolated After Effects session would use and reports every fact it could not
+read as a blocker, never as a pass. It does not start After Effects, open a
+session, change TCC or SIP, read a credential, or send an Apple Event.
+
+```bash
+npx @ido-bata/ae-a8n doctor
+npx @ido-bata/ae-a8n doctor --json
+npx @ido-bata/ae-a8n doctor --user ae-test
+npx @ido-bata/ae-a8n doctor --host WIN-AE-01
+```
+
+Exit `0` means no blocker was found; exit `3` means at least one was. `--json`
+prints exactly one document on stdout, with `schemaVersion`, `checks[]` and
+`nextActions[]`; a warning does not by itself fail the command. A host target
+selects the Windows adapter even when you invoke the CLI on another platform.
+If the Windows probe commands cannot run there, the facts that depend on the
+host are reported as unreadable and the command exits blocked.
+
+## Test
+
+`ae-a8n test -- <command>` runs the command inside the target session, once,
+and keeps what it saw under `~/.ae-a8n/runs/<runId>/`: `manifest.json`,
+`report.json`, `trace.jsonl` and `artifacts/`. It refuses before it opens
+anything when `doctor` would report a blocker, when another run holds the
+target's lock, or when a prior run left a quarantine record.
+
+```bash
+npx @ido-bata/ae-a8n test -- ./node_modules/.bin/vitest run
+npx @ido-bata/ae-a8n test --json --timeout 600000 -- ./run-e2e.sh
+```
+
+Exit `0` pass, `5` test failed, `4` refused for safety, `3` environment
+blocked, `6` unknown and quarantined. A timeout is `unknown`, never a failed
+test, and a run that timed out is never re-sent automatically. With `--json`
+stdout is exactly one document and the human summary goes to stderr.
+
+## Recover
+
+When a run times out, `test` quarantines the target and refuses to run again
+until the state is looked at. `ae-a8n recover` shows what the run left behind
+and releases only what cannot be wrong:
+
+```bash
+npx @ido-bata/ae-a8n recover                 # inspect; changes nothing it must not
+npx @ido-bata/ae-a8n recover --dry-run       # say what it would do
+npx @ido-bata/ae-a8n recover --force         # also clear the quarantine record
+```
+
+A lock whose recorded process is gone is released. A quarantine record is
+only reported: it exists because nobody could prove the run had ended, so
+clearing it takes an explicit `--force` from someone who checked. `recover`
+never quits After Effects, never re-sends a command and never deletes a run
+directory.
+
+## Report
+
+`ae-a8n report` reads a stored run and prints or re-renders its report. It
+never starts After Effects and never changes the run.
+
+```bash
+npx @ido-bata/ae-a8n report                     # the most recent run
+npx @ido-bata/ae-a8n report --run <id> --format json
+npx @ido-bata/ae-a8n report --format junit      # for CI
+```
+
+`--format json` prints the stored `report.json` byte for byte; `--format junit`
+maps each verdict to a testcase, and a `blocked` or `unknown` verdict becomes an
+`<error>`, never a pass. A run that never wrote a report exits 1 and names
+`recover`: `report` never returns an empty success.
+
+`setup` is not implemented yet in this increment: it parses its contract flags
+and then fails closed with a notice. It does not report success for work it did
+not do.
 
 ## What it does to your After Effects
 
@@ -115,6 +208,15 @@ await ae.close({ unsavedChanges: "discard" });
 A command that opens a modal dialog blocks After Effects until a person
 dismisses it, and the call times out; a plugin driven this way needs a mode
 that reports instead of alerting.
+
+On macOS, do **not** recover by moving the physical user's cursor or clicking
+through the user's desktop. A recovery may only act inside the session the
+After Effects instance lives in, and it must never press a sign-in or licence
+button. The [macOS isolation notes](https://github.com/ido-bata/ae-a8n/blob/main/docs/offstage-macos.md)
+describe the separate-user session this needs (`offstage`'s session lane, or an
+equivalent native runner), its safety gates, and what is still unverified. It
+is **opt-in** and not verified against real AE yet (see
+[#49](https://github.com/ido-bata/ae-a8n/issues/49)).
 
 ### `@ido-bata/ae-a8n/testing`
 

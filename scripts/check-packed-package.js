@@ -21,10 +21,19 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+
+import { npmCommand } from "./npm-cli.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -39,7 +48,16 @@ const EXPECTED = {
 };
 
 /** Paths that must survive packing. `host/` is not produced by tsc. */
-const REQUIRED_FILES = ["dist", "host", "package.json"];
+const REQUIRED_FILES = [
+  "dist",
+  "host",
+  "package.json",
+  // The first user-facing entry point and the adapters behind it.
+  "dist/cli.js",
+  "dist/platform/select.js",
+  "dist/platform/darwin/adapter.js",
+  "dist/platform/windows/runner.js",
+];
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: "utf-8", ...options });
@@ -53,7 +71,11 @@ function fail(message) {
 const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf-8"));
 
 console.log(`packing ${manifest.name}@${manifest.version}…`);
-const tarballName = run("npm", ["pack", "--silent"], { cwd: PACKAGE_ROOT })
+// npm runs as `node <npm-cli.js>`, never through a shell (scripts/npm-cli.js):
+// on Windows `npm` is `npm.cmd`, which execFileSync cannot start — this script
+// failed there with `spawn npm ENOENT` — and a shell would re-parse the args.
+const npm = npmCommand();
+const tarballName = run(npm.command, [...npm.args, "pack", "--silent"], { cwd: PACKAGE_ROOT })
   .trim()
   .split("\n")
   .at(-1);
@@ -66,7 +88,7 @@ try {
     `${JSON.stringify({ name: "packed-check", private: true, type: "module" }, null, 2)}\n`,
     "utf-8",
   );
-  run("npm", ["install", "--silent", tarball], { cwd: workdir });
+  run(npm.command, [...npm.args, "install", "--silent", tarball], { cwd: workdir });
 
   const installed = join(workdir, "node_modules", manifest.name);
 
@@ -106,7 +128,36 @@ try {
   }
   console.log(`installed package contains ${REQUIRED_FILES.join(", ")}`);
 
-  // 3. Both entry points resolve through the published exports map, with no
+  // 3. The installed bin is the documented entry point and can be executed.
+  //    A `bin` that points at a file the build does not emit, or that lost its
+  //    shebang, installs cleanly and then fails on `npx @ido-bata/ae-a8n`.
+  const binRelative = manifest.bin?.["ae-a8n"];
+  if (typeof binRelative !== "string") {
+    fail('package.json has no bin entry for "ae-a8n"');
+  }
+  const binPath = join(installed, binRelative);
+  if (!existsSync(binPath)) {
+    fail(`${binRelative} is missing from the installed package — check the build and "files"`);
+  }
+  // Windows has no exec bit: a mode of 0666 is normal, and npm runs the bin
+  // through a generated .cmd shim. The shebang below is the property that has
+  // to hold on every platform, so the bit is only asserted where it exists.
+  if (process.platform !== "win32" && (statSync(binPath).mode & 0o111) === 0) {
+    fail(`${binRelative} is not executable after install`);
+  }
+  // A CRLF checkout or a Windows build must not fail the gate on the line
+  // ending alone: the shebang is the property, not the EOL style.
+  const firstLine = readFileSync(binPath, "utf-8").split(/\r?\n/u, 1)[0];
+  if (firstLine !== "#!/usr/bin/env node") {
+    fail(`${binRelative} does not start with "#!/usr/bin/env node"`);
+  }
+  const help = run(process.execPath, [binPath, "--help"], { cwd: workdir });
+  if (!help.includes("doctor")) {
+    fail(`${binRelative} --help does not describe doctor`);
+  }
+  console.log(`bin ae-a8n is executable and resolves to ${binRelative}`);
+
+  // 4. Both entry points resolve through the published exports map, with no
   //    source tree in sight. This is the assertion that would have caught the
   //    `./testing` regression.
   //
@@ -115,7 +166,9 @@ try {
   // than a stack trace pointing into a temporary directory.
   let output;
   try {
-    output = run(process.execPath, [pathToFileURL(probePath).pathname], {
+    // A file URL's `.pathname` is "/C:/…" on Windows, and node then looks for
+    // "C:\\C:\\…". The path itself is what node wants.
+    output = run(process.execPath, [probePath], {
       cwd: workdir,
       // The child's stack trace points into a temporary directory that is about
       // to disappear. The useful line is re-emitted by `fail` below.
@@ -128,7 +181,7 @@ try {
   }
   console.log(`  ${String(output).trim()}`);
 
-  // 4. The installed copy is the build, not a stale one.
+  // 5. The installed copy is the build, not a stale one.
   const installedManifest = JSON.parse(
     readFileSync(join(installed, "package.json"), "utf-8"),
   );

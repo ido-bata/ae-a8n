@@ -14,10 +14,10 @@
  *
  * - `main-branch-protection` (refs/heads/main): changes go through a pull
  *   request, merged with a merge commit; review threads resolved; zero
- *   approvals for now; the CI jobs `check` (Linux) and
- *   `release-tooling-windows` (Windows) green, reported by GitHub Actions
- *   itself; no force push, no deletion. No linear-history rule (merge commits
- *   are the policy) and no bypass for anyone.
+ *   approvals for now; the CI jobs `check` (Linux), `release-tooling-windows`
+ *   and `windows` (Windows) green, reported by GitHub Actions itself; no
+ *   force push, no deletion. No linear-history rule (merge commits are the
+ *   policy) and no bypass for anyone.
  * - `release-tag-protection` (refs/tags/v*): a release tag, once pushed, is
  *   never moved, force-pushed or deleted. Creating one is not restricted: the
  *   publish workflow's gate decides what a tag may publish.
@@ -36,8 +36,8 @@ import { pathToFileURL } from "node:url";
 /** GitHub Actions' app id: required checks must come from it, not any app. */
 export const GITHUB_ACTIONS_APP_ID = 15368;
 
-/** The CI jobs main requires: ci.yml's Linux and Windows jobs. */
-export const REQUIRED_CHECKS = ["check", "release-tooling-windows"];
+/** The CI jobs main requires: ci.yml's Linux job and both Windows jobs. */
+export const REQUIRED_CHECKS = ["check", "release-tooling-windows", "windows"];
 
 /**
  * @param {readonly string[]} checks

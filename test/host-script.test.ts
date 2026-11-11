@@ -23,6 +23,42 @@ function parse(path: string): void {
   acorn.parse(readFileSync(path, "utf-8"), { ecmaVersion: 3 });
 }
 
+/** Line numbers of every conditional that has a conditional in a branch. */
+function nestedConditionals(root: unknown): string[] {
+  const found: string[] = [];
+
+  const visit = (node: unknown): void => {
+    if (node === null || typeof node !== "object") {
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        visit(item);
+      }
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    if (record["type"] === "ConditionalExpression") {
+      for (const branch of ["consequent", "alternate"]) {
+        const child = record[branch] as { type?: string } | undefined;
+        if (child?.type === "ConditionalExpression") {
+          const loc = (record["loc"] as { start: { line: number } } | undefined)?.start.line;
+          found.push(`line ${String(loc ?? "?")}`);
+        }
+      }
+    }
+    for (const [key, value] of Object.entries(record)) {
+      if (key === "loc" || key === "start" || key === "end") {
+        continue;
+      }
+      visit(value);
+    }
+  };
+
+  visit(root);
+  return found;
+}
+
 describe("host scripts", () => {
   it.each(HOST_SCRIPTS)("%s parses under Node too", (relative) => {
     const path = resolve(PACKAGE_ROOT, relative);
@@ -56,5 +92,24 @@ describe("host scripts", () => {
     ]) {
       expect(source).toContain(`methods["${method}"]`);
     }
+  });
+
+  it.each(HOST_SCRIPTS)("%s puts no conditional inside a conditional", (relative) => {
+    // Measured on AE 26.5x89 (ExtendScript 4.5.6), 2026-11-10: given
+    //
+    //   var m = has(a, k) ? a[k] : has(b, k) ? b[k] : undefined;
+    //
+    // the engine lets the *second* test decide the whole expression. A name
+    // found in `a` therefore evaluated to `b[k]` — undefined — and the host
+    // answered every request with "unknown method". Grouping the inner
+    // conditional, or writing statements, evaluates correctly.
+    //
+    // Node evaluates the ungrouped form as ES3 says, so the fake host cannot
+    // expose this: only a check on the shipped text can.
+    const ast = acorn.parse(readFileSync(resolve(PACKAGE_ROOT, relative), "utf-8"), {
+      ecmaVersion: 3,
+      locations: true,
+    });
+    expect(nestedConditionals(ast)).toEqual([]);
   });
 });

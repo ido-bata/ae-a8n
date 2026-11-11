@@ -17,16 +17,20 @@
  * ```
  */
 
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { AeDriver } from "../driver/driver.js";
+import { readGuiSession, readGuiSessionFailure, type MacSession } from "../driver/mac-session.js";
+import { MacHostRecovery } from "../driver/recovery.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
+import { readExtensionHeader } from "../extensions/manifest.js";
 import { TraceRecorder, type TraceEvent } from "../trace/trace.js";
 import {
   AfterEffectsError,
   EntityNotFoundError,
+  ExtensionMethodNotFoundError,
   HostError,
   HostNotOwnedError,
   ParameterValueError,
@@ -105,6 +109,62 @@ function optionalTimeout(value: unknown): number | undefined {
     throw new TypeError("timeoutMs must be a positive number");
   }
   return value;
+}
+
+/**
+ * The wait after a GUI recovery, in milliseconds.
+ *
+ * Zero is meaningful — it stops waiting for the original request as soon as
+ * the dialog has been pressed — so the lower bound is 0, not 1.
+ */
+function requireGrace(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new TypeError("recoveryGraceMs must be a non-negative number");
+  }
+  return value;
+}
+
+/**
+ * The login session of a uid, for the GUI fallback.
+ *
+ * A user who is not logged in has no session, and a session that is not an
+ * Aqua session has no screen. Both are refused here rather than discovered
+ * halfway through a recovery.
+ */
+function requireSession(uid: number): MacSession {
+  const session = readGuiSession(uid);
+  if (session === null) {
+    // A refusal to answer is not an answer. `launchctl print gui/<other uid>`
+    // is "Operation not permitted" for a non-root process outside that
+    // session, and telling a logged-in user to log in sends the caller in
+    // entirely the wrong direction.
+    const failure = readGuiSessionFailure(uid);
+    if (failure !== null && /operation not permitted|not permitted/i.test(failure)) {
+      throw new AfterEffectsError(
+        `uid ${uid}'s login session could not be read: macOS refused this process (launchctl: ${failure}). ` +
+          "The user may well be logged in; only a process running in that session (or root) can ask about it. " +
+          "Nothing was started.",
+        "session.launch",
+      );
+    }
+    throw new AfterEffectsError(
+      `uid ${uid} has no login session on this Mac, so no After Effects of that user could be reached. ` +
+        // The failure text is carried whenever there was one: an unexpected
+        // refusal (a transient launchctl error, launchctl missing) must not
+        // read as "the user is not logged in", which is the opposite advice.
+        (failure === null ? "" : `launchctl said: ${failure}. `) +
+        "Log that user in — a fast user switch is enough — and try again. Nothing was started.",
+      "session.launch",
+    );
+  }
+  if (session.kind !== "Aqua") {
+    throw new AfterEffectsError(
+      `uid ${uid} has a ${session.kind} session, not a graphical one, so there is no screen to recover. ` +
+        "The GUI fallback is not available for it. Nothing was started.",
+      "session.launch",
+    );
+  }
+  return session;
 }
 
 /** A finite number, or an array of finite numbers; the host checks the shape. */
@@ -201,11 +261,14 @@ function requireString(value: unknown, field: string): string {
 export class AfterEffects {
   readonly #session: Session;
   readonly #probe: ApplicationInfo;
+  /** Names the loaded host script declares; empty for the built-in host. */
+  readonly #extensionMethods: readonly string[];
   #closed = false;
 
-  constructor(session: Session, probe: ApplicationInfo) {
+  constructor(session: Session, probe: ApplicationInfo, extensionMethods: readonly string[] = []) {
     this.#session = session;
     this.#probe = probe;
+    this.#extensionMethods = extensionMethods;
   }
 
   /**
@@ -223,15 +286,78 @@ export class AfterEffects {
     const trace = new TraceRecorder({ file: join(sessionRoot, "trace.jsonl") });
     const transport =
       options.transport ??
-      new ScriptInvocationTransport(
-        options.installDir === undefined ? {} : { installDir: options.installDir },
-      );
+      new ScriptInvocationTransport({
+        ...(options.installDir === undefined ? {} : { installDir: options.installDir }),
+        ...(options.session === undefined ? {} : { sessionUid: options.session.uid }),
+      });
+
+    // The GUI fallback is only wired when the caller asks for it, and it only
+    // ever acts inside the session that owns the After Effects.
+    let recovery: MacHostRecovery | undefined;
+    if (options.session?.recover === true) {
+      // A caller-supplied transport that is not the script transport has no
+      // pid to look up, so the fallback would be silently absent from a
+      // session the caller asked to be recoverable. A requested safety
+      // behaviour that cannot be provided is refused, not dropped.
+      if (!(transport instanceof ScriptInvocationTransport)) {
+        throw new AfterEffectsError(
+          "session.recover needs the built-in script transport; the supplied transport cannot say which " +
+            "process to recover. Nothing was started.",
+          "session.launch",
+        );
+      }
+      const targetSession = requireSession(options.session.uid);
+      // The pid comes from the transport, which scopes processes by its own
+      // session uid. Pressing keys in a different session than the one the
+      // pid lives in would automate somebody else's screen.
+      if (transport.targetSession?.uid !== targetSession.uid) {
+        throw new AfterEffectsError(
+          `session.recover: uid ${targetSession.uid} is not the session the transport talks into ` +
+            `(${transport.targetSession?.uid ?? "unknown"}), so the fallback would act in another session. ` +
+            "Nothing was started.",
+          "session.launch",
+        );
+      }
+      recovery = new MacHostRecovery({
+        session: targetSession,
+        pid: () => transport.recoveryTargetPid(),
+        screenshotDir: join(sessionRoot, "artifacts"),
+      });
+    }
+
+    // A host script declares extension methods. It is read here, once: the
+    // names are what `call` checks against, and the driver stages a copy so
+    // the file cannot change under a running session.
+    const hostScript = options.hostScript === undefined ? null : resolve(options.hostScript);
+    let extensionMethods: readonly string[] = [];
+    if (hostScript !== null) {
+      let source: string;
+      try {
+        source = readFileSync(hostScript, "utf-8");
+      } catch {
+        throw new AfterEffectsError(`host script not found: ${hostScript}`, "session.launch");
+      }
+      const declared = readExtensionHeader(source);
+      if (declared === null) {
+        throw new AfterEffectsError(
+          `${hostScript} was not built by "ae-a8n extension build"; ` +
+            "its header names no extension contract, so nothing was started",
+          "session.launch",
+        );
+      }
+      extensionMethods = declared;
+    }
 
     const driver = new AeDriver({
       transport,
       sessionRoot,
       trace,
+      ...(hostScript === null ? {} : { hostScriptPath: hostScript }),
       ...(options.timeoutMs === undefined ? {} : { defaultTimeoutMs: options.timeoutMs }),
+      ...(recovery === undefined ? {} : { recovery }),
+      ...(options.recoveryGraceMs === undefined
+        ? {}
+        : { recoveryGraceMs: requireGrace(options.recoveryGraceMs) }),
     });
 
     // The session subscribes before the probe runs, so the live view and the
@@ -251,7 +377,7 @@ export class AfterEffects {
       requireOwned(session, "session.hostEnvironment");
       await session.call("session.hostEnvironment", "app.setEnvironment", { variables: environment });
     }
-    return new AfterEffects(session, probe);
+    return new AfterEffects(session, probe, extensionMethods);
   }
 
   /**
@@ -262,10 +388,63 @@ export class AfterEffects {
     return this.#probe;
   }
 
+  /**
+   * Calls an extension method declared by the loaded host script
+   * (`ae-a8n extension build`).
+   *
+   * The name is checked against what the script declares before anything is
+   * sent, so an unknown name is refused here rather than becoming an After
+   * Effects error. The call runs inside the session's ownership, timeout and
+   * trace, exactly like a built-in method.
+   */
+  async call<T = unknown>(
+    name: string,
+    params: Record<string, unknown> = {},
+    options: OperationOptions = {},
+  ): Promise<T> {
+    requireString(name, "name");
+    requireOwned(this.#session, "extension.call");
+    if (!this.#extensionMethods.includes(name)) {
+      throw new ExtensionMethodNotFoundError("extension.call", name, this.#extensionMethods);
+    }
+    return this.#session.call<T>("extension.call", name, params, options);
+  }
+
+  /** The extension method names the loaded host script declares. */
+  extensionMethods(): readonly string[] {
+    return this.#extensionMethods;
+  }
+
   /** Re-reads the host version, for a caller that wants a live value. */
   async version(): Promise<string> {
     const info = await this.#session.call<ApplicationInfo>("app.info", "app.info");
     return info.version;
+  }
+
+  /**
+   * Shows a native modal dialog in After Effects and waits for it to be
+   * closed.
+   *
+   * The dialog is the one thing an ExtendScript call cannot get out of on its
+   * own: the script stays blocked until the dialog is closed, so the call
+   * times out while the host is perfectly alive.
+   *
+   * With a session that has `recover` enabled, the timed-out call is
+   * followed by the GUI fallback, which closes the dialog *inside that
+   * session* and lets the original call finish. The request is never sent
+   * again — it is still running inside After Effects.
+   *
+   * The dialog's text always begins `ae-a8n:` (the host adds it when
+   * `message` does not), because that marker is how the fallback recognises
+   * the one dialog class it may press. A dialog without it would be
+   * classified unknown and left for a human.
+   */
+  async showModalDialog(message: string, options: OperationOptions = {}): Promise<void> {
+    // Validated here like every other public method: a JavaScript caller
+    // passing a non-string would otherwise be coerced by the host's
+    // `String(...)`, or fail deep inside After Effects.
+    const text = requireString(message, "message");
+    await this.#session.call("ui.alert", "ui.alert", { message: text }, options);
   }
 
   /**

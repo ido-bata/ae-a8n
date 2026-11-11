@@ -27,10 +27,12 @@ export {
   EntityNotFoundError,
   HostError,
   HostNotOwnedError,
+  HostQuarantinedError,
   HostUnavailableError,
   ParameterValueError,
   PropertyHasNoValueError,
   ProtocolError,
+  ScriptNotSentError,
   TimeoutError,
   UnsavedChangesError,
 } from "./api/errors.js";
@@ -75,4 +77,4 @@ export {
   type AfterEffectsInstall,
 } from "./driver/install-path.js";
 
-export const A8N_VERSION = "0.1.0-alpha.1";
+export { A8N_VERSION } from "./version.js";

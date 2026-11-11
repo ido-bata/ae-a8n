@@ -64,6 +64,7 @@ describe("main", () => {
     expect(rule(main, "required_status_checks")?.parameters?.["required_status_checks"]).toEqual([
       { context: "check", integration_id: rulesets.GITHUB_ACTIONS_APP_ID },
       { context: "release-tooling-windows", integration_id: rulesets.GITHUB_ACTIONS_APP_ID },
+      { context: "windows", integration_id: rulesets.GITHUB_ACTIONS_APP_ID },
     ]);
   });
 
@@ -142,6 +143,9 @@ describe("missingChecks", () => {
       { name: "check", app: { id: rulesets.GITHUB_ACTIONS_APP_ID } },
       { name: "release-tooling-windows", app: { id: 347564 } },
     ];
-    expect(rulesets.missingChecks(rulesets.REQUIRED_CHECKS, runs)).toEqual(["release-tooling-windows"]);
+    expect(rulesets.missingChecks(rulesets.REQUIRED_CHECKS, runs)).toEqual([
+      "release-tooling-windows",
+      "windows",
+    ]);
   });
 });

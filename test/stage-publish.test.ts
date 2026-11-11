@@ -127,21 +127,40 @@ describe("resolveNpmCli", () => {
     ).toThrow(/not an existing npm-cli\.js/);
   });
 
+  /** Source with comment lines dropped, so prose about `npm` does not count. */
+  const code = (file: string) =>
+    readFileSync(fileURLToPath(new URL(`../scripts/${file}`, import.meta.url)), "utf-8")
+      .split("\n")
+      .filter((line) => !/^\s*(\*|\/\/|\/\*)/.test(line))
+      .join("\n");
+
   it("is what stage-publish.js uses: no shell, no bare npm", () => {
-    const code = (file: string) =>
-      readFileSync(fileURLToPath(new URL(`../scripts/${file}`, import.meta.url)), "utf-8")
-        .split("\n")
-        .filter((line) => !/^\s*(\*|\/\/|\/\*)/.test(line))
-        .join("\n");
     for (const file of ["stage-publish.js", "npm-cli.js"]) {
       expect(code(file)).not.toMatch(/shell\s*:/);
       expect(code(file)).not.toMatch(/(spawnSync|spawn|execFile|execFileSync|exec)\(\s*["'`]npm/);
     }
     expect(code("stage-publish.js")).toContain("npmCommand()");
   });
+
+  it("is what the package checks use: no shell, no bare npm", () => {
+    // The Windows CI job failed here with `spawn npm ENOENT`: npm is npm.cmd
+    // there, and node will not start a .cmd without a shell. Both scripts pack
+    // and install, so both start npm the way stage-publish.js does.
+    for (const file of ["check-packed-package.js", "check-public-api.js"]) {
+      expect(code(file)).not.toMatch(/shell\s*:/);
+      // Neither a direct `execFileSync("npm", …)` nor the local `run("npm", …)`
+      // that it wrapped: the command has to come from the resolver.
+      expect(code(file)).not.toMatch(/(spawnSync|spawn|execFile|execFileSync|exec)\(\s*["'`]npm/);
+      expect(code(file)).not.toMatch(/["'`]npm["'`]\s*,/);
+      expect(code(file)).toContain("npmCommand()");
+    }
+  });
 });
 
-describe("staging with the real npm CLI", () => {
+// Windows spawns npm noticeably slower than Linux does, and a locked file in
+// %TEMP% refuses removal until the child's handles close. Both are real, and
+// both belong in the timeouts here rather than in a weaker assertion.
+describe("staging with the real npm CLI", { timeout: 30_000 }, () => {
   let dir: string;
   let pkg: string;
   let tarball: string;
@@ -258,7 +277,7 @@ describe("staging with the real npm CLI", () => {
 
   afterEach(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   it("uploads to the stage queue, tagged next, the exact verified tarball", async () => {

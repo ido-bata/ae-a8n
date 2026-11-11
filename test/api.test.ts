@@ -276,3 +276,50 @@ describe("a relative sessionRoot", () => {
     await ae.close();
   });
 });
+
+describe("the dialog the GUI fallback exists for", () => {
+  it("always carries the marker the fallback's one known class requires", async () => {
+    // `KNOWN_DIALOG_CLASSES` recognises `ui.alert` by its static text, which
+    // must begin "ae-a8n:". A dialog without the marker would be classified
+    // unknown, pressed not at all, and left blocking After Effects for a
+    // human — so the marker is put on where the dialog is raised.
+    const ae = await launch();
+    await ae.showModalDialog("close me");
+    await ae.showModalDialog("ae-a8n: already marked");
+    expect(transport.alerts).toEqual(["ae-a8n: close me", "ae-a8n: already marked"]);
+    await ae.close();
+  });
+
+  it("refuses a message that is not a string, before anything is sent", async () => {
+    const ae = await launch();
+    // A JavaScript caller can pass anything; the host would have coerced a
+    // number with String(...) and failed deep inside AE on undefined.
+    await expect(ae.showModalDialog(42 as unknown as string)).rejects.toThrow(TypeError);
+    expect(transport.alerts).toEqual([]);
+    await ae.close();
+  });
+});
+
+describe("a session that asked for the GUI fallback", () => {
+  it("refuses a transport that cannot say which process to recover", async () => {
+    // `recover` promises that a blocked call is followed by the fallback. A
+    // transport that is not the script transport has no pid to look up, so
+    // the fallback would be silently absent: refused here instead.
+    await expect(
+      AfterEffects.launch({
+        sessionRoot,
+        transport,
+        session: { uid: 501, recover: true },
+      }),
+    ).rejects.toThrow(/built-in script transport/);
+    expect(transport.alerts).toEqual([]);
+  });
+
+  it("refuses a recoveryGraceMs that is not a finite, non-negative number", async () => {
+    for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(
+        AfterEffects.launch({ sessionRoot, transport, recoveryGraceMs: bad }),
+      ).rejects.toThrow(/recoveryGraceMs must be a non-negative number/);
+    }
+  });
+});

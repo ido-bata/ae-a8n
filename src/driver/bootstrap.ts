@@ -15,8 +15,9 @@
  * carries its own string quoting.
  */
 
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Quotes a value as an ES3 string literal. `JSON.stringify` handles the common
@@ -117,6 +118,92 @@ export function writeBootstrapScript(options: {
   return options.entryPath;
 }
 
+/**
+ * The entry script After Effects is asked to run.
+ *
+ * The name is unique per call, and it has to be: AE reads the file when the
+ * script runs, which may be long after the caller stopped waiting for it. A
+ * script that is still running while the next call is issued would otherwise
+ * read the *next* request and run it twice.
+ *
+ * The folder is what a person approves, not the file: see
+ * {@link stageHostScript}.
+ */
 export function entryScriptPath(sessionRoot: string, id: string): string {
   return join(sessionRoot, "staging", `${id}.entry.jsx`);
+}
+
+/**
+ * Copies the host script, and the files next to it, into the session's
+ * staging folder.
+ *
+ * AE 2026 refuses to run a script whose location it has not been told to
+ * trust (observed on 26.5.0.89: `DoScriptFile` answers `-1708`, and AE shows
+ * a modal naming the line it refused). Whether AE asks for a folder or for
+ * each script, the answer should be the same every time, so the driver keeps
+ * every file it makes AE read inside one folder with stable names: the entry
+ * script, the host script and the codec the host loads next to it.
+ *
+ * The copy is byte-for-byte: the host script stays a static, versioned file
+ * that is shipped as `host/`, and the copy is only where AE is pointed.
+ *
+ * @returns the path of the staged host script.
+ */
+export function stageHostScript(stagingDir: string, hostScriptPath: string): string {
+  const sourceDir = dirname(hostScriptPath);
+  const hostName = basename(hostScriptPath);
+  // Into the staging folder itself, not a folder below it: the point is that
+  // everything AE is pointed at is in ONE folder, so that one approval of
+  // that folder covers the entry script and the host script together.
+  const targetDir = stagingDir;
+  mkdirSync(targetDir, { recursive: true });
+  // Only the host script is taken from its own directory. For a generated
+  // extension host that directory belongs to the consumer (`extension build
+  // --out` writes wherever they chose), and copying every file there would
+  // put unrelated files in the one folder AE is pointed at.
+  stageOneFile(join(sourceDir, hostName), join(targetDir, hostName));
+  // A generated extension host sits in the consumer's directory, but it is
+  // the shipped host script plus a prelude — it still includes the shipped
+  // `a8n-json.js` as a sibling (host/a8n-host.js loads it from its own
+  // directory). The shipped codec is staged unconditionally, so a stale
+  // consumer copy cannot be read by the current host.
+  const shippedDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "host");
+  for (const name of SHIPPED_SIBLINGS) {
+    if (shippedDir === sourceDir && name === hostName) {
+      continue;
+    }
+    const source = join(shippedDir, name);
+    if (!existsSync(source)) {
+      continue;
+    }
+    stageOneFile(source, join(targetDir, name));
+  }
+  const staged = join(targetDir, hostName);
+  if (!existsSync(staged)) {
+    throw new Error(`the host script was not staged: ${staged}`);
+  }
+  return staged;
+}
+
+/** The files the host loads from its own directory, besides itself. */
+const SHIPPED_SIBLINGS = ["a8n-json.js"] as const;
+
+/**
+ * Copies one file, refusing an entry whose target does not exist.
+ *
+ * A broken symlink in the source directory makes `statSync` throw a bare
+ * ENOENT, which surfaced from the driver's constructor with no context; the
+ * message here says which file and why nothing was staged.
+ */
+function stageOneFile(source: string, target: string): void {
+  let info;
+  try {
+    info = statSync(source);
+  } catch {
+    throw new Error(`cannot stage ${source}: the file it names does not exist`);
+  }
+  if (!info.isFile()) {
+    return;
+  }
+  copyFileSync(source, target);
 }
