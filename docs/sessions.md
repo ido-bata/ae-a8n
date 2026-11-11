@@ -26,6 +26,35 @@ run's After Effects from one the person started a moment later.
 Windows has no process check yet, so a Windows session is `unknown` and
 `close()` does not quit AE there. That is deliberate: no evidence, no quit.
 
+## A launch that fails after the process appeared
+
+On macOS the transport starts After Effects itself, then the readiness probe
+is sent as an Apple Event. That order has a state the ownership table does not
+cover: the process exists, and the probe never answered — a denied Apple Event
+(`-1743`), a host that is still starting, a modal dialog. The process is this
+session's doing, but it is **not** proven to be this session's to quit, and
+quitting on provenance alone would be exactly the guess the ownership rules
+exist to prevent.
+
+That failure is reported as `HostLeftRunningError` (`A8N-AE-005`), and it
+carries the launch identity the transport kept: the pid it spawned, the
+process start time `ps` first reported for it, the executable, whether the
+pid was still that process at the last listing, and the uid/user/asid of the
+session it was started into. Nothing is quit, killed or re-sent. If the
+process list could not be read, the pid is still reported and the start time
+is `null` — never guessed.
+
+(`AfterEffects.launch()` throws this as an `AfterEffectsError` with
+`code === "A8N-AE-005"` and the `HostLeftRunningError` as `cause`. The
+isolated `test` runner reports it as `unknown`, records the identity in the
+check's `evidence`, and quarantines the target so the next run does not treat
+the leftover as a fresh, unoccupied After Effects.)
+
+Recovery is a human's: find that pid in that session, quit After Effects, then
+clear the quarantine (`ae-a8n recover`) before running again. Repeating the
+probe from the same driver is refused — the same Apple Event that was denied
+would just be denied again.
+
 ## Unsaved changes
 
 Nothing discards unsaved changes without being told to.

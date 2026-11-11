@@ -26,6 +26,7 @@ export {
   AfterEffectsError,
   EntityNotFoundError,
   HostError,
+  HostLeftRunningError,
   HostNotOwnedError,
   HostQuarantinedError,
   HostUnavailableError,

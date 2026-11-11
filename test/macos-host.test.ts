@@ -477,6 +477,94 @@ describe("finding the host before it has answered", () => {
   });
 });
 
+describe("the host a failed launch left behind", () => {
+  // The readiness probe was denied (Apple Events -1743) after AE was started.
+  // The process is still running and cannot be quit — ownership was never
+  // proven — but the run must be able to say which process it left.
+  const executable = "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects";
+  const install = { executable, versionName: "Adobe After Effects 2026.app", renderExecutable: null };
+  const T0 = Date.parse("2026-10-15T00:00:00Z");
+  type P = { pid: number; startedAt: number; executable: string };
+  const ae = (pid: number, startedAt = T0 + 1_000, exe = executable): P => ({ pid, startedAt, executable: exe });
+
+  function transportLaunched(launchedPid: number | null, ...lists: Array<P[] | "throw">) {
+    let i = 0;
+    return new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      now: () => T0,
+      processes: () => {
+        const entry = lists[Math.min(i++, lists.length - 1)];
+        if (entry === "throw") {
+          throw new Error("ps failed: Operation not permitted");
+        }
+        return entry as P[];
+      },
+      launchMacHost: () => Promise.resolve(launchedPid === null ? undefined : launchedPid),
+    });
+  }
+
+  it("reports the process it started, with the start time the process list gave it", async () => {
+    const t = transportLaunched(42, [], [ae(42)]);
+    await t.launch();
+    expect(t.pendingLaunch()).toMatchObject({
+      pid: 42,
+      startedAt: T0 + 1_000,
+      executable,
+      presentAtLastLookup: true,
+    });
+    // The session is named as well, so a human knows where to look.
+    expect(t.pendingLaunch()?.session?.uid).toBe(
+      typeof process.getuid === "function" ? process.getuid() : -1,
+    );
+  });
+
+  it("keeps the pid but no guessed start time when the process list cannot be read", async () => {
+    const t = transportLaunched(42, [], "throw");
+    await t.launch();
+    expect(t.pendingLaunch()).toMatchObject({
+      pid: 42,
+      startedAt: null,
+      presentAtLastLookup: false,
+    });
+  });
+
+  it("reports the pinned start time, and no match, once the pid names a different process", async () => {
+    const t = transportLaunched(42, [], [ae(42)], [ae(42, T0 + 90_000)]);
+    await t.launch();
+    expect(t.pendingLaunch()?.startedAt).toBe(T0 + 1_000);
+
+    // pid 42 now belongs to a process that started much later: the AE this
+    // session started is gone, and the pin is what says so.
+    expect(t.pendingLaunch()).toMatchObject({
+      pid: 42,
+      startedAt: T0 + 1_000,
+      presentAtLastLookup: false,
+    });
+  });
+
+  it("reports nothing once the probe has proven ownership", async () => {
+    const t = transportLaunched(42, [], [ae(42)], [ae(42)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership().kind).toBe("owned");
+    expect(t.pendingLaunch()).toBeNull();
+  });
+
+  it("reports nothing for a host that was already running", async () => {
+    const t = transportLaunched(42, [ae(7, T0 - 60_000)]);
+    await t.launch();
+    // No process was started by this session, so there is none to report.
+    expect(t.pendingLaunch()).toBeNull();
+  });
+
+  it("reports nothing when the launch recorded no pid", async () => {
+    const t = transportLaunched(null, [], [ae(42)]);
+    await t.launch();
+    expect(t.pendingLaunch()).toBeNull();
+  });
+});
+
 describe("the process listing", () => {
   /**
    * Measured on 2026-11-03: `ps` formats `lstart` in the login user's locale,

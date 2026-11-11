@@ -31,7 +31,7 @@ import {
   startInSession,
   type MacSession,
 } from "./mac-session.js";
-import type { HostOwnership, HostTransport, InvokeOptions } from "./transport.js";
+import type { HostOwnership, HostTransport, InvokeOptions, PendingLaunch } from "./transport.js";
 import { ScriptNotSentError } from "./transport.js";
 
 export type ScriptInvocationOptions = {
@@ -561,6 +561,55 @@ export class ScriptInvocationTransport implements HostTransport {
     // different process on every later call too.
     this.#spawnedAt = match.startedAt;
     return match.pid;
+  }
+
+  /**
+   * The process this transport started but whose ownership the probe never
+   * proved, with the start time the process list first reported for its pid.
+   *
+   * This is what a failed launch leaves a human: the pid this transport
+   * itself spawned, not "an instance that appeared" — the same restriction
+   * `recoveryTargetPid` uses, and for the same reason. If the pid now names a
+   * process that started at another time, the one this session started is
+   * gone and the pinned start time says so. A list that cannot be read keeps
+   * the pid and leaves the start time unknown rather than guessing.
+   *
+   * It never proves ownership: `ownership()` stays "unknown" until the probe
+   * answers, so nothing here may be quit.
+   */
+  pendingLaunch(): PendingLaunch | null {
+    if (!this.#launched || this.#owned !== null || this.#spawnedPid === undefined) {
+      return null;
+    }
+    let match: HostProcess | undefined;
+    try {
+      const now = this.#hostProcesses();
+      match = now.find(
+        (p) =>
+          p.pid === this.#spawnedPid &&
+          (this.#spawnedAt === undefined || Math.abs(p.startedAt - this.#spawnedAt) <= 1_000),
+      );
+    } catch {
+      match = undefined;
+    }
+    if (match !== undefined && this.#spawnedAt === undefined) {
+      this.#spawnedAt = match.startedAt;
+    }
+    const session = this.#targetSession;
+    return {
+      pid: this.#spawnedPid,
+      startedAt: this.#spawnedAt ?? null,
+      executable: this.#install.executable,
+      presentAtLastLookup: match !== undefined,
+      session:
+        this.#platform === "darwin"
+          ? {
+              uid: this.#sessionUid,
+              user: session?.username ?? null,
+              asid: session?.asid ?? null,
+            }
+          : null,
+    };
   }
 
   /** The session this transport talks into, in words a human can check. */
