@@ -30,6 +30,8 @@ const MANIFEST: RunManifest = {
   payloadSha256: HASH,
   resultSha256: "b".repeat(64),
   outcome: "ok",
+  destinationProof: "marker",
+  ownershipProof: "unproven",
   startedAt: "2026-11-10T12:00:00.000Z",
   finishedAt: "2026-11-10T12:00:01.000Z",
 };
@@ -89,6 +91,9 @@ describe("the run manifest", () => {
       { ...MANIFEST, sessionId: "1" },
       { ...MANIFEST, payloadSha256: "nope" },
       { ...MANIFEST, aeVersion: "" },
+      { ...MANIFEST, destinationProof: "guessed" },
+      { ...MANIFEST, ownershipProof: "presumed" },
+      { ...MANIFEST, destinationProof: undefined },
       { ...MANIFEST, runId: "../escape" },
       { ...MANIFEST, startedAt: "yesterday" },
       { ...MANIFEST, host: "" },

@@ -8,7 +8,8 @@
  */
 
 import { diagnostic, type DiagnosticCheck } from "../../doctor/diagnostics.js";
-import type { AdapterProbe, Capabilities, TargetSpec } from "../contract.js";
+import type { AdapterProbe, TargetSpec } from "../contract.js";
+import { windowsCapabilities } from "./capabilities.js";
 
 export type CommandResult = {
   readonly stdout: string;
@@ -187,15 +188,10 @@ export const PROBE_COMMANDS = {
   targetUser: (user: string): ProbeCommand => ({ program: "net.exe", args: ["user", user] }),
 } as const;
 
-function capabilitySet(isolation: TargetSpec["isolation"]): Capabilities {
-  return {
-    nonInterference: isolation === "remote-host" ? "by-construction" : "unproven",
-    provesOwnership: true,
-    provesDestination: true,
-    guiRecovery: false,
-    sessionIdentity: "host-and-user",
-  };
+function capabilitySet(isolation: TargetSpec["isolation"]): ReturnType<typeof windowsCapabilities> {
+  return windowsCapabilities(isolation);
 }
+
 
 function describeProcesses(processes: readonly AeProcess[]): string {
   return processes.map((process) => `pid ${process.pid} (session ${process.sessionId ?? "?"})`).join(", ");

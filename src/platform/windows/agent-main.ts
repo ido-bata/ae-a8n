@@ -30,6 +30,8 @@ export type AgentMainDeps = {
   readonly pollMs?: number;
   readonly now?: () => Date;
   readonly maxAgeMs?: number;
+  /** The marker secret; injected in tests, `randomBytes` otherwise. */
+  readonly random?: (size: number) => Uint8Array;
   readonly signal?: AbortSignal;
   /** Diagnostics; defaults to `process.stderr`. */
   readonly stderr?: (text: string) => void;
@@ -252,6 +254,7 @@ export async function main(
           key,
           ...(deps.now === undefined ? {} : { now: deps.now }),
           ...(deps.maxAgeMs === undefined ? {} : { maxAgeMs: deps.maxAgeMs }),
+          ...(deps.random === undefined ? {} : { random: deps.random }),
         });
         if (outcome.state === "claim-unauthenticated") {
           quarantined.add(jobId);

@@ -7,6 +7,8 @@
  * for a timeout.
  */
 
+import { randomBytes } from "node:crypto";
+
 import {
   signClaim,
   signResult,
@@ -33,6 +35,7 @@ import {
   type Job,
   type JobResult,
 } from "./job.js";
+import { createSessionMarker, writeSessionMarker } from "./session-marker.js";
 
 export type JobExecution = {
   /** `unknown` means the executor could not tell what happened; never retry it. */
@@ -75,6 +78,8 @@ export type AgentRunOptions = {
   readonly key: JobKey;
   readonly now?: () => Date;
   readonly maxAgeMs?: number;
+  /** The marker secret; injected in tests, `randomBytes` otherwise. */
+  readonly random?: (size: number) => Uint8Array;
 };
 
 /** An agent in session 0 has no desktop, so it cannot run a GUI AE. */
@@ -309,6 +314,20 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
     const result = await refuse(channel, identity, jobId, sha256Hex(payload), startedAt, now, checked.detail, key);
     return { state: "refused", result };
   }
+
+  // Verified, not yet executed: bind this run to the marker before anything
+  // can act. A channel failure here aborts the job; the controller then has no
+  // marker and must not treat the destination as proven.
+  await writeSessionMarker(
+    channel,
+    createSessionMarker({
+      runId: job.runId,
+      jobId,
+      agent: identity,
+      now,
+      random: options.random ?? randomBytes,
+    }),
+  );
 
   let execution: JobExecution;
   try {

@@ -2,7 +2,8 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist/**", "coverage/**", "host/**"] },
+  // `test/fixtures/**` is a separate-process fixture, not part of the TS project.
+  { ignores: ["dist/**", "coverage/**", "host/**", "test/fixtures/**"] },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {

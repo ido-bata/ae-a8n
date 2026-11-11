@@ -40,6 +40,7 @@ function job(): Job {
     {
       schemaVersion: JOB_SCHEMA_VERSION,
       jobId: "20261110T120000Z-abcdef01",
+      runId: "20261110T120000Z-run00001",
       createdAt: NOW.toISOString(),
       payloadSha256: sha256Hex(PAYLOAD),
       payloadFile: "payload.json",
@@ -157,6 +158,7 @@ describe("job and result signatures", () => {
       {
         schemaVersion: JOB_SCHEMA_VERSION,
         jobId: "20261110T120000Z-abcdef01",
+        runId: "20261110T120000Z-run00001",
         createdAt: NOW.toISOString(),
         payloadSha256: sha256Hex(PAYLOAD),
         payloadFile: "payload.json",
