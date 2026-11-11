@@ -8,7 +8,15 @@
  * The rule behind all of them: a test must never reach the desktop the human
  * is looking at. A result is only believed when it says which session it came
  * from, and a job is only run when the session it names is the agent's own.
+ *
+ * The session facts the two dispatch paths read — the console's owner and
+ * asid, a launchd domain, offstage's report — live here too. They used to be
+ * copied per script and had already drifted (one `consoleAsid` checked the uid
+ * was an integer and the other did not), so a fact reported by one path could
+ * disagree with the same fact reported by the other.
  */
+import { execFileSync } from "node:child_process";
+import { chmodSync, mkdirSync, statSync } from "node:fs";
 
 /**
  * The target session must exist, belong to the target user, be graphical,
@@ -175,6 +183,151 @@ export function assertJobSession(job, session) {
 }
 
 /**
+ * Makes a shared directory usable by both accounts, or refuses.
+ *
+ * The directory is created 1777 (and the umask is applied to that mode, so
+ * the chmod is still needed). If it already exists and belongs to the other
+ * account, `chmod` fails with EPERM — which is not an error when that account
+ * already made it writable-and-sticky for everyone, and is a refusal when it
+ * did not. The order the two accounts start in is not fixed, so both have to
+ * accept a directory the other one created.
+ */
+export function ensureSharedDir(dir, what) {
+  mkdirSync(dir, { recursive: true, mode: 0o1777 });
+  if (sharedDirIsUsable(statSync(dir).mode)) {
+    return;
+  }
+  try {
+    chmodSync(dir, 0o1777);
+  } catch (error) {
+    if (error?.code !== "EPERM") {
+      throw error;
+    }
+    if (!sharedDirIsUsableForOthers(statSync(dir).mode)) {
+      throw new Error(
+        `the shared directory ${dir} belongs to another account and is not writable-and-sticky for others, ` +
+          `so the ${what} could not be written there safely. Nothing was run.`,
+      );
+    }
+  }
+}
+
+/**
+ * The uid of the account that owns the console, or -1 when it cannot be read.
+ *
+ * -1 is the "unknown" answer, never "somebody else": the checks treat it as a
+ * refusal, not as permission.
+ */
+export function consoleUid() {
+  try {
+    return Number(
+      execFileSync("stat", ["-f", "%u", "/dev/console"], {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim(),
+    );
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * Why `launchctl print gui/<uid>` failed, or null when it did not.
+ *
+ * The controller's error message carries launchctl's own words, because "the
+ * account has no session" and "this controller may not read that domain" are
+ * very different facts and the operator needs to know which one applies.
+ */
+export function guiDomainError(uid) {
+  try {
+    execFileSync("launchctl", ["print", `gui/${uid}`], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return null;
+  } catch (error) {
+    const text = error?.stderr;
+    return (typeof text === "string" && text.trim().length > 0 ? text : String(error?.message ?? error)).trim();
+  }
+}
+
+/**
+ * The session of a uid, read from its launchd domain.
+ *
+ * This only answers for a controller inside that domain (or root): from the
+ * console, another user's domain is refused. Null means the document could
+ * not be read at all.
+ */
+export function readGuiSession(uid) {
+  try {
+    const text = execFileSync("launchctl", ["print", `gui/${uid}`], {
+      encoding: "utf-8",
+      // Captured, not inherited: from the console this call is refused, and
+      // launchctl's complaint belongs in our error message, not on the
+      // user's terminal.
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const asid = /\b(?:gui )?asid = (\d+)/.exec(text);
+    const kind = /^\s*session = (\w+)\s*$/m.exec(text);
+    return {
+      uid,
+      username: execFileSync("id", ["-un", String(uid)], { encoding: "utf-8" }).trim(),
+      asid: asid === null ? null : Number(asid[1]),
+      kind: kind === null ? "none" : kind[1],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The session id of a launchd domain, or null.
+ *
+ * Every caller gets the same guard: a uid that is not a non-negative integer
+ * (`NaN` from a failed parse included) is not looked up at all.
+ */
+export function consoleAsid(uid) {
+  if (!Number.isInteger(uid) || uid < 0) {
+    return null;
+  }
+  try {
+    const text = execFileSync("launchctl", ["print", `gui/${uid}`], {
+      encoding: "utf-8",
+      timeout: 10_000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const asid = /asid = (\d+)/.exec(text);
+    return asid === null ? null : Number(asid[1]);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * offstage's report on a user's session, parsed, or null.
+ *
+ * offstage is the only channel that can answer from outside the target
+ * session; null means "no answer", not "no session".
+ */
+export function readOffstageStatus(username) {
+  try {
+    const text = execFileSync("offstage", ["session", "status", "--user", username, "--json"], {
+      encoding: "utf-8",
+      timeout: 30_000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start < 0 || end < 0) {
+      return null;
+    }
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The target session, as offstage reports it.
  *
  * The controller usually runs in the console session, and from there
@@ -205,7 +358,11 @@ export function sessionFromOffstageStatus(status) {
   return {
     uid: status.uid,
     username: status.user,
-    asid: gui?.sessionId ?? null,
+    // offstage's session number is not launchd's asid (docs/offstage-macos.md
+    // §10.12: measured 258 against 109086), so it is not carried as one — by
+    // any caller, not only targetSessionFrom. A number in the wrong id space
+    // would either refuse an isolated run or pass an equality nobody measured.
+    asid: null,
     kind: gui?.exists === true && gui?.loginDone === true ? "Aqua" : "none",
   };
 }
@@ -219,7 +376,8 @@ export function sessionFromOffstageStatus(status) {
  * offstage, not about whether the account has a GUI session.
  *
  * offstage's session number is not launchd's asid (see §10.12 of
- * docs/offstage-macos.md), so it is not carried as one.
+ * docs/offstage-macos.md), so it is not carried as one: `sessionFromOffstageStatus`
+ * already reports `asid: null` for every caller, and nothing is patched here.
  */
 export function targetSessionFrom(offstageStatus, localSession) {
   let fromOffstage = null;
@@ -229,7 +387,7 @@ export function targetSessionFrom(offstageStatus, localSession) {
     fromOffstage = null;
   }
   if (fromOffstage !== null) {
-    return { ...fromOffstage, asid: null };
+    return fromOffstage;
   }
   return localSession;
 }
@@ -324,10 +482,13 @@ export function parseTerminalResult(text) {
   return {
     // A file the controller has just seen is not necessarily a whole file:
     // the job publishes it by rename, but a reader can still catch an older
-    // direct write. `complete` is false until every field is there, so a
-    // half-written result is waited for instead of being read as uid -1 or
-    // exit 1.
-    complete: uidText.trim().length > 0 && exitText.trim().length > 0,
+    // direct write. `complete` is false until every field the session checks
+    // rely on is there — `onconsole` included, whose absence would otherwise
+    // be read as "not on the console" — so a half-written or malformed result
+    // is waited for instead of being read as uid -1, exit 1, or as proof that
+    // the job stayed off the human's desktop.
+    complete:
+      uidText.trim().length > 0 && exitText.trim().length > 0 && onConsole !== undefined,
     uid: Number.isInteger(uid) ? uid : -1,
     username: fields.get("username") ?? "unknown",
     asid: asidText.trim().length > 0 && Number.isInteger(asid) ? asid : null,

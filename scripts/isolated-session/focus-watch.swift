@@ -155,5 +155,10 @@ while true {
         : (KeyWatch.shared.gaps == 0 ? "keys=watched" : "keys=gapped(\(KeyWatch.shared.gaps))")
     print(String(format: "%.3f|%@|%d|%d,%d|%@|%d|%d", Date().timeIntervalSince1970, name, pid, Int(location.x), Int(location.y), watching, keys, synthetic))
     fflush(stdout)
-    Thread.sleep(forTimeInterval: interval)
+    // Sleep by running this thread's run loop, not by blocking the thread:
+    // the key tap's CFRunLoopSource is attached to this loop, and a
+    // Thread.sleep never services it. Blocking would leave `started` true
+    // while no callback ever runs — `keys=watched` with zero counts, the false
+    // "quiet zero" this tool must not produce.
+    RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: interval))
 }

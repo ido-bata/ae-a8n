@@ -390,6 +390,11 @@ export class AfterEffects {
    * followed by the GUI fallback, which closes the dialog *inside that
    * session* and lets the original call finish. The request is never sent
    * again — it is still running inside After Effects.
+   *
+   * The dialog's text always begins `ae-a8n:` (the host adds it when
+   * `message` does not), because that marker is how the fallback recognises
+   * the one dialog class it may press. A dialog without it would be
+   * classified unknown and left for a human.
    */
   async showModalDialog(message: string, options: OperationOptions = {}): Promise<void> {
     await this.#session.call("ui.alert", "ui.alert", { message }, options);

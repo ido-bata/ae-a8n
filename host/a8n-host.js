@@ -421,8 +421,13 @@
    */
   methods["ui.alert"] = function (params) {
     var message = String(requireParam(params, "message"));
-    alert(message);
-    return { dismissed: true, message: message };
+    // The GUI fallback may only press a window it has measured. Its one known
+    // class requires a static text beginning "ae-a8n:", so the marker is put
+    // on here, whatever the caller passed: a dialog this method raises has to
+    // be closable by the fallback it exists for.
+    var text = /^\s*ae-a8n:/.test(message) ? message : "ae-a8n: " + message;
+    alert(text);
+    return { dismissed: true, message: text };
   };
 
   methods["app.quit"] = function (params) {

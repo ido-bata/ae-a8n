@@ -276,3 +276,17 @@ describe("a relative sessionRoot", () => {
     await ae.close();
   });
 });
+
+describe("the dialog the GUI fallback exists for", () => {
+  it("always carries the marker the fallback's one known class requires", async () => {
+    // `KNOWN_DIALOG_CLASSES` recognises `ui.alert` by its static text, which
+    // must begin "ae-a8n:". A dialog without the marker would be classified
+    // unknown, pressed not at all, and left blocking After Effects for a
+    // human — so the marker is put on where the dialog is raised.
+    const ae = await launch();
+    await ae.showModalDialog("close me");
+    await ae.showModalDialog("ae-a8n: already marked");
+    expect(transport.alerts).toEqual(["ae-a8n: close me", "ae-a8n: already marked"]);
+    await ae.close();
+  });
+});

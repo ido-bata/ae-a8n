@@ -19,21 +19,24 @@
  * Result:     <root>/results/<id>.result.json
  * Log:        <root>/logs/<id>.log
  */
-import { readdir, readFile, writeFile, mkdir, appendFile, chmod, lstat, rename, rm, stat } from "node:fs/promises";
+import { readdir, readFile, writeFile, appendFile, lstat, rename, rm } from "node:fs/promises";
 import { execFile, execFileSync as syncExecFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
-import {
-  assertJobSession,
-  jobFileIsTrusted,
-  sharedDirIsUsable,
-  sharedDirIsUsableForOthers,
-} from "./session-rules.mjs";
+import { assertJobSession, consoleUid, ensureSharedDir, jobFileIsTrusted } from "./session-rules.mjs";
 
 const DEFAULT_ROOT = "/Users/Shared/ae-a8n";
 const POLL_MS = 500;
+/** The exit status `timeout(1)` uses, so a killed job is not read as exit 1. */
+const TIMEOUT_EXIT_CODE = 124;
+/**
+ * How long a job that ignored SIGTERM gets before it is killed outright.
+ * Without it, a child that never exits (an After Effects blocked on a dialog)
+ * would keep the agent's single poll loop stuck forever.
+ */
+const KILL_GRACE_MS = 5_000;
 
 function parseArgs(argv) {
   let root = DEFAULT_ROOT;
@@ -67,23 +70,14 @@ function readSession() {
   }
 }
 
-/** The user who owns the console right now. */
-function readConsoleUid() {
-  try {
-    return Number(syncExecFileSync("stat", ["-f", "%u", "/dev/console"], { encoding: "utf-8" }).trim());
-  } catch {
-    return -1;
-  }
-}
-
 async function main() {
   const { root, allowUid } = parseArgs(process.argv.slice(2));
   const jobs = join(root, "jobs");
   const results = join(root, "results");
   const logs = join(root, "logs");
   const session = readSession();
-  const consoleUid = readConsoleUid();
-  if (session.uid === consoleUid) {
+  const consoleUidNow = consoleUid();
+  if (session.uid === consoleUidNow) {
     // Running jobs here would run them on the screen the human is looking
     // at. That is the one thing this agent exists to avoid, so it refuses
     // rather than warn: measured 2026-11-03, an agent left running in the
@@ -99,7 +93,7 @@ async function main() {
   // console user, unless one is named). The jobs directory is world-writable
   // so the other account can write there; without this check any local
   // process could have code run as the test user.
-  const trustedUid = Number.isInteger(allowUid) ? allowUid : consoleUid;
+  const trustedUid = Number.isInteger(allowUid) ? allowUid : consoleUidNow;
   if (!Number.isInteger(trustedUid) || trustedUid < 0) {
     process.stderr.write(
       "[ae-a8n session agent] refusing to start: the controlling uid could not be determined " +
@@ -110,15 +104,19 @@ async function main() {
   }
   // Only now, having refused every reason to not run at all, touch the
   // shared directories.
-  for (const dir of [jobs, results, logs]) {
-    await ensureSharedDir(dir);
+  for (const [dir, what] of [
+    [jobs, "job"],
+    [results, "result"],
+    [logs, "log"],
+  ]) {
+    ensureSharedDir(dir, what);
   }
   const banner = {
     startedAt: new Date().toISOString(),
     session,
-    consoleUid,
+    consoleUid: consoleUidNow,
     trustedUid,
-    isolated: session.uid !== consoleUid,
+    isolated: session.uid !== consoleUidNow,
   };
   // Diagnostic only: no job depends on it. A file the other account left
   // behind in the sticky results directory cannot be replaced from here
@@ -134,7 +132,7 @@ async function main() {
   }
   process.stdout.write(
     `[ae-a8n session agent] uid ${session.uid} (${session.username}), session ${session.kind} asid ${session.asid}, ` +
-      `console uid ${consoleUid}, accepting jobs from uid ${trustedUid}. Waiting for jobs in ${jobs}\n`,
+      `console uid ${consoleUidNow}, accepting jobs from uid ${trustedUid}. Waiting for jobs in ${jobs}\n`,
   );
 
   // Files that were looked at and refused. Without this, a foreign file in the
@@ -168,62 +166,63 @@ async function main() {
         );
         continue;
       }
-      let job;
       try {
-        job = JSON.parse(await readFile(jobPath, "utf-8"));
+        await handleJob({ id, jobPath, resultPath, logs, session });
       } catch (error) {
-        await writeResult(resultPath, {
-          id,
-          ok: false,
-          error: `the job file could not be read: ${error instanceof Error ? error.message : String(error)}`,
-          session,
-          startedAt: new Date().toISOString(),
-        });
-        continue;
+        // Publishing the result can fail (a foreign file at the result path in
+        // the sticky directory, a full disk). The command itself may already
+        // have run, so the id is recorded: re-running it on the next poll
+        // would run it twice. The agent stays alive for later jobs; this one's
+        // controller times out.
+        ignored.add(entry);
+        process.stderr.write(
+          `[ae-a8n session agent] could not publish a result for ${id}: ${
+            error instanceof Error ? error.message : String(error)
+          }. The job is not re-run; the controller will time out.\n`,
+        );
       }
-      try {
-        assertJobSession(job, session);
-        if (job?.id !== id) {
-          throw new Error(`the job file says id ${job?.id}, not ${id}; it was not run.`);
-        }
-      } catch (error) {
-        await writeResult(resultPath, {
-          id,
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-          session,
-          startedAt: new Date().toISOString(),
-        });
-        continue;
-      }
-      await runJob({ id, job, resultPath, logs, session });
     }
     await new Promise((done) => setTimeout(done, POLL_MS));
   }
 }
 
 /**
- * The same rule as dispatch.mjs: the two accounts can start in either order,
- * and only a directory's owner can `chmod` it.
+ * Reads, checks and runs one job, and publishes its result.
+ *
+ * Throws when the result could not be published — the caller keeps the agent
+ * alive and remembers the id. It never throws for a job that was refused:
+ * that refusal *is* a result, and the controller is entitled to read it.
  */
-async function ensureSharedDir(dir) {
-  await mkdir(dir, { recursive: true, mode: 0o1777 });
-  if (sharedDirIsUsable((await stat(dir)).mode)) {
+async function handleJob({ id, jobPath, resultPath, logs, session }) {
+  let job;
+  try {
+    job = JSON.parse(await readFile(jobPath, "utf-8"));
+  } catch (error) {
+    await writeResult(resultPath, {
+      id,
+      ok: false,
+      error: `the job file could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      session,
+      startedAt: new Date().toISOString(),
+    });
     return;
   }
   try {
-    await chmod(dir, 0o1777);
+    assertJobSession(job, session);
+    if (job?.id !== id) {
+      throw new Error(`the job file says id ${job?.id}, not ${id}; it was not run.`);
+    }
   } catch (error) {
-    if (error?.code !== "EPERM") {
-      throw error;
-    }
-    if (!sharedDirIsUsableForOthers((await stat(dir)).mode)) {
-      throw new Error(
-        `the shared directory ${dir} belongs to another account and is not writable-and-sticky for others, ` +
-          "so results could not be written there safely. No job is run.",
-      );
-    }
+    await writeResult(resultPath, {
+      id,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      session,
+      startedAt: new Date().toISOString(),
+    });
+    return;
   }
+  await runJob({ id, job, resultPath, logs, session });
 }
 
 async function writeResult(path, payload) {
@@ -255,8 +254,36 @@ async function isTrustedJob(path, trustedUid) {
 
 /** Whether this account owns the console — including when that is unknowable. */
 function consoleIsOwn(uid) {
-  const consoleUid = readConsoleUid();
-  return !Number.isInteger(consoleUid) || consoleUid < 0 || consoleUid === uid;
+  const consoleUidNow = consoleUid();
+  return !Number.isInteger(consoleUidNow) || consoleUidNow < 0 || consoleUidNow === uid;
+}
+
+/**
+ * Appends to a job's log without ever taking the agent down.
+ *
+ * A log is diagnostic: losing it must not lose the job. An un-awaited
+ * `appendFile` that rejects (EACCES, a full disk) would be an unhandled
+ * rejection, which Node turns into a process exit — stopping every later job
+ * too, mid-run.
+ */
+function appendLog(logPath, id, chunk) {
+  appendFile(logPath, chunk).catch((error) => {
+    process.stderr.write(
+      `[ae-a8n session agent] the log for ${id} could not be written: ${
+        error instanceof Error ? error.message : String(error)
+      }. The job continues.\n`,
+    );
+  });
+}
+
+/** The deadline the controller gave this job, or undefined for none. */
+function jobTimeoutMs(job) {
+  const value = job?.timeoutMs;
+  // A payload written before the controller sent a deadline has no field, and
+  // keeps the old no-timeout behaviour. Anything else that is not a positive
+  // integer is not a deadline: it is not turned into "never" silently, the
+  // refusal is that no deadline applies.
+  return Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
 async function runJob({ id, job, resultPath, logs, session }) {
@@ -284,28 +311,54 @@ async function runJob({ id, job, resultPath, logs, session }) {
     return;
   }
   const cwd = typeof job.cwd === "string" ? job.cwd : process.cwd();
-  await appendFile(logPath, `--- ${startedAt} ${command.join(" ")}\n`);
+  appendLog(logPath, id, `--- ${startedAt} ${command.join(" ")}\n`);
+  const timeoutMs = jobTimeoutMs(job);
+  let killedForTimeout = false;
   const outcome = await new Promise((done) => {
     const child = execFile(
       command[0],
       command.slice(1),
-      { cwd, env: { ...process.env, ...(job.env ?? {}) }, maxBuffer: 64 * 1024 * 1024 },
+      {
+        cwd,
+        env: { ...process.env, ...(job.env ?? {}) },
+        maxBuffer: 64 * 1024 * 1024,
+        // The controller's --timeout bounds its own poll; without passing it
+        // on, a child that never returns (After Effects blocked on a dialog)
+        // would own the agent's only poll loop forever, and would keep After
+        // Effects open for every later run's preflight.
+        ...(timeoutMs === undefined ? {} : { timeout: timeoutMs, killSignal: "SIGTERM" }),
+      },
       (error, stdout, stderr) => {
         done({ error, stdout, stderr });
       },
     );
+    if (timeoutMs !== undefined) {
+      // `timeout` sends killSignal once. A child that ignores SIGTERM would
+      // then never exit, so the callback above would never run and the loop
+      // would still be stuck: escalate to SIGKILL, which cannot be ignored.
+      const escalate = setTimeout(() => {
+        killedForTimeout = true;
+        child.kill("SIGKILL");
+      }, timeoutMs + KILL_GRACE_MS);
+      child.once("exit", () => clearTimeout(escalate));
+    }
     child.stdout?.on("data", (chunk) => {
-      void appendFile(logPath, chunk);
+      appendLog(logPath, id, chunk);
     });
     child.stderr?.on("data", (chunk) => {
-      void appendFile(logPath, chunk);
+      appendLog(logPath, id, chunk);
     });
   });
+  const failed = outcome.error !== null && outcome.error !== undefined;
+  const timedOut = failed && (outcome.error.killed === true || outcome.error.code === "ETIMEDOUT" || killedForTimeout);
   await writeResult(resultPath, {
     id,
-    ok: outcome.error === null || outcome.error === undefined,
-    exitCode: typeof outcome.error?.code === "number" ? outcome.error.code : outcome.error === null || outcome.error === undefined ? 0 : 1,
-    error: outcome.error === null || outcome.error === undefined ? undefined : String(outcome.error.message ?? outcome.error),
+    ok: !failed,
+    // A killed job has no exit status of its own; 124 is `timeout(1)`'s, so a
+    // timeout cannot be read as the child's ordinary exit 1.
+    exitCode: timedOut ? TIMEOUT_EXIT_CODE : typeof outcome.error?.code === "number" ? outcome.error.code : failed ? 1 : 0,
+    ...(timedOut ? { timedOut: true } : {}),
+    error: failed ? String(outcome.error.message ?? outcome.error) : undefined,
     stdout: outcome.stdout ?? "",
     stderr: outcome.stderr ?? "",
     session,

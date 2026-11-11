@@ -39,6 +39,14 @@ export class FakeAfterEffectsTransport implements HostTransport {
   ownershipKind: HostOwnership["kind"] = "owned";
   /** The engine's `$.global`: persists across scripts, as in a real After Effects. */
   #engineGlobal: Record<string, unknown> = {};
+  /**
+   * Every message the host passed to `alert()`, in order.
+   *
+   * The fake cannot block the way a modal dialog does; it records what the
+   * host asked to show, so a test can assert on the text the fallback would
+   * have to classify.
+   */
+  readonly alerts: string[] = [];
   #launched = false;
   #closed = false;
   #nextComp: FakeComp = createDefaultComp();
@@ -65,6 +73,7 @@ export class FakeAfterEffectsTransport implements HostTransport {
     const outcome = runHostScript(entryScriptPath, globals, {
       environment: this.app.environment,
       engineGlobal: this.#engineGlobal,
+      onAlert: (message) => this.alerts.push(message),
       ...(this.foreignJson === undefined ? {} : { foreignJson: this.foreignJson }),
     });
     if (!outcome.success) {

@@ -15,7 +15,7 @@
  * The other session has to exist because that user logged in.
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,13 +23,26 @@ import {
   assertOutcomeSession,
   assertResultSession,
   assertTargetSession,
-  sharedDirIsUsable,
-  sharedDirIsUsableForOthers,
+  consoleAsid,
+  ensureSharedDir,
+  consoleUid,
+  guiDomainError,
+  readGuiSession,
+  readOffstageStatus,
   targetSessionFrom,
 } from "./session-rules.mjs";
 import { randomUUID } from "node:crypto";
 
 const DEFAULT_ROOT = "/Users/Shared/ae-a8n";
+/**
+ * How much of the controller's `--timeout` the job does not get.
+ *
+ * The agent stops the job and then publishes the result; the controller
+ * keeps polling until its own deadline. If both deadlines were the same, the
+ * controller could give up on a job that had just ended, reporting "no
+ * result was produced" for a run that produced one.
+ */
+const AGENT_STOP_MARGIN_MS = 15_000;
 
 export function parseArgs(argv) {
   let root = DEFAULT_ROOT;
@@ -60,7 +73,14 @@ export function parseArgs(argv) {
       continue;
     }
     if (arg === "--timeout") {
-      timeoutMs = Number(argv[index + 1]);
+      const raw = argv[index + 1];
+      const value = raw === undefined ? Number.NaN : Number(raw);
+      if (!Number.isFinite(value) || value <= 0) {
+        // NaN reaches the deadline arithmetic and turns it into "never", which
+        // is the one value this flag must not silently mean.
+        throw new Error(`--timeout needs a positive number of milliseconds, not ${String(raw)}`);
+      }
+      timeoutMs = value;
       index += 1;
       continue;
     }
@@ -72,48 +92,6 @@ export function parseArgs(argv) {
   return { root: resolve(root), uid, cwd, timeoutMs, command };
 }
 
-/** The login session of a uid, or null when that user is not logged in. */
-export function readGuiSession(uid) {
-  try {
-    const text = execFileSync("launchctl", ["print", `gui/${uid}`], {
-      encoding: "utf-8",
-      // Captured, not inherited: from the console this call is refused, and
-      // launchctl's complaint belongs in our error message, not on the
-      // user's terminal.
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const asid = /\b(?:gui )?asid = (\d+)/.exec(text);
-    const kind = /^\s*session = (\w+)\s*$/m.exec(text);
-    return {
-      uid,
-      username: execFileSync("id", ["-un", String(uid)], { encoding: "utf-8" }).trim(),
-      asid: asid === null ? null : Number(asid[1]),
-      kind: kind === null ? "none" : kind[1],
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function consoleUid() {
-  try {
-    return Number(execFileSync("stat", ["-f", "%u", "/dev/console"], { encoding: "utf-8" }).trim());
-  } catch {
-    return -1;
-  }
-}
-
-/** Why `launchctl print gui/<uid>` failed, or null when it did not. */
-export function guiDomainError(uid) {
-  try {
-    execFileSync("launchctl", ["print", `gui/${uid}`], { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] });
-    return null;
-  } catch (error) {
-    const text = error?.stderr;
-    return (typeof text === "string" && text.trim().length > 0 ? text : String(error?.message ?? error)).trim();
-  }
-}
-
 /** The account name of a uid, or null. */
 function usernameOf(uid) {
   try {
@@ -121,25 +99,6 @@ function usernameOf(uid) {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
     }).trim();
-  } catch {
-    return null;
-  }
-}
-
-/** offstage's report of an account's session, or null when it cannot be had. */
-export function readOffstageStatus(username) {
-  try {
-    const text = execFileSync("offstage", ["session", "status", "--user", username, "--json"], {
-      encoding: "utf-8",
-      timeout: 30_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start < 0 || end < 0) {
-      return null;
-    }
-    return JSON.parse(text.slice(start, end + 1));
   } catch {
     return null;
   }
@@ -163,24 +122,6 @@ export function readTargetSession(uid) {
   const username = usernameOf(uid);
   const status = username === null ? null : readOffstageStatus(username);
   return targetSessionFrom(status, readGuiSession(uid));
-}
-
-/** The console session's id, read from the console owner's launchd domain. */
-export function consoleAsid(uid) {
-  if (!Number.isInteger(uid) || uid < 0) {
-    return null;
-  }
-  try {
-    const text = execFileSync("launchctl", ["print", `gui/${uid}`], {
-      encoding: "utf-8",
-      timeout: 10_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const asid = /asid = (\d+)/.exec(text);
-    return asid === null ? null : Number(asid[1]);
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -210,38 +151,6 @@ export function assertTrustedResult(path, targetUid) {
   }
 }
 
-/**
- * Makes a directory both accounts can use, whichever of them creates it.
- *
- * `mkdir` applies the umask, so the mode it is given comes out as 0755. The
- * directory then has to be `chmod`ed — but only its owner can do that, and
- * the other account may have created it (the agent and the controller can
- * start in either order). A directory that is already usable is left alone;
- * one that is not and cannot be fixed is a refusal, not a guess.
- */
-function ensureSharedDir(dir) {
-  mkdirSync(dir, { recursive: true, mode: 0o1777 });
-  if (sharedDirIsUsable(statSync(dir).mode)) {
-    return;
-  }
-  try {
-    chmodSync(dir, 0o1777);
-  } catch (error) {
-    if (error?.code !== "EPERM") {
-      throw error;
-    }
-    // Owned by the other account, so it cannot be fixed from here. It is
-    // usable only if that account already made it writable by everyone *and*
-    // sticky, so the other account cannot delete or replace files that are not
-    // its own; the attribution checks then decide what may be read from it.
-    if (!sharedDirIsUsableForOthers(statSync(dir).mode)) {
-      throw new Error(
-        `the shared directory ${dir} belongs to another account and is not writable-and-sticky for others, ` +
-          "so the job could not be written there safely. Nothing was run.",
-      );
-    }
-  }
-}
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -267,7 +176,7 @@ function main() {
   const jobs = join(options.root, "jobs");
   const results = join(options.root, "results");
   for (const dir of [jobs, results]) {
-    ensureSharedDir(dir);
+    ensureSharedDir(dir, "job");
   }
   const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
   const jobPath = join(jobs, `${id}.job.json`);
@@ -278,6 +187,12 @@ function main() {
   // group/other write bits would let another local process replace the
   // payload between the write and the agent's read.
   const temporary = `${jobPath}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
+  // The deadline travels with the job: the agent runs the command inside the
+  // target session, where a hung child would otherwise own its only poll loop
+  // and keep After Effects open for every later run. Shorter than the
+  // controller's own wait, so the agent's timeout result is published before
+  // the controller stops looking for one.
+  const timeoutMs = Math.max(1_000, options.timeoutMs - AGENT_STOP_MARGIN_MS);
   try {
     writeFileSync(
       temporary,
@@ -286,6 +201,7 @@ function main() {
           id,
           command: options.command,
           ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+          timeoutMs,
           session: { uid: options.uid, asid: session.asid },
         },
         null,
@@ -312,6 +228,15 @@ function main() {
     if (existsSync(resultPath)) {
       assertTrustedResult(resultPath, options.uid);
       const result = JSON.parse(readFileSync(resultPath, "utf-8"));
+      // The path is not the identity: a local process can hardlink a stale
+      // result (from an earlier run, or another job) to this id's path, and it
+      // would pass the file, owner and mode checks while describing a
+      // different job. The agent already binds its own payload this way.
+      if (result?.id !== id) {
+        throw new Error(
+          `the result ${resultPath} says id ${String(result?.id)}, not ${id}; it is not trusted.`,
+        );
+      }
       rmSync(jobPath, { force: true });
       assertResultSession(result, options.uid);
       // The console may have moved while the job ran (a fast user switch is
@@ -328,13 +253,19 @@ function main() {
         { uid: options.uid },
         { uid: consoleNow, asid: consoleAsid(consoleNow) },
       );
-      if (result.ok === false || result.exitCode === undefined) {
-        // A refused job is written with `ok: false` and no exit code. Reading
-        // that as exit 0 would report the defense as a successful run.
+      // Collected. The file is target-owned and the directory is sticky, but
+      // leaving it would only give a later run more material to hardlink.
+      rmSync(resultPath, { force: true });
+      // Only a genuine agent refusal omits the exit code. A failing command
+      // also arrives with `ok: false`, but carries the child's numeric exit
+      // status — reading that as "the job was refused" mislabels an ordinary
+      // test failure as a security decision, and returns before the e2e's own
+      // step log (on stdout) is echoed.
+      if (result.exitCode === undefined) {
         if (typeof result.error === "string" && result.error.length > 0) {
           process.stderr.write(`[ae-a8n dispatch] the job was refused: ${result.error}\n`);
         }
-        process.exitCode = typeof result.exitCode === "number" ? result.exitCode : 1;
+        process.exitCode = 1;
         return;
       }
       process.stderr.write(

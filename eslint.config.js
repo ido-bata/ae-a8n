@@ -25,13 +25,16 @@ export default tseslint.config(
   },
   {
     // The plain-JavaScript runner scripts are not part of the TypeScript
-    // project, so the type-aware rules cannot run on them.
-    files: ["scripts/**/*.mjs", "test/**/*.mjs"],
+    // project, so the type-aware rules cannot run on them. `.js` is included
+    // because those scripts are equally outside the TS project.
+    files: ["scripts/**/*.{js,mjs}", "test/**/*.mjs"],
     rules: tseslint.configs.disableTypeChecked.rules,
     languageOptions: {
       // The Node globals these scripts use. Listed by hand rather than pulled
       // from a package, so the lint setup stays dependency-free.
       globals: {
+        AbortController: "readonly",
+        AbortSignal: "readonly",
         Buffer: "readonly",
         URL: "readonly",
         __dirname: "readonly",
@@ -40,6 +43,7 @@ export default tseslint.config(
         clearTimeout: "readonly",
         console: "readonly",
         exports: "writable",
+        fetch: "readonly",
         module: "writable",
         process: "readonly",
         setInterval: "readonly",

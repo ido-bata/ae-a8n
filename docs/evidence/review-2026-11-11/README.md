@@ -48,7 +48,24 @@ to `4746ff3`.
 | 62 | A `readFile` failure after the path checks is a structured refusal, not a raw exception |
 | 70 | `recover` validates the run id from a quarantine record before joining it into a path |
 | 71 | A quarantine record that cannot be written no longer aborts the run report; the notice says the next run is not guarded |
-| 22 | `--timeout` for the isolated-session helper refuses a non-numeric or non-positive value instead of turning the deadline into `NaN` |
+| 22 | `--substrate` is validated against `terminal`/`offstage`/`native`; a typo refuses instead of falling through to offstage (the nested ternary is now an if/else-if chain) |
+| 12, 14 | `npm run lint` covers every top-level script (`scripts`, not only `scripts/isolated-session/`), and the config's hand-listed Node globals include `AbortController`, so `scripts/windows-agent.mjs` lints clean |
+| 13 | `ui.alert` puts the `ae-a8n:` marker on every dialog it raises, whether or not the caller passed it, so the GUI fallback can always recognise and press the dialog this method exists to have closed. Test: `api.test.ts` "always carries the marker the fallback's one known class requires" |
+| 16 | `dispatch.mjs` refuses a result whose `id` is not the job's (a hardlinked stale result passes owner and mode checks), and deletes the collected result so stale material does not accumulate |
+| 17 | `dispatch.mjs` identifies a refusal by the missing `exitCode` alone; a failing command is reported with its own exit code and its stdout/stderr are echoed |
+| 18 | `focus-watch.swift` sleeps by running the run loop (`RunLoop.current.run(mode:before:)`), so the key tap is serviced instead of reporting `keys=watched` with a permanent zero |
+| 19, 20, 21 | The session facts (`consoleUid`, `consoleAsid`, `readGuiSession`, `readOffstageStatus`, `ensureSharedDir`) live once, in `session-rules.mjs`; the terminal substrate uses the shared EPERM-tolerant directory helper, and the native substrate resolves the session from offstage's status instead of `launchctl`, which is EPERM from the console |
+| 23 | The agent's poll loop survives a result that cannot be published: it logs, remembers the id so the job is not run twice, and keeps polling |
+| 24 | The controller's deadline travels in the job payload; the agent gives the child `timeout`/`killSignal` and escalates to SIGKILL after a grace period, publishing a distinct `timedOut` result with exit 124 |
+| 25 | A log append that fails is reported to stderr and does not become an unhandled rejection that ends the agent |
+| 26 | `sessionFromOffstageStatus` reports `asid: null` at the source, so offstage's own session number can never be read as a launchd asid by any caller |
+| 27 | `parseTerminalResult` counts `onconsole` among the fields `complete` requires: silence about the console is no longer read as "off the console" |
+
+## Low findings fixed on this branch
+
+| # | Fix |
+| --- | --- |
+| 88 | `--timeout` in both helpers refuses a non-numeric or non-positive value instead of turning the poll deadline into `NaN`, which waits forever |
 
 ## Medium findings deferred
 
@@ -57,11 +74,6 @@ Each is a candidate for its own ticket (one per number-only branch).
 
 | # | Where | Why deferred |
 | --- | --- | --- |
-| 12, 14 | `eslint.config.js`, `package.json` lint scope | widening lint to every top-level script needs its globals fixed first; a single follow-up |
-| 13 | `host/a8n-host.js` fallback message | host is ES3 and shipped verbatim; needs a fake-host test |
-| 16, 17 | `dispatch.mjs` result id / outcome mapping | macOS harness; wants its own checks |
-| 18 | `focus-watch.swift` run loop | needs a macOS measurement |
-| 19–21, 23–27 | `run-in-isolated-session.mjs`, `session-agent.mjs`, `session-rules.mjs` | each needs a decision and a check; grouped follow-up |
 | 28–31 | API/CLI message and flag paths | user-visible wording and behaviour; separate ticket |
 | 32–34 | doctor duplicated floors and node major | refactor plus a consistency assertion |
 | 35 | bootstrap copies every consumer file | codec selection design |

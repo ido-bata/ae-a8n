@@ -37,7 +37,7 @@
  *   - a result that does not name the requested session.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,8 +47,13 @@ import {
   assertNoRunningAfterEffects,
   assertResultSession,
   assertTargetSession,
+  consoleAsid,
+  consoleUid,
+  ensureSharedDir,
   parseAeProcesses,
   parseTerminalResult,
+  readGuiSession,
+  readOffstageStatus,
   resultFileIsTrusted,
   sessionFromOffstageStatus,
   shellCommandLine,
@@ -117,51 +122,6 @@ function commandOutput(bin, args) {
   return execFileSync(bin, args, { encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
-/** The login session of a uid, or null when that user is not logged in. */
-export function readGuiSession(uid) {
-  try {
-    const text = execFileSync("launchctl", ["print", `gui/${uid}`], { encoding: "utf-8" });
-    const asid = /\b(?:gui )?asid = (\d+)/.exec(text);
-    const kind = /^\s*session = (\w+)\s*$/m.exec(text);
-    return {
-      uid,
-      username: execFileSync("id", ["-un", String(uid)], { encoding: "utf-8" }).trim(),
-      asid: asid === null ? null : Number(asid[1]),
-      kind: kind === null ? "none" : kind[1],
-    };
-  } catch {
-    return null;
-  }
-}
-
-function consoleUid() {
-  try {
-    return Number(commandOutput("stat", ["-f", "%u", "/dev/console"]));
-  } catch {
-    return -1;
-  }
-}
-
-/**
- * The session id of the console session, read from its launchd domain.
- *
- * The controller can always read this one (it runs in the console session),
- * which is what makes it usable as outside evidence: a job that reports this
- * id ran on the human's desktop, whatever user it ran as.
- */
-function consoleAsid(uid) {
-  if (uid < 0) {
-    return null;
-  }
-  try {
-    const text = execFileSync("launchctl", ["print", `gui/${uid}`], { encoding: "utf-8", timeout: 10_000 });
-    const asid = /asid = (\d+)/.exec(text);
-    return asid === null ? null : Number(asid[1]);
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Refuses a file in the shared results directory that the target account did
  * not write.
@@ -214,34 +174,6 @@ function offstageBinary() {
   return null;
 }
 
-/**
- * The offstage account's own status, as JSON.
- *
- * The controller usually runs in the *console* session, and from there
- * `launchctl print gui/<uid>` for another user is refused ("Operation not
- * permitted") — the console user cannot read another user's launchd
- * domain. offstage can, because it talks to the session daemon that runs
- * inside that session. So the facts about the target session come from
- * offstage, and the launchd document is only the fallback for a controller
- * that is already inside the target session.
- */
-export function readOffstageStatus(user) {
-  try {
-    const text = execFileSync("offstage", ["session", "status", "--user", user, "--json"], {
-      encoding: "utf-8",
-      timeout: 30_000,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start < 0 || end < 0) {
-      return null;
-    }
-    return JSON.parse(text.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-}
 
 /**
  * The target session, as far as the controller can see it.
@@ -308,11 +240,11 @@ export function runTerminal(options, targetUid) {
   const jobs = join(root, "jobs");
   const results = join(root, "results");
   for (const dir of [jobs, results]) {
-    mkdirSync(dir, { recursive: true });
     // The job runs as the other user and writes its own result there, so the
-    // directory has to be writable by it: 1777, and not the umask's idea of
-    // it (mkdir applies the umask to the mode it is given).
-    chmodSync(dir, 0o1777);
+    // directory has to be writable by it: 1777. The shared helper tolerates a
+    // directory the other account created first (chmod then refuses EPERM),
+    // which a bare mkdir+chmod here would have turned into a refusal.
+    ensureSharedDir(dir, "job");
   }
   const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
   const commandPath = join(jobs, `${id}.cmd`);
@@ -454,6 +386,11 @@ function readReport(path, targetUid) {
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
+  if (!["terminal", "offstage", "native"].includes(options.substrate)) {
+    // A typo must not fall through to offstage: the runs differ in what they
+    // touch, and the wrong one is not a smaller version of the right one.
+    throw new Error(`unknown substrate "${options.substrate}"; pass terminal, offstage or native`);
+  }
   if (options.user === undefined) {
     throw new Error("pass --user <the test user's name>");
   }
@@ -463,7 +400,11 @@ function main() {
   const targetUid = uidOfUser(options.user);
   const consoleUidValue = consoleUid();
   const binary = options.substrate === "native" ? "native" : offstageBinary();
-  const offstageStatus = binary === "native" ? null : readOffstageStatus(options.user);
+  // The offstage *status* is needed to resolve the session on every substrate,
+  // native included: from the console, `launchctl print gui/<other uid>` is
+  // refused ("Operation not permitted"), so offstage's in-session answer is
+  // the only channel that works there. Reading status runs nothing.
+  const offstageStatus = readOffstageStatus(options.user);
   const session = resolveTargetSession(options.user, targetUid, offstageStatus);
   preflight({
     user: options.user,
@@ -477,12 +418,14 @@ function main() {
     `[ae-a8n] running in ${options.user}'s session (uid ${targetUid}); the console is uid ${consoleUidValue}. ` +
       `Substrate: ${options.substrate}.\n`,
   );
-  const status =
-    options.substrate === "native"
-      ? runNative(options, targetUid)
-      : options.substrate === "terminal"
-        ? runTerminal(options, targetUid)
-        : runOffstage(options);
+  let status;
+  if (options.substrate === "native") {
+    status = runNative(options, targetUid);
+  } else if (options.substrate === "terminal") {
+    status = runTerminal(options, targetUid);
+  } else {
+    status = runOffstage(options);
+  }
   if (options.report !== undefined && status === 0) {
     const report = readReport(options.report, targetUid);
     process.stderr.write(

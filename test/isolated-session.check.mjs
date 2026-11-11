@@ -23,7 +23,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { assertTrustedResult } from "../scripts/isolated-session/dispatch.mjs";
+import { assertTrustedResult, parseArgs } from "../scripts/isolated-session/dispatch.mjs";
 
 import {
   assertJobSession,
@@ -267,6 +267,10 @@ test("a half-written result is not read as a result", () => {
   const done = parseTerminalResult("uid=502\nusername=test\nasid=100040\nonconsole=0\nexit=0\n");
   assert.equal(done.complete, true);
   assert.equal(parseTerminalResult("").complete, false);
+  // `onconsole` is one of the fields the checks rely on: silence about it is
+  // not evidence of "off the console", so such a file is still incomplete —
+  // it is waited for, and if it never completes the run is refused.
+  assert.equal(parseTerminalResult("uid=502\nusername=test\nasid=100040\nexit=0\n").complete, false);
 });
 
 test("a job that reports the console as its own is marked as such", () => {
@@ -305,6 +309,18 @@ test("a result file is read only when it is attributable to the target user", ()
   }
 });
 
+test("a --timeout that is not a positive number is refused", () => {
+  // NaN in the deadline arithmetic means "never", so a typo would wait
+  // forever rather than refuse.
+  for (const bad of ["abc", "0", "-5", ""]) {
+    assert.throws(
+      () => parseArgs(["--uid", "502", "--timeout", bad, "--", "true"]),
+      /positive number of milliseconds/,
+    );
+  }
+  assert.equal(parseArgs(["--uid", "502", "--timeout", "5000", "--", "true"]).timeoutMs, 5000);
+});
+
 test("offstage's own report is the session fact", () => {
   const status = {
     available: true,
@@ -313,10 +329,13 @@ test("offstage's own report is the session fact", () => {
     uid: 502,
     guiSession: { exists: true, loginDone: true, onConsole: false, sessionId: 258 },
   };
+  // 258 is offstage's own number, not launchd's asid (measured 2026-11-03:
+  // 258 against 109086, docs/offstage-macos.md §10.12). It is not carried in
+  // the field named `asid` — not here, and not by any other caller either.
   assert.deepEqual(sessionFromOffstageStatus(status), {
     uid: 502,
     username: "test",
-    asid: 258,
+    asid: null,
     kind: "Aqua",
   });
 });
