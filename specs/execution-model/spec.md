@@ -20,6 +20,13 @@ Each transport reports, rather than infers: execution mode, host OS/user/session
 
 A local AE in-process proof does not establish a remote broker, desktop isolation, robust startup or recovery. A separated host by construction does not alone prove which instance of AE receives a command.
 
+## Bootstrap and transport security gate (must precede full API integration)
+
+1. On both supported OSes, establish whether AE 2026/2027 runs an AE-specific, user-installed `Scripts/Startup` entry without administrator privileges or a particular terminal. Test fresh startup, restart, disable/uninstall, and denial by AE preference or organizational policy. One-time explicit human permission is allowed; per-call consent or elevation is not.
+2. POSIX directory modes and a random token are **not** same-user isolation. Define the local channel threat model, including other processes with the same UID, and verify Windows ACLs separately. Do not advertise a secure transport until its claimed trust boundaries are proven.
+3. Schedule polling at idle **and** during a representative AE render. Record CPU overhead, lag, modal/nonresponsive outcomes and absence/presence of focus changes. `UNKNOWN` is not evidence of no effect. Never automatically retry a possibly claimed operation.
+4. The in-AE dispatcher is an execution transport, **not** evidence of AE process ownership. Startup/provisioning and local dispatch do not prove dedicated-host non-interference or authenticated remote jobs.
+
 ## Acceptance / verification
 
 1. **Proof #98**: Read-only `app.version` twice against one running AE, no per-call Apple Event; timeout/duplicate/unknown method never triggers execution. Fake/Node tests and separate macOS/Windows real-host evidence.
