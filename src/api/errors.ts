@@ -7,11 +7,23 @@
  */
 
 import { HostError, ProtocolError } from "../protocol/envelope.js";
-import { HostQuarantinedError, HostUnavailableError, TimeoutError } from "../driver/driver.js";
+import {
+  HostLeftRunningError,
+  HostQuarantinedError,
+  HostUnavailableError,
+  TimeoutError,
+} from "../driver/driver.js";
 import { ScriptNotSentError } from "../driver/transport.js";
 import type { PropertyKind } from "./types.js";
 
-export { HostQuarantinedError, HostUnavailableError, ProtocolError, ScriptNotSentError, TimeoutError };
+export {
+  HostLeftRunningError,
+  HostQuarantinedError,
+  HostUnavailableError,
+  ProtocolError,
+  ScriptNotSentError,
+  TimeoutError,
+};
 
 export class AfterEffectsError extends Error {
   /** Operation that failed, as it appears in the trace. */
@@ -162,6 +174,12 @@ export function contextualise(op: string, error: unknown): never {
       op,
       { cause: error },
     );
+  }
+  if (error instanceof HostLeftRunningError) {
+    // The process this session started is still out there and is not this
+    // session's to quit. The code and the identity travel so a caller (and
+    // the run report) can tell this from a timeout it may be tempted to retry.
+    throw new AfterEffectsError(error.message, op, { cause: error, code: error.code });
   }
   if (error instanceof HostQuarantinedError) {
     // A licence, sign-in or permission window: the operation is blocked on a

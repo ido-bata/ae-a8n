@@ -127,6 +127,7 @@ Initial set:
 | `A8N-AE-002` | blocker | The AE is not owned by this run (lifecycle refused) |
 | `A8N-AE-003` | blocker | The script destination could not be proven (nothing sent) |
 | `A8N-AE-004` | warning | A timed-out script may still be running (run quarantined) |
+| `A8N-AE-005` | warning | After Effects was started but never answered the probe (run quarantined) |
 | `A8N-JOB-001` | blocker | Job or result file failed ownership/integrity checks |
 | `A8N-JOB-002` | warning | Prior run left a lock or quarantine state |
 | `A8N-JOB-003` | blocker | Job or result is not from a trusted issuer (nothing executed/accepted) |

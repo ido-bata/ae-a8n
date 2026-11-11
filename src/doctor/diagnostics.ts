@@ -58,6 +58,7 @@ export const DIAGNOSTIC_CODES = {
   "A8N-AE-002": { severity: "blocker", title: "The After Effects is not owned by this run" },
   "A8N-AE-003": { severity: "blocker", title: "The script destination could not be proven" },
   "A8N-AE-004": { severity: "warning", title: "A timed-out script may still be running" },
+  "A8N-AE-005": { severity: "warning", title: "After Effects was started but never answered the probe" },
   "A8N-JOB-001": { severity: "blocker", title: "Job or result file failed ownership or integrity checks" },
   "A8N-JOB-002": { severity: "warning", title: "A prior run left a lock or quarantine state" },
   "A8N-JOB-003": { severity: "blocker", title: "Job or result is not from a trusted issuer" },
