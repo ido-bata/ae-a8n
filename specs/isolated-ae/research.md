@@ -133,8 +133,26 @@ Status: `established OS behaviour`.
 
 ## 4. Decision
 
+**Confirmed by the owner on 2026-11-10:** a dedicated Windows host/VM with an
+in-session agent is the formal Windows backend.
+
 `specs/isolated-ae/plan.md` implements **A** as the Windows backend:
 `RemoteWindowsAdapter` + the same session-agent protocol as macOS.
+
+A Windows 11 host is reachable through `herdr` (saved machine `Windows`) as of
+2026-11-10. A read-only probe of that host observed:
+
+| Fact | Value | Level |
+| --- | --- | --- |
+| OS | Windows 11 Home Insider Preview 10.0.29704 | observed |
+| Node / npm | 26.13.0 / 11.20.0 | observed |
+| After Effects | 2026, 26.5, `D:\4_apps\adobe\Adobe After Effects 2026\Support Files\AfterFX.exe` | observed |
+| Interactive session | session 1, user `uuu\basic` | observed |
+| AE already running | one `AfterFX.exe`, pid 8028, session 1 | observed |
+
+These are environment observations, not acceptance results. They also show why
+the runner must refuse: an AE was already running on the host, so no test AE
+may be started there until that instance is gone or a separate session exists.
 
 Explicitly not claimed:
 
@@ -173,5 +191,7 @@ Explicitly not claimed:
   therefore labelled `established OS behaviour` and are not cited to a URL.
   Before a release, each is re-checked against Microsoft documentation and the
   check is recorded with a date.
-- No Windows hardware was reachable. Nothing in this document is a Windows
-  real-host result.
+- No Windows acceptance was performed. A Windows 11 host is reachable (§4) and
+  its environment was read, but no isolated session, script delivery, GUI
+  recovery or non-interference measurement has been run there. Nothing in this
+  document is a Windows real-host result.
