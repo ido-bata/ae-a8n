@@ -248,7 +248,15 @@ export class MacHostRecovery implements HostRecovery {
 
   attempt(context: RecoveryContext): Promise<RecoveryOutcome> {
     // The whole recovery is synchronous: every action is one Accessibility
-    // query or one press inside the target session.
+    // query or one press inside the target session, each a blocking
+    // `osascript`. It is deliberately not made asynchronous — the calls have
+    // no interleaving that would be safe (a listing and the press that
+    // depends on it must not be split by another action on the same screen),
+    // and the cost is that the calling process's event loop is held for the
+    // length of the attempt. That is acceptable for a recovery, which happens
+    // once, after a timeout, and never as part of ordinary operation; a
+    // caller that runs several sessions in one process sees their timers
+    // late while it runs.
     return Promise.resolve(this.#attempt(context));
   }
 
@@ -327,11 +335,18 @@ export class MacHostRecovery implements HostRecovery {
         window: description,
       };
     }
+    // The identity of the window that was chosen. The measured class has an
+    // empty title, so its title/subrole cannot tell it from another
+    // empty-title dialog; the text it says can, and it is the same text the
+    // class was matched on. The press re-checks it inside the target session.
+    const marker = window.texts.find((text) => /^\s*ae-a8n:/.test(text)) ?? "";
     for (const title of this.#buttons) {
-      const pressed = window.buttons.some((button) => button.title === title)
-        ? gui.pressButton(choice.index, title, window)
-        : gui.pressButtonIn(choice.index, title, window);
-      if (pressed) {
+      // One call for both cases: a button the listing showed and one it did
+      // not both get the accessibility press first and the coordinate click
+      // second. Reserving the fallback for buttons the listing lacked meant a
+      // listed button whose AX press failed got no click, and the refusal
+      // then claimed none of the buttons was available.
+      if (gui.pressButtonIn(choice.index, title, window, marker)) {
         const others =
           choice.blockingCount > 1
             ? ` (${choice.blockingCount - 1} other modal window(s) were left untouched)`

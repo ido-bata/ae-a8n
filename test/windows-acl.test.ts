@@ -197,8 +197,22 @@ describe("the channel directory's ACL", () => {
     }
   });
 
-  it("accepts read-only access for shared accounts", () => {
-    expect(channelAclVerdict(entries(["BUILTIN\\Users", "RX"]))).toEqual({ ok: true });
+  it("refuses a write spelled as a right the module does not know", () => {
+    // `AD` alone is enough to add a subdirectory and inject a job, and it
+    // starts with neither W nor F; word-form rights under a special ACE are
+    // printed by icacls in yet another spelling. The check must fail closed:
+    // anything that is not a known read-only right counts as write access,
+    // or a grant this module cannot name passes as read-only.
+    for (const rights of ["AD", "GW", "READ_CONTROL", "RX,AD", "special access:"]) {
+      const verdict = channelAclVerdict(entries(["NT AUTHORITY\\Authenticated Users", rights]));
+      expect(verdict.ok, `${rights} should be refused`).toBe(false);
+    }
+  });
+
+  it("accepts read-only access for shared accounts, in every known spelling", () => {
+    for (const rights of ["RX", "R", "RC,REA,S", "GR"]) {
+      expect(channelAclVerdict(entries(["BUILTIN\\Users", rights])), rights).toEqual({ ok: true });
+    }
   });
 });
 

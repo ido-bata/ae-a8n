@@ -69,6 +69,14 @@ to `4746ff3`.
 | 34 | `A8N-ENV-002` names the machine it measured: for a `--host` target the check is about the controller, and the remedy says so |
 | 35 | Host staging copies only the host script plus the shipped codec — a stale consumer `a8n-json.js` can no longer win, unrelated consumer files are not put where AE is pointed, and an unreadable entry refuses with context |
 | 36 | `recoveryGraceMs` is a `LaunchOptions` field (validated, default 60 s) and is documented as time *in addition to* `timeoutMs`: the first wait ends, the fallback runs, then the grace starts |
+| 38 | `a8nClean` is applied to the window and button labels as well as the static texts, so a line break or `|` in a title cannot split the record and make a real dialog read as non-blocking. Test: `macos-session.test.ts` "cleans every label that goes into a listing line" |
+| 39 | The press re-checks the dialog's `ae-a8n:` static text **inside the target session**, the only identity an empty-title window has, so a sheet raised during the screenshot cannot receive the press. Test: "re-checks the dialog's text…" |
+| 41 | One `pressButtonIn` path for listed and unlisted buttons: a listed `OK` whose AX press fails now gets the coordinate fallback instead of the loop moving on and the refusal claiming no button was available |
+| 42 | The in-flight serialization is a `while` loop, so any number of waiters resume one at a time and `#inFlight` never points at a script that is no longer the last one sent |
+| 44 | `capabilityChecks` is documented, in the module header and the function, as reporting rather than enforcement; the refusal is `assertProvenIdentity` on the identity measured for the target actually in use |
+| 45 | `setup`'s session readiness requires an Aqua session **with a readable asid**, and names the unreadable-asid and non-Aqua cases separately, as `probeDarwin` does — so `setup` and `doctor` cannot disagree about the same machine |
+| 47 | A local Windows target records this machine's own hostname and account as the job writer (run-lock owner and manifest included); `""` is kept only for a remote target, whose host configuration repairs it. Test: `doctor.test.ts` "records this machine's own host and account as a local job's writer" |
+| 48 | `hasWrite` is a read-only allow list: `AD`, `GW`, word-form and `(special access:)` rights are no longer read as "no write", so an unrecognised spelling fails closed. Tests: `windows-acl.test.ts` "refuses a write spelled as a right the module does not know" |
 
 ## Low findings fixed on this branch
 
@@ -84,12 +92,6 @@ Each is a candidate for its own ticket (one per number-only branch).
 | # | Where | Why deferred |
 | --- | --- | --- |
 | 37, 40 | — | **by design** (unreadable result is not an answer; recovery is synchronous) |
-| 38, 39, 41 | `gui-recovery.ts` label cleaning and press fallback | needs a real macOS window to verify |
-| 42 | `script-invocation` in-flight recheck | concurrency test |
-| 44 | `capabilityChecks` only called by tests | contract-level decision |
-| 45 | setup readiness omits asid | needs the macOS session facts |
-| 47 | local Windows target defaults an empty user | select/adapter design |
-| 48 | `hasWrite` ignores AD/GW/special rights | belongs with T105 |
 | 49–52 | `agent-detach`, `agent-main`, `agent.ts` claim handling | Windows protocol tickets; each changes behaviour |
 | 54, 55 | channel read cap and unlink-then-rename | needs an SMB measurement (T100) |
 | 57, 58 | POSIX channel ACL, unsigned probe artifacts | design + schema |

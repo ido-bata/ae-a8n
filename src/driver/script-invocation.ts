@@ -869,7 +869,12 @@ export class ScriptInvocationTransport implements HostTransport {
       }
       // One DoScriptFile at a time. A call that timed out leaves its script
       // running in AE; the next one waits for it rather than racing it.
-      if (this.#inFlight !== null) {
+      //
+      // A `while`, not an `if`: several callers can be waiting on the same
+      // promise, and both resume in the same tick when it settles. The check
+      // and the send below are synchronous, so re-checking after every wait
+      // is what makes "one at a time" hold with more than one waiter.
+      while (this.#inFlight !== null) {
         // If the deadline passes during this wait, the script was never
         // sent. Saying "timed out" would claim the operation ran and did not
         // answer, which is not what happened: nothing ran at all.

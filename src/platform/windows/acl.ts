@@ -126,11 +126,24 @@ export function parseIcacls(
   return entries.length === 0 ? null : entries;
 }
 
+/**
+ * The only rights an entry may carry and still count as read-only.
+ *
+ * An allow list of read-only spellings, not a list of write spellings: `icacls`
+ * prints rights this module does not know in their own spelling — `AD` (append
+ * data, enough to plant a `jobs/<id>` directory), `GW`, or `(special access:)`
+ * with word-form rights under it — and none of those starts with `W`. A write
+ * that cannot be named is still a write, so anything outside this set counts
+ * as write access.
+ */
+const READ_ONLY_RIGHTS = new Set(["R", "RX", "RC", "REA", "GR", "GX", "S"]);
+
 function hasWrite(rights: string): boolean {
-  const tokens = rights.split(",").map((token) => token.trim().toUpperCase());
-  return tokens.some(
-    (token) => token === "F" || token === "M" || token.startsWith("W"),
-  );
+  const tokens = rights
+    .split(",")
+    .map((token) => token.trim().toUpperCase())
+    .filter((token) => token !== "");
+  return tokens.length === 0 || !tokens.every((token) => READ_ONLY_RIGHTS.has(token));
 }
 
 function isPrivileged(principal: string): boolean {

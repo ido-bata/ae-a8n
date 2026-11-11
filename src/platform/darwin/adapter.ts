@@ -841,23 +841,43 @@ export class DarwinAdapter implements PlatformAdapter {
       });
 
       const gui = facts.guiSession;
-      const sessionReady =
-        accountKnown && gui !== null && gui.uid === facts.targetUid && gui.kind === "Aqua";
+      // The same four measurements `probeDarwin` makes, in the same order: an
+      // Aqua session whose id could not be read is not ready (the probe
+      // reports it as A8N-SESSION-002 and the identity is left unproven), and
+      // a non-Aqua session is named as that rather than as "no session".
+      const loginOnce =
+        "Log in as the target account once (fast user switching is enough), then switch back. " +
+        "The session must stay logged in while tests run.";
+      const sessionProblem =
+        !accountKnown
+          ? user === null
+            ? "no target account was named, so its session cannot be looked for"
+            : `the account ${user} could not be resolved, so its session cannot be looked for`
+          : gui === null
+            ? (facts.guiSessionFailure ??
+              "the target account has no GUI session to run After Effects in")
+            : gui.uid !== facts.targetUid
+              ? `the session found belongs to uid ${String(gui.uid)}, not the target account`
+              : gui.kind !== "Aqua"
+                ? `the account has a ${gui.kind} session, not an Aqua GUI session`
+                : gui.asid === null
+                  ? "the account has an Aqua session, but its session id (asid) could not be read"
+                  : null;
       steps.push({
         id: "macos.session",
-        state: sessionReady ? "done" : "needs-human",
-        reason: sessionReady
-          ? `the account has an Aqua session (asid ${String(gui.asid)})`
-          : !accountKnown
-            ? user === null
-              ? "no target account was named, so its session cannot be looked for"
-              : `the account ${user} could not be resolved, so its session cannot be looked for`
-            : (facts.guiSessionFailure ??
-              "the target account has no GUI session to run After Effects in"),
-        action: sessionReady
-          ? null
-          : "Log in as the target account once (fast user switching is enough), then switch back. " +
-            "The session must stay logged in while tests run.",
+        state: sessionProblem === null ? "done" : "needs-human",
+        reason: sessionProblem ?? `the account has an Aqua session (asid ${String(gui?.asid)})`,
+        action:
+          sessionProblem === null
+            ? null
+            : accountKnown &&
+                gui !== null &&
+                gui.uid === facts.targetUid &&
+                gui.kind === "Aqua" &&
+                gui.asid === null
+              ? "Re-run setup. If the session id is still unreadable, log the target account out and " +
+                "in again; setup never uses a session it cannot identify."
+              : loginOnce,
         automatable: false,
       });
 

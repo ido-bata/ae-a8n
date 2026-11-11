@@ -11,6 +11,8 @@
  * depends on the host is reported as unreadable, so the command exits blocked.
  */
 
+import { hostname, userInfo } from "node:os";
+
 import { A8N_VERSION } from "../index.js";
 import { diagnostic, type DiagnosticCheck } from "../doctor/diagnostics.js";
 import type { PlatformAdapter, TargetSpec } from "./contract.js";
@@ -56,10 +58,59 @@ export function unsupportedPlatformCheck(platform: string): DiagnosticCheck {
   });
 }
 
+/**
+ * Who writes a job for a Windows target.
+ *
+ * `user` is the writer, not the account After Effects runs as: the agent
+ * refuses a job whose writer is anonymous (`A8N-JOB-001`), and the run lock
+ * and manifest record the same pair. For a named host the account comes from
+ * the host's configuration when the caller names none, so `""` is kept and
+ * `#freshComms` fills it. A **local** target has no such configuration to
+ * repair it from, so this machine's own host and account are recorded: the
+ * local agent runs as this account, and `""` would turn the missing identity
+ * into a refusal that blames the channel.
+ */
+export function writerFor(target: TargetSpec): { readonly host: string; readonly user: string } {
+  if (target.host !== null) {
+    return { host: target.host, user: target.user ?? "" };
+  }
+  return { host: localHostname(), user: target.user ?? localUsername() };
+}
+
+/** This machine's own name, or "local" when the OS will not give one. */
+function localHostname(): string {
+  try {
+    const name = hostname().trim();
+    return name === "" ? "local" : name;
+  } catch {
+    return "local";
+  }
+}
+
+/**
+ * The account running this process. `userInfo` is preferred; the environment
+ * is the fallback Windows and POSIX both always set. The environment is not
+ * a stronger proof of identity, but a job needs a name, and the agent cannot
+ * verify which source produced it.
+ */
+function localUsername(): string {
+  const sources = [() => userInfo().username, () => process.env.USERNAME ?? "", () => process.env.USER ?? ""];
+  for (const source of sources) {
+    try {
+      const name = source().trim();
+      if (name !== "") {
+        return name;
+      }
+    } catch {
+      // Try the next source.
+    }
+  }
+  return "";
+}
+
 function windowsAdapter(options: SelectOptions): WindowsAdapter {
   const { target } = options;
-  const host = target.host ?? "local";
-  const user = target.user ?? "";
+  const { host, user } = writerFor(target);
   return new WindowsAdapter({
     // No channel here for a remote target: the adapter builds it from the
     // host's configuration, because a tmpdir on this machine cannot reach it.

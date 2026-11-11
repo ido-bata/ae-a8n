@@ -196,6 +196,26 @@ describe("the GUI recovery", () => {
     expect(text).toContain('if wsub is not expectedSubrole then return "CHANGED"');
   });
 
+  it("re-checks the dialog's text, the only identity an empty-title dialog has", () => {
+    // The one measured class has an empty title, so title and subrole cannot
+    // tell it from another empty-title window in the same process — and the
+    // press is sent after a listing and a screenshot.
+    const text = PRESS_BUTTON_SCRIPT.join("\n");
+    expect(text).toContain("set expectedText to item 6 of argv");
+    expect(text).toContain("contains expectedText then set found to true");
+    expect(text).toContain('if not found then return "CHANGED"');
+  });
+
+  it("cleans every label that goes into a listing line", () => {
+    // A line break in a window or button label would split the record, and
+    // the remainder would become an ignored line: a real dialog would then
+    // read as non-blocking.
+    const text = LIST_WINDOWS_SCRIPT.join("\n");
+    expect(text).toContain("my a8nClean(wtitle)");
+    expect(text).toContain("my a8nClean(btitle)");
+    expect(text).toContain("my a8nClean(bdesc)");
+  });
+
   it("never sends an untargeted escape key when the focused window cannot be proven", async () => {
     // Escape only reaches whatever window happens to be key. The recovery
     // identifies a window by listing index and title/subrole; a keystroke has

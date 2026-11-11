@@ -3,8 +3,15 @@
  *
  * `cli`, `doctor`, `setup`, `runner` and `reporter` never branch on
  * `process.platform`; they ask an adapter. An adapter that cannot prove a
- * capability says so, and the runner turns that into a refusal rather than a
- * warning.
+ * capability says so, and the runner refuses when it cannot show the target
+ * session is separate: `assertProvenIdentity` is that refusal, and every
+ * adapter calls it before it runs a command.
+ *
+ * `capabilityChecks` is *not* that refusal. It turns a backend's static
+ * capability statement into diagnostic codes, for reporting; a backend that
+ * has not measured non-interference in general ("unproven") can still prove a
+ * particular target at run time, so refusing a run on the static value alone
+ * would block backends that are safe in the configuration actually in use.
  *
  * See `specs/isolated-ae/plan.md` §3 and `specs/isolated-ae/research.md`.
  */
@@ -148,7 +155,16 @@ export function assertProvenIdentity(identity: SessionIdentity): void {
   );
 }
 
-/** The capability gaps that make non-interference a claim rather than a fact. */
+/**
+ * The capability gaps a backend states about itself, as diagnostic codes.
+ *
+ * Reporting, not enforcement: it is called by the tests and by a caller that
+ * wants to show the statement, and no run is refused on the strength of it.
+ * The refusal for a target that cannot be shown separate is
+ * {@link assertProvenIdentity}, which every adapter calls with the identity it
+ * measured for the target actually in use — a backend whose static statement
+ * is "unproven" may still prove the specific target it was asked for.
+ */
 export function capabilityChecks(
   capabilities: Capabilities,
   platform: PlatformId,

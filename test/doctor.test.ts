@@ -1,5 +1,5 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -27,7 +27,7 @@ import {
   type CommandRunner,
   type ProbeCommand,
 } from "../src/platform/windows/probe.js";
-import { selectAdapter } from "../src/platform/select.js";
+import { selectAdapter, writerFor } from "../src/platform/select.js";
 
 const TARGET: TargetSpec = {
   name: "ae-test",
@@ -533,6 +533,55 @@ describe("the Darwin adapter's non-probe methods do not lie", () => {
     }
   });
 
+  it("does not call a session or an installation ready when a fact is unreadable", async () => {
+    // `setup` plans before it probes, so these checks are the only gate. An
+    // Aqua session whose id could not be read, and a non-Aqua session, must
+    // not read as done while `doctor` calls the same machine blocked.
+    const root = mkdtempSync(join(tmpdir(), "a8n-mac-setup-"));
+    try {
+      const plan = async (facts: DarwinFacts) => {
+        const adapter = new DarwinAdapter({
+          readFacts: () => facts,
+          setupStateFile: join(root, "state.json"),
+        });
+        return new Map((await adapter.plan(TARGET)).map((step) => [step.id, step]));
+      };
+
+      const unreadableAsid = await plan(
+        darwinFacts({ guiSession: { uid: 502, username: "ae-test", asid: null, kind: "Aqua" } }),
+      );
+      expect(unreadableAsid.get("macos.session")?.state).toBe("needs-human");
+      expect(unreadableAsid.get("macos.session")?.reason).toContain(
+        "session id (asid) could not be read",
+      );
+
+      const background = await plan(
+        darwinFacts({
+          guiSession: { uid: 502, username: "ae-test", asid: 100040, kind: "Background" },
+        }),
+      );
+      expect(background.get("macos.session")?.state).toBe("needs-human");
+      expect(background.get("macos.session")?.reason).toContain(
+        "Background session, not an Aqua GUI session",
+      );
+
+      // One installation whose version could not be read is reported as that,
+      // not as "more than one version is installed".
+      const oneUnreadable = await plan(
+        darwinFacts({
+          aeInstalls: [
+            { location: "/Applications/Adobe After Effects 2026", version: null, selected: false },
+          ],
+        }),
+      );
+      expect(oneUnreadable.get("macos.ae")?.state).toBe("needs-human");
+      expect(oneUnreadable.get("macos.ae")?.reason).toContain("but its version could not be read");
+      expect(oneUnreadable.get("macos.ae")?.reason).not.toContain("more than one");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("refuses to reset a setup state file it cannot read", async () => {
     const root = mkdtempSync(join(tmpdir(), "a8n-mac-setup-"));
     const stateFile = join(root, "state.json");
@@ -701,5 +750,25 @@ describe("doctor on a Windows host, through the same CLI", () => {
       expect(selection.adapter.platform).toBe("win32");
       expect(selection.adapter.id).toBe("windows-remote-host");
     }
+  });
+
+  it("records this machine's own host and account as a local job's writer", () => {
+    // A local Windows target has no host configuration to repair an empty
+    // writer from, and the agent refuses an anonymous writer (A8N-JOB-001)
+    // with a message that blames the channel for a missing identity.
+    const local = writerFor({ name: "local", isolation: "session", user: null, host: null });
+    expect(local.host).toBe(hostname());
+    expect(local.user).toBe(userInfo().username);
+    expect(local.user).not.toBe("");
+
+    // A named account still wins, and "" is kept only for a remote target,
+    // whose account the host's configuration supplies.
+    expect(writerFor({ name: "local", isolation: "session", user: "a8n", host: null })).toEqual({
+      host: hostname(),
+      user: "a8n",
+    });
+    expect(
+      writerFor({ name: "win", isolation: "remote-host", user: null, host: "WIN-AE-01" }),
+    ).toEqual({ host: "WIN-AE-01", user: "" });
   });
 });

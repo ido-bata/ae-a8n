@@ -200,7 +200,7 @@ export const LIST_WINDOWS_SCRIPT = [
   "      try",
   "        set wsub to (subrole of w) as string",
   "      end try",
-  "      set report to report & \"W|\" & wtitle & \"|\" & wrole & \"|\" & wsub & linefeed",
+  "      set report to report & \"W|\" & my a8nClean(wtitle) & \"|\" & wrole & \"|\" & wsub & linefeed",
   "      set wtexts to {}",
   "      try",
   "        set wtexts to static texts of w",
@@ -241,14 +241,16 @@ export const LIST_WINDOWS_SCRIPT = [
   "        try",
   "          set bsize to ((item 1 of (get size of b)) as string) & \",\" & ((item 2 of (get size of b)) as string)",
   "        end try",
-  "        set report to report & \"B|\" & btitle & \"|\" & bdesc & \"|\" & bpos & \"|\" & bsize & linefeed",
+  "        set report to report & \"B|\" & my a8nClean(btitle) & \"|\" & my a8nClean(bdesc) & \"|\" & bpos & \"|\" & bsize & linefeed",
   "      end repeat",
   "    end repeat",
   "  end tell",
   "  return report",
   "end run",
   // One line per field: the listing is line-based, so a line break inside a
-  // label would split it into two records.
+  // label would split it into two records. Every label goes through this —
+  // a window title or a button description as well as a static text — and the
+  // `|`s are folded too, so the field layout cannot shift either.
   "on a8nClean(s)",
   "  set AppleScript's text item delimiters to {return, linefeed, \"|\"}",
   "  set parts to text items of s",
@@ -265,6 +267,7 @@ export const PRESS_BUTTON_SCRIPT = [
   "  set wanted to item 3 of argv",
   "  set expectedTitle to item 4 of argv",
   "  set expectedSubrole to item 5 of argv",
+  "  set expectedText to item 6 of argv",
   "  tell application \"System Events\"",
   "    set procs to (every application process whose unix id is targetPid)",
   "    if (count of procs) is 0 then return \"MISSING\"",
@@ -291,6 +294,22 @@ export const PRESS_BUTTON_SCRIPT = [
   "        set wsub to (subrole of w) as string",
   "      end try",
   "      if wsub is not expectedSubrole then return \"CHANGED\"",
+  "    end if",
+  // The measured class has an empty title, so title and subrole alone cannot
+  // tell it from another empty-title dialog in the same process. The text it
+  // says is the identity the caller actually recognised, and it is checked
+  // the same way: a window whose static text no longer contains it is a
+  // different window, and gets no press.
+  "    if expectedText is not \"\" then",
+  "      set found to false",
+  "      try",
+  "        repeat with t in static texts of w",
+  "          try",
+  "            if (value of t as string) contains expectedText then set found to true",
+  "          end try",
+  "        end repeat",
+  "      end try",
+  "      if not found then return \"CHANGED\"",
   "    end if",
   "    try",
   "      repeat with b in buttons of w",
@@ -448,13 +467,25 @@ export class MacGuiRecovery {
    * the one the caller saw: the listing and the press are two calls, and a
    * window that appeared in between would otherwise receive the press.
    */
-  pressButton(windowIndex: number, title: string, expected?: GuiWindowInfo): boolean {
+  pressButton(
+    windowIndex: number,
+    title: string,
+    expected?: GuiWindowInfo,
+    /**
+     * A static text the chosen window must still contain before anything is
+     * pressed. The measured dialog class has an empty title, so this is the
+     * only identity that distinguishes it from another empty-title window
+     * raised in between the listing and the press.
+     */
+    expectedText = "",
+  ): boolean {
     const result = this.#osascript(PRESS_BUTTON_SCRIPT, [
       String(this.#pid),
       String(windowIndex),
       title,
       expected?.title ?? "",
       expected?.subrole ?? "",
+      expectedText,
     ]);
     return result.stdout.trim() === "CLICKED";
   }
@@ -479,8 +510,13 @@ export class MacGuiRecovery {
    * coordinate fallback is taken from that window's own listing, never from a
    * different window and never from the physical display.
    */
-  pressButtonIn(windowIndex: number, buttonTitle: string, expected?: GuiWindowInfo): boolean {
-    if (this.pressButton(windowIndex, buttonTitle, expected)) {
+  pressButtonIn(
+    windowIndex: number,
+    buttonTitle: string,
+    expected?: GuiWindowInfo,
+    expectedText = "",
+  ): boolean {
+    if (this.pressButton(windowIndex, buttonTitle, expected, expectedText)) {
       return true;
     }
     const state = this.listWindows();
@@ -490,6 +526,10 @@ export class MacGuiRecovery {
     }
     if (expected !== undefined && (window.title !== expected.title || window.subrole !== expected.subrole)) {
       // The window at that position is no longer the one the caller chose.
+      return false;
+    }
+    if (expectedText !== "" && !window.texts.some((text) => text.includes(expectedText))) {
+      // Nor is the window saying what it said when it was chosen.
       return false;
     }
     for (const button of window.buttons) {
