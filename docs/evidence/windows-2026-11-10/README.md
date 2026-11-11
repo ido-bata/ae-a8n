@@ -1,12 +1,103 @@
 # Real Windows 11 host — 2026-11-10
 
+> **Read this first.** The state on 2026-11-11 is in the section immediately
+> below: the basic acceptance ran on this host and passed twice. Everything
+> from §1 down is the record as it stood on 2026-11-10, kept unedited — its
+> refusals and BLOCKED rows are still the evidence for what was not proven,
+> and it is not a description of the host today.
+
+## Update, 2026-11-11: the acceptance ran on this host, and passed twice
+
+The basic path does **not** need the second account that §5 asks a human to
+create. It uses the dedicated-host backend (`ae-a8n test --host UUU`): the
+agent runs as the existing `UUU\basic` in session 1, takes a signed job from
+the channel, and starts After Effects there. No account was created, no logon
+task registered, no ACL changed.
+
+The first attempt failed on **every** request with `unknown method: app.info`.
+The cause was in the shipped host script, not in delivery: AE 26.5x89
+(ExtendScript 4.5.6) mis-evaluates `a ? x : b ? y : undefined`. Fixed on PR
+#91 (`c857a4c`); the measurement trail is `FINDINGS.md` here.
+
+### The two runs
+
+| | run 1 | run 2 |
+| --- | --- | --- |
+| run id | `20261110T155448Z-9190f1a0` | `20261110T155806Z-3f927bed` |
+| started (UTC) | 2026-11-10T15:57:06Z | 2026-11-10T15:59:04Z |
+| record | `acceptance/run-1-20261110T155706.json` | `acceptance/run-2-20261110T155904.json` |
+| status / problems | `ok`, none | `ok`, none |
+| duration | 19.2 s | 18.7 s |
+| `AfterFX.exe` before / after launch / after quit | 0 / 1 / 0 | 0 / 1 / 0 |
+| version | 26.5x89 | 26.5x89 |
+| ownership | `owned` — pid 43272, the only instance | `owned` — pid 35096, the only instance |
+| comp | `A8N-ACCEPT`, 320×240, 30 fps, 1 layer | same |
+| layer | `A8N`, text, ArialMT 96, id 13, enabled, selected | same |
+| frame 0 | 320×240 PNG, `acceptance/run-1-frame0.png` | `run-2-frame0.png`, identical bytes |
+| quit | `quit: true`, ownership still `owned` at the moment of quitting | same |
+
+The two frames are byte-identical (sha256 `576576b6…`). Each run did, in
+order and with every step `ok`: launch (11.6 s), ownership, version, project,
+project info, create comp, add text layer, comp info, layers, render frame 0,
+ownership before quit, close. Both ran from zero `AfterFX.exe`, nothing was
+killed, and no project was opened or saved.
+
+### The exact build
+
+| | |
+| --- | --- |
+| Source | `integration/win-cli` `d5dea95` + PR #91 `c857a4c`, merged locally as `4bf9ea0` — no branch was merged to `main` and nothing was published |
+| Tarball | `ido-bata-ae-a8n-0.1.0-alpha.1.tgz`, sha256 `1729e255463b0aa8ed8a730b701de8bfc2d49133b51895adb163a2aafe8b7563` |
+| Installed host script | `b1d87e19a809046ec3571231a728659b0f2f79dc46622aaf7797097c750fe8b2` — carries the statement-form lookup |
+| Installed into | `C:\Users\rebui\AppData\Local\ae-a8n\agent-app`, from that tarball |
+| Node on the host | v24.19.0 |
+
+How the runs were started: the acceptance script
+`docs/evidence/windows-2026-11-10/scripts/accept-ae.mjs` (on #89 / PR #90;
+verification-only, shipped in no package) was given to the agent as a job —
+the only delivery that executes on this host — from session 1. Each run
+writes `summary.json` and the rendered frame under
+`%TEMP%\a8n-accept-<start time>\`; `acceptance/` here holds copies of both.
+The script refuses if `AfterFX.exe` is already running or a project is open,
+launches 26.5, creates its comp in a temp project, renders one frame, proves
+ownership again and quits normally; it never saves a project, re-sends a call,
+kills a process or touches a dialog.
+
+### What this is, and what it is not
+
+`verified on real host` for this path: the package installed from that
+tarball, the job delivered through the channel, After Effects 26.5x89
+launched, the instance proven to be the one this run started, a comp and a
+text layer created, both read back through the DOM, frame 0 rendered to a
+320×240 PNG, ownership proved again, and a normal quit with no process left —
+twice, from zero.
+
+Not PASS, and not claimed here:
+
+- **Non-interference.** No run was made while the console user was working
+  normally. §2 row 13 stays UNVERIFIED; the host was dedicated to the test.
+- **Recovery after abnormal termination.** No crash, kill or hung dialog was
+  induced. §2 row 15 stays BLOCKED.
+- **Extension calls through the agent** (T091, §2 row 16). The extension table
+  was in the build, but no `ae.call` was made on this host. The Windows basic
+  E2E says nothing about the extension API.
+- **Account separation / isolated session** (§2 rows 12–14). Untouched: that is
+  the other backend and still needs a second account.
+- The rest of the API (effects, parameters, menu commands, project open/save,
+  shapes), agent behaviour beyond one job, other host configurations, and
+  macOS.
+
+## The record as it stood on 2026-11-10
+
 T092 evidence. Every row below was run on the host described here, through
 `herdr` over the network, not on a mock and not in CI.
 
-**Nothing in this file says Windows "works".** It says which gate each row
-reached, on which commit, and what is still blocked. `verified on real host`
-is claimed only where After Effects itself was driven — which is no row yet,
-because AE was not running and starting it needs a human decision (§5).
+**Nothing in this section says Windows "works".** It says which gate each row
+reached, on which commit, and what was still blocked on 2026-11-10.
+`verified on real host` is claimed only where After Effects itself was driven —
+which was no row then, because AE was not running and starting it needed the
+human decision in §5. (The route that made that decision unnecessary is the
+update above.)
 
 ## 1. Host identity
 

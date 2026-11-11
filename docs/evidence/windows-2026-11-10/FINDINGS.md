@@ -1,9 +1,19 @@
-# What the Windows host said on 2026-11-10, and why the acceptance stopped
+# Windows host, 2026-11-10: why the first acceptance stopped, and what ran after
 
-The job channel worked end to end on the first real attempt: a signed job was
-delivered, the agent claimed it, ran it, and the result came back. What came
-back was an error, and chasing it found a real defect in the shipped host
-script. This note is the measurement trail; the fix is PR #91 (#61).
+This directory holds two results, and they are not the same run:
+
+- **Result A — the first attempt, which failed.** The job channel worked end
+  to end on the first real attempt: a signed job was delivered, the agent
+  claimed it, ran it, and the result came back. What came back was an error,
+  and chasing it found a real defect in the shipped host script. Sections
+  "The symptom", "The measurements" and "What the failed attempt meant" below
+  are that result.
+- **Result B — two runs after the fix, both clean.** `## Result B` at the end
+  records them: AE 26.5x89, `0 → 1 → 0` processes, comp/layer/DOM/PNG/quit,
+  twice. The fix is PR #91 (#61).
+
+The first attempt proved nothing about After Effects operations; Result B
+does, for the basic path only. Reads of this file should keep the two apart.
 
 ## The symptom
 
@@ -43,14 +53,15 @@ The expression came in with the extension-method dispatch (`143db87`, #61).
 The release before it used a single-level conditional, which this engine
 evaluates correctly.
 
-## What this means for the acceptance
+## What the failed attempt meant
 
-The acceptance did not reach any After Effects operation: it stopped at the
-readiness probe. Nothing about project, comp, layer, render, ownership or
-quit has been exercised on this host yet, and none of it is claimed.
+The first attempt did not reach any After Effects operation: it stopped at the
+readiness probe. Nothing about project, comp, layer, render, ownership or quit
+had been exercised on this host at that point, and none of it was claimed.
 
-The next attempt needs the fixed build installed on the host
-(`PR #91`), and then the acceptance to pass twice.
+That is the state Result A was in. What it needed next was the fixed build
+installed on the host (PR #91) and the acceptance run twice; Result B below is
+that, and it is a separate result rather than a correction to this one.
 
 ## Reaching the host
 
@@ -61,7 +72,7 @@ agent runs in — they execute. Every diagnostic here went through the job
 channel for that reason; `diag-ae.mjs` is the wrapper that starts After
 Effects, waits for the script's own completion marker, then quits it.
 
-## The acceptance, after the fix
+## Result B: the acceptance, after the fix
 
 Build under test: `integration/win-cli` at `d5dea95` plus `c857a4c` (#61), merged
 locally as `4bf9ea0` — no branch was merged or published. The tarball
@@ -94,7 +105,11 @@ created a comp and a text layer, read them back through the DOM, rendered frame
 0 to a PNG, proved ownership again and quit normally with no process left —
 twice.
 
-**What it does not prove:** the rest of the API (effects, parameters, menu
-commands, `openProject`/`save`, viewer, shapes), the agent's long-running
-behaviour beyond one job, installation paths outside this one, and macOS. The
-run path is `ae-a8n test` on the dedicated-host backend only.
+**What it does not prove:** non-interference (no run was made while the
+console user worked normally), recovery after an abnormal termination (no
+crash, kill or hung dialog was induced), extension calls through the agent
+(the table was in the build; no `ae.call` was made), account separation, the
+rest of the API (effects, parameters, menu commands, `openProject`/`save`,
+viewer, shapes), the agent's long-running behaviour beyond one job,
+installation paths outside this one, and macOS. The run path is `ae-a8n test`
+on the dedicated-host backend only.
