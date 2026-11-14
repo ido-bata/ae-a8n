@@ -128,6 +128,12 @@ describe("the generated host script", () => {
     expect(built.source.indexOf("context.extensions[")).toBeLessThan(built.source.indexOf("hostLoaded"));
     expect(built.source.endsWith(HOST)).toBe(true);
     expect(built.methods).toEqual(["aulymo.a"]);
+    // Issue #103: the registration must run inside a named function
+    // declaration — `this` inside an IIFE is not the global object on real
+    // ExtendScript (observed on AE 27.0.0), which the vm fake cannot model.
+    expect(built.source).toContain("function __a8nRegisterExtensions()");
+    expect(built.source).toContain("__a8nRegisterExtensions();");
+    expect(built.source).not.toContain("(function () {\n  var context = this.__a8n;");
   });
 
   it("carries the declared names in a header the Node side can read back", () => {
