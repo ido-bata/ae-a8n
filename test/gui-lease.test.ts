@@ -4,7 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 import {
   acquireGuiLease,
@@ -535,4 +536,151 @@ describe("review fixes", () => {
     const leftovers = existsSync(dir) ? readdirSync(dir) : [];
     expect(leftovers.filter((name) => name.startsWith("gui-"))).toHaveLength(0);
   });
+});
+
+describe("parallel lease races (real processes)", () => {
+  /**
+   * The lease primitives are synchronous, so in-process tests cannot hit
+   * the rename/reap/acquire interleavings. These tests bundle the module
+   * with esbuild and run real worker processes against one state root.
+   */
+  const here = fileURLToPath(new URL(".", import.meta.url));
+  const repoRoot = join(here, "..");
+  const esbuild = join(repoRoot, "node_modules", ".bin", "esbuild");
+
+  type WorkerSpec = {
+    ownerId: string;
+    iterations: number;
+    mode: "mutate" | "reap";
+  };
+
+  /** Bundle gui-lease.ts into `stateRoot` so worker processes can import it. */
+  function bundleInto(stateRoot: string): string {
+    const out = join(stateRoot, "lease.mjs");
+    execFileSync(esbuild, [
+      join(repoRoot, "src", "platform", "darwin", "gui-lease.ts"),
+      "--bundle", "--format=esm", "--platform=node",
+      `--outfile=${out}`,
+    ]);
+    return out;
+  }
+
+  function workerSource(): string {
+    return `import { appendFileSync } from "node:fs";
+import { acquireGuiLease, reapGuiLease } from "LEASE_MODULE";
+const [,, stateRoot, uid, asid, ownerId, iterations, mode, logPath] = process.argv;
+const session = { uid: Number(uid), asid: Number(asid) };
+const owner = { id: ownerId, pid: process.pid };
+for (let i = 0; i < Number(iterations); i++) {
+  if (mode === "reap") {
+    reapGuiLease({ stateRoot, session, owner, confirm: true });
+    continue;
+  }
+  const out = acquireGuiLease({ stateRoot, session, owner, purpose: "race" });
+  if (!out.ok) continue;
+  appendFileSync(logPath, "in " + ownerId + "\\n");
+  const until = Date.now() + 3 + Math.floor(Math.random() * 10);
+  while (Date.now() < until) { /* hold the lease briefly */ }
+  appendFileSync(logPath, "out " + ownerId + "\\n");
+  out.lease.release();
+}
+`;
+  }
+
+  function runWorkers(
+    stateRoot: string,
+    modulePath: string,
+    workers: WorkerSpec[],
+  ): Promise<void> {
+    const workerPath = join(stateRoot, "worker.mjs");
+    writeFileSync(workerPath, workerSource().replace("LEASE_MODULE", modulePath));
+    const logPath = join(stateRoot, "mutations.log");
+    writeFileSync(logPath, "");
+    const children = workers.map((w) =>
+      spawn(process.execPath, [
+        workerPath, stateRoot, String(SESSION.uid), String(SESSION.asid),
+        w.ownerId, String(w.iterations), w.mode, logPath,
+      ]),
+    );
+    return Promise.all(
+      children.map(
+        (c) =>
+          new Promise<void>((resolve, reject) => {
+            c.once("error", reject);
+            c.once("exit", (code) => (code === 0 ? resolve() : reject(new Error(`worker exited ${code}`))));
+          }),
+      ),
+    ).then(() => undefined);
+  }
+
+  /** Max simultaneous "in" markers without an intervening "out". */
+  function maxConcurrentHolders(logPath: string): number {
+    let depth = 0;
+    let max = 0;
+    for (const line of readFileSync(logPath, "utf-8").trim().split("\n")) {
+      if (line.startsWith("in ")) { depth += 1; max = Math.max(max, depth); }
+      else if (line.startsWith("out ")) depth -= 1;
+    }
+    return max;
+  }
+
+  function leaseDirFiles(stateRoot: string): string[] {
+    const { dir } = guiLeasePaths(stateRoot);
+    return existsSync(dir) ? readdirSync(dir) : [];
+  }
+
+  it("never lets two processes hold the lease at once across acquire/release cycles", async () => {
+    const stateRoot = root();
+    const localModule = bundleInto(stateRoot);
+    const workers: WorkerSpec[] = [0, 1, 2, 3].map((i) => ({
+      ownerId: `racer-${i}`,
+      iterations: 60,
+      mode: "mutate",
+    }));
+    await runWorkers(stateRoot, localModule, workers);
+    expect(maxConcurrentHolders(join(stateRoot, "mutations.log"))).toBeLessThanOrEqual(1);
+    // Every acquired lease was released; no trash quarantines remain.
+    const leftovers = leaseDirFiles(stateRoot).filter(
+      (n) => n.includes(".releasing-") || (n.startsWith("gui-") && n.endsWith(".json")),
+    );
+    expect(leftovers).toHaveLength(0);
+  }, 60_000);
+
+  it("reap racing acquire never removes a live owner's fresh lease", async () => {
+    const stateRoot = root();
+    const localModule = bundleInto(stateRoot);
+    // Seed a stale lease: pid far above the macOS pid ceiling cannot exist.
+    const { dir } = guiLeasePaths(stateRoot);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "gui-501-100015.json"),
+      `${JSON.stringify({
+        schemaVersion: "1.0",
+        sessionKey: guiSessionKey(SESSION),
+        ownerId: "ghost",
+        pid: 400000,
+        pidStart: null,
+        acquiredAt: "2026-11-15T00:00:00.000Z",
+        purpose: "gui-mutation",
+      })}\n`,
+    );
+    const workers: WorkerSpec[] = [
+      { ownerId: "reaper-0", iterations: 40, mode: "reap" },
+      { ownerId: "reaper-1", iterations: 40, mode: "reap" },
+      { ownerId: "mutator-0", iterations: 60, mode: "mutate" },
+      { ownerId: "mutator-1", iterations: 60, mode: "mutate" },
+    ];
+    await runWorkers(stateRoot, localModule, workers);
+    expect(maxConcurrentHolders(join(stateRoot, "mutations.log"))).toBeLessThanOrEqual(1);
+    // Whatever remains must be a valid record owned by a live worker or
+    // nothing at all — never a ghost record resurrected over a live lease.
+    const remaining = leaseDirFiles(stateRoot).filter((n) => n.startsWith("gui-") && n.endsWith(".json"));
+    for (const name of remaining) {
+      const record = JSON.parse(readFileSync(join(dir, name), "utf-8")) as { ownerId?: string };
+      expect(["mutator-0", "mutator-1"]).toContain(record.ownerId);
+    }
+    // No quarantined trash files: restores must have found their slot or
+    // the moved record matched and was removed.
+    expect(leaseDirFiles(stateRoot).filter((n) => n.includes(".releasing-"))).toHaveLength(0);
+  }, 60_000);
 });

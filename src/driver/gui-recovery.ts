@@ -551,13 +551,9 @@ export class MacGuiRecovery {
     return () =>
       windowServerCensus(
         censusRun ??
-          ((program, args) => {
-            const result = runInSession(this.#session, program, [...args], { timeoutMs: 30_000 });
-            if (result.status !== 0) {
-              throw new Error(result.stderr.trim() || `exit status ${result.status}`);
-            }
-            return result.stdout;
-          }),
+          censusRunnerInSession(this.#session, (s, program, args, opts) =>
+            this.#runSession(s, program, args, opts),
+          ),
       );
   }
 
@@ -919,6 +915,26 @@ export function defaultLeaseController(options: {
         ...(event.outcome === undefined ? {} : { outcome: event.outcome }),
       });
     },
+  };
+}
+
+/**
+ * A `CensusRunner` bound to one GUI session: the census probe executes
+ * inside that session via `runInSession`, so the window list it returns is
+ * the session's own WindowServer view — never the caller's desktop by
+ * accident. Exported for exit/crash verification paths that need the same
+ * session scoping `MacGuiRecovery` applies internally.
+ */
+export function censusRunnerInSession(
+  session: MacSession,
+  runSession: typeof runInSession = runInSession,
+): CensusRunner {
+  return (program, args) => {
+    const result = runSession(session, program, [...args], { timeoutMs: 30_000 });
+    if (result.status !== 0) {
+      throw new Error(result.stderr.trim() || `exit status ${result.status}`);
+    }
+    return result.stdout;
   };
 }
 

@@ -102,6 +102,7 @@ export {
  */
 export {
   assessGuiObservation,
+  censusRunnerInSession,
   defaultLeaseController,
   GuiMutationError,
   GuiRecoveryError,

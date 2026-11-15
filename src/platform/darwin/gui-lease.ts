@@ -36,6 +36,7 @@ import {
   appendFileSync,
   closeSync,
   existsSync,
+  linkSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -187,12 +188,20 @@ function removeLeaseFileIfMatch(
   }
   // The file changed between our read and the rename — restore it when the
   // lease slot is still free, and never overwrite a newer file.
+  //
+  // The restore must be atomic AND no-clobber: `renameSync(trash, path)`
+  // replaces whatever sits at `path`, so an acquirer that legitimately took
+  // the slot during the rename gap would have its fresh lease overwritten
+  // by the stale record we are putting back. `linkSync` fails with EEXIST
+  // instead of clobbering; on success the trash name is unlinked.
   if (!existsSync(path)) {
     try {
-      renameSync(trash, path);
+      linkSync(trash, path);
+      rmSync(trash);
     } catch {
-      // The slot was taken in the gap; the moved file stays quarantined
-      // under its trash name rather than being destroyed.
+      // EEXIST (a new owner took the slot) or any other failure: the moved
+      // file stays quarantined under its trash name — never destroyed,
+      // never allowed to overwrite a live lease.
     }
   }
   return "kept";
