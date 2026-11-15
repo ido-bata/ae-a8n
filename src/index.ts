@@ -133,10 +133,13 @@ export {
   type RecoveryWindowChoice,
 } from "./driver/recovery.js";
 export {
+  listAppInstances,
   MacSessionError,
+  parseLsappinfo,
   readGuiSession,
   readGuiSessionFailure,
   readUsername,
+  type MacAppInstance,
   type MacSession,
   type MacSessionKind,
 } from "./driver/mac-session.js";
