@@ -15,9 +15,15 @@
  *            name differs per release (`Adobe After Effects 2026`) and the
  *            bare `Adobe After Effects` does not resolve to AE at all, which
  *            makes osascript fail to compile the script (-2741).
+ *
+ *            The host itself is started through LaunchServices (`open`),
+ *            never by exec'ing the binary: a directly spawned AE is unknown
+ *            to LaunchServices for seconds, and an Apple Event addressed by
+ *            bundle path that arrives in that gap makes LaunchServices start
+ *            a second instance (observed on AE 27.0, issue #105).
  */
 
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import type { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -28,7 +34,6 @@ import {
   MacSessionError,
   readGuiSession,
   spawnInSession,
-  startInSession,
   type MacSession,
 } from "./mac-session.js";
 import type { HostOwnership, HostTransport, InvokeOptions } from "./transport.js";
@@ -52,9 +57,19 @@ export type ScriptInvocationOptions = {
   readonly spawnLauncher?: SpawnLauncher;
   /**
    * Starts the macOS host explicitly and returns its pid. Mainly a test seam;
-   * defaults to starting the resolved After Effects inside the target session.
+   * defaults to asking LaunchServices (`open`) and watching for the process
+   * it starts.
    */
   readonly launchMacHost?: () => Promise<number | undefined>;
+  /**
+   * Runs `open <bundle>` for the macOS host. Mainly a test seam; defaults to
+   * running it inside the target session.
+   */
+  readonly openMacApp?: (bundle: string) => Promise<void>;
+  /** How long the process `open` started is watched for in `ps`. Mainly a test seam. */
+  readonly macLaunchObserveMs?: number;
+  /** How often that watch asks the process list. Mainly a test seam. */
+  readonly macLaunchPollMs?: number;
   /**
    * The 8.3 short form of a Windows directory, or null if it has none. Mainly a
    * test seam; defaults to asking Windows.
@@ -350,6 +365,14 @@ const START_SLACK_MS = 2_000;
 export const READINESS_TIMEOUT_MS = 180_000;
 
 /**
+ * How long `open` is given to produce a process the ownership check can
+ * name. `open` returns once LaunchServices has accepted the launch; the
+ * process itself appears in `ps` a moment later.
+ */
+export const MAC_HOST_OBSERVE_MS = 30_000;
+const MAC_HOST_OBSERVE_POLL_MS = 250;
+
+/**
  * Runs `DoScriptFile` against the application at a path, both taken from argv.
  *
  * Neither path is ever spliced into AppleScript source, so nothing needs
@@ -442,6 +465,9 @@ export class ScriptInvocationTransport implements HostTransport {
   readonly #now: () => number;
   readonly #spawnLauncher: SpawnLauncher;
   readonly #launchMacHost: () => Promise<number | undefined>;
+  readonly #openMacApp: (bundle: string) => Promise<void>;
+  readonly #macLaunchObserveMs: number;
+  readonly #macLaunchPollMs: number;
   readonly #shortPath: (directory: string) => string | null;
   readonly #mainWindowVisible: (executable: string) => boolean;
   readonly #selfPid: number;
@@ -481,7 +507,10 @@ export class ScriptInvocationTransport implements HostTransport {
     this.#processes = options.processes ?? (platform === "win32" ? windowsProcesses : psProcesses);
     this.#now = options.now ?? Date.now;
     this.#spawnLauncher = options.spawnLauncher ?? spawn;
-    this.#launchMacHost = options.launchMacHost ?? (() => this.#startMacHost());
+    this.#launchMacHost = options.launchMacHost ?? (() => this.#openMacHost());
+    this.#openMacApp = options.openMacApp ?? ((bundle) => this.#runInSession("open", [bundle]));
+    this.#macLaunchObserveMs = options.macLaunchObserveMs ?? MAC_HOST_OBSERVE_MS;
+    this.#macLaunchPollMs = options.macLaunchPollMs ?? MAC_HOST_OBSERVE_POLL_MS;
     this.#shortPath = options.shortPath ?? windowsShortPath;
     this.#mainWindowVisible = options.mainWindowVisible ?? windowsMainWindowVisible;
     this.#selfPid = options.selfPid ?? process.pid;
@@ -617,7 +646,7 @@ export class ScriptInvocationTransport implements HostTransport {
         // The Apple Event gives no pid, so "an After Effects appeared after
         // the snapshot" is all the evidence there would be — and that is
         // equally true of an instance the human starts a moment later. The
-        // pid this call creates is what lets ownership be bound to it.
+        // pid this call observes is what lets ownership be bound to it.
         this.#spawnedPid = await this.#launchMacHost();
       }
       return;
@@ -1005,58 +1034,66 @@ export class ScriptInvocationTransport implements HostTransport {
   }
 
   /**
-   * Starts the macOS After Effects explicitly and resolves once the process
-   * exists, not when it is scriptable — the readiness probe is what gates on
-   * that. Rejects when nothing could be started: continuing would let the
-   * Apple Event start an instance nobody can tie to this session.
+   * Starts the macOS After Effects through LaunchServices (`open`) and
+   * resolves with the pid of the process that appears, once it can be told
+   * apart from anything else running. Resolves `undefined` when no single
+   * new process of this install shows up in time: the launch is not proven,
+   * and ownership stays "unknown" exactly as before.
    *
-   * The child is detached and unreferenced so it neither keeps this process
-   * alive nor dies with it. It is never signalled: quitting is the host's own
-   * `app.quit`, and only when ownership has been proven.
+   * Why `open` and not the executable itself: a directly spawned AE is not
+   * in LaunchServices until seconds into its own start-up, and the
+   * readiness probe's Apple Event — addressed by bundle path — is resolved
+   * by LaunchServices. Sent into that gap it makes LaunchServices start a
+   * second instance (observed on AE 27.0: the spawned process never became
+   * the scriptable app and exited on its own; the LaunchServices instance
+   * owned the GUI children, issue #105). `open` goes through the same
+   * registry the Apple Event consults, so the probe can only reach the
+   * instance this launch created — verified on AE 27.0.0, where `open` plus
+   * an immediate probe produced exactly one process.
+   *
+   * `open` reports no pid, so the started process is identified from the
+   * process list: the single new process of this install that appeared
+   * after launch began. None, or several, candidates never produce a pid —
+   * two same-named processes is exactly the state this path exists to
+   * avoid, so it is never picked between.
    */
-  #startMacHost(): Promise<number | undefined> {
-    const executable = this.#install.executable;
-    let child: ChildProcess;
-    try {
-      const session = this.#targetSession;
-      if (session !== null) {
-        child = startInSession(session, executable, [], { cwd: join(executable, "..") });
-      } else if (typeof process.getuid === "function" && process.getuid() === this.#sessionUid) {
-        // The caller's own session, and no other user's session is in play.
-        child = spawn(executable, [], {
-          cwd: join(executable, ".."),
-          detached: true,
-          stdio: "ignore",
-        });
-      } else {
-        return Promise.reject(
-          new MacSessionError(
-            `cannot start After Effects as uid ${this.#sessionUid}: that user has no login session this ` +
-              "process can identify, so the process could not be tied to this session. Nothing was started.",
-          ),
-        );
-      }
-    } catch (error) {
-      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+  async #openMacHost(): Promise<number | undefined> {
+    const bundle = macAppBundle(this.#install.executable);
+    if (bundle === null) {
+      throw new Error(
+        `cannot start After Effects through LaunchServices: ${this.#install.executable} ` +
+          "is not inside an .app bundle",
+      );
     }
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      child.once("error", (error: Error) => {
-        if (settled) {
-          return;
+    await this.#openMacApp(bundle);
+    const deadline = this.#now() + this.#macLaunchObserveMs;
+    const knownPids = new Set((this.#preexisting ?? []).map((p) => p.pid));
+    for (;;) {
+      let now: HostProcess[] | null = null;
+      try {
+        now = this.#hostProcesses();
+      } catch {
+        now = null;
+      }
+      if (now !== null) {
+        const fresh = now.filter(
+          (p) => !knownPids.has(p.pid) && p.startedAt >= this.#launchBegan - START_SLACK_MS,
+        );
+        if (fresh.length === 1) {
+          const only = fresh[0] as HostProcess;
+          this.#spawnedAt = only.startedAt;
+          return only.pid;
         }
-        settled = true;
-        reject(new Error(`cannot start ${executable}: ${error.message}`, { cause: error }));
-      });
-      child.once("spawn", () => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        child.unref();
-        resolve(child.pid);
-      });
-    });
+        // None yet, or more than one: keep watching. A second same-bundle
+        // process is the failure this path exists to avoid, so two
+        // candidates are never picked between — the pid stays unrecorded
+        // and ownership stays "unknown".
+      }
+      if (this.#now() >= deadline) {
+        return undefined;
+      }
+      await new Promise((done) => setTimeout(done, this.#macLaunchPollMs));
+    }
   }
 
   /**
