@@ -354,13 +354,24 @@ export class MacHostRecovery implements HostRecovery {
     // empty-title dialog; the text it says can, and it is the same text the
     // class was matched on. The press re-checks it inside the target session.
     const marker = window.texts.find((text) => /^\s*ae-a8n:/.test(text)) ?? "";
+    let leaseRefusal: string | null = null;
     for (const title of this.#buttons) {
       // One call for both cases: a button the listing showed and one it did
       // not both get the accessibility press first and the coordinate click
       // second. Reserving the fallback for buttons the listing lacked meant a
       // listed button whose AX press failed got no click, and the refusal
       // then claimed none of the buttons was available.
-      if (gui.pressButtonIn(choice.index, title, window, marker)) {
+      let pressed: boolean;
+      try {
+        pressed = gui.pressButtonIn(choice.index, title, window, marker);
+      } catch (error) {
+        // A refused GUI lease is not "the button was unavailable": another
+        // owner holds the session's mutation lease. Report who, and stop —
+        // retrying under a held lease is exactly the contention it prevents.
+        leaseRefusal = error instanceof Error ? error.message : String(error);
+        break;
+      }
+      if (pressed) {
         const others =
           choice.blockingCount > 1
             ? ` (${choice.blockingCount - 1} other modal window(s) were left untouched)`
@@ -375,6 +386,17 @@ export class MacHostRecovery implements HostRecovery {
           window: description,
         };
       }
+    }
+    if (leaseRefusal !== null) {
+      return {
+        recovered: false,
+        outcome: "refused",
+        evidence:
+          `After Effects ${pid} shows "${description}", but no GUI mutation was attempted: ` +
+          `${leaseRefusal}. The dialog stays up until the lease holder finishes or the lease is reaped.`,
+        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        window: description,
+      };
     }
     // There is deliberately no escape-key fallback. The key only reaches the
     // window that happens to be key, and a listing made a moment earlier
