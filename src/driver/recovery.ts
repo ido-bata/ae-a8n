@@ -18,7 +18,12 @@
 
 import { join } from "node:path";
 
-import { MacGuiRecovery, isBlockingWindow, type GuiWindowInfo } from "./gui-recovery.js";
+import {
+  GuiMutationError,
+  MacGuiRecovery,
+  isBlockingWindow,
+  type GuiWindowInfo,
+} from "./gui-recovery.js";
 import type { MacSession } from "./mac-session.js";
 
 export type RecoveryContext = {
@@ -440,6 +445,7 @@ export class MacHostRecovery implements HostRecovery {
     // class was matched on. The press re-checks it inside the target session.
     const marker = window.texts.find((text) => /^\s*ae-a8n:/.test(text)) ?? "";
     let leaseRefusal: string | null = null;
+    let unknownMutation: string | null = null;
     for (const title of this.#buttons) {
       // One call for both cases: a button the listing showed and one it did
       // not both get the accessibility press first and the coordinate click
@@ -450,10 +456,19 @@ export class MacHostRecovery implements HostRecovery {
       try {
         pressed = gui.pressButtonIn(choice.index, title, window, marker);
       } catch (error) {
-        // A refused GUI lease is not "the button was unavailable": another
-        // owner holds the session's mutation lease. Report who, and stop —
-        // retrying under a held lease is exactly the contention it prevents.
-        leaseRefusal = error instanceof Error ? error.message : String(error);
+        if (error instanceof GuiMutationError) {
+          // The press may already have reached the dialog: the screen state
+          // is unknown, so this is quarantine — never "nothing was done",
+          // and never a retry.
+          unknownMutation = error.message;
+        } else {
+          // A refused GUI lease is not "the button was unavailable": another
+          // owner holds the session's mutation lease. Report who, and stop —
+          // retrying under a held lease is exactly the contention it prevents.
+          // Any other pre-mutation GuiRecoveryError (session entry, listing
+          // mismatch) also means nothing was pressed.
+          leaseRefusal = error instanceof Error ? error.message : String(error);
+        }
         break;
       }
       if (pressed) {
@@ -471,6 +486,20 @@ export class MacHostRecovery implements HostRecovery {
           window: description,
         };
       }
+    }
+    if (unknownMutation !== null) {
+      return {
+        recovered: false,
+        outcome: "quarantined",
+        code: "A8N-SEC-001",
+        evidence:
+          `After Effects ${pid} shows "${description}", and the press attempt ended with an ` +
+          `unknown result: ${unknownMutation}. Whether the button was pressed cannot be ` +
+          "determined from here, so the run is quarantined: re-observe the screen before " +
+          "retrying anything, and do not assume the dialog is still up or already gone.",
+        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        window: description,
+      };
     }
     if (leaseRefusal !== null) {
       return {

@@ -1,12 +1,15 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { spawn } from "node:child_process";
+
 import {
   acquireGuiLease,
   auditGuiEvent,
+  defaultPidAlive,
   guiLeasePaths,
   guiSessionKey,
   inspectGuiLease,
@@ -16,8 +19,11 @@ import {
   type PidStartProbe,
 } from "../src/platform/darwin/gui-lease.js";
 import {
+  defaultLeaseController,
+  GuiMutationError,
   GuiRecoveryError,
   MacGuiRecovery,
+  MacSessionError,
   type GuiLeaseController,
 } from "../src/driver/gui-recovery.js";
 
@@ -350,7 +356,7 @@ describe("MacGuiRecovery lease gating", () => {
     expect(() => gui.pressButton(1, "OK")).toThrow();
     expect(acquisitions).toEqual(["pressButton"]);
     const kinds = events.map((e) => `${e.kind}:${e.op ?? ""}:${e.outcome ?? ""}`);
-    expect(kinds).toContain("mutate:pressButton:error");
+    expect(kinds).toContain("mutate:pressButton:not-performed");
     expect(kinds).toContain("lease-release:pressButton:");
     // Observation is audited but never takes the lease: listWindows writes
     // an observe record and no acquisition happens.
@@ -359,6 +365,38 @@ describe("MacGuiRecovery lease gating", () => {
     expect(() => gui.listWindows()).toThrow();
     expect(acquisitions).toHaveLength(0);
     expect(events.map((e) => e.kind)).toContain("observe");
+  });
+
+  it("wraps a mid-mutation failure as GuiMutationError and audits it unknown", () => {
+    const { lease, events } = recordingLease();
+    const gui = new MacGuiRecovery({
+      session: foreignSession,
+      pid: 4242,
+      allowConsoleSession: true,
+      lease,
+      runSession: () => ({ status: 1, stdout: "", stderr: "press failed", timedOut: false }),
+    });
+    // The osascript ran (and failed) inside the mutation: the press may have
+    // reached the screen, so this is NOT a pre-mutation refusal.
+    expect(() => gui.pressButton(1, "OK")).toThrow(GuiMutationError);
+    const kinds = events.map((e) => `${e.kind}:${e.op ?? ""}:${e.outcome ?? ""}`);
+    expect(kinds).toContain("mutate:pressButton:unknown");
+    expect(kinds).toContain("lease-release:pressButton:");
+  });
+
+  it("a session-entry failure stays a plain error, not GuiMutationError", () => {
+    const { lease } = recordingLease();
+    const gui = new MacGuiRecovery({
+      session: foreignSession,
+      pid: 4242,
+      allowConsoleSession: true,
+      lease,
+      runSession: () => {
+        throw new MacSessionError("cannot enter the session");
+      },
+    });
+    expect(() => gui.pressButton(1, "OK")).toThrow(MacSessionError);
+    expect(() => gui.pressButton(1, "OK")).not.toThrow(GuiMutationError);
   });
 });
 
@@ -388,5 +426,113 @@ describe("auditGuiEvent", () => {
     expect(typeof first["ts"]).toBe("string");
     const second = JSON.parse(lines[1] ?? "{}") as Record<string, unknown>;
     expect(second["outcome"]).toBe("performed");
+  });
+});
+
+describe("review fixes", () => {
+  it("defaultPidAlive treats EPERM as alive and ESRCH as dead", async () => {
+    // pid 1 (launchd) is root-owned: kill(pid, 0) raises EPERM for a normal
+    // user. EPERM means the process exists — it must never read as dead,
+    // or a live owner's lease could be reaped.
+    expect(defaultPidAlive(1)).toBe(true);
+    const child = spawn("sleep", ["30"]);
+    const childPid = child.pid;
+    expect(childPid).toBeDefined();
+    child.kill("SIGKILL");
+    await new Promise((resolve) => child.once("exit", resolve));
+    expect(defaultPidAlive(childPid as number)).toBe(false);
+  });
+
+  it("release never deletes a lease another owner took over", () => {
+    const stateRoot = root();
+    const out = acquireGuiLease({
+      stateRoot,
+      session: SESSION,
+      owner: { id: "agent-a", pid: 111 },
+      pidAlive: alive,
+      pidStartedAt: startA,
+      now: () => new Date("2026-11-15T00:00:00Z"),
+    });
+    if (!out.ok) throw new Error("setup failed");
+    // Simulate the TOCTOU window: our file was removed externally and a new
+    // owner acquired the slot before our release ran.
+    const { dir } = guiLeasePaths(stateRoot);
+    const path = join(dir, "gui-501-100015.json");
+    writeFileSync(
+      path,
+      `${JSON.stringify({
+        schemaVersion: "1.0",
+        sessionKey: guiSessionKey(SESSION),
+        ownerId: "agent-b",
+        pid: 222,
+        pidStart: "start-b",
+        acquiredAt: "2026-11-15T01:00:00.000Z",
+        purpose: "gui-mutation",
+      })}\n`,
+    );
+    out.lease.release();
+    const after = inspectGuiLease(path, {
+      pidAlive: alive,
+      pidStartedAt: () => "start-b",
+    });
+    expect(after.state).toBe("held");
+    expect(after.record?.ownerId).toBe("agent-b");
+  });
+
+  it("reap removes a genuinely stale lease and refuses a revived one", () => {
+    const stateRoot = root();
+    const { dir } = guiLeasePaths(stateRoot);
+    const path = join(dir, "gui-501-100015.json");
+    mkdirSync(dir, { recursive: true });
+    const staleRecord = {
+      schemaVersion: "1.0",
+      sessionKey: guiSessionKey(SESSION),
+      ownerId: "ghost",
+      pid: 999,
+      pidStart: null,
+      acquiredAt: "2026-11-15T00:00:00.000Z",
+      purpose: "gui-mutation",
+    };
+    writeFileSync(path, `${JSON.stringify(staleRecord)}\n`);
+    const reaped = reapGuiLease({
+      stateRoot,
+      session: SESSION,
+      owner: { id: "reaper", pid: 1 },
+      confirm: true,
+      pidAlive: dead,
+      pidStartedAt: startA,
+    });
+    expect(reaped.ok).toBe(true);
+    expect(existsSync(path)).toBe(false);
+
+    // A lease whose owner is alive is never reaped, even with confirm.
+    writeFileSync(path, `${JSON.stringify(staleRecord)}\n`);
+    const held = reapGuiLease({
+      stateRoot,
+      session: SESSION,
+      owner: { id: "reaper", pid: 1 },
+      confirm: true,
+      pidAlive: alive,
+      pidStartedAt: startA,
+    });
+    expect(held.ok).toBe(false);
+    expect(existsSync(path)).toBe(true);
+  });
+
+  it("an audit failure after acquire releases the lease and refuses", () => {
+    const stateRoot = root();
+    // Make the audit log path a directory: every append fails, but the
+    // lease directory itself stays writable.
+    mkdirSync(join(stateRoot, "gui-audit.jsonl"), { recursive: true });
+    const controller = defaultLeaseController({
+      stateRoot,
+      session: { uid: 501, asid: 100015, username: "tester", kind: "Aqua" },
+      ownerId: "agent-a",
+    });
+    expect(() => controller.acquire("pressButton")).toThrow(/audit record could not be written/);
+    // The acquired lease was released: nothing is left holding the session.
+    const { dir } = guiLeasePaths(stateRoot);
+    const leftovers = existsSync(dir) ? readdirSync(dir) : [];
+    expect(leftovers.filter((name) => name.startsWith("gui-"))).toHaveLength(0);
   });
 });

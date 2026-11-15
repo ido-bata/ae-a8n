@@ -35,9 +35,11 @@ import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
   closeSync,
+  existsSync,
   mkdirSync,
   openSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -117,8 +119,11 @@ export const defaultPidAlive: PidAliveProbe = (pid) => {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    // ESRCH is the only proof of death. EPERM means the process exists but
+    // belongs to another user — it is alive, just not ours to signal, and
+    // calling it dead would let a live owner's lease be reaped.
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
   }
 };
 
@@ -139,6 +144,59 @@ export type GuiLease = {
   /** Removes the lease only while it still names this holder. Idempotent. */
   release(): void;
 };
+
+/**
+ * Delete the lease file only when it still holds the expected record.
+ *
+ * Read-then-`rm` is not enough: between the read and the delete an external
+ * actor could remove the file and a new owner could acquire it, and the
+ * delete would then destroy *their* lease. The delete is therefore split in
+ * two atomic steps — rename the file aside (whatever sits at `path` moves,
+ * nothing can slip in between), re-read the moved file, and only remove it
+ * when its identity still matches. If the moved file is not the expected
+ * record it is put back when the slot is free; it is never overwritten.
+ */
+function removeLeaseFileIfMatch(
+  path: string,
+  isExpected: (record: LeaseRecord) => boolean,
+): "removed" | "kept" | "missing" {
+  const expected = readLeaseRecord(path);
+  if (expected === null) {
+    // Missing, unreadable or unparseable: nothing we can prove is ours.
+    return existsSync(path) ? "kept" : "missing";
+  }
+  if (!isExpected(expected)) {
+    return "kept";
+  }
+  const trash = `${path}.releasing-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try {
+    renameSync(path, trash);
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? "missing" : "kept";
+  }
+  const moved = readLeaseRecord(trash);
+  const sameRecord =
+    moved !== null &&
+    moved.ownerId === expected.ownerId &&
+    moved.pid === expected.pid &&
+    moved.acquiredAt === expected.acquiredAt &&
+    isExpected(moved);
+  if (sameRecord) {
+    rmSync(trash);
+    return "removed";
+  }
+  // The file changed between our read and the rename — restore it when the
+  // lease slot is still free, and never overwrite a newer file.
+  if (!existsSync(path)) {
+    try {
+      renameSync(trash, path);
+    } catch {
+      // The slot was taken in the gap; the moved file stays quarantined
+      // under its trash name rather than being destroyed.
+    }
+  }
+  return "kept";
+}
 
 export type GuiLeaseRefusalReason = "held" | "stale" | "ambiguous";
 
@@ -300,15 +358,13 @@ export function acquireGuiLease(options: GuiLeaseOptions): GuiLeaseOutcome {
     lease: {
       path,
       release: () => {
-        const current = readLeaseRecord(path);
-        if (
-          current !== null &&
-          current.ownerId === record.ownerId &&
-          current.pid === record.pid &&
-          current.acquiredAt === record.acquiredAt
-        ) {
-          rmSync(path);
-        }
+        removeLeaseFileIfMatch(
+          path,
+          (current) =>
+            current.ownerId === record.ownerId &&
+            current.pid === record.pid &&
+            current.acquiredAt === record.acquiredAt,
+        );
         // A lease we cannot read, or which another owner has taken over, is
         // left in place: removing it could let a second mutator in.
       },
@@ -349,7 +405,25 @@ export function reapGuiLease(
           : `the lease file is unreadable; it was not reaped`,
     };
   }
-  rmSync(path);
+  // Compare-and-delete on the inspected identity: a lease that came back to
+  // life, or a different record that took the slot, is restored — never
+  // removed.
+  const inspected = state.record;
+  const removed = removeLeaseFileIfMatch(
+    path,
+    (record) =>
+      inspected !== null &&
+      record.ownerId === inspected.ownerId &&
+      record.pid === inspected.pid &&
+      record.acquiredAt === inspected.acquiredAt,
+  );
+  if (removed !== "removed") {
+    return {
+      ok: false,
+      path,
+      detail: "the lease changed between inspection and reap; it was not removed",
+    };
+  }
   return {
     ok: true,
     path,

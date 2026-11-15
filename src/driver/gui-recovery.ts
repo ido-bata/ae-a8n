@@ -450,12 +450,39 @@ export type GuiRecoveryOptions = {
   readonly ownerId?: string;
   /** Lease/audit seam — mainly a test seam. */
   readonly lease?: GuiLeaseController;
+  /**
+   * Session-command seam — mainly a test seam. Production runs
+   * `runInSession`; tests inject a stub so mutation error paths can be
+   * exercised without a real GUI session.
+   */
+  readonly runSession?: typeof runInSession;
 };
 
 export class GuiRecoveryError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "GuiRecoveryError";
+  }
+}
+
+/**
+ * A GUI mutation was attempted and its outcome is unknown.
+ *
+ * Distinct from `GuiRecoveryError`, which is thrown *before* anything reaches
+ * the screen (lease refusal, session entry failure, bad arguments). This
+ * error means the press or click may already have happened — the caller must
+ * not report "nothing was done" and must not retry blindly; the screen state
+ * has to be re-observed first.
+ */
+export class GuiMutationError extends Error {
+  /** Always true: thrown only after the mutation step was entered. */
+  readonly mutationAttempted = true;
+  constructor(message: string, options?: { readonly cause?: unknown }) {
+    super(message);
+    this.name = "GuiMutationError";
+    if (options?.cause !== undefined) {
+      this.cause = options.cause;
+    }
   }
 }
 
@@ -472,6 +499,7 @@ export class MacGuiRecovery {
   readonly #screenshotDir: string | undefined;
   readonly #census: (() => WindowCensus) | undefined;
   readonly #lease: GuiLeaseController;
+  readonly #runSession: typeof runInSession;
 
   constructor(options: GuiRecoveryOptions) {
     if (options.session.kind !== "Aqua") {
@@ -511,6 +539,7 @@ export class MacGuiRecovery {
         session: options.session,
         ownerId: options.ownerId ?? "ae-a8n",
       });
+    this.#runSession = options.runSession ?? runInSession;
   }
 
   /**
@@ -551,35 +580,91 @@ export class MacGuiRecovery {
 
   /**
    * A GUI mutation runs under the session's single-owner lease and is
-   * audited around the action. A refused lease throws before anything is
-   * pressed or clicked; the audit line names the holder.
+   * audited around the action.
+   *
+   * Error boundary, deliberately narrow:
+   *
+   *   - `this.#lease.acquire(op)` throws before `fn` runs — nothing reached
+   *     the screen, and the error is the plain refusal.
+   *   - A `MacSessionError` from `fn` means the target session was never
+   *     entered, so nothing was pressed or clicked either.
+   *   - Any other `fn` error becomes `GuiMutationError`: the action may have
+   *     partially reached the screen, so "nothing was done" would be a lie
+   *     and a retry could double-apply it.
    */
   #mutate<T>(op: string, fn: () => T): T {
     const lease = this.#lease.acquire(op);
     try {
-      const result = fn();
-      this.#lease.audit({
-        kind: "mutate",
-        op,
-        outcome: result === false ? "not-performed" : "performed",
-      });
-      return result;
-    } catch (error) {
+      let result: T;
+      try {
+        result = fn();
+      } catch (error) {
+        if (error instanceof MacSessionError) {
+          // The session was never entered: provably nothing was mutated.
+          try {
+            this.#lease.audit({
+              kind: "mutate",
+              op,
+              outcome: "not-performed",
+              detail: error.message,
+            });
+          } catch {
+            // The original failure is the evidence that matters.
+          }
+          throw error;
+        }
+        try {
+          this.#lease.audit({
+            kind: "mutate",
+            op,
+            outcome: "unknown",
+            detail: error instanceof Error ? error.message : String(error),
+          });
+        } catch {
+          // The original failure is the evidence that matters.
+        }
+        throw new GuiMutationError(
+          `the ${op} mutation was attempted but its result is unknown: ` +
+            `${error instanceof Error ? error.message : String(error)}. ` +
+            "The screen must be re-observed before any retry.",
+          { cause: error },
+        );
+      }
       try {
         this.#lease.audit({
           kind: "mutate",
           op,
-          outcome: "error",
-          detail: error instanceof Error ? error.message : String(error),
+          outcome: result === false ? "not-performed" : "performed",
         });
       } catch {
-        // The original failure is the evidence that matters; a second audit
-        // failure must not replace it.
+        // The action already happened; an audit failure cannot undo it and
+        // must not masquerade as a mutation failure.
       }
-      throw error;
+      return result;
     } finally {
-      lease.release();
-      this.#lease.audit({ kind: "lease-release", op });
+      let released = true;
+      try {
+        lease.release();
+      } catch (error) {
+        released = false;
+        try {
+          this.#lease.audit({
+            kind: "lease-release",
+            op,
+            outcome: "error",
+            detail: error instanceof Error ? error.message : String(error),
+          });
+        } catch {
+          // Nothing left to report to.
+        }
+      }
+      if (released) {
+        try {
+          this.#lease.audit({ kind: "lease-release", op });
+        } catch {
+          // A failed release audit must not replace the operation's outcome.
+        }
+      }
     }
   }
 
@@ -751,7 +836,7 @@ export class MacGuiRecovery {
    * source: nothing that comes from the outside becomes AppleScript.
    */
   #osascript(script: readonly string[], args: readonly string[]): SessionCommandResult {
-    const result = runInSession(
+    const result = this.#runSession(
       this.#session,
       "/usr/bin/osascript",
       [...script.flatMap((line) => ["-e", line]), ...args],
@@ -802,13 +887,25 @@ export function defaultLeaseController(options: {
         }
         throw new GuiRecoveryError(`GUI mutation refused: ${outcome.detail}`);
       }
-      auditGuiEvent(options.stateRoot, {
-        kind: "lease-acquire",
-        sessionKey,
-        ownerId: options.ownerId,
-        pid,
-        op,
-      });
+      // The lease file exists at this point; if recording the acquisition
+      // fails, an unaudited mutation must not proceed — release the lease
+      // and refuse, leaving nothing held and nothing pressed.
+      try {
+        auditGuiEvent(options.stateRoot, {
+          kind: "lease-acquire",
+          sessionKey,
+          ownerId: options.ownerId,
+          pid,
+          op,
+        });
+      } catch (auditError) {
+        outcome.lease.release();
+        throw new GuiRecoveryError(
+          `GUI mutation refused: the lease was acquired but its audit record could not be ` +
+            `written (${auditError instanceof Error ? auditError.message : String(auditError)}); ` +
+            "the lease was released and nothing was pressed or clicked",
+        );
+      }
       return outcome.lease;
     },
     audit(event) {
