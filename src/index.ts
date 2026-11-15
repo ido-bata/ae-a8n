@@ -134,6 +134,8 @@ export {
 } from "./driver/recovery.js";
 export {
   MacSessionError,
+  readGuiSession,
+  readGuiSessionFailure,
   readUsername,
   type MacSession,
   type MacSessionKind,
