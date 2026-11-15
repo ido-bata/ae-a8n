@@ -74,6 +74,23 @@ describe("a host the session owns", () => {
   });
 });
 
+describe("recoveryTarget", () => {
+  it("is null for a transport that cannot attest a pid, even when owned", async () => {
+    // The fake transport owns its host but cannot name a real pid or GUI
+    // session — recovery authorization must see "no attested target",
+    // never a substitute pid.
+    const ae = await launch();
+    expect(transport.ownershipKind).toBe("owned");
+    expect(ae.recoveryTarget()).toBeNull();
+  });
+
+  it("is null once the session is closed", async () => {
+    const ae = await launch();
+    await ae.close();
+    expect(ae.recoveryTarget()).toBeNull();
+  });
+});
+
 describe("closing a project through the driver", () => {
   it("refuses to drop unsaved changes unless told to", async () => {
     const ae = await launch();

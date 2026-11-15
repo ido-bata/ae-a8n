@@ -12,13 +12,14 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { entryScriptPath, stageHostScript, writeBootstrapScript } from "./bootstrap.js";
+import type { MacSession } from "./mac-session.js";
 import type { HostRecovery } from "./recovery.js";
 import {
   collectSessionDiagnostics,
   type DiagnosticsOptions,
   type SessionDiagnostics,
 } from "./session-diagnostics.js";
-import { READINESS_TIMEOUT_MS } from "./script-invocation.js";
+import { READINESS_TIMEOUT_MS, ScriptInvocationTransport } from "./script-invocation.js";
 import type { HostOwnership, HostTransport, PendingLaunch } from "./transport.js";
 import { ScriptNotSentError } from "./transport.js";
 
@@ -264,6 +265,27 @@ export class AeDriver {
 
   get transportKind(): string {
     return this.#transport.kind;
+  }
+
+  /**
+   * The owned After Effects process and GUI session this driver's transport
+   * attests, for recovery authorization (ae-devtools #55). Only the script
+   * transport can name its target; every other transport — and any state
+   * where the pid or session cannot be proven — returns null. Callers must
+   * treat null as "no attested target", never substitute a pid found by
+   * other means.
+   */
+  recoveryTarget(): { pid: number; session: MacSession } | null {
+    const transport = this.#transport;
+    if (!(transport instanceof ScriptInvocationTransport)) {
+      return null;
+    }
+    const pid = transport.recoveryTargetPid();
+    const session = transport.targetSession;
+    if (pid === null || session === null) {
+      return null;
+    }
+    return { pid, session };
   }
 
   /**
