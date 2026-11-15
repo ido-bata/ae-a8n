@@ -27,6 +27,12 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import {
+  censusForPid,
+  windowServerCensus,
+  type CensusRunner,
+  type WindowCensus,
+} from "../platform/darwin/window-census.js";
+import {
   consoleSessionUid,
   MacSessionError,
   runInSession,
@@ -62,7 +68,53 @@ export type GuiAppState = {
   /** Whether the process is the frontmost application of its session. */
   readonly frontmost: boolean;
   readonly windows: readonly GuiWindowInfo[];
+  /**
+   * What the WindowServer itself says about this pid's windows, across all
+   * Spaces. The Accessibility listing above is NOT authoritative: a process
+   * can own real windows while answering AX with an empty tree (observed on
+   * a real host: a crash-repair dialog was on screen while AX reported
+   * zero windows). When the census is unavailable this says so — it is
+   * degraded observation, never "no windows".
+   */
+  readonly windowServer: {
+    readonly available: boolean;
+    readonly reason: string | null;
+    /** Windows the WindowServer attributes to this pid (all Spaces). */
+    readonly windowCount: number;
+    readonly onScreenCount: number;
+  };
+  /**
+   * True when AX reported zero windows but the WindowServer lists windows
+   * for this pid. `windows` is then NOT evidence of a clean screen — the
+   * AX tree is unserviceable and every AX-derived conclusion is suspect.
+   */
+  readonly axSuspect: boolean;
 };
+
+/**
+ * Combine the AX listing with the WindowServer census into an honest
+ * observation. Pure — the census gathering lives in `window-census.ts`.
+ */
+export function assessGuiObservation(
+  pid: number,
+  frontmost: boolean,
+  windows: readonly GuiWindowInfo[],
+  census: WindowCensus,
+): GuiAppState {
+  const mine = censusForPid(census, pid);
+  return {
+    pid,
+    frontmost,
+    windows,
+    windowServer: {
+      available: census.available,
+      reason: census.available ? null : census.reason,
+      windowCount: mine.windowCount,
+      onScreenCount: mine.onScreenCount,
+    },
+    axSuspect: windows.length === 0 && mine.windowCount > 0,
+  };
+}
 
 /** A window that keeps the application from taking scripts. */
 export function isBlockingWindow(window: GuiWindowInfo): boolean {
@@ -353,6 +405,14 @@ export type GuiRecoveryOptions = {
    * A caller that owns that screen can say so explicitly.
    */
   readonly allowConsoleSession?: boolean;
+  /**
+   * WindowServer census seam. Production runs the CLT-python probe inside
+   * the target session; tests inject a stub. A census that cannot run is
+   * reported as unavailable — never treated as "no windows".
+   */
+  readonly census?: () => WindowCensus;
+  /** Census exec seam (program, args) → stdout; mainly a test seam. */
+  readonly censusRun?: CensusRunner;
 };
 
 export class GuiRecoveryError extends Error {
@@ -373,6 +433,7 @@ export class MacGuiRecovery {
   readonly #session: MacSession;
   readonly #pid: number;
   readonly #screenshotDir: string | undefined;
+  readonly #census: (() => WindowCensus) | undefined;
 
   constructor(options: GuiRecoveryOptions) {
     if (options.session.kind !== "Aqua") {
@@ -404,6 +465,26 @@ export class MacGuiRecovery {
     this.#session = options.session;
     this.#pid = options.pid;
     this.#screenshotDir = options.screenshotDir;
+    this.#census = options.census ?? this.#defaultCensus(options.censusRun);
+  }
+
+  /**
+   * The WindowServer census, run inside the target session — the same
+   * scoping rule as every other GUI action here. A missing interpreter or
+   * a failed probe degrades to `available: false`, not to "no windows".
+   */
+  #defaultCensus(censusRun: CensusRunner | undefined): () => WindowCensus {
+    return () =>
+      windowServerCensus(
+        censusRun ??
+          ((program, args) => {
+            const result = runInSession(this.#session, program, [...args], { timeoutMs: 30_000 });
+            if (result.status !== 0) {
+              throw new Error(result.stderr.trim() || `exit status ${result.status}`);
+            }
+            return result.stdout;
+          }),
+      );
   }
 
   get session(): MacSession {
@@ -424,7 +505,16 @@ export class MacGuiRecovery {
       );
     }
     const parsed = parseUiListing(result.stdout);
-    return { pid: this.#pid, frontmost: parsed.frontmost, windows: parsed.windows };
+    let census: WindowCensus;
+    try {
+      census = this.#census !== undefined ? this.#census() : { available: false, reason: "no census configured" };
+    } catch (error) {
+      census = {
+        available: false,
+        reason: `window census failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    return assessGuiObservation(this.#pid, parsed.frontmost, parsed.windows, census);
   }
 
   /** The windows that keep the application from taking a script. */

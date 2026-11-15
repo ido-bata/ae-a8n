@@ -250,7 +250,9 @@ describe("the GUI recovery", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+    // osacompile is a real AppleScript compiler; on a loaded machine three
+    // invocations can exceed the default timeout without anything being wrong.
+  }, 30_000);
 
   it("refuses the console session, which is the screen the user is looking at", () => {
     const uid = consoleSessionUid();
