@@ -313,4 +313,35 @@ describe("which window a recovery may act on", () => {
     const windows: GuiWindowInfo[] = [measuredAlert("ae-a8n: sign in to Adobe ID")];
     expect(chooseRecoveryWindow(windows).kind).toBe("human-only");
   });
+
+  it("names the crash-repair dialog as recognised but never pressable", () => {
+    // Observed on a real host 2026-11-15: its choices include repair method
+    // and report submission — a human's decision, not a dismissal.
+    const windows: GuiWindowInfo[] = [dialog("クラッシュ修復オプション", "クラッシュレポートを送信しますか")];
+    const choice = chooseRecoveryWindow(windows);
+    expect(choice.kind).toBe("unpressable");
+    if (choice.kind !== "unpressable") return;
+    expect(choice.dialogClass.name).toBe("ae crash-repair options");
+  });
+
+  it("names the AppDirs/Required Dir startup warning and the recovery project window", () => {
+    const warning = chooseRecoveryWindow([dialog("警告", "AppDirs <5> Required Dir = /Applications/Adobe After Effects 2026")]);
+    expect(warning.kind).toBe("unpressable");
+    if (warning.kind === "unpressable") {
+      expect(warning.dialogClass.name).toBe("ae startup directory warning");
+    }
+    const recovery = chooseRecoveryWindow([dialog("リカバリプロジェクトを生成", "After Effects Crash_33.aep")]);
+    expect(recovery.kind).toBe("unpressable");
+    if (recovery.kind === "unpressable") {
+      expect(recovery.dialogClass.name).toBe("ae crash-recovery project");
+    }
+  });
+
+  it("presses nothing when a recognised unpressable dialog sits beside a measured alert", () => {
+    const windows: GuiWindowInfo[] = [measuredAlert(), dialog("クラッシュ修復オプション")];
+    const choice = chooseRecoveryWindow(windows);
+    expect(choice.kind).toBe("unpressable");
+    if (choice.kind !== "unpressable") return;
+    expect(choice.index).toBe(2);
+  });
 });

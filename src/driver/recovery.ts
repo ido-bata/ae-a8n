@@ -147,11 +147,73 @@ export function classifyDialog(window: GuiWindowInfo): KnownDialogClass | null {
   return KNOWN_DIALOG_CLASSES.find((dialogClass) => dialogClass.matches(window)) ?? null;
 }
 
+/**
+ * Dialog classes that are recognised by name but may never be pressed.
+ *
+ * These were observed on a real host (2026-11-15, AE 26.5.3): the crash
+ * repair options dialog, the AppDirs/Required Dir startup warning, and the
+ * crash-recovery project window. Each offers choices — repair method, report
+ * submission, settings — that are a human's decision, and none has a measured
+ * safe button. Naming them keeps the evidence specific; the outcome is the
+ * same refusal an unclassified window gets, minus the "unknown" claim.
+ */
+export type UnpressableDialogClass = {
+  /** What the evidence calls this class. */
+  readonly name: string;
+  /** Why no button in it may be pressed automatically. */
+  readonly reason: string;
+  readonly matches: (window: GuiWindowInfo) => boolean;
+};
+
+const unpressableText = (window: GuiWindowInfo): string =>
+  [window.title, window.role, window.subrole ?? "", ...window.texts].join(" ");
+
+export const UNPRESSABLE_DIALOG_CLASSES: readonly UnpressableDialogClass[] = [
+  {
+    name: "ae crash-repair options",
+    reason:
+      "the crash repair dialog offers repair and report-submission choices; sending a report or " +
+      "changing repair settings is a human's decision",
+    matches: (window) => /クラッシュ修復|crash[ -]?repair|repair options/i.test(unpressableText(window)),
+  },
+  {
+    name: "ae startup directory warning",
+    reason:
+      "the AppDirs/Required Dir warning reports an application-directory problem at launch; " +
+      "its choices change how After Effects starts and are a human's decision",
+    matches: (window) => /AppDirs|Required Dir/.test(unpressableText(window)),
+  },
+  {
+    name: "ae crash-recovery project",
+    reason:
+      "the crash-recovery project window decides whether a recovered project is generated or " +
+      "discarded; discarding unsaved work is a human's decision",
+    matches: (window) =>
+      /リカバリプロジェクト|recovery project|crash[_ ]?\d+\.aep/i.test(unpressableText(window)),
+  },
+];
+
+/** The recognised-but-never-pressable class a window belongs to, or null. */
+export function classifyUnpressable(window: GuiWindowInfo): UnpressableDialogClass | null {
+  return UNPRESSABLE_DIALOG_CLASSES.find((dialogClass) => dialogClass.matches(window)) ?? null;
+}
+
 export type RecoveryWindowChoice =
   /** No window is blocking the host; nothing to press. */
   | { readonly kind: "none" }
   /** A blocking window belongs to a human; nothing may be pressed anywhere. */
   | { readonly kind: "human-only"; readonly index: number; readonly window: GuiWindowInfo }
+  /**
+   * A blocking window is a recognised class that may never be pressed
+   * (crash repair, startup warning, recovery project). Nothing is pressed;
+   * the run is refused with the class named.
+   */
+  | {
+      readonly kind: "unpressable";
+      readonly index: number;
+      readonly window: GuiWindowInfo;
+      readonly dialogClass: UnpressableDialogClass;
+    }
   /** The first blocking window is a measured class, and the only one a press may be sent to. */
   | {
       readonly kind: "known";
@@ -195,6 +257,17 @@ export function chooseRecoveryWindow(windows: readonly GuiWindowInfo[]): Recover
   const humanOnly = blocking.find(({ window }) => isHumanOnlyWindow(window));
   if (humanOnly !== undefined) {
     return { kind: "human-only", index: humanOnly.index, window: humanOnly.window };
+  }
+  const unpressable = blocking
+    .map(({ window, index }) => ({ window, index, dialogClass: classifyUnpressable(window) }))
+    .find((entry) => entry.dialogClass !== null);
+  if (unpressable !== undefined && unpressable.dialogClass !== null) {
+    return {
+      kind: "unpressable",
+      index: unpressable.index,
+      window: unpressable.window,
+      dialogClass: unpressable.dialogClass,
+    };
   }
   const unknown = blocking.find(({ window }) => classifyDialog(window) === null);
   if (unknown !== undefined) {
@@ -331,6 +404,18 @@ export class MacHostRecovery implements HostRecovery {
         evidence:
           `After Effects ${pid} shows "${description}", which is an Adobe account or licence window. ` +
           "No button was pressed: signing in, signing out or deactivating a device is a human's decision. " +
+          "The host stays blocked until it is answered by hand.",
+        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        window: description,
+      };
+    }
+    if (choice.kind === "unpressable") {
+      return {
+        recovered: false,
+        outcome: "refused",
+        evidence:
+          `After Effects ${pid} shows "${description}", which is the ${choice.dialogClass.name} dialog. ` +
+          `No button was pressed: ${choice.dialogClass.reason}. ` +
           "The host stays blocked until it is answered by hand.",
         ...(shot === undefined ? {} : { screenshotPath: shot }),
         window: description,
