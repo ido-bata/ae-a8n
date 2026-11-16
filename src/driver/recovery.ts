@@ -279,9 +279,9 @@ export class MacHostRecovery implements HostRecovery {
         evidence: `no GUI recovery is possible: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
-    let windows: readonly GuiWindowInfo[];
+    let state: ReturnType<MacGuiRecovery["listWindows"]>;
     try {
-      windows = gui.listWindows().windows;
+      state = gui.listWindows();
     } catch (error) {
       return {
         recovered: false,
@@ -289,14 +289,28 @@ export class MacHostRecovery implements HostRecovery {
         evidence: `the target session could not be inspected: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
+    const windows = state.windows;
     const choice = chooseRecoveryWindow(windows);
     if (choice.kind === "none") {
+      // AX-empty is not proof of a clean screen: when the WindowServer census
+      // lists windows for this pid, the AX tree is unserviceable and "no
+      // modal window" cannot be concluded. Still refuse and click nothing —
+      // the evidence just stops claiming what it cannot know.
+      const evidence = state.axSuspect
+        ? `After Effects ${pid}: the Accessibility API reported no windows, but the window server lists ` +
+          `${state.windowServer.windowCount} window(s) for it (${state.windowServer.onScreenCount} on-screen) — ` +
+          `the AX tree is not answering, so whether a modal window is up cannot be determined. ` +
+          `${context.method} (${context.requestId}) timed out; nothing was clicked`
+        : state.windowServer.available === false
+          ? `After Effects ${pid}: window observation is degraded (${state.windowServer.reason ?? "census unavailable"}) ` +
+            `and the Accessibility API reported no windows; ${context.method} (${context.requestId}) timed out for ` +
+            "another reason, and nothing was clicked"
+          : `After Effects ${pid} has no modal window; ${context.method} (${context.requestId}) timed out for another ` +
+            "reason, and nothing was clicked";
       return {
         recovered: false,
         outcome: "refused",
-        evidence:
-          `After Effects ${pid} has no modal window; ${context.method} (${context.requestId}) timed out for another ` +
-          "reason, and nothing was clicked",
+        evidence,
       };
     }
     const window = choice.window;

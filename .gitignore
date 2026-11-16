@@ -1,4 +1,3 @@
-node_modules/
 dist/
 coverage/
 *.tsbuildinfo
@@ -17,3 +16,4 @@ coverage/
 
 # scratch directories used while reviewing the published shape
 .review-probe/
+node_modules
