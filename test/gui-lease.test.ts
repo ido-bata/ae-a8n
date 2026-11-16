@@ -6,7 +6,7 @@ import { buildSync } from "esbuild";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   acquireGuiLease,
@@ -573,7 +573,7 @@ describe("parallel lease races (real processes)", () => {
 
   function workerSource(): string {
     return `import { appendFileSync } from "node:fs";
-import { acquireGuiLease, reapGuiLease } from "LEASE_MODULE";
+import { acquireGuiLease, reapGuiLease } from LEASE_MODULE;
 const [,, stateRoot, uid, asid, ownerId, iterations, mode, logPath] = process.argv;
 const session = { uid: Number(uid), asid: Number(asid) };
 const owner = { id: ownerId, pid: process.pid };
@@ -599,7 +599,10 @@ for (let i = 0; i < Number(iterations); i++) {
     workers: WorkerSpec[],
   ): Promise<void> {
     const workerPath = join(stateRoot, "worker.mjs");
-    writeFileSync(workerPath, workerSource().replace("LEASE_MODULE", modulePath));
+    // A file: URL, not a bare path: Windows paths contain backslashes that
+    // are not valid inside a module specifier string.
+    const specifier = JSON.stringify(pathToFileURL(modulePath).href);
+    writeFileSync(workerPath, workerSource().replace("LEASE_MODULE", specifier));
     const logPath = join(stateRoot, "mutations.log");
     writeFileSync(logPath, "");
     const children = workers.map((w) =>
