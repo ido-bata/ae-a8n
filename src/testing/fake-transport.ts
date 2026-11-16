@@ -45,6 +45,16 @@ export class FakeAfterEffectsTransport implements HostTransport {
   hostStateKind: HostState = "alive";
   /** The pid `hostPid()` reports; null means "no owned process to name". */
   hostPidValue: number | null = null;
+  /**
+   * The process `ownedProcess()` reports, for launch provenance. Null by
+   * default: the fake names no process unless a test gives it one.
+   */
+  ownedProcessValue: {
+    readonly pid: number;
+    readonly startedAt: number;
+    readonly identity?: string | undefined;
+    readonly executable: string;
+  } | null = null;
   /** The engine's `$.global`: persists across scripts, as in a real After Effects. */
   #engineGlobal: Record<string, unknown> = {};
   /**
@@ -115,6 +125,10 @@ export class FakeAfterEffectsTransport implements HostTransport {
 
   hostPid(): number | null {
     return this.hostPidValue;
+  }
+
+  ownedProcess(): typeof this.ownedProcessValue {
+    return this.ownedProcessValue;
   }
 
   close(): Promise<void> {

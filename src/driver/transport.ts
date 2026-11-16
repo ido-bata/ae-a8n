@@ -160,6 +160,20 @@ export interface HostTransport {
   hostPid?(): number | null;
 
   /**
+   * The process this session proved it owns, with the identity a later
+   * process can re-check (pid, start time, Windows creation identity,
+   * executable). Used to write launch provenance for `resume`; null when
+   * nothing is proven. Diagnostics/provenance only — never authority.
+   * Optional.
+   */
+  ownedProcess?(): {
+    readonly pid: number;
+    readonly startedAt: number;
+    readonly identity?: string | undefined;
+    readonly executable: string;
+  } | null;
+
+  /**
    * Resolves true once the host will accept a script, false if it still would
    * not when `timeoutMs` ran out. Optional; a transport without it is probed
    * straight away. After Effects on Windows needs it: a `-r` sent while AE is

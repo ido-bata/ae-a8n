@@ -86,6 +86,11 @@ export type {
 } from "./driver/session-diagnostics.js";
 export { ScriptInvocationTransport } from "./driver/script-invocation.js";
 export {
+  launchProvenancePath,
+  readLaunchProvenance,
+} from "./driver/launch-provenance.js";
+export type { LaunchProvenance } from "./driver/launch-provenance.js";
+export {
   AfterEffectsNotInstalledError,
   resolveInstall,
   type AfterEffectsInstall,
