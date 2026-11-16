@@ -84,7 +84,6 @@ export type {
   GuiAssessment,
   GuiSessionInfo,
   GuiStateObservation,
-  GuiStateOptions,
   GuiStateReport,
   GuiWindowClassification,
   GuiWindowReport,
@@ -111,6 +110,7 @@ export type {
 
 export { TraceRecorder } from "./trace/trace.js";
 export type { TraceEvent, TraceStatus } from "./trace/trace.js";
+export type { DiagnosticCode } from "./doctor/diagnostics.js";
 
 export { AeDriver } from "./driver/driver.js";
 export type { DriverOptions, HostCondition, StopOptions, StopResult } from "./driver/driver.js";

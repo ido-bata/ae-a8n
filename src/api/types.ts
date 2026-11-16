@@ -312,29 +312,33 @@ export type ResumeOptions = Omit<LaunchOptions, "sessionRoot"> & {
  * Read-only GUI observation (#109).
  *
  * `ae.guiState()` reports what the owned After Effects session's screen
- * currently shows — windows, their measured dialog classification, and the
- * platform-neutral recovery policy's verdict — without pressing anything.
- * "unavailable" is a first-class answer: when no owned target is attested
- * or the session cannot be entered, the report says so instead of guessing.
+ * currently shows — windows, their classification against the same dialog
+ * policy `session.recover` uses, and the aggregate verdict — without
+ * pressing anything. "unavailable" is a first-class answer: when no owned
+ * target is attested or the session cannot be entered, the report says so
+ * instead of guessing.
  */
 
 /** How one observed window stands against the recovery policy. */
 export type GuiWindowClassification =
   /** The window does not hold the host at a modal state. */
   | { readonly kind: "not-blocking" }
-  /** A measured dialog class; `presses`/`code` come from the class record. */
+  /**
+   * A measured dialog class whose safe button `session.recover` may press.
+   */
+  | { readonly kind: "pressable"; readonly dialogClass: string }
+  /**
+   * A recognised dialog class that may never be pressed (crash repair,
+   * startup warning, recovery project, scripting permission). `reason`
+   * says why it is a human's decision.
+   */
   | {
-      readonly kind: "measured";
+      readonly kind: "unpressable";
       readonly dialogClass: string;
-      readonly presses: boolean;
-      readonly code: DiagnosticCode | null;
+      readonly reason: string;
     }
-  /** A sign-in, licence or permission window: always a human's decision. */
-  | {
-      readonly kind: "human-only";
-      readonly dialogClass: string | null;
-      readonly code: DiagnosticCode;
-    }
+  /** A sign-in, licence or account window: always a human's decision. */
+  | { readonly kind: "human-only"; readonly dialogClass: string | null }
   /** Blocking, but not a class the project has measured: quarantine. */
   | { readonly kind: "unknown"; readonly code: "A8N-SEC-001" };
 
@@ -350,16 +354,24 @@ export type GuiWindowReport = {
   readonly classification: GuiWindowClassification;
 };
 
-/** The policy verdict over every blocking window, from `chooseAction`. */
+/**
+ * The verdict `session.recover` would reach over the same windows, from
+ * `chooseRecoveryWindow` — the same classifier the press path uses, so the
+ * report never disagrees with what a recovery would do.
+ */
 export type GuiAssessment = {
-  readonly action: "none" | "known" | "human-only" | "quarantine";
+  readonly action: "none" | "human-only" | "unpressable" | "known" | "quarantine";
+  /** Present only for `quarantine`: the diagnostic the run would report. */
   readonly code: DiagnosticCode | null;
+  /** What was seen and what it means, for a human. */
   readonly detail: string;
+  /** `describeWindow` of the window the verdict is about, when there is one. */
+  readonly window: string | null;
 };
 
 export type GuiSessionInfo = {
   readonly uid: number;
-  readonly username: string | null;
+  readonly username: string;
   readonly asid: number | null;
   readonly kind: string;
 };
@@ -374,12 +386,7 @@ export type GuiStateObservation = {
    * The WindowServer census for this pid. When unavailable the AX listing
    * alone was used and `windows` may under-report what is on screen.
    */
-  readonly windowServer: {
-    readonly available: boolean;
-    readonly reason: string | null;
-    readonly windowCount: number;
-    readonly onScreenCount: number;
-  };
+  readonly windowServer: GuiAppState["windowServer"];
   /**
    * True when AX reported zero windows but the WindowServer lists some:
    * the AX tree is unserviceable and `windows` is not evidence of a clean
@@ -398,16 +405,3 @@ export type GuiStateReport =
       readonly reason: string;
       readonly observedAt: string;
     };
-
-/**
- * Options for `AfterEffects.guiState`. Production callers need none; the
- * fields exist for tests and for callers that already hold an observation.
- */
-export type GuiStateOptions = {
-  /**
-   * Test seam: a prepared `GuiAppState`, skipping the Accessibility query.
-   * The owned-target check still runs — an unattested target is never
-   * observed, fixture or not.
-   */
-  readonly observed?: GuiAppState;
-};

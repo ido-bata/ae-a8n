@@ -65,7 +65,6 @@ import type {
   TextLayerInfo,
   TextLayerOptions,
   EffectInfo,
-  GuiStateOptions,
   GuiStateReport,
   LaunchOptions,
   LayerInfo,
@@ -651,10 +650,11 @@ export class AfterEffects {
    * Accessibility consent prompt; that is the OS asking a human, not this
    * API bypassing it.
    */
-  guiState(options: GuiStateOptions = {}): Promise<GuiStateReport> {
+  guiState(): Promise<GuiStateReport> {
     // The observation itself is synchronous (one Accessibility query inside
-    // the target session); the Promise shape matches the rest of the API.
-    return Promise.resolve(guiStateReport(this.recoveryTarget(), options));
+    // the target session); `.then` keeps even a synchronous failure a
+    // rejection rather than a throw from a Promise-typed method.
+    return Promise.resolve().then(() => guiStateReport(this.recoveryTarget()));
   }
 
   /**

@@ -3,10 +3,12 @@
  *
  * This is the observation half of the macOS GUI recovery, exposed without
  * the press path: it lists the owned After Effects instance's windows inside
- * that instance's own session, classifies each blocking window against the
- * platform-neutral recovery policy, and reports the aggregate verdict. It
- * never presses a button, never takes the mutation lease, and never writes
- * to the screen — `MacGuiRecovery.listWindows` is audited as `observe`.
+ * that instance's own session, classifies each blocking window with the
+ * same classifiers `session.recover` uses (`classifyDialog`,
+ * `classifyUnpressable`, `isHumanOnlyWindow`, `chooseRecoveryWindow`), and
+ * reports the verdict recovery would reach. It never presses a button,
+ * never takes the mutation lease, and never writes to the screen —
+ * `MacGuiRecovery.listWindows` is audited as `observe`.
  *
  * The observation runs in the console session too when that is where the
  * owned host lives: reading windows cannot move the user's cursor or take
@@ -25,16 +27,16 @@ import {
 } from "../driver/gui-recovery.js";
 import { MacSessionError, type MacSession } from "../driver/mac-session.js";
 import {
-  chooseAction,
+  chooseRecoveryWindow,
   classifyDialog,
+  classifyUnpressable,
+  describeWindow,
   isHumanOnlyWindow,
-  type DialogWindow,
-} from "../platform/recovery-policy.js";
+} from "../driver/recovery.js";
 import type {
   GuiAssessment,
   GuiSessionInfo,
   GuiStateObservation,
-  GuiStateOptions,
   GuiStateReport,
   GuiWindowClassification,
   GuiWindowReport,
@@ -52,42 +54,32 @@ export type GuiObservationSeams = Pick<
   "census" | "censusRun" | "stateRoot" | "ownerId" | "lease" | "runSession"
 >;
 
-function toDialogWindow(window: GuiWindowInfo): DialogWindow {
-  return {
-    title: window.title,
-    role: window.role,
-    subrole: window.subrole,
-    texts: window.texts,
-    buttons: window.buttons.map((button) => button.title),
-    blocking: isBlockingWindow(window),
-  };
-}
-
 /**
- * The per-window verdict. Human-only is checked before the measured classes,
- * matching `chooseAction`: a window that is both must still be reported as a
- * human's decision, never as something a recovery could press.
+ * The per-window verdict, in the same precedence `chooseRecoveryWindow`
+ * applies across the whole list: a human-only window is a human's decision
+ * even when it also matches a measured or unpressable class.
  */
 export function classifyGuiWindow(window: GuiWindowInfo): GuiWindowClassification {
   if (!isBlockingWindow(window)) {
     return { kind: "not-blocking" };
   }
-  const dialog = toDialogWindow(window);
-  const classified = classifyDialog(dialog);
-  if (isHumanOnlyWindow(dialog)) {
+  const unpressable = classifyUnpressable(window);
+  const known = classifyDialog(window);
+  if (isHumanOnlyWindow(window)) {
     return {
       kind: "human-only",
-      dialogClass: classified.kind === "known" ? classified.dialogClass.name : null,
-      code: classified.kind === "known" ? (classified.dialogClass.code ?? "A8N-SEC-001") : "A8N-SEC-001",
+      dialogClass: unpressable?.name ?? known?.name ?? null,
     };
   }
-  if (classified.kind === "known") {
+  if (unpressable !== null) {
     return {
-      kind: "measured",
-      dialogClass: classified.dialogClass.name,
-      presses: classified.dialogClass.presses,
-      code: classified.dialogClass.code,
+      kind: "unpressable",
+      dialogClass: unpressable.name,
+      reason: unpressable.reason,
     };
+  }
+  if (known !== null) {
+    return { kind: "pressable", dialogClass: known.name };
   }
   return { kind: "unknown", code: "A8N-SEC-001" };
 }
@@ -114,10 +106,50 @@ function sessionInfo(session: MacSession): GuiSessionInfo {
   };
 }
 
-/** The aggregate verdict over the same windows, from the canonical policy. */
+/** The aggregate verdict over the same windows `session.recover` would see. */
 export function assessGuiWindows(windows: readonly GuiWindowInfo[]): GuiAssessment {
-  const decision = chooseAction(windows.map(toDialogWindow));
-  return { action: decision.action, code: decision.code, detail: decision.detail };
+  const choice = chooseRecoveryWindow(windows);
+  const window = "window" in choice ? describeWindow(choice.window) : null;
+  switch (choice.kind) {
+    case "none":
+      return { action: "none", code: null, detail: "no blocking window was observed", window: null };
+    case "human-only":
+      return {
+        action: "human-only",
+        code: null,
+        detail:
+          `"${describeWindow(choice.window)}" is an Adobe account or licence window; ` +
+          "a human must answer it — a recovery would press nothing",
+        window,
+      };
+    case "unpressable":
+      return {
+        action: "unpressable",
+        code: null,
+        detail:
+          `"${describeWindow(choice.window)}" is the ${choice.dialogClass.name} dialog; ` +
+          `a recovery would press nothing: ${choice.dialogClass.reason}`,
+        window,
+      };
+    case "known":
+      return {
+        action: "known",
+        code: null,
+        detail:
+          `every blocking window is a measured class (${choice.dialogClass}); ` +
+          "a recovery could press the safe button",
+        window,
+      };
+    case "quarantine":
+      return {
+        action: "quarantine",
+        code: choice.code,
+        detail:
+          `"${describeWindow(choice.window)}" is not a dialog class this project has measured; ` +
+          "a recovery would quarantine the run and press nothing",
+        window,
+      };
+  }
 }
 
 /**
@@ -134,12 +166,7 @@ export function guiStateObservation(
     session: sessionInfo(target.session),
     frontmost: state.frontmost,
     windows: state.windows.map((window, index) => toWindowReport(window, index + 1)),
-    windowServer: {
-      available: state.windowServer.available,
-      reason: state.windowServer.reason,
-      windowCount: state.windowServer.windowCount,
-      onScreenCount: state.windowServer.onScreenCount,
-    },
+    windowServer: state.windowServer,
     axSuspect: state.axSuspect,
     assessment: assessGuiWindows(state.windows),
     observedAt,
@@ -168,15 +195,20 @@ export function observeGuiAppState(
   return gui.listWindows();
 }
 
+/** Test seam: a prepared observation, skipping the session query. */
+export type GuiStateFixture = {
+  readonly observed: GuiAppState;
+};
+
 /**
- * The `ae.guiState()` body: attest the owned target, observe (or use the
- * caller's prepared observation), and shape the report. Observation
- * failures become `unavailable` with the reason — a report that cannot see
- * the screen must never look like a clean one.
+ * The `ae.guiState()` body: attest the owned target, observe (or use a
+ * prepared fixture), and shape the report. Observation failures become
+ * `unavailable` with the reason — a report that cannot see the screen must
+ * never look like a clean one.
  */
 export function guiStateReport(
   target: GuiObservationTarget | null,
-  options: GuiStateOptions,
+  fixture?: GuiStateFixture,
   seams: GuiObservationSeams = {},
 ): GuiStateReport {
   const observedAt = new Date().toISOString();
@@ -191,7 +223,7 @@ export function guiStateReport(
     };
   }
   try {
-    const state = options.observed ?? observeGuiAppState(target, seams);
+    const state = fixture?.observed ?? observeGuiAppState(target, seams);
     return { status: "observed", ...guiStateObservation(target, state, observedAt) };
   } catch (error) {
     if (error instanceof GuiRecoveryError || error instanceof MacSessionError) {

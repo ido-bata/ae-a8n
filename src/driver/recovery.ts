@@ -196,6 +196,16 @@ export const UNPRESSABLE_DIALOG_CLASSES: readonly UnpressableDialogClass[] = [
     matches: (window) =>
       /リカバリプロジェクト|recovery project|crash[_ ]?\d+\.aep/i.test(unpressableText(window)),
   },
+  {
+    name: "ae script file/network permission",
+    reason:
+      "the scripting file/network permission prompt changes a security setting; granting it is " +
+      "a human's decision (observed as a startup blocker on AE 26.5, G0 evidence 2026-11-16)",
+    matches: (window) =>
+      /allow scripts to write|scripts? to write files|file and network access/i.test(
+        unpressableText(window),
+      ),
+  },
 ];
 
 /** The recognised-but-never-pressable class a window belongs to, or null. */

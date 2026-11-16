@@ -2,11 +2,13 @@
  * Read-only GUI observation (`ae.guiState()`, #109).
  *
  * Contract tests for the report shape and the classification mapping,
- * plus the unavailable paths. Everything runs against fixtures and the
- * fake transport: this proves the report's honesty — an unattested target
- * or an unenterable session is `unavailable`, never an empty window list —
- * not that a real After Effects shows the same windows. Real-host
- * observation stays opt-in like the other GUI tests.
+ * plus the unavailable paths. Everything runs against `GuiWindowInfo`
+ * fixtures and the fake transport: this proves the report's honesty — an
+ * unattested target or an unenterable session is `unavailable`, never an
+ * empty window list — and that the verdict matches what `session.recover`
+ * would decide. It does not prove a real After Effects shows the same
+ * windows; real-host observation stays UNVERIFIED until a real-host run
+ * records it (release-candidate aggregate gate, #99).
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -35,6 +37,8 @@ const SESSION: MacSession = {
 
 const TARGET = { pid: 4242, session: SESSION };
 
+const OK_BUTTON = { title: "OK", description: "", position: null, size: null };
+
 function window(partial: Partial<GuiWindowInfo> & { title: string }): GuiWindowInfo {
   return {
     role: "AXWindow",
@@ -45,12 +49,22 @@ function window(partial: Partial<GuiWindowInfo> & { title: string }): GuiWindowI
   };
 }
 
+/** A blocking dialog window with the given static texts. */
+function dialog(texts: readonly string[], over: Partial<GuiWindowInfo> = {}): GuiWindowInfo {
+  return window({ title: "", subrole: "AXDialog", texts, ...over });
+}
+
 function state(windows: readonly GuiWindowInfo[], over: Partial<GuiAppState> = {}): GuiAppState {
   return {
     pid: TARGET.pid,
     frontmost: false,
     windows,
-    windowServer: { available: true, reason: null, windowCount: windows.length, onScreenCount: windows.length },
+    windowServer: {
+      available: true,
+      reason: null,
+      windowCount: windows.length,
+      onScreenCount: windows.length,
+    },
     axSuspect: false,
     ...over,
   };
@@ -62,61 +76,63 @@ describe("classifyGuiWindow", () => {
     expect(classifyGuiWindow(w)).toEqual({ kind: "not-blocking" });
   });
 
-  it("reports an unmeasured blocking window as unknown quarantine", () => {
-    const w = window({
-      title: "",
-      role: "AXWindow",
-      subrole: "AXDialog",
-      texts: ["something nobody measured"],
-    });
-    expect(classifyGuiWindow(w)).toEqual({ kind: "unknown", code: "A8N-SEC-001" });
-  });
-
   it("reports the measured ae-a8n alert as pressable", () => {
-    const w = window({
-      title: "",
-      role: "AXWindow",
-      subrole: "AXDialog",
-      texts: ["ae-a8n: the test raised this"],
-      buttons: [{ title: "OK", description: "", position: null, size: null }],
-    });
+    const w = dialog(["ae-a8n: the test raised this"], { buttons: [OK_BUTTON] });
     expect(classifyGuiWindow(w)).toEqual({
-      kind: "measured",
+      kind: "pressable",
       dialogClass: "ae-a8n ui.alert",
-      presses: true,
-      code: null,
     });
   });
 
-  it("reports a scripting permission prompt as human-only, never pressable", () => {
-    const w = window({
-      title: "",
-      role: "AXWindow",
-      subrole: "AXDialog",
-      texts: ["Allow Scripts to Write Files and Access Network"],
-    });
-    expect(classifyGuiWindow(w)).toEqual({
-      kind: "human-only",
-      dialogClass: "script-file-network-permission",
-      code: "A8N-PERM-003",
-    });
+  it("reports each measured unpressable class by name", () => {
+    const cases: [string, GuiWindowInfo][] = [
+      [
+        "ae crash-repair options",
+        dialog(["クラッシュ修復オプション", "レポートを送信しますか？"]),
+      ],
+      [
+        "ae startup directory warning",
+        dialog(["AppDirs/Required Dir warning"]),
+      ],
+      [
+        "ae crash-recovery project",
+        dialog(["リカバリプロジェクト crash_123.aep"]),
+      ],
+      [
+        "ae script file/network permission",
+        dialog(["Allow Scripts to Write Files and Access Network"]),
+      ],
+    ];
+    for (const [name, w] of cases) {
+      const classified = classifyGuiWindow(w);
+      expect(classified.kind, name).toBe("unpressable");
+      if (classified.kind === "unpressable") {
+        expect(classified.dialogClass).toBe(name);
+        expect(classified.reason.length).toBeGreaterThan(0);
+      }
+    }
   });
 
   it("reports a sign-in window as human-only even when unclassed", () => {
-    const w = window({
-      title: "",
-      role: "AXWindow",
-      subrole: "AXSheet",
-      texts: ["Adobe Creative Cloud にサインインしてください"],
-    });
+    const w = dialog(["Adobe Creative Cloud にサインインしてください"]);
     const classified = classifyGuiWindow(w);
     expect(classified.kind).toBe("human-only");
+  });
+
+  it("reports a licence window as human-only", () => {
+    const w = dialog(["Please activate your licence"]);
+    expect(classifyGuiWindow(w).kind).toBe("human-only");
+  });
+
+  it("reports an unmeasured blocking window as unknown quarantine", () => {
+    const w = dialog(["something nobody measured"]);
+    expect(classifyGuiWindow(w)).toEqual({ kind: "unknown", code: "A8N-SEC-001" });
   });
 });
 
 describe("guiStateReport", () => {
   it("is unavailable when no owned target is attested", () => {
-    const report = guiStateReport(null, {});
+    const report = guiStateReport(null);
     expect(report.status).toBe("unavailable");
     if (report.status === "unavailable") {
       expect(report.reason).toContain("no owned After Effects");
@@ -124,20 +140,12 @@ describe("guiStateReport", () => {
   });
 
   it("maps a prepared observation into the public report", () => {
-    const report = guiStateReport(
-      TARGET,
-      {
-        observed: state([
-          window({ title: "Main", subrole: "AXStandardWindow" }),
-          window({
-            title: "",
-            subrole: "AXDialog",
-            texts: ["ae-a8n: hello"],
-            buttons: [{ title: "OK", description: "", position: null, size: null }],
-          }),
-        ]),
-      },
-    );
+    const report = guiStateReport(TARGET, {
+      observed: state([
+        window({ title: "Main", subrole: "AXStandardWindow" }),
+        dialog(["ae-a8n: hello"], { buttons: [OK_BUTTON] }),
+      ]),
+    });
     expect(report.status).toBe("observed");
     if (report.status !== "observed") {
       return;
@@ -147,7 +155,10 @@ describe("guiStateReport", () => {
     expect(report.windows).toHaveLength(2);
     expect(report.windows[0]).toMatchObject({ index: 1, blocking: false });
     expect(report.windows[0]?.classification).toEqual({ kind: "not-blocking" });
-    expect(report.windows[1]?.classification).toMatchObject({ kind: "measured", presses: true });
+    expect(report.windows[1]?.classification).toEqual({
+      kind: "pressable",
+      dialogClass: "ae-a8n ui.alert",
+    });
     expect(report.assessment.action).toBe("known");
     expect(report.axSuspect).toBe(false);
   });
@@ -168,7 +179,7 @@ describe("guiStateReport", () => {
   });
 
   it("turns a session-entry failure into unavailable, not an empty report", () => {
-    const report = guiStateReport(TARGET, {}, {
+    const report = guiStateReport(TARGET, undefined, {
       runSession: () => {
         throw new MacSessionError("cannot enter the session");
       },
@@ -183,20 +194,29 @@ describe("guiStateReport", () => {
 describe("assessGuiWindows", () => {
   it("quarantines when any blocking window is unmeasured", () => {
     const assessment = assessGuiWindows([
-      window({
-        title: "",
-        subrole: "AXDialog",
-        texts: ["ae-a8n: measured"],
-        buttons: [{ title: "OK", description: "", position: null, size: null }],
-      }),
-      window({
-        title: "",
-        subrole: "AXDialog",
-        texts: ["totally unknown dialog"],
-      }),
+      dialog(["ae-a8n: measured"], { buttons: [OK_BUTTON] }),
+      dialog(["totally unknown dialog"]),
     ]);
     expect(assessment.action).toBe("quarantine");
     expect(assessment.code).toBe("A8N-SEC-001");
+    expect(assessment.window).toContain("AXDialog");
+  });
+
+  it("prefers human-only over a measured class, like the recovery does", () => {
+    const assessment = assessGuiWindows([
+      dialog(["ae-a8n: measured"], { buttons: [OK_BUTTON] }),
+      dialog(["Adobe Creative Cloud sign in required"]),
+    ]);
+    expect(assessment.action).toBe("human-only");
+    expect(assessment.code).toBeNull();
+  });
+
+  it("reports the script permission prompt as unpressable, not quarantine", () => {
+    const assessment = assessGuiWindows([
+      dialog(["Allow Scripts to Write Files and Access Network"]),
+    ]);
+    expect(assessment.action).toBe("unpressable");
+    expect(assessment.detail).toContain("ae script file/network permission");
   });
 });
 
