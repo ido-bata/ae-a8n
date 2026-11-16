@@ -6,6 +6,8 @@
  * what callers see.
  */
 
+import type { DiagnosticCode } from "../doctor/diagnostics.js";
+import type { GuiAppState } from "../driver/gui-recovery.js";
 import type { HostTransport } from "../driver/transport.js";
 
 export type { DiagnosticsOptions, SessionDiagnostics } from "../driver/session-diagnostics.js";
@@ -305,3 +307,101 @@ export type LaunchOptions = {
 export type ResumeOptions = Omit<LaunchOptions, "sessionRoot"> & {
   readonly sessionRoot: string;
 };
+
+/*
+ * Read-only GUI observation (#109).
+ *
+ * `ae.guiState()` reports what the owned After Effects session's screen
+ * currently shows — windows, their classification against the same dialog
+ * policy `session.recover` uses, and the aggregate verdict — without
+ * pressing anything. "unavailable" is a first-class answer: when no owned
+ * target is attested or the session cannot be entered, the report says so
+ * instead of guessing.
+ */
+
+/** How one observed window stands against the recovery policy. */
+export type GuiWindowClassification =
+  /** The window does not hold the host at a modal state. */
+  | { readonly kind: "not-blocking" }
+  /**
+   * A measured dialog class whose safe button `session.recover` may press.
+   */
+  | { readonly kind: "pressable"; readonly dialogClass: string }
+  /**
+   * A recognised dialog class that may never be pressed (crash repair,
+   * startup warning, recovery project, scripting permission). `reason`
+   * says why it is a human's decision.
+   */
+  | {
+      readonly kind: "unpressable";
+      readonly dialogClass: string;
+      readonly reason: string;
+    }
+  /** A sign-in, licence or account window: always a human's decision. */
+  | { readonly kind: "human-only"; readonly dialogClass: string | null }
+  /** Blocking, but not a class the project has measured: quarantine. */
+  | { readonly kind: "unknown"; readonly code: "A8N-SEC-001" };
+
+export type GuiWindowReport = {
+  /** 1-based position in the Accessibility listing, as `listWindows` sees it. */
+  readonly index: number;
+  readonly title: string;
+  readonly role: string;
+  readonly subrole: string | null;
+  readonly texts: readonly string[];
+  readonly buttons: readonly string[];
+  readonly blocking: boolean;
+  readonly classification: GuiWindowClassification;
+};
+
+/**
+ * The verdict `session.recover` would reach over the same windows, from
+ * `chooseRecoveryWindow` — the same classifier the press path uses, so the
+ * report never disagrees with what a recovery would do.
+ */
+export type GuiAssessment = {
+  readonly action: "none" | "human-only" | "unpressable" | "known" | "quarantine";
+  /** Present only for `quarantine`: the diagnostic the run would report. */
+  readonly code: DiagnosticCode | null;
+  /** What was seen and what it means, for a human. */
+  readonly detail: string;
+  /** `describeWindow` of the window the verdict is about, when there is one. */
+  readonly window: string | null;
+};
+
+export type GuiSessionInfo = {
+  readonly uid: number;
+  readonly username: string;
+  readonly asid: number | null;
+  readonly kind: string;
+};
+
+export type GuiStateObservation = {
+  readonly pid: number;
+  readonly session: GuiSessionInfo;
+  /** Whether the AE process is the frontmost app of its session. */
+  readonly frontmost: boolean;
+  readonly windows: readonly GuiWindowReport[];
+  /**
+   * The WindowServer census for this pid. When unavailable the AX listing
+   * alone was used and `windows` may under-report what is on screen.
+   */
+  readonly windowServer: GuiAppState["windowServer"];
+  /**
+   * True when AX reported zero windows but the WindowServer lists some:
+   * the AX tree is unserviceable and `windows` is not evidence of a clean
+   * screen.
+   */
+  readonly axSuspect: boolean;
+  readonly assessment: GuiAssessment;
+  readonly observedAt: string;
+};
+
+export type GuiStateReport =
+  | ({ readonly status: "observed" } & GuiStateObservation)
+  | {
+      readonly status: "unavailable";
+      /** Why nothing could be observed; never a silent empty report. */
+      readonly reason: string;
+      readonly observedAt: string;
+    };
