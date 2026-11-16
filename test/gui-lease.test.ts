@@ -2,9 +2,10 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { buildSync } from "esbuild";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -431,7 +432,9 @@ describe("auditGuiEvent", () => {
 });
 
 describe("review fixes", () => {
-  it("defaultPidAlive treats EPERM as alive and ESRCH as dead", async () => {
+  // EPERM from kill(pid, 0) and `sleep` are POSIX semantics; Windows has
+  // neither, so this probe's EPERM branch is only exercisable there.
+  it.runIf(process.platform !== "win32")("defaultPidAlive treats EPERM as alive and ESRCH as dead", async () => {
     // pid 1 (launchd) is root-owned: kill(pid, 0) raises EPERM for a normal
     // user. EPERM means the process exists — it must never read as dead,
     // or a live owner's lease could be reaped.
@@ -546,7 +549,6 @@ describe("parallel lease races (real processes)", () => {
    */
   const here = fileURLToPath(new URL(".", import.meta.url));
   const repoRoot = join(here, "..");
-  const esbuild = join(repoRoot, "node_modules", ".bin", "esbuild");
 
   type WorkerSpec = {
     ownerId: string;
@@ -557,11 +559,15 @@ describe("parallel lease races (real processes)", () => {
   /** Bundle gui-lease.ts into `stateRoot` so worker processes can import it. */
   function bundleInto(stateRoot: string): string {
     const out = join(stateRoot, "lease.mjs");
-    execFileSync(esbuild, [
-      join(repoRoot, "src", "platform", "darwin", "gui-lease.ts"),
-      "--bundle", "--format=esm", "--platform=node",
-      `--outfile=${out}`,
-    ]);
+    // The JS API, not the `.bin` shim: the shim is a shell script on
+    // Windows and does not spawn there.
+    buildSync({
+      entryPoints: [join(repoRoot, "src", "platform", "darwin", "gui-lease.ts")],
+      bundle: true,
+      format: "esm",
+      platform: "node",
+      outfile: out,
+    });
     return out;
   }
 
