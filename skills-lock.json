@@ -1,0 +1,159 @@
+{
+  "version": 2,
+  "skills": {
+    "agent-delivery-estimation": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/agent-delivery-estimation/SKILL.md",
+      "computedHash": "6440ea1d0ee5d3cb0f9245567aa98f484a0cdd278788605d0556a329f555a769",
+      "installMode": "copy"
+    },
+    "agent-recovery": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/agent-recovery/SKILL.md",
+      "computedHash": "6154713461496c3cda8345566c1ae45428a1ca057f9f996661a1d4a2eb279806",
+      "installMode": "copy"
+    },
+    "code-naming": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/code-naming/SKILL.md",
+      "computedHash": "d5b2690590dbf56fa94d9c5bddb582b67b1f199f229135a50d87fbb276297c6d",
+      "installMode": "copy"
+    },
+    "code-review": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/code-review/SKILL.md",
+      "computedHash": "ce86b40a3d1648a0018b712f0c70704e6c2316b2a9b9e915ab116916a31273dc",
+      "installMode": "copy"
+    },
+    "correctness-assurance": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/correctness-assurance/SKILL.md",
+      "computedHash": "a383c1e6edd12786179c3e19b689725cd1d2398f7afcd7c3c83cda40ae61c219",
+      "installMode": "copy"
+    },
+    "design-refinement": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/design-refinement/SKILL.md",
+      "computedHash": "08e1e85d93a752fdd97f815a65e251a871cc4e1583087f2cf4085037be6d9835",
+      "installMode": "copy"
+    },
+    "diagnosing-bugs": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
+      "computedHash": "87c78ae966e591f9ceb177789cc5cc9de69277cd26679ffd36ca5300f430d513",
+      "installMode": "copy"
+    },
+    "engineering-decisions": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/engineering-decisions/SKILL.md",
+      "computedHash": "61e8ed90ca1ca9686fa9d42bde282f682cab6a36e42983a138571d5e6cbe4f91",
+      "installMode": "copy"
+    },
+    "github-delivery": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/github-delivery/SKILL.md",
+      "computedHash": "e3f9fa4063d18be7610635afdd0cfd55925f7fbd274c47d4ff050a76196e053d",
+      "installMode": "copy"
+    },
+    "herdr-runtime": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/herdr-runtime/SKILL.md",
+      "computedHash": "ef7c0b2d6343aa4120082660b00bf103bb56973ea0b0749d2271706627e634e0",
+      "installMode": "copy"
+    },
+    "idea-discovery": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/idea-discovery/SKILL.md",
+      "computedHash": "24ea8f2033419f70200dd7bab317ef0d525f47eff376e52dbe188d6260f8fa96",
+      "installMode": "copy"
+    },
+    "interaction-discipline": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/interaction-discipline/SKILL.md",
+      "computedHash": "2a3b9189db4aad711ad6c40b3b57e12edfef35161d52b0c3cc7bf64781025b12",
+      "installMode": "copy"
+    },
+    "onboarding": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/onboarding/SKILL.md",
+      "computedHash": "361182e403501d4e905c5455824fac0d2812b850749f2e2088e58945f48b89aa",
+      "installMode": "copy"
+    },
+    "parallel-orchestration": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/parallel-orchestration/SKILL.md",
+      "computedHash": "45b29c5eaafdd337092ca14832f1e9a433ea5d76b86e68677a21145a5a8f3af5",
+      "installMode": "copy"
+    },
+    "policy-evaluation": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/policy-evaluation/SKILL.md",
+      "computedHash": "4b3d7899245ba109aaff7fcefd19ad06263bb108d3ef603c9e3fde254e136350",
+      "installMode": "copy"
+    },
+    "quality-gate": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/quality-gate/SKILL.md",
+      "computedHash": "905caad60ec7099237803c33e2ae85b99eb392ad36f2ed5d051c2da706fcb7ae",
+      "installMode": "copy"
+    },
+    "sandbox-runtime": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/sandbox-runtime/SKILL.md",
+      "computedHash": "75a7823b14d87997aebd13cb47066bdc2fe8656a62d39db8aa35b73c1abaacfc",
+      "installMode": "copy"
+    },
+    "security-maintenance": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/security-maintenance/SKILL.md",
+      "computedHash": "df5e86d47fae9526a6d4ac412b15ecb577cf53912230794b3e0c401724d32f76",
+      "installMode": "copy"
+    },
+    "skill-selection": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/skill-selection/SKILL.md",
+      "computedHash": "a4f8e84271623cb9c685cd55ac0ba7e455f043cbe2b632921679d7a606b659fe",
+      "installMode": "copy"
+    },
+    "tdd": {
+      "source": "cursor/plugins",
+      "sourceType": "github",
+      "skillPath": "harness/pstack/claude-code/skills/tdd/SKILL.md",
+      "computedHash": "c88ebf09cd7df89476eca9afb62748d73ca00346cfb044852c0bbb4066e78e27",
+      "installMode": "copy"
+    },
+    "worktree-workflow": {
+      "source": "rebuildup/project-init",
+      "sourceType": "github",
+      "skillPath": "skills/worktree-workflow/SKILL.md",
+      "computedHash": "fbe70d9e0211e66f3a4811ed76060d469f0bf04324203bbd45e91cae2fd679b8",
+      "installMode": "copy"
+    },
+    "writing-discipline": {
+      "source": "rebuildup/writing-skills",
+      "sourceType": "github",
+      "skillPath": "skills/writing-discipline/SKILL.md",
+      "computedHash": "416298fe07a2c1e165c873db96f9c9222703703995853aefb8d5924a75221105",
+      "installMode": "copy"
+    }
+  }
+}

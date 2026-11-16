@@ -231,6 +231,10 @@ After Effects turned out to do and changes with it.
 - [`examples/render-compare.ts`](examples/render-compare.ts) — apply, set, render before/after, count changed pixels.
 - [`skills/after-effects-automation/SKILL.md`](skills/after-effects-automation/SKILL.md) — instructions for AI coding agents: how to use this package against a real After Effects without damaging anyone's work, and how to investigate failures. Both directories ship in the package; installing the package does not register the skill with any agent — copy it where your agent loads skills from.
 
+## Development
+
+Contributors and coding agents: bootstrap, daily commands, worktree lifecycle, and verification levels are in [docs/development.md](docs/development.md). Agent-facing operating rules are in [AGENTS.md](AGENTS.md).
+
 ## Known risks
 
 - A long-running script lets other installed CEP extensions run inside it. One
