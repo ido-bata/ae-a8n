@@ -32,6 +32,11 @@ import { ScriptInvocationTransport } from "../driver/script-invocation.js";
 import { readExtensionHeader } from "../extensions/manifest.js";
 import { TraceRecorder, type TraceEvent } from "../trace/trace.js";
 import {
+  buildCapabilityHandshake,
+  newCapabilityHostNonce,
+  type HandshakeResponse,
+} from "./capabilities.js";
+import {
   AfterEffectsError,
   EntityNotFoundError,
   ExtensionMethodNotFoundError,
@@ -75,6 +80,38 @@ import type {
 
 export * from "./errors.js";
 export type * from "./types.js";
+export {
+  assertDispatchAllowed,
+  BUILTIN_HOST_METHODS,
+  builtinCapabilityFor,
+  CAPABILITY_CONTRACT_SCHEMA,
+  CAPABILITY_CONTRACT_VERSION,
+  CAPABILITY_ID_SNAPSHOT,
+  negotiateCapabilities,
+  PERMISSION_VALUES,
+  type CapabilityAdvertisement,
+  type CapabilityHandshakeInput,
+  type CapabilityKind,
+  type Compatibility,
+  type ContractVersion,
+  type DispatchCheck,
+  type DispatchResult,
+  type ExecutionClass,
+  type ExecutionDescriptor,
+  type HandshakeDiagnostic,
+  type HandshakeResponse,
+  type HandshakeTarget,
+  type ImplementationAxis,
+  type NegotiationRequest,
+  type NegotiationResult,
+  type NonInterferenceEvidence,
+  type OwnershipEvidence,
+  type Permission,
+  type ProofLevel,
+  type RefusalReason,
+  type RowPersistence,
+  type VerificationAxis,
+} from "./capabilities.js";
 
 /** Internal call surface; not exported so callers cannot bypass the API. */
 class Session {
@@ -270,6 +307,8 @@ export class AfterEffects {
   readonly #probe: ApplicationInfo;
   /** Names the loaded host script declares; empty for the built-in host. */
   readonly #extensionMethods: readonly string[];
+  /** Fallback `hostId` when the transport cannot attest a process identity. */
+  readonly #hostNonce = newCapabilityHostNonce();
   #closed = false;
 
   constructor(session: Session, probe: ApplicationInfo, extensionMethods: readonly string[] = []) {
@@ -483,6 +522,38 @@ export class AfterEffects {
   async version(): Promise<string> {
     const info = await this.#session.call<ApplicationInfo>("app.info", "app.info");
     return info.version;
+  }
+
+  /**
+   * What this session can attest about the After Effects it is connected
+   * to, in the ae-devtools `ae-devtools.capability-handshake/v1` shape
+   * (#102).
+   *
+   * Read-only discovery: it reports the launch probe's AE version/build,
+   * the transport's ownership/platform/execution-mode evidence, and the
+   * capabilities ae-a8n can back with evidence — built-in dispatch-table
+   * methods as `ae.operation.*` references and declared extension methods
+   * as `ae.tool.*`. It dispatches nothing.
+   *
+   * A compatible advertisement is not authorization to run anything: pair
+   * it with `negotiateCapabilities` (version/capability preflight) and
+   * `assertDispatchAllowed` (per-dispatch gate) before dispatching by
+   * capability ID. The existing typed API and `ae.call` keep their own
+   * contracts and are not gated by this handshake.
+   */
+  capabilities(): Promise<HandshakeResponse> {
+    const driver = this.#session.driver;
+    return Promise.resolve(
+      buildCapabilityHandshake({
+        ae: this.#probe,
+        transportKind: driver.transportKind,
+        attestation: driver.hostAttestation(),
+        ownership: driver.ownership(),
+        extensionMethods: this.#extensionMethods,
+        hostNonce: this.#hostNonce,
+        generatedAt: new Date().toISOString(),
+      }),
+    );
   }
 
   /**

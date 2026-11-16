@@ -14,7 +14,13 @@ import {
   createFakeGlobals,
   type FakeComp,
 } from "./fake-ae/object-model.js";
-import type { HostOwnership, HostState, HostTransport } from "../driver/transport.js";
+import type {
+  HostAttestation,
+  HostOwnership,
+  HostState,
+  HostTransport,
+  OwnedProcess,
+} from "../driver/transport.js";
 
 export type FakeTransportOptions = {
   /**
@@ -49,12 +55,7 @@ export class FakeAfterEffectsTransport implements HostTransport {
    * The process `ownedProcess()` reports, for launch provenance. Null by
    * default: the fake names no process unless a test gives it one.
    */
-  ownedProcessValue: {
-    readonly pid: number;
-    readonly startedAt: number;
-    readonly identity?: string | undefined;
-    readonly executable: string;
-  } | null = null;
+  ownedProcessValue: OwnedProcess | null = null;
   /** The engine's `$.global`: persists across scripts, as in a real After Effects. */
   #engineGlobal: Record<string, unknown> = {};
   /**
@@ -127,8 +128,24 @@ export class FakeAfterEffectsTransport implements HostTransport {
     return this.hostPidValue;
   }
 
-  ownedProcess(): typeof this.ownedProcessValue {
+  ownedProcess(): OwnedProcess | null {
     return this.ownedProcessValue;
+  }
+
+  /**
+   * The fake stands in for a host on this machine in the caller's own
+   * session: it attests "local" and the controller's platform, exactly what
+   * the script transport would report for the same shape.
+   */
+  attestation(): Partial<HostAttestation> {
+    return {
+      pid: this.hostPid(),
+      ownedProcess: this.ownedProcess(),
+      platform: { os: process.platform, arch: process.arch },
+      executionMode: "local",
+      sessionUid: null,
+      sessionAsid: null,
+    };
   }
 
   close(): Promise<void> {

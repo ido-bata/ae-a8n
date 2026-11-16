@@ -39,6 +39,44 @@ export {
 } from "./api/errors.js";
 export type { CloseResult } from "./api/index.js";
 
+/*
+ * Capability handshake surface (#102): `ae.capabilities()` plus the
+ * negotiation and dispatch-authorization helpers, structurally conforming
+ * to ae-devtools `ae-devtools.capability-handshake/v1`.
+ */
+export {
+  assertDispatchAllowed,
+  BUILTIN_HOST_METHODS,
+  builtinCapabilityFor,
+  CAPABILITY_CONTRACT_SCHEMA,
+  CAPABILITY_CONTRACT_VERSION,
+  CAPABILITY_ID_SNAPSHOT,
+  negotiateCapabilities,
+  PERMISSION_VALUES,
+  type CapabilityAdvertisement,
+  type CapabilityHandshakeInput,
+  type CapabilityKind,
+  type Compatibility,
+  type ContractVersion,
+  type DispatchCheck,
+  type DispatchResult,
+  type ExecutionClass,
+  type ExecutionDescriptor,
+  type HandshakeDiagnostic,
+  type HandshakeResponse,
+  type HandshakeTarget,
+  type ImplementationAxis,
+  type NegotiationRequest,
+  type NegotiationResult,
+  type NonInterferenceEvidence,
+  type OwnershipEvidence,
+  type Permission,
+  type ProofLevel,
+  type RefusalReason,
+  type RowPersistence,
+  type VerificationAxis,
+} from "./api/capabilities.js";
+
 export type {
   ApplicationInfo,
   CommandExecution,
@@ -72,7 +110,14 @@ export type { TraceEvent, TraceStatus } from "./trace/trace.js";
 
 export { AeDriver } from "./driver/driver.js";
 export type { DriverOptions, HostCondition, StopOptions, StopResult } from "./driver/driver.js";
-export type { HostOwnership, HostState, HostTransport, InvokeOptions } from "./driver/transport.js";
+export type {
+  HostAttestation,
+  HostOwnership,
+  HostState,
+  HostTransport,
+  InvokeOptions,
+  OwnedProcess,
+} from "./driver/transport.js";
 export {
   darwinDiagnosticSources,
   diagnosticSourcesFor,
