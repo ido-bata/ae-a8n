@@ -83,6 +83,18 @@ export type PendingLaunch = {
   } | null;
 };
 
+/**
+ * Whether the host process is still there, as far as the transport can prove.
+ *
+ * "alive": the process this session is talking to exists.
+ * "gone": it does not — a crash, a quit, or a kill. A timeout against a gone
+ * host is a different diagnosis than a timeout against a live one.
+ * "unknown": the transport cannot attribute a process to this session, so it
+ * cannot say. Never reported as "gone" on a guess: an unproven answer stays
+ * "unknown", exactly like ownership.
+ */
+export type HostState = "alive" | "gone" | "unknown";
+
 export interface HostTransport {
   /** Stable identifier recorded in the session manifest and trace. */
   readonly kind: string;
@@ -131,6 +143,21 @@ export interface HostTransport {
    * Optional.
    */
   pendingLaunch?(): PendingLaunch | null;
+
+  /**
+   * Whether the host process still exists, when the transport can prove it.
+   * Consulted when an operation times out, so "the host died" is not
+   * reported as "the host did not answer". Optional; a transport without it
+   * leaves timeouts unclassified.
+   */
+  hostState?(): HostState;
+
+  /**
+   * The pid of the host process this session owns, once known. Diagnostics
+   * only — never authority for ownership or for addressing a process.
+   * Optional.
+   */
+  hostPid?(): number | null;
 
   /**
    * Resolves true once the host will accept a script, false if it still would

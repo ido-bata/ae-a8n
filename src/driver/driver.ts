@@ -13,6 +13,11 @@ import { fileURLToPath } from "node:url";
 
 import { entryScriptPath, stageHostScript, writeBootstrapScript } from "./bootstrap.js";
 import type { HostRecovery } from "./recovery.js";
+import {
+  collectSessionDiagnostics,
+  type DiagnosticsOptions,
+  type SessionDiagnostics,
+} from "./session-diagnostics.js";
 import { READINESS_TIMEOUT_MS } from "./script-invocation.js";
 import type { HostOwnership, HostTransport, PendingLaunch } from "./transport.js";
 import { ScriptNotSentError } from "./transport.js";
@@ -52,15 +57,43 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", ".."
 
 export const DEFAULT_HOST_SCRIPT = resolve(PACKAGE_ROOT, "host", "a8n-host.js");
 
+/**
+ * What the host looked like when an operation timed out. A timeout alone
+ * cannot tell "the process died" from "the process is alive but blocked" —
+ * the driver asks the transport and the recovery outcome, and records the
+ * answer here so a caller never has to guess (and never retries blind).
+ *
+ * - `gone`: the host process is proven absent.
+ * - `unresponsive`: the host process exists but did not answer.
+ * - `modal`: a blocking window was observed during recovery.
+ * - `unknown`: neither could be determined. Never upgraded to a guess.
+ */
+export type HostCondition = "gone" | "unresponsive" | "modal" | "unknown";
+
+const HOST_CONDITION_NOTES: Record<HostCondition, string> = {
+  gone: "; the After Effects process is gone",
+  unresponsive: "; the After Effects process is still running but did not answer",
+  modal: "; a modal window may be blocking After Effects",
+  unknown: "; whether the After Effects process is still running could not be determined",
+};
+
 export class TimeoutError extends Error {
   readonly method: string;
   readonly timeoutMs: number;
+  /** What the host looked like at the deadline, when the driver could classify it. */
+  readonly hostCondition?: HostCondition;
 
-  constructor(method: string, timeoutMs: number) {
-    super(`After Effects did not answer ${method} within ${timeoutMs}ms`);
+  constructor(method: string, timeoutMs: number, hostCondition?: HostCondition) {
+    super(
+      `After Effects did not answer ${method} within ${timeoutMs}ms` +
+        (hostCondition === undefined ? "" : HOST_CONDITION_NOTES[hostCondition]),
+    );
     this.name = "TimeoutError";
     this.method = method;
     this.timeoutMs = timeoutMs;
+    if (hostCondition !== undefined) {
+      this.hostCondition = hostCondition;
+    }
   }
 }
 
@@ -188,6 +221,8 @@ export class AeDriver {
    * denied or unanswered, and repeating it would only repeat that.
    */
   #leftRunning: { readonly launch: PendingLaunch; readonly cause: unknown } | null = null;
+  /** When the driver was built; host evidence is "during the session" from here. */
+  readonly #constructedAt = Date.now();
   /** Random per driver; what the host remembers to tell "my instance" from another. */
   readonly #sessionId = randomUUID();
 
@@ -325,6 +360,37 @@ export class AeDriver {
   }
 
   /**
+   * Collects host-side evidence for this session — crash reports, host logs
+   * touched while it ran, and the trace — into `<artifactsDir>/diagnostics/`
+   * and returns the report. Read-only with respect to After Effects: files
+   * are copied, never moved, and nothing leaves the machine.
+   *
+   * Safe to call at any time, including after `stop` failed: it reports what
+   * it could find and says in `notes` what it could not.
+   *
+   * `options` overrides where evidence is looked for — tests and tooling
+   * pass a fake `homeDir` or `sources` so the real user directories are
+   * never scanned.
+   */
+  diagnostics(options: DiagnosticsOptions = {}): SessionDiagnostics {
+    return collectSessionDiagnostics({
+      sessionRoot: this.#paths.root,
+      artifactsDir: this.#paths.artifacts,
+      tracePath: this.#paths.trace,
+      host: {
+        state: this.#transport.hostState?.() ?? "unknown",
+        ownership: this.ownership(),
+        pid: this.#transport.hostPid?.() ?? null,
+        transport: this.#transport.kind,
+      },
+      since: this.#constructedAt,
+      ...(options.sources !== undefined ? { sources: options.sources } : {}),
+      ...(options.platform !== undefined ? { platform: options.platform } : {}),
+      ...(options.homeDir !== undefined ? { homeDir: options.homeDir } : {}),
+    });
+  }
+
+  /**
    * Ends the session. Quits After Effects only when this session owns it
    * *now* — started it, and it is still that process. An attached or
    * unidentified host is left running, untouched.
@@ -394,12 +460,22 @@ export class AeDriver {
         });
         return result;
       }
-      if (!refused) {
-        this.#closed = true;
-      }
+      // The trace row lands first so the diagnostics bundle collected below
+      // contains the close failure that triggered it.
       this.#trace.record("session.close", "error", Date.now() - began, {
         error: { name: nameOf(error), message: messageOf(error) },
       });
+      if (!refused) {
+        this.#closed = true;
+        // An end that is not a clean quit is exactly when host-side evidence
+        // matters. Collection is best-effort: it writes only inside this
+        // session's artifact directory and must never mask the real error.
+        try {
+          this.diagnostics();
+        } catch {
+          // The report is a convenience; the close error is the answer.
+        }
+      }
       throw error;
     }
   }
@@ -478,19 +554,50 @@ export class AeDriver {
       }
       return outcome.value;
     } catch (error) {
-      if (error instanceof TimeoutError && this.#recovery !== undefined) {
-        const recovered = await this.#recoverAndWait(id, method, params, timeoutMs, op);
-        if (recovered !== undefined) {
-          return recovered;
+      let failure = error;
+      if (error instanceof TimeoutError) {
+        let sawWindow = false;
+        if (this.#recovery !== undefined) {
+          const waited = await this.#recoverAndWait(id, method, params, timeoutMs, op);
+          if (waited.kind === "resolved") {
+            return waited.value;
+          }
+          sawWindow = waited.sawWindow;
         }
+        // A timeout is not a diagnosis. Before reporting it, ask what the
+        // host looked like: a dead process, a live-but-blocked one, a modal
+        // window the recovery saw, or honestly unknown.
+        failure = new TimeoutError(error.method, error.timeoutMs, this.#timeoutHostCondition(sawWindow));
       }
-      const status: TraceStatus = error instanceof TimeoutError ? "timeout" : "error";
+      const status: TraceStatus = failure instanceof TimeoutError ? "timeout" : "error";
       this.#trace.record(op, status, Date.now() - began, {
         args: { ...params },
-        error: { name: nameOf(error), message: messageOf(error) },
+        error: { name: nameOf(failure), message: messageOf(failure) },
+        ...(failure instanceof TimeoutError && failure.hostCondition !== undefined
+          ? { result: { hostCondition: failure.hostCondition } }
+          : {}),
       });
-      throw error;
+      throw failure;
     }
+  }
+
+  /**
+   * Classifies a timed-out call from what is actually known: a blocking
+   * window the recovery observed beats a process probe, and a probe that
+   * cannot attribute a process stays "unknown" rather than guessing.
+   */
+  #timeoutHostCondition(sawWindow: boolean): HostCondition {
+    if (sawWindow) {
+      return "modal";
+    }
+    const state = this.#transport.hostState?.();
+    if (state === "gone") {
+      return "gone";
+    }
+    if (state === "alive") {
+      return "unresponsive";
+    }
+    return "unknown";
   }
 
   /**
@@ -503,10 +610,12 @@ export class AeDriver {
    * the request it already sent, and only reports a failure when that result
    * does not arrive either.
    *
-   * Returns the recovered result. Returns undefined when no result arrived
-   * either (the caller then reports the original timeout), and throws the
-   * host's error when the original request finished with one — the recovery
-   * unblocked it, so its answer is the real outcome.
+   * Returns the recovered result. "Unresolved" means no result arrived
+   * either (the caller then reports the original timeout), with `sawWindow`
+   * recording whether the recovery observed a blocking window — what lets
+   * the timeout be classified "modal". It throws the host's error when the
+   * original request finished with one — the recovery unblocked it, so its
+   * answer is the real outcome.
    */
   async #recoverAndWait(
     id: string,
@@ -514,10 +623,10 @@ export class AeDriver {
     params: Record<string, unknown>,
     timeoutMs: number,
     op: string,
-  ): Promise<unknown> {
+  ): Promise<{ kind: "resolved"; value: unknown } | { kind: "unresolved"; sawWindow: boolean }> {
     const recovery = this.#recovery;
     if (recovery === undefined) {
-      return undefined;
+      return { kind: "unresolved", sawWindow: false };
     }
     let outcome: Awaited<ReturnType<HostRecovery["attempt"]>>;
     try {
@@ -526,8 +635,9 @@ export class AeDriver {
       this.#trace.record("session.recover", "error", 0, {
         error: { name: nameOf(error), message: messageOf(error) },
       });
-      return undefined;
+      return { kind: "unresolved", sawWindow: false };
     }
+    const sawWindow = outcome.window !== undefined;
     this.#trace.record("session.recover", outcome.recovered ? "ok" : "error", 0, {
       result: {
         recovered: outcome.recovered,
@@ -545,14 +655,14 @@ export class AeDriver {
       if (outcome.code !== undefined) {
         throw new HostQuarantinedError(outcome.evidence);
       }
-      return undefined;
+      return { kind: "unresolved", sawWindow };
     }
     const result = await this.#awaitResult(id, method, params, this.#recoveryGraceMs, timeoutMs);
     if (result.status === "ok") {
       this.#trace.record(op, "ok", 0, {
         result: { recovered: true, ...summariseResult(result.value) },
       });
-      return result.value;
+      return { kind: "resolved", value: result.value };
     }
     // An error the host itself sent is the answer to the request that timed
     // out: the recovery unblocked it and the operation it had already started
@@ -563,7 +673,7 @@ export class AeDriver {
       this.#trace.record(op, "error", 0, result.detail);
       throw result.error;
     }
-    return undefined;
+    return { kind: "unresolved", sawWindow };
   }
 
   async #awaitResult(

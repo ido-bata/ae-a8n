@@ -48,6 +48,7 @@ import type {
   CommandExecution,
   CompInfo,
   CreateCompOptions,
+  DiagnosticsOptions,
   LayerTransform,
   SceneSnapshot,
   ShapePath,
@@ -64,6 +65,7 @@ import type {
   PropertyKind,
   RenderOptions,
   RenderedFrame,
+  SessionDiagnostics,
 } from "./types.js";
 
 export * from "./errors.js";
@@ -485,6 +487,25 @@ export class AfterEffects {
    */
   ownership(): HostOwnership {
     return this.#session.driver.ownership();
+  }
+
+  /**
+   * Collects host-side evidence for this session — OS crash reports for the
+   * After Effects binaries, host logs touched while the session ran, and
+   * the session trace — into `<artifactsDir>/diagnostics/` and returns the
+   * report with the paths.
+   *
+   * This is how "AE stopped answering" becomes "AE crashed at 11:10 with
+   * SIGTERM from bash" instead of a guess: the report says what was found,
+   * and `notes` says what could not be collected. It never moves or deletes
+   * the user's files, and nothing is sent anywhere. Callable after a failed
+   * `close` too — the evidence is still there.
+   *
+   * `options` overrides where evidence is looked for: pass a fake `homeDir`
+   * or `sources` and collection never touches the real user directories.
+   */
+  diagnostics(options?: DiagnosticsOptions): SessionDiagnostics {
+    return this.#session.driver.diagnostics(options);
   }
 
   /**

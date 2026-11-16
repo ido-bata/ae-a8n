@@ -44,6 +44,7 @@ export type {
   CommandExecution,
   CompInfo,
   CreateCompOptions,
+  DiagnosticsOptions,
   EffectInfo,
   LaunchOptions,
   LayerInfo,
@@ -63,14 +64,26 @@ export type {
   ValueType,
   RenderOptions,
   RenderedFrame,
+  SessionDiagnostics,
 } from "./api/types.js";
 
 export { TraceRecorder } from "./trace/trace.js";
 export type { TraceEvent, TraceStatus } from "./trace/trace.js";
 
 export { AeDriver } from "./driver/driver.js";
-export type { DriverOptions, StopOptions, StopResult } from "./driver/driver.js";
-export type { HostOwnership, HostTransport, InvokeOptions } from "./driver/transport.js";
+export type { DriverOptions, HostCondition, StopOptions, StopResult } from "./driver/driver.js";
+export type { HostOwnership, HostState, HostTransport, InvokeOptions } from "./driver/transport.js";
+export {
+  darwinDiagnosticSources,
+  diagnosticSourcesFor,
+  unsupportedDiagnosticSources,
+} from "./driver/session-diagnostics.js";
+export type {
+  CrashReportEntry,
+  DiagnosticSources,
+  DiagnosticsFile,
+  EvidenceAttribution,
+} from "./driver/session-diagnostics.js";
 export { ScriptInvocationTransport } from "./driver/script-invocation.js";
 export {
   AfterEffectsNotInstalledError,

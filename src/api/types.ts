@@ -8,6 +8,8 @@
 
 import type { HostTransport } from "../driver/transport.js";
 
+export type { DiagnosticsOptions, SessionDiagnostics } from "../driver/session-diagnostics.js";
+
 export type ApplicationInfo = {
   readonly version: string;
   readonly build?: string;
