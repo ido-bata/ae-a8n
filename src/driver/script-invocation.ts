@@ -36,7 +36,7 @@ import {
   spawnInSession,
   type MacSession,
 } from "./mac-session.js";
-import type { HostOwnership, HostTransport, InvokeOptions, PendingLaunch } from "./transport.js";
+import type { HostOwnership, HostState, HostTransport, InvokeOptions, PendingLaunch } from "./transport.js";
 import { ScriptNotSentError } from "./transport.js";
 
 export type ScriptInvocationOptions = {
@@ -544,6 +544,66 @@ export class ScriptInvocationTransport implements HostTransport {
    */
   hostPid(): number | null {
     return this.#owned?.pid ?? null;
+  }
+
+  /**
+   * Whether the host process still exists, proven the same way ownership is:
+   * pid *and* start time, so a reused pid is a different process.
+   *
+   * Only a process this transport can name gives a definite answer. An
+   * attached or unproven host has no single process to check: with no
+   * candidate of this install left in scope the host is gone; with
+   * candidates present it is "unknown", never "alive" — one of them may be
+   * a different After Effects than the one that answered.
+   */
+  hostState(): HostState {
+    if (!this.#launched) {
+      return "unknown";
+    }
+    const owned = this.#owned;
+    if (owned !== null) {
+      return this.#processState(owned);
+    }
+    const spawnedPid = this.#spawnedPid;
+    // Only when the snapshot proved nothing else was running: on Windows a
+    // launcher handed to an already-running AE exits normally, and its pid
+    // being gone says nothing about the host that answered.
+    if (spawnedPid !== undefined && this.#preexisting !== null && this.#preexisting.length === 0) {
+      // Started by this transport but not yet proven by the probe: the pid
+      // is still the best identity there is. It must have appeared after
+      // launch began, and match the start time once one was pinned.
+      let now: HostProcess[];
+      try {
+        now = this.#hostProcesses();
+      } catch {
+        return "unknown";
+      }
+      const match = now.find((p) => p.pid === spawnedPid);
+      if (match === undefined) {
+        return "gone";
+      }
+      const pinned = this.#spawnedAt;
+      if (pinned !== undefined) {
+        return Math.abs(match.startedAt - pinned) <= 1_000 ? "alive" : "gone";
+      }
+      return match.startedAt >= this.#launchBegan - START_SLACK_MS ? "alive" : "gone";
+    }
+    try {
+      return this.#hostProcesses().length === 0 ? "gone" : "unknown";
+    } catch {
+      return "unknown";
+    }
+  }
+
+  /** "alive"/"gone" for one identified process; "unknown" when the list cannot be read. */
+  #processState(known: HostProcess): HostState {
+    let now: HostProcess[];
+    try {
+      now = this.#hostProcesses();
+    } catch {
+      return "unknown";
+    }
+    return now.some((p) => sameProcess(this.#platform, p, known)) ? "alive" : "gone";
   }
 
   /**

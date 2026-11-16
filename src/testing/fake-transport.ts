@@ -14,7 +14,7 @@ import {
   createFakeGlobals,
   type FakeComp,
 } from "./fake-ae/object-model.js";
-import type { HostOwnership, HostTransport } from "../driver/transport.js";
+import type { HostOwnership, HostState, HostTransport } from "../driver/transport.js";
 
 export type FakeTransportOptions = {
   /**
@@ -37,6 +37,14 @@ export class FakeAfterEffectsTransport implements HostTransport {
    * host the session launched.
    */
   ownershipKind: HostOwnership["kind"] = "owned";
+  /**
+   * What `hostState()` reports. "alive" while the fake stands in for a
+   * running host; a test flips it to "gone" to play a crashed After
+   * Effects. "unknown" mimics a transport that cannot attribute a process.
+   */
+  hostStateKind: HostState = "alive";
+  /** The pid `hostPid()` reports; null means "no owned process to name". */
+  hostPidValue: number | null = null;
   /** The engine's `$.global`: persists across scripts, as in a real After Effects. */
   #engineGlobal: Record<string, unknown> = {};
   /**
@@ -99,6 +107,14 @@ export class FakeAfterEffectsTransport implements HostTransport {
 
   ownership(): HostOwnership {
     return { kind: this.ownershipKind, evidence: "fake transport" };
+  }
+
+  hostState(): HostState {
+    return this.hostStateKind;
+  }
+
+  hostPid(): number | null {
+    return this.hostPidValue;
   }
 
   close(): Promise<void> {

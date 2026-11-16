@@ -112,6 +112,20 @@ an ExtendScript cannot be interrupted from outside. So a timeout ends the
 - **`close()`** sends `app.quit` the same way: it waits for a script still
   running, within the quit's 10 s budget. If that runs out, `close()` rejects
   with `TimeoutError`, AE is left running, and the quit was never sent.
+- **A timeout is classified, not just reported.** When a call times out the
+  driver asks what the host looked like and the `TimeoutError` carries
+  `hostCondition`: `"gone"` (the process is proven absent — a crash or a
+  kill), `"unresponsive"` (the process is alive but did not answer),
+  `"modal"` (the recovery observed a blocking window), or `"unknown"`
+  (neither could be determined — never guessed). The same classification is
+  recorded in the trace.
+- **`ae.diagnostics()`** collects host-side evidence into
+  `<artifactsDir>/diagnostics/`: OS crash reports for the After Effects
+  binaries modified during the session, host logs touched in the same
+  window (tails only, size-capped), and the session trace with its last
+  events. It returns the report — paths plus `notes` for whatever could
+  not be collected — and never moves the user's files or sends anything
+  anywhere. A `close()` that fails collects it automatically.
 
 The transport never kills `osascript` on a deadline. Doing so (tried, on AE
 26.5x89) left AE refusing every later script and refusing to quit until it

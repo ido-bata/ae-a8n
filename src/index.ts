@@ -69,8 +69,8 @@ export { TraceRecorder } from "./trace/trace.js";
 export type { TraceEvent, TraceStatus } from "./trace/trace.js";
 
 export { AeDriver } from "./driver/driver.js";
-export type { DriverOptions, StopOptions, StopResult } from "./driver/driver.js";
-export type { HostOwnership, HostTransport, InvokeOptions } from "./driver/transport.js";
+export type { DriverOptions, HostCondition, StopOptions, StopResult } from "./driver/driver.js";
+export type { HostOwnership, HostState, HostTransport, InvokeOptions } from "./driver/transport.js";
 export { ScriptInvocationTransport } from "./driver/script-invocation.js";
 export {
   AfterEffectsNotInstalledError,

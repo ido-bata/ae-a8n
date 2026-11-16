@@ -174,6 +174,7 @@ unsaved edit in someone's open project is still their work.
 | `comp.openInViewer()`, `comp.selectLayers(names)` | make the comp active; select exactly these layers |
 | `layer.setEnabled(on)`, `layer.transform()`, `layer.shapePaths()` | video switch; transform values; a shape layer's paths in layer space |
 | `ae.close({ unsavedChanges? })` | → `{ quit, ownership, reason? }` |
+| `ae.diagnostics()` | → `SessionDiagnostics`: host crash reports, host logs and the trace collected into `ae.artifactsDir/diagnostics/`; `notes` says what could not be collected |
 | `ae.tracePath`, `ae.traceEvents`, `ae.artifactsDir` | evidence |
 
 Errors: `EntityNotFoundError` (with `kind`), `UnsavedChangesError`,
