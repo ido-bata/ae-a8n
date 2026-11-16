@@ -93,6 +93,27 @@ export type ScriptInvocationOptions = {
    * machine — the console user's, say — is neither addressed nor quit.
    */
   readonly sessionUid?: number;
+  /**
+   * Adopt a host a previous session recorded, instead of starting one.
+   *
+   * The record is checked against the live process list: the pid must still
+   * name the same process (pid *and* start time, plus the Windows creation
+   * identity), it must run this install's executable, and it must be the
+   * only instance of that install in scope. Anything less refuses the
+   * adoption and nothing is launched — resume never quietly starts a
+   * replacement host. Ownership is still only claimed after the readiness
+   * probe answers, exactly as for a launched host.
+   */
+  readonly adopt?: {
+    readonly pid: number;
+    /** Process start time in ms; null cannot prove identity and refuses. */
+    readonly startedAt: number | null;
+    /** Windows full creation time, when the record has one. */
+    readonly identity?: string | null;
+    readonly executable: string;
+    /** When the record was written, for evidence strings only. */
+    readonly recordedAt?: string;
+  };
 };
 
 /**
@@ -499,6 +520,8 @@ export class ScriptInvocationTransport implements HostTransport {
   #confirmed = false;
   /** The DoScriptFile still waiting on AE, if a call gave up on it. */
   #inFlight: Promise<void> | null = null;
+  /** Set when this transport was asked to adopt a recorded host. */
+  readonly #adopt: NonNullable<ScriptInvocationOptions["adopt"]> | null;
 
   constructor(options: ScriptInvocationOptions = {}) {
     const platform = options.platform ?? process.platform;
@@ -515,6 +538,7 @@ export class ScriptInvocationTransport implements HostTransport {
     this.#mainWindowVisible = options.mainWindowVisible ?? windowsMainWindowVisible;
     this.#selfPid = options.selfPid ?? process.pid;
     this.#readyPollMs = options.readyPollMs ?? 500;
+    this.#adopt = options.adopt ?? null;
     this.#install =
       options.install ??
       resolveInstall(platform, {
@@ -544,6 +568,28 @@ export class ScriptInvocationTransport implements HostTransport {
    */
   hostPid(): number | null {
     return this.#owned?.pid ?? null;
+  }
+
+  /**
+   * The proven host process, for launch provenance. Only `#owned` counts:
+   * a spawned-but-unproven pid is not identity a later session can adopt.
+   */
+  ownedProcess(): {
+    readonly pid: number;
+    readonly startedAt: number;
+    readonly identity?: string | undefined;
+    readonly executable: string;
+  } | null {
+    const owned = this.#owned;
+    if (owned === null) {
+      return null;
+    }
+    return {
+      pid: owned.pid,
+      startedAt: owned.startedAt,
+      ...(owned.identity === undefined ? {} : { identity: owned.identity }),
+      executable: owned.executable,
+    };
   }
 
   /**
@@ -731,6 +777,10 @@ export class ScriptInvocationTransport implements HostTransport {
     }
     this.#launched = true;
     this.#launchBegan = this.#now();
+    if (this.#adopt !== null) {
+      this.#adoptProcess();
+      return;
+    }
     if (this.#platform === "win32") {
       // Before anything is started: whatever is running now is not ours. A
       // list that cannot be read leaves ownership unproven, never assumed.
@@ -803,11 +853,108 @@ export class ScriptInvocationTransport implements HostTransport {
     return this.#platform === "win32" || this.#platform === "darwin";
   }
 
+  /**
+   * Validates the recorded host an adoption names, against the live process
+   * list. Throws on anything short of proof; on success `#owned` names the
+   * process so `confirmLaunched` can re-verify it once the probe answers.
+   * Nothing is started here: a refused or stale record leaves the machine
+   * exactly as it was.
+   */
+  #adoptProcess(): void {
+    const adopt = this.#adopt;
+    if (adopt === null) {
+      return;
+    }
+    const refuse = `cannot adopt the recorded After Effects`;
+    if (adopt.executable !== this.#install.executable) {
+      throw new Error(
+        `${refuse}: the record names ${adopt.executable}, which is not this install's executable ${this.#install.executable}`,
+      );
+    }
+    if (adopt.startedAt === null) {
+      throw new Error(`${refuse}: the record has no process start time, so the pid alone cannot prove identity`);
+    }
+    let now: HostProcess[];
+    try {
+      now = this.#hostProcesses();
+    } catch (error) {
+      throw new Error(
+        `${refuse}: the process list could not be read (${error instanceof Error ? error.message : String(error)})`,
+      );
+    }
+    const recorded: HostProcess = {
+      pid: adopt.pid,
+      startedAt: adopt.startedAt,
+      executable: adopt.executable,
+      ...(adopt.identity === null || adopt.identity === undefined ? {} : { identity: adopt.identity }),
+    };
+    const match = now.find((p) => sameProcess(this.#platform, p, recorded));
+    if (match === undefined) {
+      throw new Error(`${refuse}: pid ${adopt.pid} with the recorded start time is not among the running instances`);
+    }
+    if (now.length !== 1) {
+      throw new Error(
+        `${refuse}: ${now.length} instances of this install are running, so the recorded pid cannot be told apart ` +
+          "from another After Effects",
+      );
+    }
+    this.#owned = match;
+    this.#spawnedPid = match.pid;
+    this.#spawnedAt = match.startedAt;
+    this.#preexisting = now;
+  }
+
+  /**
+   * The adopt counterpart of `confirmLaunched`: ownership is claimed only
+   * after the probe answered *and* the recorded process is still the same
+   * single instance. A record that went stale between `launch()` and the
+   * probe downgrades to unknown — the host is left running either way.
+   */
+  #confirmAdopted(): void {
+    const adopt = this.#adopt;
+    const owned = this.#owned;
+    if (adopt === null || owned === null) {
+      this.#ownershipAtLaunch = this.#unknownOwnership("adoption state was lost before the probe answered");
+      return;
+    }
+    let now: HostProcess[];
+    try {
+      now = this.#hostProcesses();
+    } catch (error) {
+      this.#ownershipAtLaunch = this.#unknownOwnership(
+        `could not re-check processes: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return;
+    }
+    const same = now.filter((p) => sameProcess(this.#platform, p, owned));
+    if (same.length === 1 && now.length === 1) {
+      this.#owned = same[0] as HostProcess;
+      this.#ownershipAtLaunch = {
+        kind: "owned",
+        evidence:
+          `adopted pid ${owned.pid}: the process recorded` +
+          (adopt.recordedAt === undefined ? "" : ` at ${adopt.recordedAt}`) +
+          " is still the only instance of this install" +
+          (this.#targetSession === null ? "" : ` in ${this.#sessionDescription()}`),
+      };
+      return;
+    }
+    this.#ownershipAtLaunch = this.#unknownOwnership(
+      same.length === 0
+        ? `the adopted pid ${owned.pid} is gone; ${now.length} other instance(s) are running`
+        : `${now.length} instances of this install are running, so the adopted pid cannot be told apart`,
+    );
+  }
+
   confirmLaunched(): void {
     if (this.#confirmed) {
       return;
     }
     this.#confirmed = true;
+    if (this.#adopt !== null) {
+      this.#confirmAdopted();
+      return;
+    }
     if ((this.#platform !== "darwin" && this.#platform !== "win32") || this.#preexisting === null) {
       this.#ownershipAtLaunch = this.#unknownOwnership(
         this.#preexisting === null

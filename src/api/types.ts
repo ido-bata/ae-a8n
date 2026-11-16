@@ -296,3 +296,12 @@ export type LaunchOptions = {
    */
   readonly recoveryGraceMs?: number;
 };
+
+/**
+ * Options for `AfterEffects.resume`: the same session shape as `launch`,
+ * except `sessionRoot` is required — it is the directory the original
+ * `launch()` used, which holds the launch-provenance record resume checks.
+ */
+export type ResumeOptions = Omit<LaunchOptions, "sessionRoot"> & {
+  readonly sessionRoot: string;
+};

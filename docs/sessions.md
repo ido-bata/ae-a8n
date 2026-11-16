@@ -30,6 +30,37 @@ run's After Effects from one the person started a moment later.
 Windows has no process check yet, so a Windows session is `unknown` and
 `close()` does not quit AE there. That is deliberate: no evidence, no quit.
 
+## Resuming a session
+
+`AfterEffects.launch()` writes `launch-provenance.json` into the session
+directory once the readiness probe has proven ownership — the pid, the
+process start time, the Windows creation identity when there is one, the
+executable, the transport kind, and the ae-a8n version. It is evidence, not
+authority: a file alone never makes a host ours.
+
+`AfterEffects.resume({ sessionRoot })` rebinds to that host after the calling
+process restarted. It re-checks everything live: the recorded pid must still
+be the same process (pid *and* start time, plus the creation identity on
+Windows), running the install's executable, and the only instance of that
+install in scope — then the readiness probe must answer before ownership is
+claimed, exactly as for a fresh launch. A clean `close()` removes the
+record.
+
+Resume refuses — starting nothing and touching nothing — when:
+
+- the record is missing or does not parse as `a8n.launch-provenance/v1`;
+- the recorded process is gone, or its pid was reused by a process with a
+  different start time;
+- another instance of the same install is running, so the recorded pid
+  cannot be told apart from it;
+- the record names a different executable than this install resolves to;
+- the probe never answers (the host may be wedged; it is left running).
+
+Ownership after a successful resume is `owned`, so owned-only operations —
+`close()` quitting AE, `hostEnvironment` — work as they did in the original
+session. A resume that cannot prove identity leaves the host `unknown` or
+`attached`, and `close()` still refuses to quit it.
+
 ## A launch that fails after the process appeared
 
 On macOS the transport starts After Effects itself, then the readiness probe

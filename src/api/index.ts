@@ -24,6 +24,10 @@ import { join, resolve } from "node:path";
 import { AeDriver } from "../driver/driver.js";
 import { readGuiSession, readGuiSessionFailure, type MacSession } from "../driver/mac-session.js";
 import { MacHostRecovery } from "../driver/recovery.js";
+import {
+  readLaunchProvenance,
+  type LaunchProvenance,
+} from "../driver/launch-provenance.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
 import { readExtensionHeader } from "../extensions/manifest.js";
 import { TraceRecorder, type TraceEvent } from "../trace/trace.js";
@@ -59,6 +63,7 @@ import type {
   LayerInfo,
   OpenProjectOptions,
   OperationOptions,
+  ResumeOptions,
   ParameterValue,
   ProjectInfo,
   PropertyInfo,
@@ -282,6 +287,52 @@ export class AfterEffects {
    * error names the operation rather than surfacing a raw bridge message.
    */
   static async launch(options: LaunchOptions = {}): Promise<AfterEffects> {
+    return AfterEffects.#open(options, null, "session.launch");
+  }
+
+  /**
+   * Rebinds to the After Effects an earlier `launch()` in the same
+   * `sessionRoot` started and proved it owned — for example after the
+   * calling process restarted.
+   *
+   * The launch-provenance record is checked against the live process list:
+   * the recorded pid must still be the same process (pid, start time, and
+   * the Windows creation identity), running the same install's executable,
+   * and the only instance of that install in scope. The readiness probe
+   * must then answer before ownership is claimed. Anything less refuses —
+   * resume never starts a replacement host and never quits what it cannot
+   * prove.
+   *
+   * A caller-supplied `transport` is used as-is: adoption is then the
+   * transport's own contract (the fake host, a remote worker), and the
+   * provenance record is not consulted.
+   */
+  static async resume(options: ResumeOptions): Promise<AfterEffects> {
+    const sessionRoot = resolve(options.sessionRoot);
+    let provenance: LaunchProvenance | null;
+    try {
+      provenance = readLaunchProvenance(sessionRoot);
+    } catch (error) {
+      throw new AfterEffectsError(
+        error instanceof Error ? error.message : String(error),
+        "session.resume",
+      );
+    }
+    if (provenance === null) {
+      throw new AfterEffectsError(
+        `no launch provenance in ${sessionRoot}: nothing this tooling owned was recorded there, ` +
+          "so there is no host to resume. Use launch() for a new session.",
+        "session.resume",
+      );
+    }
+    return AfterEffects.#open({ ...options, sessionRoot }, provenance, "session.resume");
+  }
+
+  static async #open(
+    options: LaunchOptions,
+    adopt: LaunchProvenance | null,
+    op: string,
+  ): Promise<AfterEffects> {
     // Absolute, because AE resolves paths in the scripts it is given against
     // its own working directory rather than the caller's.
     const sessionRoot = resolve(options.sessionRoot ?? mkdtempSync(join(tmpdir(), "ae-a8n-")));
@@ -289,6 +340,17 @@ export class AfterEffects {
     const transport =
       options.transport ??
       new ScriptInvocationTransport({
+        ...(adopt === null
+          ? {}
+          : {
+              adopt: {
+                pid: adopt.host.pid,
+                startedAt: adopt.host.startedAt,
+                identity: adopt.host.identity,
+                executable: adopt.host.executable,
+                recordedAt: adopt.recordedAt,
+              },
+            }),
         ...(options.installDir === undefined ? {} : { installDir: options.installDir }),
         ...(options.session === undefined ? {} : { sessionUid: options.session.uid }),
       });
@@ -305,7 +367,7 @@ export class AfterEffects {
         throw new AfterEffectsError(
           "session.recover needs the built-in script transport; the supplied transport cannot say which " +
             "process to recover. Nothing was started.",
-          "session.launch",
+          op,
         );
       }
       const targetSession = requireSession(options.session.uid);
@@ -317,7 +379,7 @@ export class AfterEffects {
           `session.recover: uid ${targetSession.uid} is not the session the transport talks into ` +
             `(${transport.targetSession?.uid ?? "unknown"}), so the fallback would act in another session. ` +
             "Nothing was started.",
-          "session.launch",
+          op,
         );
       }
       recovery = new MacHostRecovery({
@@ -337,14 +399,14 @@ export class AfterEffects {
       try {
         source = readFileSync(hostScript, "utf-8");
       } catch {
-        throw new AfterEffectsError(`host script not found: ${hostScript}`, "session.launch");
+        throw new AfterEffectsError(`host script not found: ${hostScript}`, op);
       }
       const declared = readExtensionHeader(source);
       if (declared === null) {
         throw new AfterEffectsError(
           `${hostScript} was not built by "ae-a8n extension build"; ` +
             "its header names no extension contract, so nothing was started",
-          "session.launch",
+          op,
         );
       }
       extensionMethods = declared;
@@ -372,7 +434,7 @@ export class AfterEffects {
     try {
       probe = await driver.start();
     } catch (error) {
-      contextualise("session.launch", error);
+      contextualise(op, error);
     }
     if (environment !== undefined) {
       // Never change the environment of an AE someone else is running.

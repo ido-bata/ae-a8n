@@ -19,6 +19,10 @@ import {
   type DiagnosticsOptions,
   type SessionDiagnostics,
 } from "./session-diagnostics.js";
+import {
+  clearLaunchProvenance,
+  recordLaunchProvenance,
+} from "./launch-provenance.js";
 import { READINESS_TIMEOUT_MS, ScriptInvocationTransport } from "./script-invocation.js";
 import type { HostOwnership, HostTransport, PendingLaunch } from "./transport.js";
 import { ScriptNotSentError } from "./transport.js";
@@ -332,6 +336,23 @@ export class AeDriver {
       };
       this.#started = true;
       this.#transport.confirmLaunched?.();
+      // Provenance is written only for a host this session proved it owns —
+      // owned by launch or by adoption alike. It is evidence for a later
+      // `resume`, never authority: the record is re-checked live on use.
+      // A write failure must not fail a session that is already usable.
+      const ownedProcess = this.#transport.ownedProcess?.() ?? null;
+      if (this.ownership().kind === "owned" && ownedProcess !== null) {
+        try {
+          recordLaunchProvenance(this.#paths.root, {
+            transport: this.#transport.kind,
+            host: ownedProcess,
+          });
+        } catch (error) {
+          this.#trace.record("session.provenance", "error", 0, {
+            error: { name: nameOf(error), message: messageOf(error) },
+          });
+        }
+      }
       this.#trace.record("session.launch", "ok", Date.now() - began, {
         args: { transport: this.#transport.kind },
         result: { ...info, ownership: this.ownership() },
@@ -458,6 +479,13 @@ export class AeDriver {
         );
         await this.#transport.close();
         result = { quit: true, ownership };
+        // The recorded host is gone; leaving the provenance file would only
+        // ever read as a stale record. Best-effort: the quit already happened.
+        try {
+          clearLaunchProvenance(this.#paths.root);
+        } catch {
+          // Provenance is advisory; a leftover file fails closed on resume.
+        }
       }
       this.#closed = true;
       this.#trace.record("session.close", "ok", Date.now() - began, {
