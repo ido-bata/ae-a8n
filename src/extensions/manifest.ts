@@ -177,7 +177,14 @@ export function buildHostScript(
   const names = methods.map((method) => method.name);
   const lines = [extensionHeader(names).trimEnd()];
   if (methods.length > 0) {
-    lines.push("(function () {");
+    // The registration MUST run inside a named function declaration, not an
+    // IIFE: on real ExtendScript `this` inside `(function(){})()` is the
+    // function itself, not the global object (observed on AE 27.0.0 — the
+    // fake vm runtime cannot reproduce this, which is why the IIFE form
+    // passed every automated test while failing every real host). Inside a
+    // named function called plainly, `this` is the global object — the same
+    // contract host/a8n-host.js already relies on in `main()`.
+    lines.push("function __a8nRegisterExtensions() {");
     lines.push("  var context = this.__a8n;");
     lines.push("  if (context === undefined || context === null) {");
     lines.push('    throw new Error("extensions were declared without an __a8n host context");');
@@ -189,7 +196,8 @@ export function buildHostScript(
       // expression, not a statement.
       lines.push(`  context.extensions[${JSON.stringify(method.name)}] = (${method.source});`);
     }
-    lines.push("}());");
+    lines.push("}");
+    lines.push("__a8nRegisterExtensions();");
   }
   const source = `${lines.join("\n")}\n${hostSource}`;
   return {
