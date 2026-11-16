@@ -51,6 +51,38 @@ export type HostOwnership = {
   readonly code?: string;
 };
 
+/**
+ * The process a session started but never proved it owns.
+ *
+ * This is provenance, not ownership: it says which process this session
+ * started, and never that this session may quit it. It exists so a launch
+ * that fails after the process appeared — a denied Apple Event, a host that
+ * never became scriptable — leaves a name a human can act on instead of an
+ * anonymous After Effects with nothing tying it to the run.
+ */
+export type PendingLaunch = {
+  readonly pid: number;
+  /**
+   * The process start time the OS reported, ms since the epoch, pinned the
+   * first time the pid was seen. Null when the process list could not be
+   * read: a start time is never guessed.
+   */
+  readonly startedAt: number | null;
+  readonly executable: string;
+  /**
+   * Whether the last process listing still held the process named by `pid`
+   * with this start time. False also when the listing could not be read, so
+   * a caller must not read it as proof the process exited.
+   */
+  readonly presentAtLastLookup: boolean;
+  /** The login session it was started into, when that can be named. */
+  readonly session: {
+    readonly uid: number;
+    readonly user: string | null;
+    readonly asid: number | null;
+  } | null;
+};
+
 export interface HostTransport {
   /** Stable identifier recorded in the session manifest and trace. */
   readonly kind: string;
@@ -88,6 +120,17 @@ export interface HostTransport {
    * A transport without this is treated as "unknown".
    */
   ownership?(): HostOwnership;
+
+  /**
+   * The host process this session started and could not prove, when a launch
+   * got that far. Null when this session started nothing (the host was
+   * already running) or when ownership was proven.
+   *
+   * The driver reports this when a launch fails after the process appeared.
+   * It is never a licence to quit: the caller is told to recover by hand.
+   * Optional.
+   */
+  pendingLaunch?(): PendingLaunch | null;
 
   /**
    * Resolves true once the host will accept a script, false if it still would

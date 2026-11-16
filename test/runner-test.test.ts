@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { diagnostic, type DiagnosticCheck } from "../src/doctor/diagnostics.js";
+import { HostLeftRunningError } from "../src/driver/driver.js";
 import {
   assertProvenIdentity,
   type AdapterProbe,
@@ -379,6 +380,43 @@ describe("the test runner", () => {
     expect(again.result.verdicts[0]?.id).toBe("run-quarantine");
     expect(again.result.checks[0]?.code).toBe("A8N-JOB-002");
     expect(second.calls).toEqual([]);
+  });
+
+  it("quarantines an After Effects the run started but could not prove, and names it", async () => {
+    // The failure observed on a real helper session: the process appeared, the
+    // readiness probe was denied, and the run ended with AE still running.
+    // That is unknown, not a failed test, and the next run must not treat the
+    // leftover as a fresh, unoccupied target.
+    const stateRoot = tempDir("a8n-state-");
+    const left = new HostLeftRunningError(
+      {
+        pid: 91135,
+        startedAt: Date.parse("2026-11-11T11:13:00Z"),
+        executable: "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+        presentAtLastLookup: true,
+        session: { uid: 502, user: "test", asid: 100002 },
+      },
+      new Error("Not authorized to send Apple events to Adobe After Effects 2027. (-1743)"),
+    );
+    const failing = new RunnerAdapter({ behaviour: () => Promise.reject(left) });
+    const first = await run(failing, { stateRoot });
+
+    expect(first.result.status).toBe("unknown");
+    expect(first.result.verdicts[0]?.verdict).toBe("unknown");
+    expect(first.result.checks[0]?.code).toBe("A8N-AE-005");
+    expect(first.result.checks[0]?.evidence).toMatchObject({
+      stage: "run",
+      pid: 91135,
+      startedAt: "2026-11-11T11:13:00.000Z",
+      executable: left.launch.executable,
+      presentAtLastLookup: true,
+    });
+    expect(readQuarantine(stateLayout(stateRoot), TARGET.name).quarantined).toBe(true);
+    expect(first.result.notice).toContain("quarantined");
+
+    const again = await run(new RunnerAdapter(), { stateRoot, randomSeed: 4 });
+    expect(again.result.status).toBe("refused");
+    expect(again.result.verdicts[0]?.id).toBe("run-quarantine");
   });
 
   it.skipIf(process.platform === "win32")(
