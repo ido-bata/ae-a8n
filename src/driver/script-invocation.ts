@@ -36,7 +36,15 @@ import {
   spawnInSession,
   type MacSession,
 } from "./mac-session.js";
-import type { HostOwnership, HostState, HostTransport, InvokeOptions, PendingLaunch } from "./transport.js";
+import type {
+  HostAttestation,
+  HostOwnership,
+  HostState,
+  HostTransport,
+  InvokeOptions,
+  OwnedProcess,
+  PendingLaunch,
+} from "./transport.js";
 import { ScriptNotSentError } from "./transport.js";
 
 export type ScriptInvocationOptions = {
@@ -574,12 +582,7 @@ export class ScriptInvocationTransport implements HostTransport {
    * The proven host process, for launch provenance. Only `#owned` counts:
    * a spawned-but-unproven pid is not identity a later session can adopt.
    */
-  ownedProcess(): {
-    readonly pid: number;
-    readonly startedAt: number;
-    readonly identity?: string | undefined;
-    readonly executable: string;
-  } | null {
+  ownedProcess(): OwnedProcess | null {
     const owned = this.#owned;
     if (owned === null) {
       return null;
@@ -589,6 +592,27 @@ export class ScriptInvocationTransport implements HostTransport {
       startedAt: owned.startedAt,
       ...(owned.identity === undefined ? {} : { identity: owned.identity }),
       executable: owned.executable,
+    };
+  }
+
+  /**
+   * What this transport can attest for the capability handshake (#102).
+   *
+   * The host runs on this machine — that is what script invocation means —
+   * so the controller's platform *is* the host's. The execution mode is
+   * "isolated-user" only when the target session provably belongs to a
+   * different uid; anything else is "local".
+   */
+  attestation(): Partial<HostAttestation> {
+    const self = typeof process.getuid === "function" ? process.getuid() : null;
+    return {
+      pid: this.hostPid(),
+      ownedProcess: this.ownedProcess(),
+      platform: { os: process.platform, arch: process.arch },
+      executionMode:
+        self !== null && this.#sessionUid !== self ? "isolated-user" : "local",
+      sessionUid: this.#targetSession?.uid ?? null,
+      sessionAsid: this.#targetSession?.asid ?? null,
     };
   }
 

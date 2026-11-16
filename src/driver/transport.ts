@@ -95,6 +95,42 @@ export type PendingLaunch = {
  */
 export type HostState = "alive" | "gone" | "unknown";
 
+/**
+ * The process a session proved it owns, with the identity a later process
+ * can re-check (pid, start time, Windows creation identity, executable).
+ * Provenance only — never authority for ownership or for addressing.
+ */
+export type OwnedProcess = {
+  readonly pid: number;
+  readonly startedAt: number;
+  readonly identity?: string | undefined;
+  readonly executable: string;
+};
+
+/**
+ * Where the host actually runs, as far as the transport can attest.
+ *
+ * Every field is evidence or null/"unknown" — a transport that cannot say
+ * where its host lives reports nothing, and the capability handshake
+ * reports "unknown" rather than borrowing the controller's platform.
+ */
+export type HostAttestation = {
+  /** The host pid, when the transport can name one. Diagnostics only. */
+  readonly pid: number | null;
+  /** The proven owned process, for launch provenance and identity. */
+  readonly ownedProcess: OwnedProcess | null;
+  /** Host os/arch, only when the transport attests the host is reachable here. */
+  readonly platform: { readonly os: string; readonly arch: string } | null;
+  /**
+   * ADR-0003 execution mode the transport attests: "local", "remote",
+   * "isolated-user", or "unknown" when it cannot say.
+   */
+  readonly executionMode: string;
+  /** The GUI session the host was verified to belong to, when known. */
+  readonly sessionUid: number | null;
+  readonly sessionAsid: number | null;
+};
+
 export interface HostTransport {
   /** Stable identifier recorded in the session manifest and trace. */
   readonly kind: string;
@@ -166,12 +202,17 @@ export interface HostTransport {
    * nothing is proven. Diagnostics/provenance only — never authority.
    * Optional.
    */
-  ownedProcess?(): {
-    readonly pid: number;
-    readonly startedAt: number;
-    readonly identity?: string | undefined;
-    readonly executable: string;
-  } | null;
+  ownedProcess?(): OwnedProcess | null;
+
+  /**
+   * What the transport can attest about where the host runs — pid, proven
+   * process, platform, execution mode, GUI session — for capability
+   * advertisement (#102). The default implementation reports only what the
+   * individual optional hooks already expose; a transport that knows more
+   * (a remote worker, an in-AE dispatcher) overrides it. Absent fields stay
+   * null/"unknown" — never guessed.
+   */
+  attestation?(): Partial<HostAttestation>;
 
   /**
    * Resolves true once the host will accept a script, false if it still would

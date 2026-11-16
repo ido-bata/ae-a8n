@@ -24,7 +24,13 @@ import {
   recordLaunchProvenance,
 } from "./launch-provenance.js";
 import { READINESS_TIMEOUT_MS, ScriptInvocationTransport } from "./script-invocation.js";
-import type { HostOwnership, HostTransport, PendingLaunch } from "./transport.js";
+import type {
+  HostAttestation,
+  HostOwnership,
+  HostTransport,
+  OwnedProcess,
+  PendingLaunch,
+} from "./transport.js";
 import { ScriptNotSentError } from "./transport.js";
 
 export type StopOptions = {
@@ -399,6 +405,29 @@ export class AeDriver {
     return this.#transport.ownership?.() ?? {
       kind: "unknown",
       evidence: `transport ${this.#transport.kind} reports no ownership`,
+    };
+  }
+
+  /**
+   * What the transport can attest about where the host runs, merged over
+   * the individual optional hooks so a transport that only implements
+   * `hostPid()`/`ownedProcess()` still reports them. Every field is
+   * evidence or null/"unknown" — the capability handshake (#102) must
+   * never have to guess.
+   */
+  hostAttestation(): HostAttestation {
+    const attested = this.#transport.attestation?.() ?? {};
+    const ownedProcess: OwnedProcess | null =
+      attested.ownedProcess !== undefined
+        ? attested.ownedProcess
+        : (this.#transport.ownedProcess?.() ?? null);
+    return {
+      pid: attested.pid !== undefined ? attested.pid : (this.#transport.hostPid?.() ?? null),
+      ownedProcess,
+      platform: attested.platform ?? null,
+      executionMode: attested.executionMode ?? "unknown",
+      sessionUid: attested.sessionUid ?? null,
+      sessionAsid: attested.sessionAsid ?? null,
     };
   }
 
