@@ -449,6 +449,11 @@ export class AeDriver {
         });
         return result;
       }
+      // The trace row lands first so the diagnostics bundle collected below
+      // contains the close failure that triggered it.
+      this.#trace.record("session.close", "error", Date.now() - began, {
+        error: { name: nameOf(error), message: messageOf(error) },
+      });
       if (!refused) {
         this.#closed = true;
         // An end that is not a clean quit is exactly when host-side evidence
@@ -460,9 +465,6 @@ export class AeDriver {
           // The report is a convenience; the close error is the answer.
         }
       }
-      this.#trace.record("session.close", "error", Date.now() - began, {
-        error: { name: nameOf(error), message: messageOf(error) },
-      });
       throw error;
     }
   }

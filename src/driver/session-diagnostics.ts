@@ -35,13 +35,13 @@ import {
   closeSync,
   constants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
   openSync,
   readSync,
   readdirSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -222,13 +222,30 @@ function openNoFollow(path: string): number {
   return openSync(path, constants.O_RDONLY | OPEN_NOFOLLOW);
 }
 
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** Reads until the buffer is full or EOF — readSync is allowed to return short. */
+function readFully(fd: number, buffer: Buffer, position: number): number {
+  let got = 0;
+  while (got < buffer.length) {
+    const n = readSync(fd, buffer, got, buffer.length - got, position + got);
+    if (n <= 0) {
+      break;
+    }
+    got += n;
+  }
+  return got;
+}
+
 /** Reads up to `maxBytes` from the start of `source`. */
 function readHead(source: string, maxBytes: number): string {
-  const size = statSync(source).size;
+  const size = lstatSync(source).size;
   const fd = openNoFollow(source);
   try {
     const buffer = Buffer.alloc(Math.min(maxBytes, size));
-    const got = readSync(fd, buffer, 0, buffer.length, 0);
+    const got = readFully(fd, buffer, 0);
     return buffer.subarray(0, got).toString("utf-8");
   } finally {
     closeSync(fd);
@@ -237,24 +254,26 @@ function readHead(source: string, maxBytes: number): string {
 
 /** Reads up to `maxBytes` from the end of `source`. */
 function readTail(source: string, maxBytes: number): string {
-  const size = statSync(source).size;
+  const size = lstatSync(source).size;
   const fd = openNoFollow(source);
   try {
     const buffer = Buffer.alloc(Math.min(maxBytes, size));
-    const got = readSync(fd, buffer, 0, buffer.length, size - buffer.length);
+    const got = readFully(fd, buffer, size - buffer.length);
     return buffer.subarray(0, got).toString("utf-8");
   } finally {
     closeSync(fd);
   }
 }
 
-/** Counts newline-terminated records without loading the whole file. */
+/** Counts records without loading the whole file; a final partial line counts too. */
 function countRecords(path: string): number {
   const fd = openNoFollow(path);
   try {
+    const size = fstatSync(fd).size;
     const buffer = Buffer.alloc(64 * 1024);
     let count = 0;
     let position = 0;
+    let lastByte = -1;
     for (;;) {
       const got = readSync(fd, buffer, 0, buffer.length, position);
       if (got <= 0) {
@@ -265,7 +284,11 @@ function countRecords(path: string): number {
           count += 1;
         }
       }
+      lastByte = buffer[got - 1] ?? -1;
       position += got;
+    }
+    if (size > 0 && lastByte !== 0x0a) {
+      count += 1;
     }
     return count;
   } finally {
@@ -278,12 +301,12 @@ function countRecords(path: string): number {
  * a no-follow descriptor. `maxBytes` of 0 writes an empty file.
  */
 function copyTail(source: string, target: string, maxBytes: number): { bytes: number; truncated: boolean } {
-  const size = statSync(source).size;
+  const size = lstatSync(source).size;
   const fd = openNoFollow(source);
   try {
     const take = Math.min(maxBytes, size);
     const buffer = Buffer.alloc(take);
-    const got = take === 0 ? 0 : readSync(fd, buffer, 0, take, size - take);
+    const got = take === 0 ? 0 : readFully(fd, buffer, size - take);
     writeFileSync(target, buffer.subarray(0, got));
     return { bytes: got, truncated: size > got };
   } finally {
@@ -416,11 +439,19 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
       notes.push(`no crash-report directory at ${dir}`);
       continue;
     }
+    try {
+      if (lstatSync(dir).isSymbolicLink()) {
+        notes.push(`crash-report directory ${dir} is a symbolic link and was not searched`);
+        continue;
+      }
+    } catch {
+      continue;
+    }
     let names: string[];
     try {
       names = readdirSync(dir);
     } catch (error) {
-      notes.push(`crash-report directory ${dir} could not be read: ${error instanceof Error ? error.message : String(error)}`);
+      notes.push(`crash-report directory ${dir} could not be read: ${messageOf(error)}`);
       continue;
     }
     for (const name of names) {
@@ -460,7 +491,7 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
           modifiedAt: stat.mtime.toISOString(),
         });
       } catch (error) {
-        notes.push(`crash report ${sourcePath} could not be collected: ${error instanceof Error ? error.message : String(error)}`);
+        notes.push(`crash report ${sourcePath} could not be collected: ${messageOf(error)}`);
       }
     }
     if (take <= 0) {
@@ -477,6 +508,14 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
   for (const dir of sources.logDirs) {
     if (!existsSync(dir)) {
       notes.push(`no host-log directory at ${dir}`);
+      continue;
+    }
+    try {
+      if (lstatSync(dir).isSymbolicLink()) {
+        notes.push(`host-log directory ${dir} is a symbolic link and was not searched`);
+        continue;
+      }
+    } catch {
       continue;
     }
     for (const path of walk(dir, MAX_WALK_DEPTH, skippedLinks)) {
@@ -516,7 +555,7 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
         attribution: "app",
       });
     } catch (error) {
-      notes.push(`log ${candidate.path} could not be collected: ${error instanceof Error ? error.message : String(error)}`);
+      notes.push(`log ${candidate.path} could not be collected: ${messageOf(error)}`);
     }
   }
   if (candidates.length > sources.maxLogFiles) {
@@ -542,7 +581,7 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
   if (options.tracePath !== undefined && existsSync(options.tracePath)) {
     const target = join(bundleDir, "trace.jsonl");
     try {
-      const stat = statSync(options.tracePath);
+      const stat = lstatSync(options.tracePath);
       if (stat.isFile()) {
         const allowance = Math.min(sources.maxTraceBytes, Math.max(take, 0));
         let bundlePath: string | null = null;
@@ -570,7 +609,7 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
         notes.push(`session trace at ${options.tracePath} is not a regular file`);
       }
     } catch (error) {
-      notes.push(`session trace could not be collected: ${error instanceof Error ? error.message : String(error)}`);
+      notes.push(`session trace could not be collected: ${messageOf(error)}`);
     }
   } else if (options.tracePath !== undefined) {
     notes.push(`no session trace at ${options.tracePath}`);
