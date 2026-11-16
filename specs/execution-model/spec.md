@@ -20,9 +20,21 @@ Each transport reports, rather than infers: execution mode, host OS/user/session
 
 A local AE in-process proof does not establish a remote broker, desktop isolation, robust startup or recovery. A separated host by construction does not alone prove which instance of AE receives a command.
 
-## Bootstrap and transport security gate (must precede full API integration)
+## Bootstrap and transport security gate
 
-1. On both supported OSes, establish whether AE 2026/2027 runs an AE-specific, user-installed `Scripts/Startup` entry without administrator privileges or a particular terminal. Test fresh startup, restart, disable/uninstall, and denial by AE preference or organizational policy. One-time explicit human permission is allowed; per-call consent or elevation is not.
+These items are **release-candidate acceptance conditions**, not a uniform
+start condition for implementation work. Code that is independently
+reviewable and fake/contract-testable — probe tooling, doctor/setup
+detection, dispatcher plumbing behind explicit opt-in, dedicated-host
+foundations — may be implemented and merged while the real-host facts
+below remain `unproven`. What may not happen is *claiming* the gate is
+passed, shipping the path as ready, or blocking unrelated work on it.
+
+Real-host prerequisites surface to users through doctor/setup detection
+and honest `UNKNOWN`/`unproven` states — never through silent permission
+changes, automatic installs, or fake green.
+
+1. On both supported OSes, establish whether AE 2026/2027 runs an AE-specific, user-installed `Scripts/Startup` entry without administrator privileges or a particular terminal. Test fresh startup, restart, disable/uninstall, and denial by AE preference or organizational policy. One-time explicit human permission is allowed; per-call consent or elevation is not. Known prerequisite gates observed on macOS (2026-11-16, `docs/evidence/g0-startup-2026-11-16`): the AE scripting component must be installed, and "Allow Scripts To Write Files And Access Network" must be enabled per AE version; both are human consent actions the product must detect and explain, not perform.
 2. POSIX directory modes and a random token are **not** same-user isolation. Define the local channel threat model, including other processes with the same UID, and verify Windows ACLs separately. Do not advertise a secure transport until its claimed trust boundaries are proven.
 3. Schedule polling at idle **and** during a representative AE render. Record CPU overhead, lag, modal/nonresponsive outcomes and absence/presence of focus changes. `UNKNOWN` is not evidence of no effect. Never automatically retry a possibly claimed operation.
 4. The in-AE dispatcher is an execution transport, **not** evidence of AE process ownership. Startup/provisioning and local dispatch do not prove dedicated-host non-interference or authenticated remote jobs.
