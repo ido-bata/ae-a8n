@@ -24,8 +24,6 @@
  * treat that as degraded observation, never as "no windows".
  */
 
-import { execFileSync } from "node:child_process";
-
 /** Real Python 3 shipped with the Xcode Command Line Tools — never the
  *  /usr/bin/python3 stub, which can raise an installer dialog when the CLT
  *  is missing. */
@@ -189,10 +187,4 @@ export function windowServerCensus(
       reason: `window census output was not parseable: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
-}
-
-/** execFileSync-shaped runner for callers that want the default. */
-export function execFileCensusRunner(timeoutMs = 30_000): CensusRunner {
-  return (program, args) =>
-    execFileSync(program, [...args], { encoding: "utf-8", timeout: timeoutMs });
 }
