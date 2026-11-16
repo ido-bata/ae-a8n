@@ -33,6 +33,13 @@ import {
   type WindowCensus,
 } from "../platform/darwin/window-census.js";
 import {
+  acquireGuiLease,
+  auditGuiEvent,
+  defaultGuiLeaseRoot,
+  guiSessionKey,
+  type GuiLease,
+} from "../platform/darwin/gui-lease.js";
+import {
   consoleSessionUid,
   MacSessionError,
   runInSession,
@@ -390,6 +397,26 @@ export const CLICK_AT_SCRIPT = [
   "end run",
 ];
 
+/**
+ * The lease + audit surface `MacGuiRecovery` uses. The default is the
+ * file-based lease under the ae-a8n state root; tests inject a fake so no
+ * real lease file or audit line is needed.
+ */
+export type GuiLeaseController = {
+  /**
+   * Take the mutation lease or throw `GuiRecoveryError` naming the holder.
+   * The returned lease must be released exactly once by the caller.
+   */
+  acquire(op: string): GuiLease;
+  /** Append an audit record. Throws when the record cannot be written. */
+  audit(event: {
+    readonly kind: "observe" | "mutate" | "lease-release";
+    readonly op?: string;
+    readonly detail?: string;
+    readonly outcome?: string;
+  }): void;
+};
+
 export type GuiRecoveryOptions = {
   /** The session the After Effects instance lives in. Nothing else is ever touched. */
   readonly session: MacSession;
@@ -413,12 +440,49 @@ export type GuiRecoveryOptions = {
   readonly census?: () => WindowCensus;
   /** Census exec seam (program, args) → stdout; mainly a test seam. */
   readonly censusRun?: CensusRunner;
+  /**
+   * Where the GUI lease files and the audit log live. Defaults to
+   * `~/.ae-a8n`, the same state root the runner uses, so every cooperating
+   * ae-a8n consumer shares one lease per GUI session.
+   */
+  readonly stateRoot?: string;
+  /** Identity written into lease records and audit lines. */
+  readonly ownerId?: string;
+  /** Lease/audit seam — mainly a test seam. */
+  readonly lease?: GuiLeaseController;
+  /**
+   * Session-command seam — mainly a test seam. Production runs
+   * `runInSession`; tests inject a stub so mutation error paths can be
+   * exercised without a real GUI session.
+   */
+  readonly runSession?: typeof runInSession;
 };
 
 export class GuiRecoveryError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "GuiRecoveryError";
+  }
+}
+
+/**
+ * A GUI mutation was attempted and its outcome is unknown.
+ *
+ * Distinct from `GuiRecoveryError`, which is thrown *before* anything reaches
+ * the screen (lease refusal, session entry failure, bad arguments). This
+ * error means the press or click may already have happened — the caller must
+ * not report "nothing was done" and must not retry blindly; the screen state
+ * has to be re-observed first.
+ */
+export class GuiMutationError extends Error {
+  /** Always true: thrown only after the mutation step was entered. */
+  readonly mutationAttempted = true;
+  constructor(message: string, options?: { readonly cause?: unknown }) {
+    super(message);
+    this.name = "GuiMutationError";
+    if (options?.cause !== undefined) {
+      this.cause = options.cause;
+    }
   }
 }
 
@@ -434,6 +498,8 @@ export class MacGuiRecovery {
   readonly #pid: number;
   readonly #screenshotDir: string | undefined;
   readonly #census: (() => WindowCensus) | undefined;
+  readonly #lease: GuiLeaseController;
+  readonly #runSession: typeof runInSession;
 
   constructor(options: GuiRecoveryOptions) {
     if (options.session.kind !== "Aqua") {
@@ -466,6 +532,14 @@ export class MacGuiRecovery {
     this.#pid = options.pid;
     this.#screenshotDir = options.screenshotDir;
     this.#census = options.census ?? this.#defaultCensus(options.censusRun);
+    this.#lease =
+      options.lease ??
+      defaultLeaseController({
+        stateRoot: options.stateRoot ?? defaultGuiLeaseRoot(),
+        session: options.session,
+        ownerId: options.ownerId ?? "ae-a8n",
+      });
+    this.#runSession = options.runSession ?? runInSession;
   }
 
   /**
@@ -477,13 +551,9 @@ export class MacGuiRecovery {
     return () =>
       windowServerCensus(
         censusRun ??
-          ((program, args) => {
-            const result = runInSession(this.#session, program, [...args], { timeoutMs: 30_000 });
-            if (result.status !== 0) {
-              throw new Error(result.stderr.trim() || `exit status ${result.status}`);
-            }
-            return result.stdout;
-          }),
+          censusRunnerInSession(this.#session, (s, program, args, opts) =>
+            this.#runSession(s, program, args, opts),
+          ),
       );
   }
 
@@ -495,8 +565,108 @@ export class MacGuiRecovery {
     return this.#pid;
   }
 
+  /**
+   * Read-only observation is audited but never leased: listing windows and
+   * taking a screenshot cannot disturb the screen, and requiring the lease
+   * for them would let a stuck lease blind the observer too.
+   */
+  #observe(op: string): void {
+    this.#lease.audit({ kind: "observe", op });
+  }
+
+  /**
+   * A GUI mutation runs under the session's single-owner lease and is
+   * audited around the action.
+   *
+   * Error boundary, deliberately narrow:
+   *
+   *   - `this.#lease.acquire(op)` throws before `fn` runs — nothing reached
+   *     the screen, and the error is the plain refusal.
+   *   - A `MacSessionError` from `fn` means the target session was never
+   *     entered, so nothing was pressed or clicked either.
+   *   - Any other `fn` error becomes `GuiMutationError`: the action may have
+   *     partially reached the screen, so "nothing was done" would be a lie
+   *     and a retry could double-apply it.
+   */
+  #mutate<T>(op: string, fn: () => T): T {
+    const lease = this.#lease.acquire(op);
+    try {
+      let result: T;
+      try {
+        result = fn();
+      } catch (error) {
+        if (error instanceof MacSessionError) {
+          // The session was never entered: provably nothing was mutated.
+          try {
+            this.#lease.audit({
+              kind: "mutate",
+              op,
+              outcome: "not-performed",
+              detail: error.message,
+            });
+          } catch {
+            // The original failure is the evidence that matters.
+          }
+          throw error;
+        }
+        try {
+          this.#lease.audit({
+            kind: "mutate",
+            op,
+            outcome: "unknown",
+            detail: error instanceof Error ? error.message : String(error),
+          });
+        } catch {
+          // The original failure is the evidence that matters.
+        }
+        throw new GuiMutationError(
+          `the ${op} mutation was attempted but its result is unknown: ` +
+            `${error instanceof Error ? error.message : String(error)}. ` +
+            "The screen must be re-observed before any retry.",
+          { cause: error },
+        );
+      }
+      try {
+        this.#lease.audit({
+          kind: "mutate",
+          op,
+          outcome: result === false ? "not-performed" : "performed",
+        });
+      } catch {
+        // The action already happened; an audit failure cannot undo it and
+        // must not masquerade as a mutation failure.
+      }
+      return result;
+    } finally {
+      let released = true;
+      try {
+        lease.release();
+      } catch (error) {
+        released = false;
+        try {
+          this.#lease.audit({
+            kind: "lease-release",
+            op,
+            outcome: "error",
+            detail: error instanceof Error ? error.message : String(error),
+          });
+        } catch {
+          // Nothing left to report to.
+        }
+      }
+      if (released) {
+        try {
+          this.#lease.audit({ kind: "lease-release", op });
+        } catch {
+          // A failed release audit must not replace the operation's outcome.
+        }
+      }
+    }
+  }
+
   /** The windows of the After Effects instance, as the Accessibility API sees them. */
   listWindows(): GuiAppState {
+    this.#observe("listWindows");
     const result = this.#osascript(LIST_WINDOWS_SCRIPT, [String(this.#pid)]);
     if (result.stdout.trim() === "MISSING") {
       throw new GuiRecoveryError(
@@ -529,6 +699,7 @@ export class MacGuiRecovery {
    * session's screen, not the console user's.
    */
   capture(path: string): string {
+    this.#observe("capture");
     if (this.#screenshotDir !== undefined) {
       mkdirSync(this.#screenshotDir, { recursive: true });
     }
@@ -569,6 +740,17 @@ export class MacGuiRecovery {
      */
     expectedText = "",
   ): boolean {
+    return this.#mutate("pressButton", () =>
+      this.#pressButton(windowIndex, title, expected, expectedText),
+    );
+  }
+
+  #pressButton(
+    windowIndex: number,
+    title: string,
+    expected?: GuiWindowInfo,
+    expectedText = "",
+  ): boolean {
     const result = this.#osascript(PRESS_BUTTON_SCRIPT, [
       String(this.#pid),
       String(windowIndex),
@@ -588,6 +770,10 @@ export class MacGuiRecovery {
    * from the physical display of another session are meaningless here.
    */
   clickAt(x: number, y: number): boolean {
+    return this.#mutate("clickAt", () => this.#clickAt(x, y));
+  }
+
+  #clickAt(x: number, y: number): boolean {
     const result = this.#osascript(CLICK_AT_SCRIPT, [String(Math.round(x)), String(Math.round(y))]);
     return result.stdout.trim() === "CLICKED";
   }
@@ -606,32 +792,37 @@ export class MacGuiRecovery {
     expected?: GuiWindowInfo,
     expectedText = "",
   ): boolean {
-    if (this.pressButton(windowIndex, buttonTitle, expected, expectedText)) {
-      return true;
-    }
-    const state = this.listWindows();
-    const window = state.windows[windowIndex - 1];
-    if (window === undefined) {
-      return false;
-    }
-    if (expected !== undefined && (window.title !== expected.title || window.subrole !== expected.subrole)) {
-      // The window at that position is no longer the one the caller chose.
-      return false;
-    }
-    if (expectedText !== "" && !window.texts.some((text) => text.includes(expectedText))) {
-      // Nor is the window saying what it said when it was chosen.
-      return false;
-    }
-    for (const button of window.buttons) {
-      if (button.title !== buttonTitle || button.position === null || button.size === null) {
-        continue;
+    // The press and its coordinate fallback are one mutation: the lease is
+    // held across the whole sequence so no other mutator can act between
+    // the accessibility press failing and the click landing.
+    return this.#mutate("pressButtonIn", () => {
+      if (this.#pressButton(windowIndex, buttonTitle, expected, expectedText)) {
+        return true;
       }
-      return this.clickAt(
-        button.position.x + button.size.width / 2,
-        button.position.y + button.size.height / 2,
-      );
-    }
-    return false;
+      const state = this.listWindows();
+      const window = state.windows[windowIndex - 1];
+      if (window === undefined) {
+        return false;
+      }
+      if (expected !== undefined && (window.title !== expected.title || window.subrole !== expected.subrole)) {
+        // The window at that position is no longer the one the caller chose.
+        return false;
+      }
+      if (expectedText !== "" && !window.texts.some((text) => text.includes(expectedText))) {
+        // Nor is the window saying what it said when it was chosen.
+        return false;
+      }
+      for (const button of window.buttons) {
+        if (button.title !== buttonTitle || button.position === null || button.size === null) {
+          continue;
+        }
+        return this.#clickAt(
+          button.position.x + button.size.width / 2,
+          button.position.y + button.size.height / 2,
+        );
+      }
+      return false;
+    });
   }
 
   /**
@@ -641,7 +832,7 @@ export class MacGuiRecovery {
    * source: nothing that comes from the outside becomes AppleScript.
    */
   #osascript(script: readonly string[], args: readonly string[]): SessionCommandResult {
-    const result = runInSession(
+    const result = this.#runSession(
       this.#session,
       "/usr/bin/osascript",
       [...script.flatMap((line) => ["-e", line]), ...args],
@@ -654,6 +845,97 @@ export class MacGuiRecovery {
     }
     return result;
   }
+}
+
+/**
+ * The production lease controller: the file lease under `stateRoot`, with
+ * every acquisition, refusal and release written to the shared audit log.
+ */
+export function defaultLeaseController(options: {
+  readonly stateRoot: string;
+  readonly session: MacSession;
+  readonly ownerId: string;
+}): GuiLeaseController {
+  const sessionKey = guiSessionKey(options.session);
+  const pid = process.pid;
+  return {
+    acquire(op) {
+      const outcome = acquireGuiLease({
+        stateRoot: options.stateRoot,
+        session: options.session,
+        owner: { id: options.ownerId, pid },
+        purpose: `gui:${op}`,
+      });
+      if (!outcome.ok) {
+        try {
+          auditGuiEvent(options.stateRoot, {
+            kind: "lease-refuse",
+            sessionKey,
+            ownerId: options.ownerId,
+            pid,
+            op,
+            detail: outcome.detail,
+            outcome: outcome.reason,
+          });
+        } catch {
+          // The refusal itself is the evidence; a failed audit line must not
+          // turn a refusal into an acquisition.
+        }
+        throw new GuiRecoveryError(`GUI mutation refused: ${outcome.detail}`);
+      }
+      // The lease file exists at this point; if recording the acquisition
+      // fails, an unaudited mutation must not proceed — release the lease
+      // and refuse, leaving nothing held and nothing pressed.
+      try {
+        auditGuiEvent(options.stateRoot, {
+          kind: "lease-acquire",
+          sessionKey,
+          ownerId: options.ownerId,
+          pid,
+          op,
+        });
+      } catch (auditError) {
+        outcome.lease.release();
+        throw new GuiRecoveryError(
+          `GUI mutation refused: the lease was acquired but its audit record could not be ` +
+            `written (${auditError instanceof Error ? auditError.message : String(auditError)}); ` +
+            "the lease was released and nothing was pressed or clicked",
+        );
+      }
+      return outcome.lease;
+    },
+    audit(event) {
+      auditGuiEvent(options.stateRoot, {
+        kind: event.kind,
+        sessionKey,
+        ownerId: options.ownerId,
+        pid,
+        ...(event.op === undefined ? {} : { op: event.op }),
+        ...(event.detail === undefined ? {} : { detail: event.detail }),
+        ...(event.outcome === undefined ? {} : { outcome: event.outcome }),
+      });
+    },
+  };
+}
+
+/**
+ * A `CensusRunner` bound to one GUI session: the census probe executes
+ * inside that session via `runInSession`, so the window list it returns is
+ * the session's own WindowServer view — never the caller's desktop by
+ * accident. Exported for exit/crash verification paths that need the same
+ * session scoping `MacGuiRecovery` applies internally.
+ */
+export function censusRunnerInSession(
+  session: MacSession,
+  runSession: typeof runInSession = runInSession,
+): CensusRunner {
+  return (program, args) => {
+    const result = runSession(session, program, [...args], { timeoutMs: 30_000 });
+    if (result.status !== 0) {
+      throw new Error(result.stderr.trim() || `exit status ${result.status}`);
+    }
+    return result.stdout;
+  };
 }
 
 /** Whether a screenshot file was written and is not empty. Mainly a test seam. */

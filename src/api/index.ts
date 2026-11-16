@@ -509,6 +509,24 @@ export class AfterEffects {
   }
 
   /**
+   * The owned After Effects process this session controls, for recovery
+   * authorization (ae-devtools #55). Returns the pid and the GUI session
+   * the process was verified to belong to — the identity a run marker must
+   * record before any GUI mutation is authorized.
+   *
+   * Returns null unless ownership is "owned" AND the transport can name
+   * its target. Callers must treat null as "no attested target", never
+   * substitute a pid found by other means: an unattested pid is exactly
+   * what recovery authorization exists to refuse.
+   */
+  recoveryTarget(): { pid: number; session: MacSession } | null {
+    if (this.#closed || this.ownership().kind !== "owned") {
+      return null;
+    }
+    return this.#session.driver.recoveryTarget();
+  }
+
+  /**
    * A menu command, looked up by its menu text (as AE shows it, so
    * localised for built-in commands; a plugin's own name for one an AEGP
    * plugin registered) or taken by id. A name AE does not know rejects with

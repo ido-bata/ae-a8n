@@ -18,7 +18,12 @@
 
 import { join } from "node:path";
 
-import { MacGuiRecovery, isBlockingWindow, type GuiWindowInfo } from "./gui-recovery.js";
+import {
+  GuiMutationError,
+  MacGuiRecovery,
+  isBlockingWindow,
+  type GuiWindowInfo,
+} from "./gui-recovery.js";
 import type { MacSession } from "./mac-session.js";
 
 export type RecoveryContext = {
@@ -147,11 +152,73 @@ export function classifyDialog(window: GuiWindowInfo): KnownDialogClass | null {
   return KNOWN_DIALOG_CLASSES.find((dialogClass) => dialogClass.matches(window)) ?? null;
 }
 
+/**
+ * Dialog classes that are recognised by name but may never be pressed.
+ *
+ * These were observed on a real host (2026-11-15, AE 26.5.3): the crash
+ * repair options dialog, the AppDirs/Required Dir startup warning, and the
+ * crash-recovery project window. Each offers choices — repair method, report
+ * submission, settings — that are a human's decision, and none has a measured
+ * safe button. Naming them keeps the evidence specific; the outcome is the
+ * same refusal an unclassified window gets, minus the "unknown" claim.
+ */
+export type UnpressableDialogClass = {
+  /** What the evidence calls this class. */
+  readonly name: string;
+  /** Why no button in it may be pressed automatically. */
+  readonly reason: string;
+  readonly matches: (window: GuiWindowInfo) => boolean;
+};
+
+const unpressableText = (window: GuiWindowInfo): string =>
+  [window.title, window.role, window.subrole ?? "", ...window.texts].join(" ");
+
+export const UNPRESSABLE_DIALOG_CLASSES: readonly UnpressableDialogClass[] = [
+  {
+    name: "ae crash-repair options",
+    reason:
+      "the crash repair dialog offers repair and report-submission choices; sending a report or " +
+      "changing repair settings is a human's decision",
+    matches: (window) => /クラッシュ修復|crash[ -]?repair|repair options/i.test(unpressableText(window)),
+  },
+  {
+    name: "ae startup directory warning",
+    reason:
+      "the AppDirs/Required Dir warning reports an application-directory problem at launch; " +
+      "its choices change how After Effects starts and are a human's decision",
+    matches: (window) => /AppDirs|Required Dir/.test(unpressableText(window)),
+  },
+  {
+    name: "ae crash-recovery project",
+    reason:
+      "the crash-recovery project window decides whether a recovered project is generated or " +
+      "discarded; discarding unsaved work is a human's decision",
+    matches: (window) =>
+      /リカバリプロジェクト|recovery project|crash[_ ]?\d+\.aep/i.test(unpressableText(window)),
+  },
+];
+
+/** The recognised-but-never-pressable class a window belongs to, or null. */
+export function classifyUnpressable(window: GuiWindowInfo): UnpressableDialogClass | null {
+  return UNPRESSABLE_DIALOG_CLASSES.find((dialogClass) => dialogClass.matches(window)) ?? null;
+}
+
 export type RecoveryWindowChoice =
   /** No window is blocking the host; nothing to press. */
   | { readonly kind: "none" }
   /** A blocking window belongs to a human; nothing may be pressed anywhere. */
   | { readonly kind: "human-only"; readonly index: number; readonly window: GuiWindowInfo }
+  /**
+   * A blocking window is a recognised class that may never be pressed
+   * (crash repair, startup warning, recovery project). Nothing is pressed;
+   * the run is refused with the class named.
+   */
+  | {
+      readonly kind: "unpressable";
+      readonly index: number;
+      readonly window: GuiWindowInfo;
+      readonly dialogClass: UnpressableDialogClass;
+    }
   /** The first blocking window is a measured class, and the only one a press may be sent to. */
   | {
       readonly kind: "known";
@@ -195,6 +262,17 @@ export function chooseRecoveryWindow(windows: readonly GuiWindowInfo[]): Recover
   const humanOnly = blocking.find(({ window }) => isHumanOnlyWindow(window));
   if (humanOnly !== undefined) {
     return { kind: "human-only", index: humanOnly.index, window: humanOnly.window };
+  }
+  const unpressable = blocking
+    .map(({ window, index }) => ({ window, index, dialogClass: classifyUnpressable(window) }))
+    .find((entry) => entry.dialogClass !== null);
+  if (unpressable !== undefined && unpressable.dialogClass !== null) {
+    return {
+      kind: "unpressable",
+      index: unpressable.index,
+      window: unpressable.window,
+      dialogClass: unpressable.dialogClass,
+    };
   }
   const unknown = blocking.find(({ window }) => classifyDialog(window) === null);
   if (unknown !== undefined) {
@@ -336,6 +414,18 @@ export class MacHostRecovery implements HostRecovery {
         window: description,
       };
     }
+    if (choice.kind === "unpressable") {
+      return {
+        recovered: false,
+        outcome: "refused",
+        evidence:
+          `After Effects ${pid} shows "${description}", which is the ${choice.dialogClass.name} dialog. ` +
+          `No button was pressed: ${choice.dialogClass.reason}. ` +
+          "The host stays blocked until it is answered by hand.",
+        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        window: description,
+      };
+    }
     if (choice.kind === "quarantine") {
       return {
         recovered: false,
@@ -354,13 +444,34 @@ export class MacHostRecovery implements HostRecovery {
     // empty-title dialog; the text it says can, and it is the same text the
     // class was matched on. The press re-checks it inside the target session.
     const marker = window.texts.find((text) => /^\s*ae-a8n:/.test(text)) ?? "";
+    let leaseRefusal: string | null = null;
+    let unknownMutation: string | null = null;
     for (const title of this.#buttons) {
       // One call for both cases: a button the listing showed and one it did
       // not both get the accessibility press first and the coordinate click
       // second. Reserving the fallback for buttons the listing lacked meant a
       // listed button whose AX press failed got no click, and the refusal
       // then claimed none of the buttons was available.
-      if (gui.pressButtonIn(choice.index, title, window, marker)) {
+      let pressed: boolean;
+      try {
+        pressed = gui.pressButtonIn(choice.index, title, window, marker);
+      } catch (error) {
+        if (error instanceof GuiMutationError) {
+          // The press may already have reached the dialog: the screen state
+          // is unknown, so this is quarantine — never "nothing was done",
+          // and never a retry.
+          unknownMutation = error.message;
+        } else {
+          // A refused GUI lease is not "the button was unavailable": another
+          // owner holds the session's mutation lease. Report who, and stop —
+          // retrying under a held lease is exactly the contention it prevents.
+          // Any other pre-mutation GuiRecoveryError (session entry, listing
+          // mismatch) also means nothing was pressed.
+          leaseRefusal = error instanceof Error ? error.message : String(error);
+        }
+        break;
+      }
+      if (pressed) {
         const others =
           choice.blockingCount > 1
             ? ` (${choice.blockingCount - 1} other modal window(s) were left untouched)`
@@ -375,6 +486,31 @@ export class MacHostRecovery implements HostRecovery {
           window: description,
         };
       }
+    }
+    if (unknownMutation !== null) {
+      return {
+        recovered: false,
+        outcome: "quarantined",
+        code: "A8N-SEC-001",
+        evidence:
+          `After Effects ${pid} shows "${description}", and the press attempt ended with an ` +
+          `unknown result: ${unknownMutation}. Whether the button was pressed cannot be ` +
+          "determined from here, so the run is quarantined: re-observe the screen before " +
+          "retrying anything, and do not assume the dialog is still up or already gone.",
+        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        window: description,
+      };
+    }
+    if (leaseRefusal !== null) {
+      return {
+        recovered: false,
+        outcome: "refused",
+        evidence:
+          `After Effects ${pid} shows "${description}", but no GUI mutation was attempted: ` +
+          `${leaseRefusal}. The dialog stays up until the lease holder finishes or the lease is reaped.`,
+        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        window: description,
+      };
     }
     // There is deliberately no escape-key fallback. The key only reaches the
     // window that happens to be key, and a listing made a moment earlier

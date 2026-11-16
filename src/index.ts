@@ -91,4 +91,86 @@ export {
   type AfterEffectsInstall,
 } from "./driver/install-path.js";
 
+/*
+ * macOS GUI observation and recovery surface (#109, #111).
+ *
+ * These are the building blocks a recovery orchestrator (ae-devtools #55)
+ * consumes: fail-closed session checks, AX + WindowServer observation,
+ * dialog classification, and lease-serialized mutation. Everything here is
+ * darwin-only in practice — non-Aqua sessions and non-darwin hosts refuse
+ * rather than guess.
+ */
+export {
+  assessGuiObservation,
+  censusRunnerInSession,
+  defaultLeaseController,
+  GuiMutationError,
+  GuiRecoveryError,
+  isBlockingWindow,
+  MacGuiRecovery,
+  parseUiListing,
+  screenshotLooksReal,
+  type GuiAppState,
+  type GuiButtonInfo,
+  type GuiLeaseController,
+  type GuiRecoveryOptions,
+  type GuiWindowInfo,
+} from "./driver/gui-recovery.js";
+export {
+  chooseRecoveryWindow,
+  classifyDialog,
+  classifyUnpressable,
+  describeWindow,
+  isHumanOnlyWindow,
+  KNOWN_DIALOG_CLASSES,
+  MacHostRecovery,
+  RECOVERY_BUTTONS,
+  UNPRESSABLE_DIALOG_CLASSES,
+  type HostRecovery,
+  type MacHostRecoveryOptions,
+  type RecoveryContext,
+  type RecoveryOutcome,
+  type RecoveryWindowChoice,
+} from "./driver/recovery.js";
+export {
+  listAppInstances,
+  MacSessionError,
+  parseLsappinfo,
+  readGuiSession,
+  readGuiSessionFailure,
+  readUsername,
+  type MacAppInstance,
+  type MacSession,
+  type MacSessionKind,
+} from "./driver/mac-session.js";
+export {
+  acquireGuiLease,
+  auditGuiEvent,
+  defaultGuiLeaseRoot,
+  defaultPidAlive,
+  defaultPidStartedAt,
+  guiLeasePaths,
+  guiSessionKey,
+  inspectGuiLease,
+  reapGuiLease,
+  type GuiAuditEvent,
+  type GuiLease,
+  type GuiLeaseOptions,
+  type GuiLeaseOutcome,
+  type GuiLeaseSession,
+  type PidAliveProbe,
+  type PidStartProbe,
+} from "./platform/darwin/gui-lease.js";
+export {
+  censusForPid,
+  execFileCensusRunner,
+  parseWindowCensus,
+  windowServerCensus,
+  WINDOW_CENSUS_PYTHON,
+  WINDOW_CENSUS_SCRIPT,
+  type CensusRunner,
+  type WindowCensus,
+  type WindowServerWindow,
+} from "./platform/darwin/window-census.js";
+
 export { A8N_VERSION } from "./version.js";
