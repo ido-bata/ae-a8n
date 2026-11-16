@@ -91,6 +91,20 @@ export type DarwinFacts = {
   readonly aeProcesses: readonly DarwinProcess[];
   readonly aeProcessesReadable: boolean;
   readonly aeProcessesFailure: string | null;
+  /**
+   * The selected install's "Allow Scripts To Write Files And Access Network"
+   * preference, read from that account's AE prefs. `null` when it was not
+   * evaluated: the target account is not the account doctor runs as, so its
+   * prefs cannot be read honestly. "unreadable" means the prefs file or the
+   * key could not be found — never treated as either allowed or blocked.
+   */
+  readonly aeScripting:
+    | {
+        readonly state: "allowed" | "blocked" | "unreadable";
+        readonly prefsDir: string;
+        readonly prefValue: string | null;
+      }
+    | null;
   /** Raw output the conclusions rest on, for a human to check. */
   readonly evidence: Readonly<Record<string, string>>;
 };
@@ -282,6 +296,7 @@ export function readDarwinFacts(
   const aeProcessesFailure = aeProcessesReadable ? null : failureOf(psResult);
 
   const installs = readInstalls(exec);
+  const aeScripting = readAeScriptingPermission(installs.installs, targetUser);
 
   const evidence: Record<string, string> = {
     os: [release ?? "", arch ?? ""].join("|"),
@@ -324,8 +339,76 @@ export function readDarwinFacts(
     aeProcesses,
     aeProcessesReadable,
     aeProcessesFailure,
+    aeScripting,
     evidence,
   };
+}
+
+/**
+ * `Pref_SCRIPTING_FILE_NETWORK_SECURITY` for the selected install, from the
+ * target account's own AE prefs. Readable only when the target account is
+ * the account this process runs as — another account's `~/Library` cannot
+ * be read honestly, so the result is `null` there rather than a guess.
+ *
+ * AE keys its prefs folder by `major.minor` of the app version
+ * (`26.5.3` → `26.5`). The pref is `"1"` when scripts may write files and
+ * use the network, `"0"` when they may not (verified on AE 26.5, G0
+ * evidence 2026-11-16). A missing file or key is "unreadable", not a
+ * verdict.
+ */
+export function readAeScriptingPermission(
+  installs: readonly DarwinAeInstall[],
+  targetUser: string | null,
+): DarwinFacts["aeScripting"] {
+  if (targetUser === null || targetUser !== currentUsername()) {
+    return null;
+  }
+  const selected = installs.find((install) => install.selected) ?? null;
+  if (selected === null || selected.version === null) {
+    return null;
+  }
+  const [major, minor] = selected.version.split(".");
+  if (major === undefined || minor === undefined) {
+    return null;
+  }
+  const prefsDir = join(
+    homedir(),
+    "Library",
+    "Preferences",
+    "Adobe",
+    "After Effects",
+    `${major}.${minor}`,
+  );
+  const unreadable = { state: "unreadable" as const, prefsDir, prefValue: null };
+  let entries: string[];
+  try {
+    entries = readdirSync(prefsDir);
+  } catch {
+    return unreadable;
+  }
+  const prefix = `Adobe After Effects ${major}.${minor} `;
+  for (const name of entries) {
+    if (!name.startsWith(prefix) || !name.endsWith(".txt")) {
+      continue;
+    }
+    let text: string;
+    try {
+      text = readFileSync(join(prefsDir, name), "utf-8");
+    } catch {
+      continue;
+    }
+    const match = /Pref_SCRIPTING_FILE_NETWORK_SECURITY" = "([^"]+)"/.exec(text);
+    if (match === null) {
+      continue;
+    }
+    const value = match[1] ?? "";
+    return {
+      state: value === "1" ? "allowed" : value === "0" ? "blocked" : "unreadable",
+      prefsDir,
+      prefValue: value,
+    };
+  }
+  return unreadable;
 }
 
 /** The capabilities this backend can honestly claim today. */
@@ -546,6 +629,26 @@ export function probeDarwin(facts: DarwinFacts): DarwinProbeResult {
           "Use a separate OS account for the isolated session, or a dedicated host. Doctor will not run tests on the console desktop.",
         remedyKind: "human",
         evidence: { targetUid: facts.targetUid, consoleUid: facts.consoleUid },
+      }),
+    );
+  }
+
+  if (facts.aeScripting?.state === "blocked") {
+    checks.push(
+      diagnostic("A8N-PERM-003", {
+        detail:
+          `After Effects script file/network access is off for ${selected?.location ?? "the selected install"} ` +
+          `(Pref_SCRIPTING_FILE_NETWORK_SECURITY = "${facts.aeScripting.prefValue ?? "?"}" in ` +
+          `${facts.aeScripting.prefsDir}); every script-driven call, including the readiness probe, will time out`,
+        remedy:
+          "In After Effects for this account: Settings > Scripting & Expressions, enable " +
+          '"Allow Scripts to Write Files and Access Network", then re-run doctor. ' +
+          "Doctor reports the state; it never changes AE preferences itself.",
+        remedyKind: "human",
+        evidence: {
+          prefsDir: facts.aeScripting.prefsDir,
+          prefValue: facts.aeScripting.prefValue,
+        },
       }),
     );
   }
@@ -936,14 +1039,24 @@ export class DarwinAdapter implements PlatformAdapter {
         automatable: false,
       });
 
+      const scripting = facts.aeScripting;
       steps.push({
         id: "macos.ae-scripting",
-        state: "needs-human",
+        state: scripting?.state === "allowed" ? "done" : "needs-human",
         reason:
-          "After Effects only runs scripts that write files when its own scripting preference allows it",
+          scripting?.state === "allowed"
+            ? `script file/network access is already allowed (${scripting.prefsDir})`
+            : scripting?.state === "blocked"
+              ? `script file/network access is off for the selected install (${scripting.prefsDir}); ` +
+                "every script-driven call will time out until it is enabled"
+              : "After Effects only runs scripts that write files when its own scripting preference allows it",
         action:
-          "In After Effects for the target account: Settings > Scripting & Expressions, enable " +
-          '"Allow Scripts to Write Files and Access Network".',
+          scripting?.state === "allowed"
+            ? null
+            : "In After Effects for the target account: Settings > Scripting & Expressions, enable " +
+              '"Allow Scripts to Write Files and Access Network". If scripts still do not run, ' +
+              "the AE scripting component itself may be missing (observed on AE 2027) — reinstall or " +
+              "repair After Effects through Creative Cloud.",
         automatable: false,
       });
 

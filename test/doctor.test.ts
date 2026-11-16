@@ -70,6 +70,7 @@ function darwinFacts(overrides: Partial<DarwinFacts> = {}): DarwinFacts {
     aeProcesses: [],
     aeProcessesReadable: true,
     aeProcessesFailure: null,
+    aeScripting: null,
     evidence: EVIDENCE,
     ...overrides,
   };
@@ -206,6 +207,40 @@ describe("the macOS probe is honest about what it read", () => {
     );
     expect(check).toMatchObject({ severity: "blocker" });
     expect(check?.detail).toContain("pid 4242");
+  });
+
+  it("reports AE script file/network permission off as a blocker", () => {
+    const check = checkFor(
+      darwinFacts({
+        aeScripting: {
+          state: "blocked",
+          prefsDir: "/Users/ae-test/Library/Preferences/Adobe/After Effects/26.5",
+          prefValue: "0",
+        },
+      }),
+      "A8N-PERM-003",
+    );
+    expect(check).toMatchObject({ severity: "blocker" });
+    expect(check?.detail).toContain("Pref_SCRIPTING_FILE_NETWORK_SECURITY");
+    expect(check?.evidence).toMatchObject({ prefValue: "0" });
+  });
+
+  it("does not report the scripting permission when allowed, unreadable or unevaluated", () => {
+    for (const aeScripting of [
+      {
+        state: "allowed" as const,
+        prefsDir: "/Users/ae-test/Library/Preferences/Adobe/After Effects/26.5",
+        prefValue: "1",
+      },
+      {
+        state: "unreadable" as const,
+        prefsDir: "/Users/ae-test/Library/Preferences/Adobe/After Effects/26.5",
+        prefValue: null,
+      },
+      null,
+    ]) {
+      expect(checkFor(darwinFacts({ aeScripting }), "A8N-PERM-003")).toBeUndefined();
+    }
   });
 
   it("never turns unreadable facts into success", () => {
@@ -494,6 +529,46 @@ describe("the Darwin adapter's non-probe methods do not lie", () => {
       // Recovery on macOS is not implemented (#59); the finding must say so
       // rather than read as a clean sweep.
       expect(findings[0]?.detail).toContain("cannot yet inspect");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("marks the scripting step done only when the preference was read as allowed", async () => {
+    const root = mkdtempSync(join(tmpdir(), "a8n-mac-setup-"));
+    try {
+      const adapter = new DarwinAdapter({
+        readFacts: () =>
+          darwinFacts({
+            aeScripting: {
+              state: "allowed",
+              prefsDir: "/Users/rebui/Library/Preferences/Adobe/After Effects/26.5",
+              prefValue: "1",
+            },
+          }),
+        setupStateFile: join(root, "state.json"),
+      });
+      const steps = await adapter.plan(TARGET);
+      const step = steps.find((entry) => entry.id === "macos.ae-scripting");
+      expect(step?.state).toBe("done");
+      expect(step?.action).toBeNull();
+
+      const blocked = new DarwinAdapter({
+        readFacts: () =>
+          darwinFacts({
+            aeScripting: {
+              state: "blocked",
+              prefsDir: "/Users/rebui/Library/Preferences/Adobe/After Effects/26.5",
+              prefValue: "0",
+            },
+          }),
+        setupStateFile: join(root, "state2.json"),
+      });
+      const blockedStep = (await blocked.plan(TARGET)).find(
+        (entry) => entry.id === "macos.ae-scripting",
+      );
+      expect(blockedStep?.state).toBe("needs-human");
+      expect(blockedStep?.reason).toContain("script file/network access is off");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
