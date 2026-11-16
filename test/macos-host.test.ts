@@ -477,6 +477,104 @@ describe("finding the host before it has answered", () => {
   });
 });
 
+describe("launching through LaunchServices (issue #105)", () => {
+  // AE 27.0: a directly spawned After Effects is unknown to LaunchServices
+  // for seconds, and the readiness probe's Apple Event — addressed by bundle
+  // path — made LaunchServices start a second instance in that gap. The
+  // host is now started with `open`, and the pid is learned from the process
+  // list. Two same-named processes must still mean "unknown", never a guess.
+  const executable =
+    "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects";
+  const bundle = "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app";
+  const install = { executable, versionName: "Adobe After Effects 2027.app", renderExecutable: null };
+  const T0 = Date.parse("2026-11-15T00:00:00Z");
+  type P = { pid: number; startedAt: number; executable: string };
+  const ae = (pid: number, startedAt = T0 + 1_000): P => ({ pid, startedAt, executable });
+
+  /**
+   * A transport whose `open` records the bundle it was given and whose
+   * process list plays back `lists`. `now` advances on every read so the
+   * observe deadline is always reached.
+   */
+  function launchTransport(
+    lists: P[][],
+    options: { open?: (bundle: string) => Promise<void> } = {},
+  ) {
+    let i = 0;
+    let clock = T0;
+    const opened: string[] = [];
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      now: () => (clock += 50),
+      processes: () => lists[Math.min(i++, lists.length - 1)] as P[],
+      openMacApp:
+        options.open ??
+        ((path: string) => {
+          opened.push(path);
+          return Promise.resolve();
+        }),
+      macLaunchObserveMs: 2_000,
+      macLaunchPollMs: 1,
+    });
+    return { transport, opened };
+  }
+
+  it("asks LaunchServices for the bundle, then owns the single new process", async () => {
+    const { transport, opened } = launchTransport([[], [ae(42)], [ae(42)], [ae(42)]]);
+    await transport.launch();
+    expect(opened).toEqual([bundle]);
+    transport.confirmLaunched();
+    expect(transport.ownership()).toMatchObject({ kind: "owned" });
+    expect(transport.hostPid()).toBe(42);
+  });
+
+  it("claims nothing when two same-named processes appear — the #105 state", async () => {
+    const { transport } = launchTransport([[], [ae(42), ae(43)], [ae(42), ae(43)]]);
+    await transport.launch();
+    transport.confirmLaunched();
+    expect(transport.ownership()).toMatchObject({ kind: "unknown", code: "A8N-AE-004" });
+    expect(transport.hostPid()).toBeNull();
+  });
+
+  it("claims nothing when no new process appears in time", async () => {
+    const { transport } = launchTransport([[], []]);
+    await transport.launch();
+    transport.confirmLaunched();
+    expect(transport.ownership().kind).toBe("unknown");
+  });
+
+  it("does not pick between candidates while the list is still empty", async () => {
+    // The process appears only on a later poll; the pid is still learned.
+    const { transport } = launchTransport([[], [], [ae(42)], [ae(42)]]);
+    await transport.launch();
+    transport.confirmLaunched();
+    expect(transport.ownership().kind).toBe("owned");
+    expect(transport.hostPid()).toBe(42);
+  });
+
+  it("surfaces an open failure instead of falling back to a bare spawn", async () => {
+    const { transport } = launchTransport([[], []], {
+      open: () => Promise.reject(new Error("LaunchServices refused")),
+    });
+    await expect(transport.launch()).rejects.toThrow("LaunchServices refused");
+  });
+
+  it("refuses an executable that is not inside an .app bundle", async () => {
+    const bare = { ...install, executable: "/usr/local/bin/AfterFX" };
+    let clock = T0;
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install: bare,
+      now: () => (clock += 50),
+      processes: () => [] as P[],
+      openMacApp: () => Promise.resolve(),
+      macLaunchPollMs: 1,
+    });
+    await expect(transport.launch()).rejects.toThrow(/not inside an \.app bundle/);
+  });
+});
+
 describe("the process listing", () => {
   /**
    * Measured on 2026-11-03: `ps` formats `lstart` in the login user's locale,

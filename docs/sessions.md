@@ -13,10 +13,14 @@ already running. `AfterEffects.ownership()` reports which:
 
 How it is decided on macOS: just before launching, the transport lists the
 processes of this install's executable (pid and start time). If any exist,
-the session is `attached`. If none existed, the transport starts After Effects
-itself and keeps the pid of the process it created. Once the readiness probe
-has answered, exactly one instance must be running and its pid must be that
-recorded pid; otherwise the session is `unknown`. At `close()` the check is
+the session is `attached`. If none existed, the transport asks LaunchServices
+to start After Effects (`open` on the bundle — a directly spawned process is
+invisible to LaunchServices for seconds, and the readiness probe's Apple
+Event addressed by bundle path would make LaunchServices start a second
+instance in that gap; observed on AE 27.0) and keeps the pid of the single
+new process that appears. Once the readiness probe has answered, exactly one
+instance must be running and its pid must be that recorded pid; otherwise the
+session is `unknown`. At `close()` the check is
 repeated: the same pid with the same start time must still be the only
 instance — a restarted AE, a reused pid, or a second instance all make it
 `unknown`. If the transport cannot record a pid, the session is `unknown` even
