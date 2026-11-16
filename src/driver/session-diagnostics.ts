@@ -15,8 +15,9 @@
  * Collection contract:
  *
  * - Scope: only files that identify as After Effects — the crash-report
- *   name pattern, and host logs whose full path carries an AE token. A
- *   log written by Photoshop during the same window is not collected.
+ *   name pattern, and host logs whose path relative to the scanned
+ *   directory carries an AE token. A log written by Photoshop during the
+ *   same window is not collected.
  * - Attribution: every entry is `"session"` only when its content proves
  *   this session's host pid; everything else is `"app"` — After Effects
  *   and the session window, but not provably *this* session's process.
@@ -34,18 +35,19 @@
 import {
   closeSync,
   constants,
-  existsSync,
   fstatSync,
   lstatSync,
   mkdirSync,
   openSync,
   readSync,
   readdirSync,
+  realpathSync,
   rmSync,
   writeFileSync,
+  type Stats,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 
 import type { HostOwnership, HostState } from "./transport.js";
 
@@ -117,9 +119,11 @@ export type DiagnosticSources = {
   /** Directories searched recursively for files touched during the session. */
   readonly logDirs: readonly string[];
   /**
-   * Host-log files are collected only when their full path matches — this
-   * is what keeps other Adobe applications' logs out of the bundle. The
-   * AE-named cache directory satisfies it through its own path.
+   * Host-log files are collected only when their path *relative to the
+   * scanned directory* (prefixed with that directory's own name) matches —
+   * this is what keeps other Adobe applications' logs out of the bundle.
+   * Matching the absolute path would let an AE-looking home directory name
+   * pull in every Adobe log on the machine.
    */
   readonly logFilePattern: RegExp;
   /** Per-file cap on collected log bytes (the tail is kept). */
@@ -128,6 +132,8 @@ export type DiagnosticSources = {
   readonly maxLogFiles: number;
   /** Per-file cap on collected crash-report bytes (the tail is kept). */
   readonly maxCrashReportBytes: number;
+  /** Cap on collected crash-report files, newest first. */
+  readonly maxCrashReportFiles: number;
   /** Cap on the trace copy. */
   readonly maxTraceBytes: number;
   /** Cap on the total bytes copied into the bundle. */
@@ -156,6 +162,7 @@ export function darwinDiagnosticSources(home: string = homedir()): DiagnosticSou
     maxLogBytes: 256 * 1024,
     maxLogFiles: 20,
     maxCrashReportBytes: 8 * 1024 * 1024,
+    maxCrashReportFiles: 20,
     maxTraceBytes: 4 * 1024 * 1024,
     maxBundleBytes: 64 * 1024 * 1024,
   };
@@ -171,6 +178,7 @@ export function unsupportedDiagnosticSources(): DiagnosticSources {
     maxLogBytes: 0,
     maxLogFiles: 0,
     maxCrashReportBytes: 0,
+    maxCrashReportFiles: 0,
     maxTraceBytes: 0,
     maxBundleBytes: 0,
   };
@@ -190,9 +198,14 @@ const TRACE_TAIL_LINES = 200;
 const PID_SCAN_BYTES = 1024 * 1024;
 /** How much of a trace file is read to produce the line tail. */
 const TRACE_TAIL_SCAN_BYTES = 512 * 1024;
+/** Cap on the written trace tail, and on any single line inside it. */
+const TRACE_TAIL_MAX_BYTES = 256 * 1024;
+const TRACE_TAIL_LINE_MAX = 4 * 1024;
 
 /** O_NOFOLLOW where the platform has it; a plain read where it does not. */
 const OPEN_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+/** O_NONBLOCK keeps a path swapped for a FIFO from blocking the open. */
+const OPEN_NONBLOCK = constants.O_NONBLOCK ?? 0;
 
 function safeName(path: string): string {
   return basename(path).replace(/[^A-Za-z0-9._-]+/g, "_");
@@ -219,11 +232,48 @@ function uniqueTarget(dir: string, name: string, used: Set<string>): string {
  * the intended tree. Throws on platforms/kernels that refuse (ELOOP).
  */
 function openNoFollow(path: string): number {
-  return openSync(path, constants.O_RDONLY | OPEN_NOFOLLOW);
+  return openSync(path, constants.O_RDONLY | OPEN_NOFOLLOW | OPEN_NONBLOCK);
+}
+
+/**
+ * Opens `path` and binds the read to the held descriptor: the fd must be a
+ * regular file (a swap to a FIFO or device between listing and open is
+ * refused, not blocked on or read), and callers take sizes from `fstat`
+ * on this fd rather than from an earlier `lstat`.
+ */
+function openRegularNoFollow(path: string): number {
+  const fd = openNoFollow(path);
+  if (!fstatSync(fd).isFile()) {
+    closeSync(fd);
+    throw new Error(`${path} is not a regular file`);
+  }
+  return fd;
 }
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** lstat that reports "missing" as null instead of throwing. */
+function lstatOrNull(path: string) {
+  try {
+    return lstatSync(path);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when `dir` is reached through a symbolic link in one of its
+ * ancestors — the leaf check cannot see those. The resolved tree is still
+ * searched (the filters apply the same), but the report says so.
+ */
+function reachedThroughLink(dir: string): boolean {
+  try {
+    return realpathSync(dir) !== resolve(dir);
+  } catch {
+    return false;
+  }
 }
 
 /** Reads until the buffer is full or EOF — readSync is allowed to return short. */
@@ -241,9 +291,9 @@ function readFully(fd: number, buffer: Buffer, position: number): number {
 
 /** Reads up to `maxBytes` from the start of `source`. */
 function readHead(source: string, maxBytes: number): string {
-  const size = lstatSync(source).size;
-  const fd = openNoFollow(source);
+  const fd = openRegularNoFollow(source);
   try {
+    const size = fstatSync(fd).size;
     const buffer = Buffer.alloc(Math.min(maxBytes, size));
     const got = readFully(fd, buffer, 0);
     return buffer.subarray(0, got).toString("utf-8");
@@ -254,9 +304,9 @@ function readHead(source: string, maxBytes: number): string {
 
 /** Reads up to `maxBytes` from the end of `source`. */
 function readTail(source: string, maxBytes: number): string {
-  const size = lstatSync(source).size;
-  const fd = openNoFollow(source);
+  const fd = openRegularNoFollow(source);
   try {
+    const size = fstatSync(fd).size;
     const buffer = Buffer.alloc(Math.min(maxBytes, size));
     const got = readFully(fd, buffer, size - buffer.length);
     return buffer.subarray(0, got).toString("utf-8");
@@ -267,7 +317,7 @@ function readTail(source: string, maxBytes: number): string {
 
 /** Counts records without loading the whole file; a final partial line counts too. */
 function countRecords(path: string): number {
-  const fd = openNoFollow(path);
+  const fd = openRegularNoFollow(path);
   try {
     const size = fstatSync(fd).size;
     const buffer = Buffer.alloc(64 * 1024);
@@ -301,9 +351,9 @@ function countRecords(path: string): number {
  * a no-follow descriptor. `maxBytes` of 0 writes an empty file.
  */
 function copyTail(source: string, target: string, maxBytes: number): { bytes: number; truncated: boolean } {
-  const size = lstatSync(source).size;
-  const fd = openNoFollow(source);
+  const fd = openRegularNoFollow(source);
   try {
+    const size = fstatSync(fd).size;
     const take = Math.min(maxBytes, size);
     const buffer = Buffer.alloc(take);
     const got = take === 0 ? 0 : readFully(fd, buffer, size - take);
@@ -320,7 +370,7 @@ function copyTail(source: string, target: string, maxBytes: number): { bytes: nu
  * host process. Crash reports keep `pid` in the body JSON, not the header.
  */
 function fileNamesPid(path: string, pid: number): boolean {
-  const pattern = new RegExp(`"pid"\\s*:\\s*${pid}(?![0-9])`);
+  const pattern = new RegExp(`"pid"\\s*:\\s*${pid}(?![0-9.])`);
   try {
     return pattern.test(readHead(path, PID_SCAN_BYTES)) || pattern.test(readTail(path, PID_SCAN_BYTES));
   } catch {
@@ -338,6 +388,7 @@ function* walk(
   dir: string,
   depth: number,
   skippedLinks: { count: number },
+  unreadableDirs: { count: number },
 ): Generator<string> {
   if (depth < 0) {
     return;
@@ -346,14 +397,15 @@ function* walk(
   try {
     entries = readdirSync(dir);
   } catch {
+    // An unreadable directory is unknown contents, not empty contents —
+    // the caller turns the count into a note.
+    unreadableDirs.count += 1;
     return;
   }
   for (const entry of entries) {
     const path = join(dir, entry);
-    let stat;
-    try {
-      stat = lstatSync(path);
-    } catch {
+    const stat = lstatOrNull(path);
+    if (stat === null) {
       continue;
     }
     if (stat.isSymbolicLink()) {
@@ -361,12 +413,23 @@ function* walk(
       continue;
     }
     if (stat.isDirectory()) {
-      yield* walk(path, depth - 1, skippedLinks);
+      yield* walk(path, depth - 1, skippedLinks, unreadableDirs);
     } else if (stat.isFile()) {
       yield path;
     }
   }
 }
+
+/**
+ * Overrides for `diagnostics()`: where to look and which platform's
+ * collector to use. Tests and downstream tools pass a fake `homeDir` or
+ * `sources` so collection never touches the real user directories.
+ */
+export type DiagnosticsOptions = {
+  readonly sources?: DiagnosticSources;
+  readonly platform?: NodeJS.Platform;
+  readonly homeDir?: string;
+};
 
 export type CollectOptions = {
   readonly sessionRoot: string;
@@ -434,18 +497,27 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
   const crashReportsDir = join(bundleDir, "crash-reports");
   const crashNames = new Set<string>();
   const crashReports: CrashReportEntry[] = [];
+  // Hard links can reach files outside the scanned tree that O_NOFOLLOW
+  // cannot detect; they are skipped and counted rather than copied.
+  let skippedHardLinks = 0;
+  let crashFiles = 0;
+  let crashFilesCapped = 0;
   for (const dir of sources.crashReportDirs) {
-    if (!existsSync(dir)) {
+    const dirStat = lstatOrNull(dir);
+    if (dirStat === null) {
       notes.push(`no crash-report directory at ${dir}`);
       continue;
     }
-    try {
-      if (lstatSync(dir).isSymbolicLink()) {
-        notes.push(`crash-report directory ${dir} is a symbolic link and was not searched`);
-        continue;
-      }
-    } catch {
+    if (dirStat.isSymbolicLink()) {
+      notes.push(`crash-report directory ${dir} is a symbolic link and was not searched`);
       continue;
+    }
+    if (!dirStat.isDirectory()) {
+      notes.push(`crash-report path ${dir} is not a directory`);
+      continue;
+    }
+    if (reachedThroughLink(dir)) {
+      notes.push(`crash-report directory ${dir} is reached through a symbolic link; the resolved tree was searched`);
     }
     let names: string[];
     try {
@@ -454,15 +526,16 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
       notes.push(`crash-report directory ${dir} could not be read: ${messageOf(error)}`);
       continue;
     }
+    // Collect first, newest first, so the byte budget goes to the reports
+    // most likely to explain the end — not to whatever readdir listed first.
+    const found: { name: string; sourcePath: string; stat: Stats }[] = [];
     for (const name of names) {
       if (!sources.crashReportPattern.test(name)) {
         continue;
       }
       const sourcePath = join(dir, name);
-      let stat;
-      try {
-        stat = lstatSync(sourcePath);
-      } catch {
+      const stat = lstatOrNull(sourcePath);
+      if (stat === null) {
         continue;
       }
       if (stat.isSymbolicLink()) {
@@ -472,26 +545,37 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
       if (!stat.isFile() || stat.mtimeMs < options.since) {
         continue;
       }
+      if (stat.nlink > 1) {
+        skippedHardLinks += 1;
+        continue;
+      }
+      found.push({ name, sourcePath, stat });
+    }
+    found.sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    const allowed = Math.max(sources.maxCrashReportFiles - crashFiles, 0);
+    crashFilesCapped += found.length - Math.min(found.length, allowed);
+    for (const item of found.slice(0, allowed)) {
       if (take <= 0) {
         break;
       }
-      const target = uniqueTarget(crashReportsDir, name, crashNames);
+      crashFiles += 1;
+      const target = uniqueTarget(crashReportsDir, item.name, crashNames);
       try {
-        const copied = copyTail(sourcePath, target, Math.min(sources.maxCrashReportBytes, take));
+        const copied = copyTail(item.sourcePath, target, Math.min(sources.maxCrashReportBytes, take));
         spend(copied.bytes);
         const attribution: EvidenceAttribution =
-          options.host.pid !== null && fileNamesPid(sourcePath, options.host.pid) ? "session" : "app";
+          options.host.pid !== null && fileNamesPid(item.sourcePath, options.host.pid) ? "session" : "app";
         crashReports.push({
           bundlePath: target,
-          sourcePath,
-          name,
+          sourcePath: item.sourcePath,
+          name: item.name,
           bytes: copied.bytes,
           truncated: copied.truncated,
           attribution,
-          modifiedAt: stat.mtime.toISOString(),
+          modifiedAt: item.stat.mtime.toISOString(),
         });
       } catch (error) {
-        notes.push(`crash report ${sourcePath} could not be collected: ${messageOf(error)}`);
+        notes.push(`crash report ${item.sourcePath} could not be collected: ${messageOf(error)}`);
       }
     }
     if (take <= 0) {
@@ -499,42 +583,70 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
     }
   }
   crashReports.sort((a, b) => (a.modifiedAt < b.modifiedAt ? 1 : a.modifiedAt > b.modifiedAt ? -1 : a.name < b.name ? -1 : 1));
+  if (crashFilesCapped > 0) {
+    notes.push(
+      `${crashFilesCapped} more crash report(s) matched but were not collected (cap ${sources.maxCrashReportFiles}, newest first)`,
+    );
+  }
 
   const logsDir = join(bundleDir, "logs");
   const logNames = new Set<string>();
   const logs: DiagnosticsFile[] = [];
   const skippedLinks = { count: 0 };
+  const unreadableDirs = { count: 0 };
   const candidates: { path: string; mtimeMs: number }[] = [];
   for (const dir of sources.logDirs) {
-    if (!existsSync(dir)) {
+    const dirStat = lstatOrNull(dir);
+    if (dirStat === null) {
       notes.push(`no host-log directory at ${dir}`);
       continue;
     }
-    try {
-      if (lstatSync(dir).isSymbolicLink()) {
-        notes.push(`host-log directory ${dir} is a symbolic link and was not searched`);
-        continue;
-      }
-    } catch {
+    if (dirStat.isSymbolicLink()) {
+      notes.push(`host-log directory ${dir} is a symbolic link and was not searched`);
       continue;
     }
-    for (const path of walk(dir, MAX_WALK_DEPTH, skippedLinks)) {
-      if (!sources.logFilePattern.test(path)) {
+    if (!dirStat.isDirectory()) {
+      notes.push(`host-log path ${dir} is not a directory`);
+      continue;
+    }
+    if (reachedThroughLink(dir)) {
+      notes.push(`host-log directory ${dir} is reached through a symbolic link; the resolved tree was searched`);
+    }
+    // The scope test runs on the path relative to this root, prefixed by
+    // the root's own name: `Logs/Adobe` only matches files that name AE
+    // themselves, while `Caches/Adobe/After Effects` matches everything
+    // under it because the directory is already AE-specific.
+    const scopeRoot = basename(dir);
+    for (const path of walk(dir, MAX_WALK_DEPTH, skippedLinks, unreadableDirs)) {
+      const scoped = join(scopeRoot, relative(dir, path));
+      if (!sources.logFilePattern.test(scoped)) {
         continue;
       }
-      let stat;
-      try {
-        stat = lstatSync(path);
-      } catch {
+      const stat = lstatOrNull(path);
+      if (stat === null) {
         continue;
       }
       if (stat.isFile() && stat.mtimeMs >= options.since) {
+        if (stat.nlink > 1) {
+          skippedHardLinks += 1;
+          continue;
+        }
         candidates.push({ path, mtimeMs: stat.mtimeMs });
       }
     }
   }
   if (skippedLinks.count > 0) {
     notes.push(`${skippedLinks.count} symbolic link(s) under the host-log directories were not followed`);
+  }
+  if (unreadableDirs.count > 0) {
+    notes.push(
+      `${unreadableDirs.count} host-log director${unreadableDirs.count === 1 ? "y" : "ies"} could not be read; their contents are unknown, not absent`,
+    );
+  }
+  if (skippedHardLinks > 0) {
+    notes.push(
+      `${skippedHardLinks} hard-linked file(s) were not collected: a hard link can reach outside the scanned tree`,
+    );
   }
   candidates.sort((a, b) => b.mtimeMs - a.mtimeMs || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   for (const candidate of candidates.slice(0, sources.maxLogFiles)) {
@@ -578,14 +690,20 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
   }
 
   let trace: SessionDiagnostics["trace"] = null;
-  if (options.tracePath !== undefined && existsSync(options.tracePath)) {
-    const target = join(bundleDir, "trace.jsonl");
-    try {
-      const stat = lstatSync(options.tracePath);
-      if (stat.isFile()) {
+  if (options.tracePath !== undefined) {
+    const traceStat = lstatOrNull(options.tracePath);
+    if (traceStat === null) {
+      notes.push(`no session trace at ${options.tracePath}`);
+    } else if (traceStat.isSymbolicLink()) {
+      notes.push(`session trace at ${options.tracePath} is a symbolic link and was not collected`);
+    } else if (!traceStat.isFile()) {
+      notes.push(`session trace at ${options.tracePath} is not a regular file`);
+    } else {
+      try {
+        const target = join(bundleDir, "trace.jsonl");
         const allowance = Math.min(sources.maxTraceBytes, Math.max(take, 0));
         let bundlePath: string | null = null;
-        let truncated = stat.size > 0;
+        let truncated = traceStat.size > 0;
         if (allowance > 0) {
           const copied = copyTail(options.tracePath, target, allowance);
           spend(copied.bytes);
@@ -595,24 +713,36 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
           notes.push("the session trace was not copied: the bundle byte budget was already exhausted");
         }
         // The line tail is read from the source's own tail so a huge trace
-        // does not have to be loaded whole.
+        // does not have to be loaded whole, then bounded per line and in
+        // total — and charged to the same bundle budget as everything else.
         const tailText = readTail(options.tracePath, TRACE_TAIL_SCAN_BYTES);
-        const lines = tailText.split("\n").filter((line) => line.trim().length > 0);
-        writeFileSync(join(bundleDir, "trace-tail.jsonl"), `${lines.slice(-TRACE_TAIL_LINES).join("\n")}\n`, "utf-8");
+        const lines = tailText
+          .split("\n")
+          .filter((line) => line.trim().length > 0)
+          .slice(-TRACE_TAIL_LINES)
+          .map((line) => (line.length > TRACE_TAIL_LINE_MAX ? `${line.slice(0, TRACE_TAIL_LINE_MAX)}…[line truncated]` : line));
+        let tail = Buffer.from(`${lines.join("\n")}\n`, "utf-8");
+        if (tail.length > TRACE_TAIL_MAX_BYTES) {
+          tail = tail.subarray(tail.length - TRACE_TAIL_MAX_BYTES);
+          notes.push(`the trace tail was truncated to its last ${TRACE_TAIL_MAX_BYTES} bytes`);
+        }
+        const tailAllowance = Math.min(tail.length, Math.max(take, 0));
+        if (tailAllowance > 0) {
+          writeFileSync(join(bundleDir, "trace-tail.jsonl"), tail.subarray(tail.length - tailAllowance));
+          spend(tailAllowance);
+        } else {
+          notes.push("the trace tail was not written: the bundle byte budget was already exhausted");
+        }
         trace = {
           sourcePath: options.tracePath,
           bundlePath,
           events: countRecords(options.tracePath),
           truncated,
         };
-      } else {
-        notes.push(`session trace at ${options.tracePath} is not a regular file`);
+      } catch (error) {
+        notes.push(`session trace could not be collected: ${messageOf(error)}`);
       }
-    } catch (error) {
-      notes.push(`session trace could not be collected: ${messageOf(error)}`);
     }
-  } else if (options.tracePath !== undefined) {
-    notes.push(`no session trace at ${options.tracePath}`);
   }
 
   const summary: SessionDiagnostics = {

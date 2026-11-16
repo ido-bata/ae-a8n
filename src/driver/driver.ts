@@ -13,7 +13,11 @@ import { fileURLToPath } from "node:url";
 
 import { entryScriptPath, stageHostScript, writeBootstrapScript } from "./bootstrap.js";
 import type { HostRecovery } from "./recovery.js";
-import { collectSessionDiagnostics, type SessionDiagnostics } from "./session-diagnostics.js";
+import {
+  collectSessionDiagnostics,
+  type DiagnosticsOptions,
+  type SessionDiagnostics,
+} from "./session-diagnostics.js";
 import { READINESS_TIMEOUT_MS } from "./script-invocation.js";
 import type { HostOwnership, HostTransport, PendingLaunch } from "./transport.js";
 import { ScriptNotSentError } from "./transport.js";
@@ -363,8 +367,12 @@ export class AeDriver {
    *
    * Safe to call at any time, including after `stop` failed: it reports what
    * it could find and says in `notes` what it could not.
+   *
+   * `options` overrides where evidence is looked for — tests and tooling
+   * pass a fake `homeDir` or `sources` so the real user directories are
+   * never scanned.
    */
-  diagnostics(): SessionDiagnostics {
+  diagnostics(options: DiagnosticsOptions = {}): SessionDiagnostics {
     return collectSessionDiagnostics({
       sessionRoot: this.#paths.root,
       artifactsDir: this.#paths.artifacts,
@@ -376,6 +384,9 @@ export class AeDriver {
         transport: this.#transport.kind,
       },
       since: this.#constructedAt,
+      ...(options.sources !== undefined ? { sources: options.sources } : {}),
+      ...(options.platform !== undefined ? { platform: options.platform } : {}),
+      ...(options.homeDir !== undefined ? { homeDir: options.homeDir } : {}),
     });
   }
 

@@ -8,12 +8,13 @@
  * classification and the collection contract.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AfterEffects } from "../src/index.js";
+import { AfterEffectsError, contextualise } from "../src/api/errors.js";
 import { AeDriver, TimeoutError } from "../src/driver/driver.js";
 import type { HostRecovery } from "../src/driver/recovery.js";
 import {
@@ -169,6 +170,19 @@ describe("timeout host classification", () => {
     };
     const error = await timeoutOf(driverFor(transport, recovery).call("app.info", {}));
     expect(error.hostCondition).toBe("modal");
+  });
+
+  it("surfaces hostCondition on the public error, with the TimeoutError as cause", () => {
+    let thrown: unknown;
+    try {
+      contextualise("app.info", new TimeoutError("app.info", 100, "gone"));
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(AfterEffectsError);
+    const wrapped = thrown as AfterEffectsError;
+    expect(wrapped.hostCondition).toBe("gone");
+    expect(wrapped.cause).toBeInstanceOf(TimeoutError);
   });
 
   it("never resends the timed-out request, whatever the host looked like", async () => {
@@ -488,6 +502,52 @@ describe("collectSessionDiagnostics", () => {
     expect(report.crashReports[0]?.bytes).toBe(64);
   });
 
+  it("skips hard-linked files — a link can reach outside the scanned tree", () => {
+    const home = homeWith({
+      "Library/Logs/Adobe/After Effects/main.log": "log\n",
+    });
+    const outside = join(root, "outside.txt");
+    writeFileSync(outside, "outside the tree\n");
+    linkSync(outside, join(home, "Library/Logs/Adobe/After Effects/hardlink.log"));
+
+    const report = collectSessionDiagnostics({
+      sessionRoot: root,
+      artifactsDir: join(root, "artifacts"),
+      host: { state: "alive", ownership: { kind: "owned", evidence: "t" }, pid: null, transport: "fake" },
+      since,
+      sources: darwinDiagnosticSources(home),
+      platform: "darwin",
+    });
+    expect(report.logs.map((l) => l.sourcePath)).toEqual([
+      join(home, "Library/Logs/Adobe/After Effects/main.log"),
+    ]);
+    expect(report.notes.join(" ")).toMatch(/hard-linked file/);
+  });
+
+  it("spends the crash-report budget on the newest reports first", () => {
+    const home = homeWith({});
+    const dir = join(home, "Library/Logs/DiagnosticReports");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "After Effects-old.ips"), "o".repeat(200));
+    writeFileSync(join(dir, "After Effects-new.ips"), "n".repeat(200));
+    const old = new Date(Date.now() - 30_000);
+    const recent = new Date(Date.now() - 10_000);
+    utimesSync(join(dir, "After Effects-old.ips"), old, old);
+    utimesSync(join(dir, "After Effects-new.ips"), recent, recent);
+    const sources = { ...darwinDiagnosticSources(home), maxBundleBytes: 200 };
+
+    const report = collectSessionDiagnostics({
+      sessionRoot: root,
+      artifactsDir: join(root, "artifacts"),
+      host: { state: "gone", ownership: { kind: "owned", evidence: "t" }, pid: null, transport: "fake" },
+      since,
+      sources,
+      platform: "darwin",
+    });
+    expect(report.crashReports).toHaveLength(1);
+    expect(report.crashReports[0]?.name).toBe("After Effects-new.ips");
+  });
+
   it("stops collecting when the bundle byte budget is spent, and says so", () => {
     const home = homeWith({
       "Library/Logs/DiagnosticReports/After Effects-a.ips": "aaa",
@@ -600,12 +660,18 @@ describe("ae.diagnostics()", () => {
       const transport = new FakeAfterEffectsTransport();
       transport.hostPidValue = 4242;
       const ae = await AfterEffects.launch({ transport, sessionRoot });
-      const report = ae.diagnostics();
+      // A fake home keeps the public call off the real user directories.
+      const home = join(sessionRoot, "home");
+      const logDir = join(home, "Library/Logs/Adobe/After Effects");
+      mkdirSync(logDir, { recursive: true });
+      writeFileSync(join(logDir, "main.log"), "log line\n");
+      const report = ae.diagnostics({ homeDir: home, platform: "darwin" });
       expect(report.host.state).toBe("alive");
       expect(report.host.pid).toBe(4242);
       expect(report.host.ownership.kind).toBe("owned");
       expect(report.bundleDir.startsWith(join(sessionRoot, "artifacts"))).toBe(true);
       expect(report.trace?.events ?? 0).toBeGreaterThan(0);
+      expect(report.logs.map((l) => l.sourcePath)).toContain(join(logDir, "main.log"));
       expect(existsSync(join(report.bundleDir, "summary.json"))).toBe(true);
       await ae.close();
     } finally {

@@ -48,6 +48,7 @@ import type {
   CommandExecution,
   CompInfo,
   CreateCompOptions,
+  DiagnosticsOptions,
   LayerTransform,
   SceneSnapshot,
   ShapePath,
@@ -499,9 +500,12 @@ export class AfterEffects {
    * and `notes` says what could not be collected. It never moves or deletes
    * the user's files, and nothing is sent anywhere. Callable after a failed
    * `close` too — the evidence is still there.
+   *
+   * `options` overrides where evidence is looked for: pass a fake `homeDir`
+   * or `sources` and collection never touches the real user directories.
    */
-  diagnostics(): SessionDiagnostics {
-    return this.#session.driver.diagnostics();
+  diagnostics(options?: DiagnosticsOptions): SessionDiagnostics {
+    return this.#session.driver.diagnostics(options);
   }
 
   /**

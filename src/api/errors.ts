@@ -13,6 +13,7 @@ import {
   HostUnavailableError,
   TimeoutError,
 } from "../driver/driver.js";
+import type { HostCondition } from "../driver/driver.js";
 import { ScriptNotSentError } from "../driver/transport.js";
 import type { PropertyKind } from "./types.js";
 
@@ -30,13 +31,26 @@ export class AfterEffectsError extends Error {
   readonly op: string;
   /** The diagnostic code, when the failure has one the caller may act on. */
   readonly code?: string;
+  /**
+   * What the host looked like when a call timed out — `gone`,
+   * `unresponsive`, `modal` or `unknown`. Present only on timeout failures;
+   * the `TimeoutError` that produced it stays available as `cause`.
+   */
+  readonly hostCondition?: HostCondition;
 
-  constructor(message: string, op: string, options?: { cause?: unknown; code?: string }) {
+  constructor(
+    message: string,
+    op: string,
+    options?: { cause?: unknown; code?: string; hostCondition?: HostCondition },
+  ) {
     super(message, options);
     this.name = "AfterEffectsError";
     this.op = op;
     if (options?.code !== undefined) {
       this.code = options.code;
+    }
+    if (options?.hostCondition !== undefined) {
+      this.hostCondition = options.hostCondition;
     }
   }
 }
@@ -165,7 +179,10 @@ export function contextualise(op: string, error: unknown): never {
     );
   }
   if (error instanceof TimeoutError) {
-    throw new AfterEffectsError(error.message, op, { cause: error });
+    throw new AfterEffectsError(error.message, op, {
+      cause: error,
+      ...(error.hostCondition !== undefined ? { hostCondition: error.hostCondition } : {}),
+    });
   }
   if (error instanceof ScriptNotSentError) {
     // The call never reached the host: it did not fail there, and nothing ran.
