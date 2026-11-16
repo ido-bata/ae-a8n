@@ -121,11 +121,20 @@ an ExtendScript cannot be interrupted from outside. So a timeout ends the
   recorded in the trace.
 - **`ae.diagnostics()`** collects host-side evidence into
   `<artifactsDir>/diagnostics/`: OS crash reports for the After Effects
-  binaries modified during the session, host logs touched in the same
-  window (tails only, size-capped), and the session trace with its last
-  events. It returns the report — paths plus `notes` for whatever could
-  not be collected — and never moves the user's files or sends anything
-  anywhere. A `close()` that fails collects it automatically.
+  binaries modified during the session, After Effects host logs touched in
+  the same window (other Adobe apps' logs are out of scope; tails only,
+  size-capped, with a total bundle budget), and the session trace with its
+  last events. Every entry carries an `attribution`: `"session"` only when
+  the file's own content names this session's host pid, `"app"` otherwise —
+  an After Effects file in the window is not proof it belongs to *this*
+  session's process, and an empty crash-report list is not evidence of a
+  clean exit (a kill leaves none either). Symbolic links are never
+  followed. The bundle is **not sanitised** — logs can contain user names,
+  paths, project names and serial numbers; it stays on this machine and
+  should be reviewed before sharing. It returns the report — paths plus
+  `notes` for whatever could not be collected — and never moves the user's
+  files or sends anything anywhere. A `close()` that fails collects it
+  automatically.
 
 The transport never kills `osascript` on a deadline. Doing so (tried, on AE
 26.5x89) left AE refusing every later script and refusing to quit until it

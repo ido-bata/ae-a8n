@@ -11,13 +11,53 @@
  * Honesty rules, same as ownership: a directory that cannot be read is a
  * note in the report, not an empty list that looks like "no crashes". A
  * platform with no collector reports `notes`, not silence.
+ *
+ * Collection contract:
+ *
+ * - Scope: only files that identify as After Effects — the crash-report
+ *   name pattern, and host logs whose full path carries an AE token. A
+ *   log written by Photoshop during the same window is not collected.
+ * - Attribution: every entry is `"session"` only when its content proves
+ *   this session's host pid; everything else is `"app"` — After Effects
+ *   and the session window, but not provably *this* session's process.
+ *   An empty `crashReports` list is not evidence of a clean exit: a kill
+ *   or a quit leaves none either.
+ * - Safety: symbolic links are never followed or copied, reads go
+ *   through `O_NOFOLLOW` file descriptors so a swapped path cannot redirect
+ *   the copy, and total collected bytes are bounded.
+ * - Sensitivity: the bundle is NOT sanitised. Logs can contain user names,
+ *   absolute paths, project names and serial numbers. It is written only
+ *   under the session artifact directory and never leaves the machine —
+ *   review before sharing it anywhere.
  */
 
-import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
 import type { HostOwnership, HostState } from "./transport.js";
+
+/**
+ * How firmly a collected file is tied to this session.
+ *
+ * - `"session"`: the file's own content names this session's host pid.
+ * - `"app"`: the file identifies After Effects and was touched inside the
+ *   session window, but nothing proves it belongs to *this* session's
+ *   process — another AE instance, or another run, could have written it.
+ */
+export type EvidenceAttribution = "session" | "app";
 
 /** One file found on disk and copied (or tailed) into the bundle. */
 export type DiagnosticsFile = {
@@ -28,6 +68,7 @@ export type DiagnosticsFile = {
   readonly bytes: number;
   /** True when only the tail of the file was collected. */
   readonly truncated: boolean;
+  readonly attribution: EvidenceAttribution;
 };
 
 export type CrashReportEntry = DiagnosticsFile & {
@@ -42,6 +83,12 @@ export type SessionDiagnostics = {
   /** Directory the collected files were written to. */
   readonly bundleDir: string;
   readonly host: {
+    /**
+     * What the transport could prove *at collection time* — not necessarily
+     * what it looked like when the operation timed out. A process can be
+     * gone now and was alive then; the two facts are kept separate on
+     * purpose.
+     */
     readonly state: HostState;
     readonly ownership: HostOwnership;
     /** The owned pid, when the transport can name one. Diagnostics only. */
@@ -55,6 +102,8 @@ export type SessionDiagnostics = {
     readonly bundlePath: string | null;
     /** Lines in the trace file — the operation count a human can check. */
     readonly events: number;
+    /** True when only the tail of the trace was copied into the bundle. */
+    readonly truncated: boolean;
   } | null;
   /** What was searched and could not be read, or is not collected at all. */
   readonly notes: readonly string[];
@@ -67,26 +116,48 @@ export type DiagnosticSources = {
   readonly crashReportPattern: RegExp;
   /** Directories searched recursively for files touched during the session. */
   readonly logDirs: readonly string[];
+  /**
+   * Host-log files are collected only when their full path matches — this
+   * is what keeps other Adobe applications' logs out of the bundle. The
+   * AE-named cache directory satisfies it through its own path.
+   */
+  readonly logFilePattern: RegExp;
   /** Per-file cap on collected log bytes (the tail is kept). */
   readonly maxLogBytes: number;
   /** Cap on collected log files, newest first. */
   readonly maxLogFiles: number;
+  /** Per-file cap on collected crash-report bytes (the tail is kept). */
+  readonly maxCrashReportBytes: number;
+  /** Cap on the trace copy. */
+  readonly maxTraceBytes: number;
+  /** Cap on the total bytes copied into the bundle. */
+  readonly maxBundleBytes: number;
 };
+
+/** Tokens that identify an After Effects path or report name. */
+const AE_PATH_PATTERN = /after effects|afterfx|aerender/i;
 
 /** macOS: DiagnosticReports plus the Adobe log/crash-database caches. */
 export function darwinDiagnosticSources(home: string = homedir()): DiagnosticSources {
   return {
     crashReportDirs: [join(home, "Library", "Logs", "DiagnosticReports")],
-    crashReportPattern: /after effects|afterfx|aerender/i,
+    crashReportPattern: AE_PATH_PATTERN,
     logDirs: [
       join(home, "Library", "Logs", "Adobe"),
       // Sentry breadcrumbs live here and carry the signal sender — the one
       // piece of evidence that distinguishes "AE crashed" from "AE was
       // killed". Small files; the per-file cap bounds them like any log.
+      // The directory's own name satisfies logFilePattern, so every file
+      // under it is in scope; Logs/Adobe is not, so only AE paths there
+      // are collected.
       join(home, "Library", "Caches", "Adobe", "After Effects"),
     ],
+    logFilePattern: AE_PATH_PATTERN,
     maxLogBytes: 256 * 1024,
     maxLogFiles: 20,
+    maxCrashReportBytes: 8 * 1024 * 1024,
+    maxTraceBytes: 4 * 1024 * 1024,
+    maxBundleBytes: 64 * 1024 * 1024,
   };
 }
 
@@ -96,8 +167,12 @@ export function unsupportedDiagnosticSources(): DiagnosticSources {
     crashReportDirs: [],
     crashReportPattern: /(?!)/,
     logDirs: [],
+    logFilePattern: /(?!)/,
     maxLogBytes: 0,
     maxLogFiles: 0,
+    maxCrashReportBytes: 0,
+    maxTraceBytes: 0,
+    maxBundleBytes: 0,
   };
 }
 
@@ -111,30 +186,136 @@ export function diagnosticSourcesFor(
 const MAX_WALK_DEPTH = 6;
 /** Trace tail kept alongside the full copy, in lines. */
 const TRACE_TAIL_LINES = 200;
+/** How much of a file is scanned when attributing it to the host pid. */
+const PID_SCAN_BYTES = 1024 * 1024;
+/** How much of a trace file is read to produce the line tail. */
+const TRACE_TAIL_SCAN_BYTES = 512 * 1024;
+
+/** O_NOFOLLOW where the platform has it; a plain read where it does not. */
+const OPEN_NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 
 function safeName(path: string): string {
   return basename(path).replace(/[^A-Za-z0-9._-]+/g, "_");
 }
 
-/** Copies at most `maxBytes` from the *end* of `source` to `target`. */
-function copyTail(source: string, target: string, maxBytes: number): { bytes: number; truncated: boolean } {
-  const size = statSync(source).size;
-  if (size <= maxBytes) {
-    copyFileSync(source, target);
-    return { bytes: size, truncated: false };
+/**
+ * A bundle path that cannot collide: two collected files with the same
+ * basename get `-2`, `-3`, … instead of one silently overwriting the
+ * other's copy.
+ */
+function uniqueTarget(dir: string, name: string, used: Set<string>): string {
+  const base = safeName(name);
+  let candidate = base;
+  for (let i = 2; used.has(candidate); i += 1) {
+    candidate = `${base}-${i}`;
   }
-  const fd = openSync(source, "r");
+  used.add(candidate);
+  return join(dir, candidate);
+}
+
+/**
+ * Opens `path` without following a final symbolic link, so a file swapped
+ * for a link between listing and reading cannot redirect the copy outside
+ * the intended tree. Throws on platforms/kernels that refuse (ELOOP).
+ */
+function openNoFollow(path: string): number {
+  return openSync(path, constants.O_RDONLY | OPEN_NOFOLLOW);
+}
+
+/** Reads up to `maxBytes` from the start of `source`. */
+function readHead(source: string, maxBytes: number): string {
+  const size = statSync(source).size;
+  const fd = openNoFollow(source);
   try {
-    const buffer = Buffer.alloc(maxBytes);
-    readSync(fd, buffer, 0, maxBytes, size - maxBytes);
-    writeFileSync(target, buffer);
+    const buffer = Buffer.alloc(Math.min(maxBytes, size));
+    const got = readSync(fd, buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, got).toString("utf-8");
   } finally {
     closeSync(fd);
   }
-  return { bytes: maxBytes, truncated: true };
 }
 
-function* walk(dir: string, depth: number): Generator<string> {
+/** Reads up to `maxBytes` from the end of `source`. */
+function readTail(source: string, maxBytes: number): string {
+  const size = statSync(source).size;
+  const fd = openNoFollow(source);
+  try {
+    const buffer = Buffer.alloc(Math.min(maxBytes, size));
+    const got = readSync(fd, buffer, 0, buffer.length, size - buffer.length);
+    return buffer.subarray(0, got).toString("utf-8");
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Counts newline-terminated records without loading the whole file. */
+function countRecords(path: string): number {
+  const fd = openNoFollow(path);
+  try {
+    const buffer = Buffer.alloc(64 * 1024);
+    let count = 0;
+    let position = 0;
+    for (;;) {
+      const got = readSync(fd, buffer, 0, buffer.length, position);
+      if (got <= 0) {
+        break;
+      }
+      for (let i = 0; i < got; i += 1) {
+        if (buffer[i] === 0x0a) {
+          count += 1;
+        }
+      }
+      position += got;
+    }
+    return count;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Copies at most `maxBytes` from the *end* of `source` to `target`, through
+ * a no-follow descriptor. `maxBytes` of 0 writes an empty file.
+ */
+function copyTail(source: string, target: string, maxBytes: number): { bytes: number; truncated: boolean } {
+  const size = statSync(source).size;
+  const fd = openNoFollow(source);
+  try {
+    const take = Math.min(maxBytes, size);
+    const buffer = Buffer.alloc(take);
+    const got = take === 0 ? 0 : readSync(fd, buffer, 0, take, size - take);
+    writeFileSync(target, buffer.subarray(0, got));
+    return { bytes: got, truncated: size > got };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * True when the file's head or tail names `pid` in a `"pid": N` JSON field —
+ * the only content-level proof that a report belongs to this session's
+ * host process. Crash reports keep `pid` in the body JSON, not the header.
+ */
+function fileNamesPid(path: string, pid: number): boolean {
+  const pattern = new RegExp(`"pid"\\s*:\\s*${pid}(?![0-9])`);
+  try {
+    return pattern.test(readHead(path, PID_SCAN_BYTES)) || pattern.test(readTail(path, PID_SCAN_BYTES));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Depth-first listing that never follows symbolic links: `lstat` decides,
+ * so a link inside a log directory cannot walk the collector outside the
+ * tree the user pointed it at. Links are counted so the report can say
+ * they were skipped rather than silently absent.
+ */
+function* walk(
+  dir: string,
+  depth: number,
+  skippedLinks: { count: number },
+): Generator<string> {
   if (depth < 0) {
     return;
   }
@@ -148,12 +329,16 @@ function* walk(dir: string, depth: number): Generator<string> {
     const path = join(dir, entry);
     let stat;
     try {
-      stat = statSync(path);
+      stat = lstatSync(path);
     } catch {
       continue;
     }
+    if (stat.isSymbolicLink()) {
+      skippedLinks.count += 1;
+      continue;
+    }
     if (stat.isDirectory()) {
-      yield* walk(path, depth - 1);
+      yield* walk(path, depth - 1, skippedLinks);
     } else if (stat.isFile()) {
       yield path;
     }
@@ -196,12 +381,35 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
   mkdirSync(join(bundleDir, "crash-reports"), { recursive: true });
   mkdirSync(join(bundleDir, "logs"), { recursive: true });
 
+  // The contract every report carries, so a shared bundle cannot be
+  // mistaken for sanitised output.
+  notes.push(
+    "the diagnostics bundle is unsanitised: collected files can contain user names, absolute " +
+      "paths, project names and serial numbers. It is written only under this session's artifact " +
+      "directory and is never uploaded — review it before sharing.",
+  );
+
   if (sources.crashReportDirs.length === 0 && sources.logDirs.length === 0) {
     notes.push(
       `no diagnostics collector for ${platform}: crash reports and host logs are not gathered on this platform`,
     );
   }
 
+  // One budget for everything copied into the bundle. `take` is what is
+  // left; each collection step gets min(per-file cap, take).
+  let take = sources.maxBundleBytes;
+  const budgetNote = "the bundle byte budget was exhausted; remaining files were not collected";
+  let budgetSpent = false;
+  const spend = (bytes: number): void => {
+    take -= bytes;
+    if (take <= 0 && !budgetSpent) {
+      budgetSpent = true;
+      notes.push(budgetNote);
+    }
+  };
+
+  const crashReportsDir = join(bundleDir, "crash-reports");
+  const crashNames = new Set<string>();
   const crashReports: CrashReportEntry[] = [];
   for (const dir of sources.crashReportDirs) {
     if (!existsSync(dir)) {
@@ -222,47 +430,62 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
       const sourcePath = join(dir, name);
       let stat;
       try {
-        stat = statSync(sourcePath);
+        stat = lstatSync(sourcePath);
       } catch {
+        continue;
+      }
+      if (stat.isSymbolicLink()) {
+        notes.push(`crash report ${sourcePath} is a symbolic link and was not collected`);
         continue;
       }
       if (!stat.isFile() || stat.mtimeMs < options.since) {
         continue;
       }
-      const target = join(bundleDir, "crash-reports", safeName(name));
+      if (take <= 0) {
+        break;
+      }
+      const target = uniqueTarget(crashReportsDir, name, crashNames);
       try {
-        copyFileSync(sourcePath, target);
+        const copied = copyTail(sourcePath, target, Math.min(sources.maxCrashReportBytes, take));
+        spend(copied.bytes);
+        const attribution: EvidenceAttribution =
+          options.host.pid !== null && fileNamesPid(sourcePath, options.host.pid) ? "session" : "app";
         crashReports.push({
           bundlePath: target,
           sourcePath,
           name,
-          bytes: stat.size,
-          truncated: false,
+          bytes: copied.bytes,
+          truncated: copied.truncated,
+          attribution,
           modifiedAt: stat.mtime.toISOString(),
         });
       } catch (error) {
-        notes.push(`crash report ${sourcePath} could not be copied: ${error instanceof Error ? error.message : String(error)}`);
+        notes.push(`crash report ${sourcePath} could not be collected: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+    if (take <= 0) {
+      break;
+    }
   }
-  crashReports.sort((a, b) => (a.modifiedAt < b.modifiedAt ? 1 : -1));
+  crashReports.sort((a, b) => (a.modifiedAt < b.modifiedAt ? 1 : a.modifiedAt > b.modifiedAt ? -1 : a.name < b.name ? -1 : 1));
 
+  const logsDir = join(bundleDir, "logs");
+  const logNames = new Set<string>();
   const logs: DiagnosticsFile[] = [];
-  const seen = new Set<string>();
+  const skippedLinks = { count: 0 };
   const candidates: { path: string; mtimeMs: number }[] = [];
   for (const dir of sources.logDirs) {
     if (!existsSync(dir)) {
       notes.push(`no host-log directory at ${dir}`);
       continue;
     }
-    for (const path of walk(dir, MAX_WALK_DEPTH)) {
-      if (seen.has(path)) {
+    for (const path of walk(dir, MAX_WALK_DEPTH, skippedLinks)) {
+      if (!sources.logFilePattern.test(path)) {
         continue;
       }
-      seen.add(path);
       let stat;
       try {
-        stat = statSync(path);
+        stat = lstatSync(path);
       } catch {
         continue;
       }
@@ -271,16 +494,26 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
       }
     }
   }
-  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  if (skippedLinks.count > 0) {
+    notes.push(`${skippedLinks.count} symbolic link(s) under the host-log directories were not followed`);
+  }
+  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   for (const candidate of candidates.slice(0, sources.maxLogFiles)) {
-    const target = join(bundleDir, "logs", safeName(candidate.path));
+    if (take <= 0) {
+      break;
+    }
+    const target = uniqueTarget(logsDir, candidate.path, logNames);
     try {
-      const copied = copyTail(candidate.path, target, sources.maxLogBytes);
+      const copied = copyTail(candidate.path, target, Math.min(sources.maxLogBytes, take));
+      spend(copied.bytes);
       logs.push({
         bundlePath: target,
         sourcePath: candidate.path,
         bytes: copied.bytes,
         truncated: copied.truncated,
+        // Path scope + the session window is all a log can offer: nothing
+        // in a log line proves it came from this session's process.
+        attribution: "app",
       });
     } catch (error) {
       notes.push(`log ${candidate.path} could not be collected: ${error instanceof Error ? error.message : String(error)}`);
@@ -292,15 +525,50 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
     );
   }
 
+  if (crashReports.length === 0 && sources.crashReportDirs.length > 0) {
+    notes.push(
+      "no crash reports matched the After Effects binaries and the session window; a kill or a " +
+        "clean quit leaves none either, so an empty list is not evidence of how the host ended",
+    );
+  }
+  if (options.host.state === "gone") {
+    notes.push(
+      "the host process was absent at collection time; crash reports, when present, are the OS's " +
+        "account of the end and may still be pending — process absence and report generation are verified separately",
+    );
+  }
+
   let trace: SessionDiagnostics["trace"] = null;
   if (options.tracePath !== undefined && existsSync(options.tracePath)) {
     const target = join(bundleDir, "trace.jsonl");
     try {
-      copyFileSync(options.tracePath, target);
-      const text = readFileSync(options.tracePath, "utf-8");
-      const lines = text.split("\n").filter((line) => line.trim().length > 0);
-      writeFileSync(join(bundleDir, "trace-tail.jsonl"), `${lines.slice(-TRACE_TAIL_LINES).join("\n")}\n`, "utf-8");
-      trace = { sourcePath: options.tracePath, bundlePath: target, events: lines.length };
+      const stat = statSync(options.tracePath);
+      if (stat.isFile()) {
+        const allowance = Math.min(sources.maxTraceBytes, Math.max(take, 0));
+        let bundlePath: string | null = null;
+        let truncated = stat.size > 0;
+        if (allowance > 0) {
+          const copied = copyTail(options.tracePath, target, allowance);
+          spend(copied.bytes);
+          bundlePath = target;
+          truncated = copied.truncated;
+        } else {
+          notes.push("the session trace was not copied: the bundle byte budget was already exhausted");
+        }
+        // The line tail is read from the source's own tail so a huge trace
+        // does not have to be loaded whole.
+        const tailText = readTail(options.tracePath, TRACE_TAIL_SCAN_BYTES);
+        const lines = tailText.split("\n").filter((line) => line.trim().length > 0);
+        writeFileSync(join(bundleDir, "trace-tail.jsonl"), `${lines.slice(-TRACE_TAIL_LINES).join("\n")}\n`, "utf-8");
+        trace = {
+          sourcePath: options.tracePath,
+          bundlePath,
+          events: countRecords(options.tracePath),
+          truncated,
+        };
+      } else {
+        notes.push(`session trace at ${options.tracePath} is not a regular file`);
+      }
     } catch (error) {
       notes.push(`session trace could not be collected: ${error instanceof Error ? error.message : String(error)}`);
     }

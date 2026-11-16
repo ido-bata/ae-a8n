@@ -8,7 +8,7 @@
  * classification and the collection contract.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -27,6 +27,14 @@ import { FakeAfterEffectsTransport } from "../src/testing/fake-transport.js";
 import { TraceRecorder } from "../src/trace/trace.js";
 
 let root: string;
+
+function readFileSyncSafe(path: string): string {
+  try {
+    return readFileSync(path, "utf-8");
+  } catch {
+    return "";
+  }
+}
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "a8n-diag-"));
@@ -362,6 +370,213 @@ describe("collectSessionDiagnostics", () => {
     });
     expect(report.notes.join(" ")).toMatch(/no diagnostics collector for win32/);
     expect(report.crashReports).toHaveLength(0);
+  });
+
+  it("collects only After Effects logs — other Adobe apps in the window stay out", () => {
+    const home = homeWith({
+      "Library/Logs/Adobe/After Effects/main.log": "ae log\n",
+      "Library/Logs/Adobe/Adobe Photoshop 2026/ps.log": "ps log\n",
+      "Library/Logs/Adobe/creative-cloud.log": "cc log\n",
+      "Library/Caches/Adobe/After Effects/sentry/breadcrumbs.log": "sentry\n",
+      "Library/Caches/Adobe/Adobe Illustrator/cache.dat": "ai cache\n",
+    });
+    const report = collectSessionDiagnostics({
+      sessionRoot: root,
+      artifactsDir: join(root, "artifacts"),
+      host: { state: "alive", ownership: { kind: "owned", evidence: "t" }, pid: null, transport: "fake" },
+      since,
+      sources: darwinDiagnosticSources(home),
+      platform: "darwin",
+    });
+    const paths = report.logs.map((l) => l.sourcePath);
+    expect(paths).toContain(join(home, "Library/Logs/Adobe/After Effects/main.log"));
+    expect(paths).toContain(join(home, "Library/Caches/Adobe/After Effects/sentry/breadcrumbs.log"));
+    expect(paths.some((p) => p.includes("Photoshop"))).toBe(false);
+    expect(paths.some((p) => p.includes("creative-cloud"))).toBe(false);
+    expect(paths.some((p) => p.includes("Illustrator"))).toBe(false);
+  });
+
+  it("never follows a symbolic link out of the log tree", () => {
+    const home = homeWith({
+      "Library/Logs/Adobe/After Effects/main.log": "ae log\n",
+    });
+    const outside = join(root, "outside-secret.txt");
+    writeFileSync(outside, "not for the bundle\n");
+    const linkPath = join(home, "Library/Logs/Adobe/After Effects/leak.log");
+    symlinkSync(outside, linkPath);
+    const linkedDir = join(home, "Library/Logs/Adobe/After Effects/linked");
+    symlinkSync(join(root, "linked-target"), linkedDir);
+    mkdirSync(join(root, "linked-target"), { recursive: true });
+    writeFileSync(join(root, "linked-target", "inner.log"), "via link\n");
+
+    const report = collectSessionDiagnostics({
+      sessionRoot: root,
+      artifactsDir: join(root, "artifacts"),
+      host: { state: "alive", ownership: { kind: "owned", evidence: "t" }, pid: null, transport: "fake" },
+      since,
+      sources: darwinDiagnosticSources(home),
+      platform: "darwin",
+    });
+    const paths = report.logs.map((l) => l.sourcePath);
+    expect(paths).toContain(join(home, "Library/Logs/Adobe/After Effects/main.log"));
+    expect(paths).not.toContain(linkPath);
+    expect(paths.some((p) => p.includes("linked-target"))).toBe(false);
+    expect(report.notes.join(" ")).toMatch(/symbolic link/);
+    expect(report.logs.every((l) => !readFileSyncSafe(l.bundlePath ?? "").includes("not for the bundle"))).toBe(true);
+  });
+
+  it("does not collect a crash report that is a symbolic link", () => {
+    const home = homeWith({});
+    const real = join(root, "real.ips");
+    writeFileSync(real, "crash body");
+    const link = join(home, "Library/Logs/DiagnosticReports/After Effects-2026-11-15-101010.ips");
+    mkdirSync(join(link, ".."), { recursive: true });
+    symlinkSync(real, link);
+
+    const report = collectSessionDiagnostics({
+      sessionRoot: root,
+      artifactsDir: join(root, "artifacts"),
+      host: { state: "gone", ownership: { kind: "owned", evidence: "t" }, pid: null, transport: "fake" },
+      since,
+      sources: darwinDiagnosticSources(home),
+      platform: "darwin",
+    });
+    expect(report.crashReports).toHaveLength(0);
+    expect(report.notes.join(" ")).toMatch(/symbolic link/);
+  });
+
+  it("attributes a crash report to the session only when its content names the host pid", () => {
+    const home = homeWith({
+      "Library/Logs/DiagnosticReports/After Effects-mine.ips": '{"pid" : 42, "procName":"After Effects"}',
+      "Library/Logs/DiagnosticReports/After Effects-other.ips": '{"pid" : 777, "procName":"After Effects"}',
+    });
+    const report = collectSessionDiagnostics({
+      sessionRoot: root,
+      artifactsDir: join(root, "artifacts"),
+      host: { state: "gone", ownership: { kind: "owned", evidence: "t" }, pid: 42, transport: "fake" },
+      since,
+      sources: darwinDiagnosticSources(home),
+      platform: "darwin",
+    });
+    expect(report.crashReports).toHaveLength(2);
+    const mine = report.crashReports.find((r) => r.name === "After Effects-mine.ips");
+    const other = report.crashReports.find((r) => r.name === "After Effects-other.ips");
+    expect(mine?.attribution).toBe("session");
+    // A different pid in the window is still collected — it is AE evidence —
+    // but it is classified as app-level, never as this session's.
+    expect(other?.attribution).toBe("app");
+    expect(report.logs.every((l) => l.attribution === "app")).toBe(true);
+  });
+
+  it("bounds a crash report to its byte cap, keeping the tail", () => {
+    const home = homeWith({});
+    const big = join(home, "Library/Logs/DiagnosticReports/After Effects-big.ips");
+    mkdirSync(join(big, ".."), { recursive: true });
+    writeFileSync(big, `${"y".repeat(5_000)}CRASH-TAIL`);
+    const sources = { ...darwinDiagnosticSources(home), maxCrashReportBytes: 64 };
+
+    const report = collectSessionDiagnostics({
+      sessionRoot: root,
+      artifactsDir: join(root, "artifacts"),
+      host: { state: "gone", ownership: { kind: "owned", evidence: "t" }, pid: null, transport: "fake" },
+      since,
+      sources,
+      platform: "darwin",
+    });
+    expect(report.crashReports).toHaveLength(1);
+    expect(report.crashReports[0]?.truncated).toBe(true);
+    expect(report.crashReports[0]?.bytes).toBe(64);
+  });
+
+  it("stops collecting when the bundle byte budget is spent, and says so", () => {
+    const home = homeWith({
+      "Library/Logs/DiagnosticReports/After Effects-a.ips": "aaa",
+      "Library/Logs/DiagnosticReports/After Effects-b.ips": "bbb",
+      "Library/Logs/Adobe/After Effects/main.log": "log\n",
+    });
+    const sources = { ...darwinDiagnosticSources(home), maxBundleBytes: 2 };
+
+    const report = collectSessionDiagnostics({
+      sessionRoot: root,
+      artifactsDir: join(root, "artifacts"),
+      host: { state: "alive", ownership: { kind: "owned", evidence: "t" }, pid: null, transport: "fake" },
+      since,
+      sources,
+      platform: "darwin",
+    });
+    const total = report.crashReports.reduce((n, r) => n + r.bytes, 0) + report.logs.reduce((n, l) => n + l.bytes, 0);
+    expect(total).toBeLessThanOrEqual(2);
+    expect(report.notes.join(" ")).toMatch(/byte budget/);
+  });
+
+  it("gives same-named files in different directories distinct bundle paths", () => {
+    const home = homeWith({
+      "Library/Logs/Adobe/After Effects/a/main.log": "one\n",
+      "Library/Logs/Adobe/After Effects/b/main.log": "two\n",
+    });
+    const report = collectSessionDiagnostics({
+      sessionRoot: root,
+      artifactsDir: join(root, "artifacts"),
+      host: { state: "alive", ownership: { kind: "owned", evidence: "t" }, pid: null, transport: "fake" },
+      since,
+      sources: darwinDiagnosticSources(home),
+      platform: "darwin",
+    });
+    expect(report.logs).toHaveLength(2);
+    const bundlePaths = report.logs.map((l) => l.bundlePath);
+    expect(new Set(bundlePaths).size).toBe(2);
+    for (const log of report.logs) {
+      expect(existsSync(log.bundlePath ?? "")).toBe(true);
+    }
+  });
+
+  it("always carries the unsanitised-content contract in notes", () => {
+    const home = homeWith({});
+    const report = collectSessionDiagnostics({
+      sessionRoot: root,
+      artifactsDir: join(root, "artifacts"),
+      host: { state: "alive", ownership: { kind: "owned", evidence: "t" }, pid: null, transport: "fake" },
+      since,
+      sources: darwinDiagnosticSources(home),
+      platform: "darwin",
+    });
+    expect(report.notes.join(" ")).toMatch(/unsanitised/);
+    expect(report.notes.join(" ")).toMatch(/never uploaded/);
+  });
+
+  it("does not let an empty crash-report list pose as a clean exit", () => {
+    const home = homeWith({});
+    const report = collectSessionDiagnostics({
+      sessionRoot: root,
+      artifactsDir: join(root, "artifacts"),
+      host: { state: "gone", ownership: { kind: "owned", evidence: "t" }, pid: null, transport: "fake" },
+      since,
+      sources: darwinDiagnosticSources(home),
+      platform: "darwin",
+    });
+    expect(report.crashReports).toHaveLength(0);
+    const notes = report.notes.join(" ");
+    expect(notes).toMatch(/not evidence of how the host ended/);
+    // Process absence (the probe) and OS report generation stay separate facts.
+    expect(notes).toMatch(/process was absent at collection time/);
+  });
+
+  it("marks a truncated trace copy honestly", () => {
+    const home = homeWith({});
+    const tracePath = join(root, "trace.jsonl");
+    writeFileSync(tracePath, `${"z".repeat(2_000)}\n`);
+    const sources = { ...darwinDiagnosticSources(home), maxTraceBytes: 100 };
+    const report = collectSessionDiagnostics({
+      sessionRoot: root,
+      artifactsDir: join(root, "artifacts"),
+      tracePath,
+      host: { state: "alive", ownership: { kind: "owned", evidence: "t" }, pid: null, transport: "fake" },
+      since,
+      sources,
+      platform: "darwin",
+    });
+    expect(report.trace?.truncated).toBe(true);
+    expect(report.trace?.bundlePath).not.toBeNull();
   });
 
   it("notes directories that do not exist rather than silently finding nothing", () => {
