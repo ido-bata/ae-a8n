@@ -36,6 +36,7 @@ import {
   newCapabilityHostNonce,
   type HandshakeResponse,
 } from "./capabilities.js";
+import { guiStateReport } from "./gui-state.js";
 import {
   AfterEffectsError,
   EntityNotFoundError,
@@ -64,6 +65,8 @@ import type {
   TextLayerInfo,
   TextLayerOptions,
   EffectInfo,
+  GuiStateOptions,
+  GuiStateReport,
   LaunchOptions,
   LayerInfo,
   OpenProjectOptions,
@@ -628,6 +631,30 @@ export class AfterEffects {
       return null;
     }
     return this.#session.driver.recoveryTarget();
+  }
+
+  /**
+   * What the owned After Effects instance's screen currently shows
+   * (ae-a8n #109): its windows, each classified against the measured
+   * recovery policy, and the aggregate verdict — without pressing anything.
+   *
+   * Read-only: the observation is audited but never takes the GUI mutation
+   * lease, and no button is ever pressed. It runs inside the session that
+   * owns the AE instance; when that session cannot be entered the report is
+   * `unavailable` with the reason, never an empty window list.
+   *
+   * `status: "unavailable"` is also the answer when no owned target is
+   * attested — an attached or unknown host has no proven pid/session, so
+   * there is no honest window list to report.
+   *
+   * On macOS the first observation in a session may raise the standard
+   * Accessibility consent prompt; that is the OS asking a human, not this
+   * API bypassing it.
+   */
+  guiState(options: GuiStateOptions = {}): Promise<GuiStateReport> {
+    // The observation itself is synchronous (one Accessibility query inside
+    // the target session); the Promise shape matches the rest of the API.
+    return Promise.resolve(guiStateReport(this.recoveryTarget(), options));
   }
 
   /**

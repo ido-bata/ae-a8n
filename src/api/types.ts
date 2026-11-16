@@ -6,6 +6,8 @@
  * what callers see.
  */
 
+import type { DiagnosticCode } from "../doctor/diagnostics.js";
+import type { GuiAppState } from "../driver/gui-recovery.js";
 import type { HostTransport } from "../driver/transport.js";
 
 export type { DiagnosticsOptions, SessionDiagnostics } from "../driver/session-diagnostics.js";
@@ -304,4 +306,108 @@ export type LaunchOptions = {
  */
 export type ResumeOptions = Omit<LaunchOptions, "sessionRoot"> & {
   readonly sessionRoot: string;
+};
+
+/*
+ * Read-only GUI observation (#109).
+ *
+ * `ae.guiState()` reports what the owned After Effects session's screen
+ * currently shows — windows, their measured dialog classification, and the
+ * platform-neutral recovery policy's verdict — without pressing anything.
+ * "unavailable" is a first-class answer: when no owned target is attested
+ * or the session cannot be entered, the report says so instead of guessing.
+ */
+
+/** How one observed window stands against the recovery policy. */
+export type GuiWindowClassification =
+  /** The window does not hold the host at a modal state. */
+  | { readonly kind: "not-blocking" }
+  /** A measured dialog class; `presses`/`code` come from the class record. */
+  | {
+      readonly kind: "measured";
+      readonly dialogClass: string;
+      readonly presses: boolean;
+      readonly code: DiagnosticCode | null;
+    }
+  /** A sign-in, licence or permission window: always a human's decision. */
+  | {
+      readonly kind: "human-only";
+      readonly dialogClass: string | null;
+      readonly code: DiagnosticCode;
+    }
+  /** Blocking, but not a class the project has measured: quarantine. */
+  | { readonly kind: "unknown"; readonly code: "A8N-SEC-001" };
+
+export type GuiWindowReport = {
+  /** 1-based position in the Accessibility listing, as `listWindows` sees it. */
+  readonly index: number;
+  readonly title: string;
+  readonly role: string;
+  readonly subrole: string | null;
+  readonly texts: readonly string[];
+  readonly buttons: readonly string[];
+  readonly blocking: boolean;
+  readonly classification: GuiWindowClassification;
+};
+
+/** The policy verdict over every blocking window, from `chooseAction`. */
+export type GuiAssessment = {
+  readonly action: "none" | "known" | "human-only" | "quarantine";
+  readonly code: DiagnosticCode | null;
+  readonly detail: string;
+};
+
+export type GuiSessionInfo = {
+  readonly uid: number;
+  readonly username: string | null;
+  readonly asid: number | null;
+  readonly kind: string;
+};
+
+export type GuiStateObservation = {
+  readonly pid: number;
+  readonly session: GuiSessionInfo;
+  /** Whether the AE process is the frontmost app of its session. */
+  readonly frontmost: boolean;
+  readonly windows: readonly GuiWindowReport[];
+  /**
+   * The WindowServer census for this pid. When unavailable the AX listing
+   * alone was used and `windows` may under-report what is on screen.
+   */
+  readonly windowServer: {
+    readonly available: boolean;
+    readonly reason: string | null;
+    readonly windowCount: number;
+    readonly onScreenCount: number;
+  };
+  /**
+   * True when AX reported zero windows but the WindowServer lists some:
+   * the AX tree is unserviceable and `windows` is not evidence of a clean
+   * screen.
+   */
+  readonly axSuspect: boolean;
+  readonly assessment: GuiAssessment;
+  readonly observedAt: string;
+};
+
+export type GuiStateReport =
+  | ({ readonly status: "observed" } & GuiStateObservation)
+  | {
+      readonly status: "unavailable";
+      /** Why nothing could be observed; never a silent empty report. */
+      readonly reason: string;
+      readonly observedAt: string;
+    };
+
+/**
+ * Options for `AfterEffects.guiState`. Production callers need none; the
+ * fields exist for tests and for callers that already hold an observation.
+ */
+export type GuiStateOptions = {
+  /**
+   * Test seam: a prepared `GuiAppState`, skipping the Accessibility query.
+   * The owned-target check still runs — an unattested target is never
+   * observed, fixture or not.
+   */
+  readonly observed?: GuiAppState;
 };
