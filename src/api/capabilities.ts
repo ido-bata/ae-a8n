@@ -255,26 +255,43 @@ function proofLevelFor(verification: VerificationAxis, inventoryReviewed: boolea
 /**
  * `HostOwnership.kind` → canonical `OwnershipEvidence`.
  *
- * "attached" means the host was already running when `launch()`/`resume()`
- * proceeded to use it — the caller explicitly asked for a usable After
- * Effects and this session deliberately attached to the one that answered,
- * which is the canonical "explicitly-attached". It is not "owned": nothing
- * here started the process. "unknown" stays "unknown" and fails closed.
+ * Only "owned" — this session launched the process and it is still that
+ * process — is positive ownership proof. ae-a8n's "attached" means the host
+ * was already running and belongs to someone else; the canonical enum has
+ * no value for that, and "explicitly-attached" would overstate the evidence
+ * (nothing here proves the operator explicitly attached to an identified
+ * instance). It reports "unknown" and the dispatch gate refuses
+ * `ownership-unproven` until the #97/#98 local-connection trust model
+ * defines what attached evidence is sufficient.
  */
 function ownershipEvidence(kind: HostOwnership["kind"]): OwnershipEvidence {
-  switch (kind) {
-    case "owned":
-      return "owned";
-    case "attached":
-      return "explicitly-attached";
-    default:
-      return "unknown";
-  }
+  return kind === "owned" ? "owned" : "unknown";
 }
 
-/** `ae.tool.<namespace>.<method>` for a declared extension method name. */
-function extensionCapabilityId(method: string): string {
-  return `ae.tool.${method}`;
+/** Lowercase slug for capability-ID segments (canonical `slugSegment`). */
+function slugSegment(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9_$-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * `ae.tool.<project>.<operation>` for a declared extension method, the
+ * canonical `toolOperationId` shape: extension names are dot-separated
+ * ("aulymo.buildScene"), so the first segment is the project and the rest
+ * the operation. Returns null when the name cannot form a valid canonical
+ * ID — an unmappable name is undiscoverable rather than mis-identified.
+ */
+function extensionCapabilityId(method: string): string | null {
+  const parts = method.split(".");
+  if (parts.length < 2) return null;
+  const project = slugSegment(parts[0] ?? "");
+  const operation = slugSegment(parts.slice(1).join("."));
+  if (project === "" || operation === "") return null;
+  const id = `ae.tool.${project}.${operation}`;
+  return parseCapabilityId(id) === null ? null : id;
 }
 
 function builtinAdvertisement(
@@ -300,11 +317,13 @@ function builtinAdvertisement(
   };
 }
 
-function extensionAdvertisement(method: string, adapter: string): CapabilityAdvertisement {
+function extensionAdvertisement(id: string, adapter: string): CapabilityAdvertisement {
   return {
-    id: extensionCapabilityId(method),
+    id,
     kind: "tool-operation",
-    persistence: "build-time-supplied",
+    // Only sdk-symbol rows are build-time-supplied (canonical
+    // `persistenceForKind`); extension operations are repository rows.
+    persistence: "repository",
     // An extension method is consumer code: ae-a8n cannot attest what it
     // reads or writes, so it declares no permission. Discovery succeeds;
     // capability-addressed dispatch refuses `missing-permission` until the
@@ -351,11 +370,11 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
   const seen = new Set(availableCapabilities.map((c) => c.id));
   for (const method of input.extensionMethods) {
     const id = extensionCapabilityId(method);
-    if (seen.has(id)) {
+    if (id === null || seen.has(id)) {
       continue;
     }
     seen.add(id);
-    availableCapabilities.push(extensionAdvertisement(method, adapter));
+    availableCapabilities.push(extensionAdvertisement(id, adapter));
   }
   availableCapabilities.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
@@ -425,7 +444,7 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
       generatedAt: input.generatedAt,
       evidenceLevel: {
         inventory: "source-reviewed",
-        verification: anyAutomated || anyRealHost ? "automated-fake" : "not-run",
+        verification: anyAutomated ? "automated-fake" : "not-run",
         realHost: anyRealHost ? "verified-real-host" : "not-run",
         statement:
           "advertised rows are ae-a8n's own built-in dispatch table and declared extensions; " +

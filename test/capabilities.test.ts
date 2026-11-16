@@ -19,12 +19,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   AfterEffects,
   assertDispatchAllowed,
-  BUILTIN_HOST_METHODS,
-  builtinCapabilityFor,
   CAPABILITY_CONTRACT_SCHEMA,
   CAPABILITY_CONTRACT_VERSION,
   negotiateCapabilities,
 } from "../src/index.js";
+// Test-only surface: the built-in method table and its capability rows stay
+// out of the package's public exports (they name internal host methods).
+import {
+  BUILTIN_HOST_METHODS,
+  builtinCapabilityFor,
+} from "../src/api/capabilities.js";
+import { builtinMethodNames } from "../src/cli/extension.js";
 import { buildHostScript } from "../src/extensions/manifest.js";
 import { FakeAfterEffectsTransport } from "../src/testing/index.js";
 
@@ -116,10 +121,7 @@ describe("capabilities() handshake", () => {
 
   it("keeps the capability map in step with the host dispatch table", () => {
     const hostSource = readFileSync(HOST_SCRIPT, "utf-8");
-    const dispatched = new Set(
-      [...hostSource.matchAll(/methods\["([^"]+)"\]/g)].map((m) => m[1] as string),
-    );
-    expect(new Set(BUILTIN_HOST_METHODS)).toEqual(dispatched);
+    expect(new Set(BUILTIN_HOST_METHODS)).toEqual(new Set(builtinMethodNames(hostSource)));
   });
 
   it("advertises declared extension methods as discoverable but never dispatchable", async () => {
@@ -133,18 +135,19 @@ describe("capabilities() handshake", () => {
 
     const ae = await AfterEffects.launch({ sessionRoot, transport, hostScript });
     const response = await ae.capabilities();
-    const extension = response.availableCapabilities.find((c) => c.id === "ae.tool.aulymo.buildScene");
+    // Canonical ae.tool.<project>.<operation>: slugged, lowercase segments.
+    const extension = response.availableCapabilities.find((c) => c.id === "ae.tool.aulymo.buildscene");
 
     expect(extension).toBeDefined();
     expect(extension!.kind).toBe("tool-operation");
-    expect(extension!.persistence).toBe("build-time-supplied");
+    expect(extension!.persistence).toBe("repository");
     expect(extension!.verification).toBe("not-run");
     expect(extension!.permissions).toEqual([]);
 
     // Discovery yes, capability-addressed dispatch no.
     const gate = assertDispatchAllowed({
       response,
-      capabilityId: "ae.tool.aulymo.buildScene",
+      capabilityId: "ae.tool.aulymo.buildscene",
       permission: "read",
     });
     expect(gate.status).toBe("refused");
@@ -177,11 +180,25 @@ describe("capabilities() handshake", () => {
     await ae.close({ unsavedChanges: "discard" });
   });
 
-  it("maps attached ownership to explicitly-attached", async () => {
+  it("reports attached ownership as unknown — the canonical enum cannot express it", async () => {
     transport.ownershipKind = "attached";
     const ae = await launch();
     const response = await ae.capabilities();
-    expect(response.target.ownership).toBe("explicitly-attached");
+
+    // "attached" means a pre-existing host that belongs to someone else;
+    // claiming "explicitly-attached" would overstate the evidence, so the
+    // handshake fails closed and capability dispatch refuses.
+    expect(response.target.ownership).toBe("unknown");
+    expect(response.diagnostics.map((d) => d.code)).toContain("ownership-unproven");
+    const gate = assertDispatchAllowed({
+      response,
+      capabilityId: "ae.operation.app.version-info",
+      permission: "read",
+    });
+    expect(gate.status).toBe("refused");
+    if (gate.status === "refused") {
+      expect(gate.reason).toBe("ownership-unproven");
+    }
     await ae.close({ unsavedChanges: "discard" });
   });
 });

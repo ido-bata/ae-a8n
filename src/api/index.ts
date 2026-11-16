@@ -80,38 +80,9 @@ import type {
 
 export * from "./errors.js";
 export type * from "./types.js";
-export {
-  assertDispatchAllowed,
-  BUILTIN_HOST_METHODS,
-  builtinCapabilityFor,
-  CAPABILITY_CONTRACT_SCHEMA,
-  CAPABILITY_CONTRACT_VERSION,
-  CAPABILITY_ID_SNAPSHOT,
-  negotiateCapabilities,
-  PERMISSION_VALUES,
-  type CapabilityAdvertisement,
-  type CapabilityHandshakeInput,
-  type CapabilityKind,
-  type Compatibility,
-  type ContractVersion,
-  type DispatchCheck,
-  type DispatchResult,
-  type ExecutionClass,
-  type ExecutionDescriptor,
-  type HandshakeDiagnostic,
-  type HandshakeResponse,
-  type HandshakeTarget,
-  type ImplementationAxis,
-  type NegotiationRequest,
-  type NegotiationResult,
-  type NonInterferenceEvidence,
-  type OwnershipEvidence,
-  type Permission,
-  type ProofLevel,
-  type RefusalReason,
-  type RowPersistence,
-  type VerificationAxis,
-} from "./capabilities.js";
+// The capability-handshake surface is exported once, from the package
+// entry point (src/index.ts → ./api/capabilities.js); re-exporting it here
+// too would duplicate the list and leak test-only symbols twice.
 
 /** Internal call surface; not exported so callers cannot bypass the API. */
 class Session {

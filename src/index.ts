@@ -46,15 +46,12 @@ export type { CloseResult } from "./api/index.js";
  */
 export {
   assertDispatchAllowed,
-  BUILTIN_HOST_METHODS,
-  builtinCapabilityFor,
   CAPABILITY_CONTRACT_SCHEMA,
   CAPABILITY_CONTRACT_VERSION,
   CAPABILITY_ID_SNAPSHOT,
   negotiateCapabilities,
   PERMISSION_VALUES,
   type CapabilityAdvertisement,
-  type CapabilityHandshakeInput,
   type CapabilityKind,
   type Compatibility,
   type ContractVersion,
