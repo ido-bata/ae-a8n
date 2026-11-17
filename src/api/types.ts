@@ -250,6 +250,15 @@ export type LaunchOptions = {
   /** Per-operation timeout, excluding the readiness probe. */
   readonly timeoutMs?: number;
   /**
+   * How long the readiness probe may wait for After Effects to become
+   * scriptable, in milliseconds. Default 180 000.
+   *
+   * A cold start can exceed the default: first-run dialogs, plugin scans and
+   * a busy machine all delay the moment AE answers `app.info`. This budget
+   * covers that wait only; it does not extend `timeoutMs`.
+   */
+  readonly readinessTimeoutMs?: number;
+  /**
    * Supply a transport to bypass process invocation entirely. This is how the
    * fake host is injected, and how `ae-farm` runs against a remote worker.
    */

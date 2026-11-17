@@ -157,7 +157,7 @@ unsaved edit in someone's open project is still their work.
 
 | | |
 | --- | --- |
-| `AfterEffects.launch(options?)` | `{ sessionRoot?, installDir?, timeoutMs?, transport?, hostEnvironment? }`; `hostEnvironment` is set inside an owned AE process (`$.setenv`) for native plugins; `timeoutMs` is the per-call default, which `openProject`, `project` and `renderFrame` can override for one call; waits for a readiness probe (180 s budget) |
+| `AfterEffects.launch(options?)` | `{ sessionRoot?, installDir?, timeoutMs?, readinessTimeoutMs?, transport?, hostEnvironment? }`; `hostEnvironment` is set inside an owned AE process (`$.setenv`) for native plugins; `timeoutMs` is the per-call default, which `openProject`, `project` and `renderFrame` can override for one call; `readinessTimeoutMs` extends the readiness-probe budget (default 180 s) for slow cold starts; waits for a readiness probe |
 | `ae.info()`, `ae.version()` | version from the probe / live |
 | `ae.ownership()` | `{ kind: "owned" \| "attached" \| "unknown", evidence }` |
 | `ae.openProject(path, { unsavedChanges?, timeoutMs? })` | → `Project`; `path` must be absolute (`/…`, `C:\…`, `\\server\…`), otherwise `TypeError` before anything is sent |
