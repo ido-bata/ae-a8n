@@ -131,19 +131,51 @@ export type BuildResult =
   | ExtensionRejection;
 
 /** The comment that carries the contract version and the declared names. */
-export function extensionHeader(methods: readonly string[]): string {
-  const manifest = JSON.stringify({
+export function extensionHeader(methods: readonly string[], registration?: string): string {
+  const manifest: Record<string, unknown> = {
     contract: EXTENSION_CONTRACT_VERSION,
     methods,
-  });
-  return `/* ae-a8n-extensions ${manifest} */\n`;
+  };
+  if (registration !== undefined) {
+    manifest["registration"] = registration;
+  }
+  return `/* ae-a8n-extensions ${JSON.stringify(manifest)} */\n`;
 }
 
 /**
- * Read the declared names back out of a generated file. No evaluation: the
- * header is a JSON document between a fixed prefix and `*\/`.
+ * A fingerprint of what the extension registers: every method name with its
+ * source, in declaration order. Two builds with the same names but different
+ * bodies produce different registrations, which is what lets a dispatcher
+ * heartbeat prove the running script is the staged one — not merely that the
+ * names match. This is identity evidence for mismatch detection, never a
+ * proof that After Effects approved or trusted the script.
  */
-export function readExtensionHeader(source: string): string[] | null {
+export function extensionRegistration(
+  methods: readonly { readonly name: string; readonly source: string }[],
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        contract: EXTENSION_CONTRACT_VERSION,
+        methods: methods.map((method) => [method.name, method.source]),
+      }),
+      "utf-8",
+    )
+    .digest("hex");
+}
+
+export type ExtensionManifest = {
+  readonly methods: readonly string[];
+  /** Null for a header written before registrations were recorded. */
+  readonly registration: string | null;
+};
+
+/**
+ * Read the declared names and registration fingerprint back out of a
+ * generated file. No evaluation: the header is a JSON document between a
+ * fixed prefix and `*\/`.
+ */
+export function readExtensionManifest(source: string): ExtensionManifest | null {
   const match = /^\/\* ae-a8n-extensions (\{.*\}) \*\/$/mu.exec(source.split("\n", 1)[0] ?? "");
   if (match === null) {
     return null;
@@ -153,14 +185,29 @@ export function readExtensionHeader(source: string): string[] | null {
     if (typeof parsed !== "object" || parsed === null) {
       return null;
     }
-    const { contract, methods } = parsed as { contract?: unknown; methods?: unknown };
+    const { contract, methods, registration } = parsed as {
+      contract?: unknown;
+      methods?: unknown;
+      registration?: unknown;
+    };
     if (contract !== EXTENSION_CONTRACT_VERSION || !Array.isArray(methods)) {
       return null;
     }
-    return methods.filter((name): name is string => typeof name === "string");
+    return {
+      methods: methods.filter((name): name is string => typeof name === "string"),
+      registration: typeof registration === "string" ? registration : null,
+    };
   } catch {
     return null;
   }
+}
+
+/**
+ * Read the declared names back out of a generated file. No evaluation: the
+ * header is a JSON document between a fixed prefix and `*\/`.
+ */
+export function readExtensionHeader(source: string): readonly string[] | null {
+  return readExtensionManifest(source)?.methods ?? null;
 }
 
 /**
@@ -175,30 +222,34 @@ export function buildHostScript(
   methods: readonly { readonly name: string; readonly source: string }[],
 ): (BuildResult & { ok: true }) | ExtensionRejection {
   const names = methods.map((method) => method.name);
-  const lines = [extensionHeader(names).trimEnd()];
-  if (methods.length > 0) {
-    // The registration MUST run inside a named function declaration, not an
-    // IIFE: on real ExtendScript `this` inside `(function(){})()` is the
-    // function itself, not the global object (observed on AE 27.0.0 — the
-    // fake vm runtime cannot reproduce this, which is why the IIFE form
-    // passed every automated test while failing every real host). Inside a
-    // named function called plainly, `this` is the global object — the same
-    // contract host/a8n-host.js already relies on in `main()`.
-    lines.push("function __a8nRegisterExtensions() {");
-    lines.push("  var context = this.__a8n;");
-    lines.push("  if (context === undefined || context === null) {");
-    lines.push('    throw new Error("extensions were declared without an __a8n host context");');
-    lines.push("  }");
-    lines.push("  context.extensions = context.extensions || {};");
-    for (const method of methods) {
-      // The name is a checked identifier (dot-separated lower-case), so it is
-      // safe in an ES3 string literal, and the source is a parsed function
-      // expression, not a statement.
-      lines.push(`  context.extensions[${JSON.stringify(method.name)}] = (${method.source});`);
-    }
-    lines.push("}");
-    lines.push("__a8nRegisterExtensions();");
+  const registration = extensionRegistration(methods);
+  const lines = [extensionHeader(names, registration).trimEnd()];
+  // The registration MUST run inside a named function declaration, not an
+  // IIFE: on real ExtendScript `this` inside `(function(){})()` is the
+  // function itself, not the global object (observed on AE 27.0.0 — the
+  // fake vm runtime cannot reproduce this, which is why the IIFE form
+  // passed every automated test while failing every real host). Inside a
+  // named function called plainly, `this` is the global object — the same
+  // contract host/a8n-host.js already relies on in `main()`.
+  //
+  // The prelude is emitted even with no methods: `extensionsRegistration`
+  // is what a dispatcher heartbeat reports back, so an empty registration
+  // must still be distinguishable from "no extension build at all".
+  lines.push("function __a8nRegisterExtensions() {");
+  lines.push("  var context = this.__a8n;");
+  lines.push("  if (context === undefined || context === null) {");
+  lines.push('    throw new Error("extensions were declared without an __a8n host context");');
+  lines.push("  }");
+  lines.push("  context.extensions = context.extensions || {};");
+  lines.push(`  context.extensionsRegistration = ${JSON.stringify(registration)};`);
+  for (const method of methods) {
+    // The name is a checked identifier (dot-separated lower-case), so it is
+    // safe in an ES3 string literal, and the source is a parsed function
+    // expression, not a statement.
+    lines.push(`  context.extensions[${JSON.stringify(method.name)}] = (${method.source});`);
   }
+  lines.push("}");
+  lines.push("__a8nRegisterExtensions();");
   const source = `${lines.join("\n")}\n${hostSource}`;
   return {
     ok: true,

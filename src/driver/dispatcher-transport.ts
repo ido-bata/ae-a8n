@@ -25,7 +25,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
@@ -46,6 +46,7 @@ import { fileURLToPath } from "node:url";
 
 import { es3StringLiteral, toPosixPath } from "./bootstrap.js";
 import { HostUnavailableError } from "./driver.js";
+import { readExtensionManifest, type ExtensionManifest } from "../extensions/manifest.js";
 import {
   channelAclVerdict,
   icaclsCommand,
@@ -110,6 +111,14 @@ export type DispatcherTransportOptions = {
    * meant to, and a different one is refused rather than operated.
    */
   readonly expectedInstance?: string;
+  /**
+   * The effective host script the dispatcher must run (#146): a file built
+   * by `ae-a8n extension build`, or absent for the shipped host. `prepare()`
+   * stages it into the channel and records its sha256 and declared
+   * extension manifest in `channel.json`; `launch()` refuses while the
+   * answering dispatcher's heartbeat reports a different registered set.
+   */
+  readonly hostScriptPath?: string;
 };
 
 /** What `state.json` says about the activated dispatcher. */
@@ -121,6 +130,26 @@ export type DispatcherHeartbeat = {
   readonly activatedAt: number;
   readonly lastTick: number;
   readonly pollMs: number;
+  /**
+   * Extension method names the dispatcher actually registered at activation
+   * (#146), sorted. Absent in heartbeats written before the field existed;
+   * {@link DispatcherTransport} normalises a missing value to `[]`, which a
+   * staged extension set then mismatches — an old dispatcher cannot prove
+   * it runs the staged extensions, so it is refused rather than trusted.
+   */
+  readonly extensionMethods?: readonly string[];
+  /**
+   * The registration fingerprint the activated host script declared, or
+   * null when it was not built by `ae-a8n extension build`. Identity
+   * evidence for staged-vs-active comparison — never proof that After
+   * Effects approved the code.
+   */
+  readonly extensionsRegistration?: string | null;
+};
+
+/** The staged host script's identity, recorded in `channel.json`. */
+export type StagedHostManifest = ExtensionManifest & {
+  readonly sha256: string;
 };
 
 const CHANNEL_META = "channel.json";
@@ -229,6 +258,7 @@ export class DispatcherTransport implements HostTransport {
   readonly #lateResultMs: number;
   readonly #channelDir: string;
   readonly #expectedInstance: string | undefined;
+  readonly #hostScriptPath: string | undefined;
 
   #prepared = false;
   #token: string | null = null;
@@ -242,6 +272,14 @@ export class DispatcherTransport implements HostTransport {
    * further calls are refused rather than delivered to the wrong engine.
    */
   #boundInstance: string | null = null;
+  /**
+   * The extension set the answering dispatcher reported at `launch()`
+   * (#146) — what is actually registered inside After Effects, which
+   * `launch()` proved equals the staged manifest. Null until then.
+   */
+  #boundExtensions: { readonly methods: readonly string[]; readonly registration: string | null } | null = null;
+  /** The staged host script's identity, computed by `prepare()` (#146). */
+  #stagedHost: StagedHostManifest | null = null;
   readonly #pending = new Map<string, PendingDelivery>();
 
   constructor(options: DispatcherTransportOptions = {}) {
@@ -254,6 +292,8 @@ export class DispatcherTransport implements HostTransport {
     this.#lateResultMs = options.lateResultMs ?? 120_000;
     this.#channelDir = resolve(options.channelDir ?? defaultDispatcherChannelDir(this.#homeDir));
     this.#expectedInstance = options.expectedInstance;
+    this.#hostScriptPath =
+      options.hostScriptPath === undefined ? undefined : resolve(options.hostScriptPath);
   }
 
   get channelDir(): string {
@@ -385,28 +425,80 @@ export class DispatcherTransport implements HostTransport {
       this.#checkPrivate(dir, `channel directory ${dir}`);
     }
 
+    // The dispatcher runs the *effective* host script — the consumer's
+    // extension build when one was supplied, the shipped host otherwise —
+    // verbatim from inside the channel, beside the codec it loads (#146).
+    // Staging is not adoption: what After Effects actually registered is
+    // reported by the heartbeat and checked at launch().
+    this.#stageHostScript(channel);
+    copyFileSync(join(HOST_DIR, "a8n-json.js"), join(channel, "a8n-json.js"));
+
     const metaPath = join(channel, CHANNEL_META);
+    let meta: { v?: unknown; token?: unknown; createdAt?: unknown; hostScript?: unknown };
     if (!existsSync(metaPath)) {
       const token = randomBytes(32).toString("hex");
-      await writeFile(metaPath, `${JSON.stringify({ v: 1, token, createdAt: this.#now() })}\n`, {
+      meta = { v: 1, token, createdAt: this.#now(), hostScript: this.#stagedHost };
+      await writeFile(metaPath, `${JSON.stringify(meta)}\n`, {
         mode: 0o600,
         flag: "wx",
       });
+    } else {
+      meta = JSON.parse(await readFile(metaPath, "utf-8")) as typeof meta;
     }
     this.#checkPrivate(metaPath, "the channel metadata", "file");
-    const meta = JSON.parse(await readFile(metaPath, "utf-8")) as { token?: unknown };
     if (typeof meta.token !== "string" || !TOKEN_RE.test(meta.token)) {
       throw new HostUnavailableError(`invalid channel metadata at ${metaPath}`);
     }
     this.#token = meta.token;
+    // The staged manifest is refreshed whenever the effective host script
+    // changes; the token and creation time are never rewritten.
+    if (JSON.stringify(meta.hostScript ?? null) !== JSON.stringify(this.#stagedHost)) {
+      meta.hostScript = this.#stagedHost;
+      await writeFile(metaPath, `${JSON.stringify(meta)}\n`, { mode: 0o600 });
+    }
 
-    // The dispatcher runs the shipped host script verbatim from inside the
-    // channel, beside the codec it loads — one folder for AE to trust.
-    copyFileSync(join(HOST_DIR, "a8n-host.js"), join(channel, "a8n-host.js"));
-    copyFileSync(join(HOST_DIR, "a8n-json.js"), join(channel, "a8n-json.js"));
     await this.#writeActivateScript();
     this.#sweepChannel();
     this.#prepared = true;
+  }
+
+  /**
+   * Copies the effective host script into the channel as `a8n-host.js` —
+   * the file `activate.jsx` evals — and records what it declares (#146).
+   * The shipped host is the default; a consumer's `extension build` output
+   * is staged byte-for-byte, so the same bytes run against a real After
+   * Effects and the in-repo fake host. The manifest is identity evidence
+   * for the launch-time staged-vs-active check; the sha256 proves which
+   * bytes were staged, never that After Effects approved them.
+   */
+  #stageHostScript(channel: string): void {
+    const target = join(channel, "a8n-host.js");
+    // Read the effective bytes once: the staged file, the recorded sha256
+    // and the parsed manifest all describe the same buffer.
+    let source: Buffer;
+    if (this.#hostScriptPath === undefined) {
+      source = readFileSync(join(HOST_DIR, "a8n-host.js"));
+    } else {
+      try {
+        source = readFileSync(this.#hostScriptPath);
+      } catch (error) {
+        throw new HostUnavailableError(
+          `host script not found: ${this.#hostScriptPath} (${messageOf(error)})`,
+        );
+      }
+    }
+    writeFileSync(target, source);
+    const sha256 = createHash("sha256").update(source).digest("hex");
+    if (this.#hostScriptPath === undefined) {
+      this.#stagedHost = { sha256, methods: [], registration: null };
+      return;
+    }
+    const manifest = readExtensionManifest(source.toString("utf-8"));
+    this.#stagedHost = {
+      sha256,
+      methods: manifest === null ? [] : [...manifest.methods],
+      registration: manifest === null ? null : manifest.registration,
+    };
   }
 
   async #writeActivateScript(): Promise<void> {
@@ -486,7 +578,30 @@ export class DispatcherTransport implements HostTransport {
       ) {
         return null;
       }
-      return raw as DispatcherHeartbeat;
+      const beat = raw as DispatcherHeartbeat;
+      // Extension fields are fail-closed: absent means a pre-#146 heartbeat
+      // (normalised to "none"), but a field that is *present and malformed*
+      // invalidates the whole heartbeat — filtering it could make a wrong
+      // set compare equal to the staged one.
+      const rawRecord = raw as unknown as Record<string, unknown>;
+      if (
+        ("extensionMethods" in rawRecord &&
+          (!Array.isArray(rawRecord["extensionMethods"]) ||
+            !rawRecord["extensionMethods"].every((name) => typeof name === "string"))) ||
+        ("extensionsRegistration" in rawRecord &&
+          rawRecord["extensionsRegistration"] !== null &&
+          typeof rawRecord["extensionsRegistration"] !== "string")
+      ) {
+        return null;
+      }
+      return {
+        ...beat,
+        extensionMethods: Array.isArray(beat.extensionMethods)
+          ? [...beat.extensionMethods]
+          : [],
+        extensionsRegistration:
+          typeof beat.extensionsRegistration === "string" ? beat.extensionsRegistration : null,
+      };
     } catch {
       return null;
     }
@@ -543,7 +658,68 @@ export class DispatcherTransport implements HostTransport {
           "Re-run without the instance pin, or with the instance `ae-a8n dispatcher status` reports.",
       );
     }
+    this.#assertExtensionSet(beat);
     this.#boundInstance = beat.instance;
+  }
+
+  /**
+   * Refuses to bind while the dispatcher's registered extension set differs
+   * from what this session staged (#146). The heartbeat reports what After
+   * Effects actually registered at activation; `channel.json` records what
+   * `prepare()` staged. A mismatch means the running After Effects loaded a
+   * different host script — extension changes are never adopted implicitly,
+   * and a dispatcher cannot be re-activated inside a running AE (the host
+   * refuses a second one), so the remedy is a fresh activation.
+   */
+  #assertExtensionSet(beat: DispatcherHeartbeat): void {
+    const staged = this.#stagedHost;
+    if (staged === null) {
+      return;
+    }
+    const activeMethods = [...(beat.extensionMethods ?? [])].sort();
+    const stagedMethods = [...staged.methods].sort();
+    const methodsMatch =
+      activeMethods.length === stagedMethods.length &&
+      activeMethods.every((name, index) => name === stagedMethods[index]);
+    const registration = beat.extensionsRegistration ?? null;
+    if (!methodsMatch || registration !== staged.registration) {
+      throw new HostUnavailableError(
+        "the answering dispatcher registered a different extension set than this " +
+          "session staged — the running After Effects loaded a different host script. " +
+          `Staged: ${staged.methods.length} method(s), registration ${staged.registration ?? "none"}; ` +
+          `active: ${activeMethods.length} method(s), registration ${registration ?? "none"}. ` +
+          "Extension changes are never adopted while a dispatcher runs. Reactivate: " +
+          `restart After Effects, then File > Scripts > Run Script File on ${this.activateScriptPath}.`,
+      );
+    }
+    this.#boundExtensions = { methods: activeMethods, registration };
+  }
+
+  /**
+   * The extension methods the answering dispatcher reported at `launch()`
+   * (#146) — the set actually registered inside After Effects — or null
+   * before a successful launch. `ae.extensionMethods()` exposes this set,
+   * never the staged declaration alone.
+   */
+  boundExtensions(): {
+    readonly methods: readonly string[];
+    readonly registration: string | null;
+  } | null {
+    return this.#boundExtensions;
+  }
+
+  /**
+   * The extension method names the answering dispatcher reports *right
+   * now* in its heartbeat (#146), or null when no fresh heartbeat exists —
+   * "cannot say" is never reported as "none registered". The optional
+   * `HostTransport.activeExtensionMethods` hook.
+   */
+  activeExtensionMethods(): readonly string[] | null {
+    const beat = this.#readHeartbeat();
+    if (beat === null || this.#now() - beat.lastTick > this.#heartbeatStaleMs) {
+      return null;
+    }
+    return beat.extensionMethods ?? [];
   }
 
   /**
@@ -571,6 +747,26 @@ export class DispatcherTransport implements HostTransport {
         `the answering dispatcher is now instance ${beat.instance}, not the ` +
           `${this.#boundInstance} this session bound to; the request was not sent`,
       );
+    }
+    // The extension set is fixed at activation, so a heartbeat that still
+    // names this instance but reports a different set means the channel's
+    // state file was replaced underneath the session — refuse rather than
+    // let the call reach a dispatcher whose real set is unproven (#146).
+    const bound = this.#boundExtensions;
+    if (bound !== null && beat !== null) {
+      const active = [...(beat.extensionMethods ?? [])].sort();
+      const expected = [...bound.methods].sort();
+      const same =
+        active.length === expected.length &&
+        active.every((name, index) => name === expected[index]) &&
+        (beat.extensionsRegistration ?? null) === bound.registration;
+      if (!same) {
+        throw new ScriptNotSentError(
+          "the answering dispatcher's extension set no longer matches what this " +
+            "session verified at launch; the request was not sent. Reactivate the " +
+            "dispatcher (restart After Effects, then run activate.jsx again).",
+        );
+      }
     }
   }
 

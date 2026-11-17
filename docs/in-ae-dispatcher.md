@@ -82,6 +82,17 @@ AfterEffects.launch({
 - grant は launch 時に snapshot され（caller が後から配列を変更しても効かない）、trace（`session.authorization` event）・`ae.capabilities()` の `target.grantedOperations` に記録され、session と共に終わる。再接続・別 instance への pin 変更では再度の認可が必要。
 - `unknown` ownership（対象未証明）には grant は効かない。`attached`/`owned` が証明されるまで特権操作は拒否される。
 
+## Static extension の有効化（#146）
+
+`ae-a8n extension build` が生成した host script（header + registration prelude + shipped host）は、dispatcher transport でもそのまま使える。`launch({ hostScript, transport: "in-ae-dispatcher" })` で consumer が明示した静的拡張が channel に stage され、dispatcher activation 時に登録内容が固定される。通常の RPC から任意 JSX を評価する疑似メソッドは存在しない。
+
+- `prepare()` は effective host script（`hostScript` 指定時はその byte 列、省略時は shipped `host/a8n-host.js`）を `<channelDir>/a8n-host.js` として配置し、`channel.json` に `hostScript: { sha256, methods, registration }` を記録する。`registration` は method 名+source の fingerprint で、同名でも body が違えば別物として検出できる。
+- `activate.jsx` は従来どおり `<channelDir>/a8n-host.js` を eval する。生成物は header/prelude を含むため、activation 時に `__a8n.extensions` へ登録され、`__a8n.extensionsRegistration` に fingerprint が残る。
+- heartbeat（`state.json`）は activation 時に固定された `extensionMethods`（実際に登録された method 名、sorted）と `extensionsRegistration` を報告する。dispatcher の寿命内で拡張集合は変わらない。
+- `launch()` は staged manifest と heartbeat の登録集合を照合し、不一致なら `HostUnavailableError` で拒否する。**実行中の拡張変更は暗黙に採用されない**。復旧は AE 再起動後の再 activation（同一 AE 内での二重 dispatcher は host が拒否する）。
+- `ae.extensionMethods()` / `ae.call` / `ae.capabilities()` が公開するのは heartbeat が報告した実登録集合であり、staged file の宣言ではない。`ae.call` には従来どおり `authorization.extensionMethods` の grant が必要で、hash/header の一致は実行権限の証明ではない。
+- #146 以前の host で activation された dispatcher（heartbeat に拡張 field が無い）は、拡張を stage した session からは「証明できない」として拒否される。拡張なしの session とは従来どおり接続できる。
+
 ## 複数 dispatcher の競合ポリシー
 
 同一 channel に複数の AE dispatcher が同時に応答し得る場合:
