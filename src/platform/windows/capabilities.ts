@@ -22,5 +22,10 @@ export function windowsCapabilities(isolation: TargetSpec["isolation"]): Capabil
     // T089 reports blocking states; it has no GUI automation and presses nothing.
     guiRecovery: false,
     sessionIdentity: "host-and-user",
+    // The close path quits only after the per-run session marker names this
+    // run, this job and this agent (T090); a marker that does not match
+    // means nothing is quit. That is the owned-only invariant without a
+    // pid/start-time ownership proof, which this backend still lacks.
+    quitsOnlyOwned: true,
   };
 }

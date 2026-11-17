@@ -33,6 +33,13 @@ export type Capabilities = {
   readonly provesDestination: boolean;
   readonly guiRecovery: boolean;
   readonly sessionIdentity: "uid-asid" | "host-and-user" | "none";
+  /**
+   * The attach-vs-owned invariant shared with the driver API (#129): an
+   * After Effects this backend did not prove it owns is never quit. True
+   * only where every quit path requires owned-process (or equivalent
+   * per-run) evidence; a backend that quits nothing also satisfies it.
+   */
+  readonly quitsOnlyOwned: boolean;
 };
 
 export type TargetSpec = {

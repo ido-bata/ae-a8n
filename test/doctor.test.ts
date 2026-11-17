@@ -96,6 +96,7 @@ describe("the macOS probe is honest about what it read", () => {
       provesDestination: false,
       guiRecovery: false,
       sessionIdentity: "uid-asid",
+      quitsOnlyOwned: true,
     });
   });
 
@@ -781,6 +782,7 @@ describe("doctor on a Windows host, through the same CLI", () => {
       provesDestination: true,
       guiRecovery: false,
       sessionIdentity: "host-and-user",
+      quitsOnlyOwned: true,
     });
   });
 

@@ -605,14 +605,25 @@ export class ScriptInvocationTransport implements HostTransport {
    */
   attestation(): Partial<HostAttestation> {
     const self = typeof process.getuid === "function" ? process.getuid() : null;
+    const isolatedUser = self !== null && this.#sessionUid !== self;
     return {
       pid: this.hostPid(),
       ownedProcess: this.ownedProcess(),
       platform: { os: process.platform, arch: process.arch },
-      executionMode:
-        self !== null && this.#sessionUid !== self ? "isolated-user" : "local",
+      executionMode: isolatedUser ? "isolated-user" : "local",
       sessionUid: this.#targetSession?.uid ?? null,
       sessionAsid: this.#targetSession?.asid ?? null,
+      sessionUser: this.#targetSession?.username ?? null,
+      // Every call runs the host script inside the GUI After Effects — an
+      // Apple Event into a login session on macOS, `-r` handed to the
+      // interactive instance on Windows — so dispatch needs that GUI
+      // session reachable; there is no headless path on this transport.
+      requiresGuiDelivery: true,
+      // Session-scoped delivery refuses rather than fall back to the
+      // console session, but only when the target is provably another
+      // user's: a "local" target may be the console session itself, so the
+      // refusal is not claimed there.
+      refusesConsoleTarget: isolatedUser,
     };
   }
 

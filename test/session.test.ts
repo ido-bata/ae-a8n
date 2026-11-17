@@ -50,6 +50,14 @@ describe.each(["attached", "unknown"] as const)("a host the session does not own
     expect(transport.app.quitCount).toBe(0);
     expect(transport.app.project.dirty).toBe(true);
     expect(transport.closed).toBe(false);
+
+    // The capability surface states the same invariant the behavior just
+    // proved (#129): the attach-vs-owned distinction is visible, and the
+    // quit policy is owned-only — an attached instance is never quit.
+    const response = await ae.capabilities();
+    expect(response.target.ownershipKind).toBe(kind);
+    expect(response.target.quitPolicy).toBe("owned-only");
+    expect(response.target.nonInterference).toBe("unproven");
   });
 });
 

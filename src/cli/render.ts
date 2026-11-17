@@ -254,6 +254,7 @@ function renderCapabilities(capabilities: CliEnvelope["capabilities"]): string[]
     `  proves destination: ${capabilities.provesDestination ? "yes" : "no"}`,
     `  GUI recovery: ${capabilities.guiRecovery ? "yes" : "no"}`,
     `  session identity: ${capabilities.sessionIdentity}`,
+    `  quits only owned: ${capabilities.quitsOnlyOwned ? "yes" : "no"}`,
   ];
 }
 

@@ -425,6 +425,9 @@ export function darwinCapabilities(): Capabilities {
     // wire it yet (#59). Claiming it here would tell a user a recovery works.
     guiRecovery: false,
     sessionIdentity: "uid-asid",
+    // This adapter starts no After Effects and its close() quits nothing, so
+    // no attached instance can ever be quit through it (#129).
+    quitsOnlyOwned: true,
   };
 }
 

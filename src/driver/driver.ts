@@ -428,6 +428,9 @@ export class AeDriver {
       executionMode: attested.executionMode ?? "unknown",
       sessionUid: attested.sessionUid ?? null,
       sessionAsid: attested.sessionAsid ?? null,
+      sessionUser: attested.sessionUser ?? null,
+      requiresGuiDelivery: attested.requiresGuiDelivery ?? null,
+      refusesConsoleTarget: attested.refusesConsoleTarget ?? null,
     };
   }
 

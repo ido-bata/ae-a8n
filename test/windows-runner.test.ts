@@ -241,6 +241,7 @@ describe("the Windows adapter", () => {
       provesDestination: true,
       guiRecovery: false,
       sessionIdentity: "host-and-user",
+      quitsOnlyOwned: true,
     });
     expect(remote.checks).toEqual([]);
 
