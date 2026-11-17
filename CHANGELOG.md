@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.2.0
+
+Published under the `next` dist-tag; `latest` stays on `0.1.0-alpha.0` until a
+stable release is approved. This is the `release-0-2-0` train: the opt-in
+in-AE dispatcher transport with static consumer extensions, its lifecycle
+CLI, and the packed-consumer acceptance harness, on top of the isolated
+testing, capability handshake, GUI recovery and session-marker work merged
+since `0.1.0-alpha.2`.
+
+### Added
+
+- **In-AE dispatcher transport** (`transport: "in-ae-dispatcher"` selection,
+  opt-in only): a human activates `activate.jsx` once per After Effects
+  process and the dispatcher answers named operations over private channel
+  files — no per-call OS automation, no silent fallback to script
+  invocation. Ownership stays `attached`/unproven, timeouts stay UNKNOWN and
+  are never resent, instance pinning refuses a different After Effects, and
+  double activation is refused (`docs/in-ae-dispatcher.md`, ADR-0003).
+- **Static extensions through the dispatcher** (#146): consumers declare
+  extension modules, `ae-a8n extension build` produces the effective host
+  script, and `AfterEffects.launch({ hostScript, authorization:
+  { extensionMethods: true } })` exposes only the methods the dispatcher
+  actually registered — verified against the heartbeat at launch and
+  re-checked before every call. Staged-vs-active mismatches refuse the
+  session; changes require reactivation (`specs/isolated-ae/contracts/extensions.md`).
+- **Dispatcher lifecycle CLI** (#147): `ae-a8n dispatcher prepare`,
+  `status`, `startup install|remove` — channel preparation, honest heartbeat
+  reporting (`blocked`/`unknown` are never passes), and per-user
+  `Scripts/Startup` registration that refuses foreign files and states that
+  AE's execution of the entry is unproven.
+- **Packed-consumer acceptance harness** (#148):
+  `scripts/check-dispatcher-acceptance.js` installs the packed tarball into a
+  clean project, builds a consumer-side extension fixture through the packed
+  CLI, and runs the dispatcher scenarios — handshake, editing, PNG render,
+  extension call, authorization/pin refusals, UNKNOWN non-resend, safe
+  shutdown — in a fake lane (always) and a human-gated real lane (`--project`
+  fixture required; no heartbeat is `blocked`, never a pass).
+
+### Fixed
+
+- macOS could spawn two `After Effects` processes on launch and fail closed
+  with `HostNotOwnedError` (#105, fixed by #106 via LaunchServices).
+- `AfterEffects.launch` accepts `readinessTimeoutMs` (#124).
+
+### Not proven in this version
+
+- **The dispatcher transport and dispatcher extensions are `fake/mock
+  only`.** Every dispatcher scenario is covered by the in-repo fake host and
+  the packed-tarball fake lane; the real lane of
+  `check-dispatcher-acceptance.js` requires a human activation inside a real
+  After Effects and has not been run for this candidate. Startup-folder
+  execution is unverified on both macOS and Windows.
+- **Windows real-host evidence for the new paths is absent.** The dispatcher
+  CLI, extensions and acceptance harness were verified on macOS CI and the
+  fake host only; no Windows real-host run exists for them.
+- Everything below `verified on real host` stays unproven against real AE —
+  see `docs/consumer-acceptance.md` §4 for the recording format.
+
 ## 0.1.0-alpha.2
 
 Published under the `next` dist-tag; `latest` stays on `0.1.0-alpha.0` until a
