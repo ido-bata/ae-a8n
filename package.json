@@ -1,7 +1,7 @@
 {
   "name": "@ido-bata/ae-a8n",
   "version": "0.2.0-beta.1",
-  "description": "Drive Adobe After Effects from Node: open projects, apply effects, set parameters, render frames. Alpha prerelease; core flows are macOS-verified, but the in-AE dispatcher transport is fake/mock-only on every platform and Windows real-host evidence is missing.",
+  "description": "Drive Adobe After Effects from Node: open projects, apply effects, set parameters, render frames. Alpha prerelease; core flows and the opt-in in-AE dispatcher path are verified on macOS (AE 26.5.3), but Windows real-host evidence is missing.",
   "type": "module",
   "license": "MIT",
   "engines": {
