@@ -1,10 +1,12 @@
 # Quickstart
 
 > **Status.** The commands in this file are the target contract
-> (`specs/isolated-ae/contracts/cli.md`). Today the package has no `bin`; the
-> macOS isolated runner exists only on Draft PR #50, and no Windows backend
-> exists. This file is written for the release it specifies, not as a claim
-> that the release exists.
+> (`specs/isolated-ae/contracts/cli.md`). The package ships an `ae-a8n` bin
+> (`0.1.0-alpha.2`, `next` dist-tag), and the macOS isolated-session scripts
+> are on `release-0-2-0` in `scripts/isolated-session/` — but the packaged
+> CLI does not yet wrap that runner, and no Windows backend exists. This file
+> is written for the release it specifies, not as a claim that the release
+> exists.
 
 ## What you need
 

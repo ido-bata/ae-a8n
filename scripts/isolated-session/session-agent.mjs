@@ -25,7 +25,13 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 
-import { assertJobSession, consoleUid, ensureSharedDir, jobFileIsTrusted } from "./session-rules.mjs";
+import {
+  assertJobRunnable,
+  assertJobSession,
+  consoleUid,
+  ensureSharedDir,
+  jobFileIsTrusted,
+} from "./session-rules.mjs";
 
 const DEFAULT_ROOT = "/Users/Shared/ae-a8n";
 const POLL_MS = 500;
@@ -167,7 +173,7 @@ async function main() {
         continue;
       }
       try {
-        await handleJob({ id, jobPath, resultPath, logs, session });
+        await handleJob({ id, jobPath, resultPath, logs, session, jobs });
       } catch (error) {
         // Publishing the result can fail (a foreign file at the result path in
         // the sticky directory, a full disk). The command itself may already
@@ -193,7 +199,7 @@ async function main() {
  * alive and remembers the id. It never throws for a job that was refused:
  * that refusal *is* a result, and the controller is entitled to read it.
  */
-async function handleJob({ id, jobPath, resultPath, logs, session }) {
+async function handleJob({ id, jobPath, resultPath, logs, session, jobs }) {
   let job;
   try {
     job = JSON.parse(await readFile(jobPath, "utf-8"));
@@ -222,7 +228,7 @@ async function handleJob({ id, jobPath, resultPath, logs, session }) {
     });
     return;
   }
-  await runJob({ id, job, resultPath, logs, session });
+  await runJob({ id, job, resultPath, logs, session, jobs });
 }
 
 async function writeResult(path, payload) {
@@ -279,19 +285,37 @@ function appendLog(logPath, id, chunk) {
 /** The deadline the controller gave this job, or undefined for none. */
 function jobTimeoutMs(job) {
   const value = job?.timeoutMs;
-  // A payload written before the controller sent a deadline has no field, and
-  // keeps the old no-timeout behaviour. Anything else that is not a positive
-  // integer is not a deadline: it is not turned into "never" silently, the
-  // refusal is that no deadline applies.
+  // A payload written before the controller sent a run timeout has no field.
+  // Anything that is not a positive integer is not a deadline: it is not
+  // turned into "never" silently — the job's own `deadline` bounds the run
+  // instead (see runJob), and a job with neither is refused before this.
   return Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
-async function runJob({ id, job, resultPath, logs, session }) {
+async function runJob({ id, job, resultPath, logs, session, jobs }) {
   const startedAt = new Date().toISOString();
   const logPath = join(logs, `${id}.log`);
   const command = Array.isArray(job.command) ? job.command : [];
   if (command.length === 0) {
     await writeResult(resultPath, { id, ok: false, error: "the job has no command", session, startedAt });
+    return;
+  }
+  // Checked here, immediately before the command would start: the controller
+  // may have timed out while this agent was busy with an earlier job, and a
+  // cancellation (or a deadline now in the past) means the caller was already
+  // told this work did not finish. Running it then would execute an operation
+  // out of band.
+  const cancelled = existsSync(join(jobs, `${id}.cancel`));
+  try {
+    assertJobRunnable(job, Date.now(), cancelled);
+  } catch (error) {
+    await writeResult(resultPath, {
+      id,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      session,
+      startedAt,
+    });
     return;
   }
   // A fast user switch is how the human reaches this session, and it can put
@@ -312,7 +336,10 @@ async function runJob({ id, job, resultPath, logs, session }) {
   }
   const cwd = typeof job.cwd === "string" ? job.cwd : process.cwd();
   appendLog(logPath, id, `--- ${startedAt} ${command.join(" ")}\n`);
-  const timeoutMs = jobTimeoutMs(job);
+  // `assertJobRunnable` above guarantees a finite `deadline`, so a job that
+  // carries no run timeout is still bounded: it may not outlive the moment
+  // the caller stopped waiting for it.
+  const timeoutMs = jobTimeoutMs(job) ?? Math.max(1_000, job.deadline - Date.now());
   let killedForTimeout = false;
   const outcome = await new Promise((done) => {
     const child = execFile(

@@ -23,18 +23,22 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { assertTrustedResult, parseArgs } from "../scripts/isolated-session/dispatch.mjs";
+import { assertTrustedResult, cancelJob, parseArgs } from "../scripts/isolated-session/dispatch.mjs";
 
 import {
+  assertJobRunnable,
   assertJobSession,
   assertNoRunningAfterEffects,
   assertOutcomeSession,
+  assertReportIsolation,
   assertResultSession,
   assertTargetSession,
+  describeMissingSession,
   jobFileIsTrusted,
   parseAeProcesses,
   parseTerminalResult,
   sessionFromOffstageStatus,
+  sessionIsolation,
   sharedDirIsUsable,
   sharedDirIsUsableForOthers,
   shellCommandLine,
@@ -73,6 +77,58 @@ test("an unreadable console owner is a refusal, not a pass", () => {
 
 test("a separate graphical session is accepted", () => {
   assert.equal(assertTargetSession(aqua, 502, 501), aqua);
+});
+
+test("a session that cannot be read from here is not reported as a logged-out user", () => {
+  // From the console, launchctl may refuse another user's domain. That is a
+  // limit of the observer, not evidence that the account has no session; the
+  // message must not send the caller to log in again.
+  const error = describeMissingSession(502, "Operation not permitted");
+  assert.match(error.message, /could not be verified from this session/);
+  assert.match(error.message, /may still be logged in/);
+  assert.match(error.message, /session agent/);
+  assert.doesNotMatch(error.message, /has no login session/);
+});
+
+test("a user with no login domain is reported as not logged in, with a remedy", () => {
+  const error = describeMissingSession(502, "Bad request.\nCould not find domain for user gui: 502");
+  assert.match(error.message, /has no login session/);
+  assert.match(error.message, /fast user switch/);
+});
+
+test("an unreadable failure is reported as unconfirmed, not guessed", () => {
+  const error = describeMissingSession(502, "Some other launchctl failure");
+  assert.match(error.message, /could not be confirmed/);
+  assert.match(error.message, /Some other launchctl failure/);
+});
+
+test("an unreadable console owner never yields an isolated session", () => {
+  // -1 is not "somebody else". When /dev/console cannot be read, a difference
+  // cannot be proven, so the session is not isolated.
+  const unknown = sessionIsolation({ uid: 502, consoleUid: -1 });
+  assert.equal(unknown.isolated, false);
+  assert.match(unknown.reason, /could not be read/);
+  assert.equal(sessionIsolation({ uid: 501, consoleUid: 501 }).isolated, false);
+  assert.equal(sessionIsolation({ uid: 502, consoleUid: 501 }).isolated, true);
+  // A uid that is not a number is not a session either.
+  assert.equal(sessionIsolation({ uid: Number.NaN, consoleUid: 501 }).isolated, false);
+});
+
+test("a report claiming isolation with an unknown console owner is rejected", () => {
+  assert.throws(
+    () => assertReportIsolation({ session: { uid: 502, consoleUid: -1, isolated: true } }),
+    /could not be read/,
+  );
+  assert.throws(
+    () => assertReportIsolation({ session: { uid: 501, consoleUid: 501, isolated: true } }),
+    /owns the console session/,
+  );
+  assert.throws(
+    () => assertReportIsolation({ session: { uid: 502, consoleUid: 501, isolated: false } }),
+    /not proven isolated/,
+  );
+  const report = { session: { uid: 502, consoleUid: 501, isolated: true } };
+  assert.equal(assertReportIsolation(report), report);
 });
 
 test("a result from another session is not trusted", () => {
@@ -149,6 +205,35 @@ test("the agent runs a job that names no session", () => {
   assert.equal(assertJobSession(job, aqua), job);
 });
 
+test("a job that arrives before its deadline still runs", () => {
+  const job = { id: "1700000000000-abcd", command: ["node", "e2e.mjs"], deadline: 1_700_000_600_000 };
+  assert.equal(assertJobRunnable(job, 1_700_000_000_000, false), job);
+});
+
+test("a job published, timed out and cancelled is never run by a later agent pass", () => {
+  // The controller gave up waiting. The job file is still in the shared
+  // directory, so an agent starting now would otherwise run it — an
+  // operation the caller was told did not finish, executed afterwards.
+  const dir = mkdtempSync(join(tmpdir(), "a8n-cancel-"));
+  try {
+    const id = "1700000000000-abcd";
+    const job = { id, command: ["node", "e2e.mjs"], deadline: 1_700_000_600_000 };
+    assert.equal(assertJobRunnable(job, 1_700_000_000_000, false), job);
+    cancelJob(dir, id);
+    assert.equal(existsSync(join(dir, `${id}.cancel`)), true);
+    assert.throws(() => assertJobRunnable(job, 1_700_000_000_000, true), /cancelled/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a job that arrives after its deadline is not run", () => {
+  const job = { id: "1700000000000-abcd", command: ["node", "e2e.mjs"], deadline: 1_700_000_600_000 };
+  assert.throws(() => assertJobRunnable(job, 1_700_000_600_001, false), /deadline/);
+  // A job without a deadline is an unknown state, not a live one.
+  assert.throws(() => assertJobRunnable({ id: "no-deadline", command: ["node"] }, 1_700_000_000_000, false), /deadline/);
+});
+
 test("a job that ran as another user is not trusted", () => {
   assert.throws(
     () => assertOutcomeSession({ uid: 501, asid: 100021, onConsole: false }, { uid: 502 }, { uid: 501, asid: 100021 }),
@@ -180,6 +265,30 @@ test("a job that ran while the target user owned the console is not trusted", ()
 test("a job in a session id other than the console's is trusted", () => {
   const outcome = { uid: 502, asid: 100040, onConsole: false };
   assert.equal(assertOutcomeSession(outcome, { uid: 502 }, { uid: 501, asid: 100021 }), outcome);
+});
+
+test("an unknown session id is never accepted as isolation", () => {
+  // Neither side may be missing: "not equal" is not the same as "different".
+  assert.throws(
+    () => assertOutcomeSession({ uid: 502, asid: null, onConsole: false }, { uid: 502 }, { uid: 501, asid: 100021 }),
+    /did not report a session id/,
+  );
+  assert.throws(
+    () => assertOutcomeSession({ uid: 502, asid: undefined, onConsole: false }, { uid: 502 }, { uid: 501, asid: 100021 }),
+    /did not report a session id/,
+  );
+  assert.throws(
+    () => assertOutcomeSession({ uid: 502, asid: 100040, onConsole: false }, { uid: 502 }, { uid: 501, asid: null }),
+    /console session's id could not be read/,
+  );
+});
+
+test("a result without a session id is never complete", () => {
+  const unknown = parseTerminalResult("uid=502\nusername=test\nonconsole=0\nexit=0\n");
+  assert.equal(unknown.complete, false);
+  assert.equal(unknown.asid, null);
+  const empty = parseTerminalResult("uid=502\nusername=test\nasid=\nonconsole=0\nexit=0\n");
+  assert.equal(empty.complete, false);
 });
 
 test("a job is trusted even when offstage's session number disagrees", () => {
