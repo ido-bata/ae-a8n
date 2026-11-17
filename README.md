@@ -16,12 +16,12 @@ const frame = await (await project.comp("Main")).renderFrame(0); // { path, widt
 await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to throw away
 ```
 
-> **Alpha / prerelease.** `0.2.0-beta.1` is the release under the `next`
-> dist-tag; `latest` stays on `0.1.0-alpha.0` until a stable release is
+> **Early release (`0.x`).** `0.2.0` is published under the `next`
+> dist-tag; `latest` stays on `0.1.0-alpha.0` until a `latest` promotion is
 > approved. If `npm view @ido-bata/ae-a8n@next version` does not show this
-> version, it has not been published yet. The API may change before 0.2.0,
-> and `0.2.0-beta.1` is a prerelease because the in-AE dispatcher transport
-> has no Windows real-host evidence (see below).
+> version, it has not been published yet. The API may change before 1.0.0,
+> and the scope without Windows real-host evidence is listed under "What
+> is not proven" below.
 
 ## Status
 
@@ -34,7 +34,7 @@ await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to th
 
 What has been checked, and how, is in [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md).
 
-What is **not** proven in `0.2.0-beta.1`, so a green run is not read as more
+What is **not** proven in `0.2.0`, so a green run is not read as more
 than it is:
 
 - **Windows real-host evidence for the dispatcher paths is absent.** The
