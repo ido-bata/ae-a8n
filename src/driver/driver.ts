@@ -223,6 +223,20 @@ type RecoveryWait =
     }
   | { kind: "unresolved"; sawWindow: boolean };
 
+/**
+ * The settled outcome of one call: the value to return or the error to
+ * throw, with the trace detail already chosen. `#call` writes the single
+ * trace row from this, so every path — success, host error, transport
+ * error, timeout, recovery — records exactly once.
+ */
+type SettledCall =
+  | { readonly status: "ok"; readonly value: unknown; readonly detail: Record<string, unknown> }
+  | {
+      readonly status: "error" | "timeout";
+      readonly error: unknown;
+      readonly detail: Record<string, unknown>;
+    };
+
 export class AeDriver {
   readonly #transport: HostTransport;
   readonly #paths: SessionPaths;
@@ -612,10 +626,33 @@ export class AeDriver {
           : {}),
     };
 
+    // #settle decides the outcome — including the timeout recovery — and
+    // this is the one place its trace row is written, so no path can record
+    // twice or forget to record.
+    const settled = await this.#settle(id, method, params, request, timeoutMs);
+    this.#trace.record(op, settled.status, Date.now() - began, settled.detail);
+    if (settled.status === "ok") {
+      return settled.value;
+    }
+    throw settled.error;
+  }
+
+  /**
+   * Runs one request to its settled outcome: invoke, wait for the result,
+   * and — on a timeout — the recovery wait for the *original* request.
+   * Returns what `#call` records and returns or throws; it never records
+   * itself, so the trace row is written exactly once by the caller.
+   */
+  async #settle(
+    id: string,
+    method: string,
+    params: Record<string, unknown>,
+    request: RequestEnvelope,
+    timeoutMs: number,
+  ): Promise<SettledCall> {
     // When #awaitResult produced an error outcome, its detail is kept for
-    // the trace record in the catch: it carries the method, request id and
-    // timeout the generic failure path cannot rebuild. Recording the outcome
-    // here and again in the catch is what duplicated failed operations.
+    // the trace record: it carries the method, request id and timeout the
+    // generic failure path cannot rebuild.
     let outcomeDetail:
       | { args: Record<string, unknown>; error: { name: string; message: string } }
       | undefined;
@@ -664,8 +701,7 @@ export class AeDriver {
         timeoutMs,
       );
       if (outcome.status === "ok") {
-        this.#trace.record(op, "ok", Date.now() - began, outcome.detail);
-        return outcome.value;
+        return { status: "ok", value: outcome.value, detail: outcome.detail };
       }
       outcomeDetail = outcome.detail;
       throw outcome.error;
@@ -680,21 +716,24 @@ export class AeDriver {
           } catch (recoveryError) {
             // A quarantined host is an answer about the session, recorded on
             // session.recover; the operation still leaves its one record.
-            this.#trace.record(op, "error", Date.now() - began, {
-              ...(outcomeDetail ?? { args: { ...params } }),
-              error: { name: nameOf(recoveryError), message: messageOf(recoveryError) },
-            });
-            throw recoveryError;
+            return {
+              status: "error",
+              error: recoveryError,
+              detail: {
+                ...(outcomeDetail ?? { args: { ...params } }),
+                error: { name: nameOf(recoveryError), message: messageOf(recoveryError) },
+              },
+            };
           }
           if (waited.kind === "resolved") {
-            this.#trace.record(op, "ok", Date.now() - began, {
-              result: { recovered: true, ...summariseResult(waited.value) },
-            });
-            return waited.value;
+            return {
+              status: "ok",
+              value: waited.value,
+              detail: { result: { recovered: true, ...summariseResult(waited.value) } },
+            };
           }
           if (waited.kind === "answered") {
-            this.#trace.record(op, "error", Date.now() - began, waited.detail);
-            throw waited.error;
+            return { status: "error", error: waited.error, detail: waited.detail };
           }
           sawWindow = waited.sawWindow;
         }
@@ -704,14 +743,17 @@ export class AeDriver {
         failure = new TimeoutError(error.method, error.timeoutMs, this.#timeoutHostCondition(sawWindow));
       }
       const status: TraceStatus = failure instanceof TimeoutError ? "timeout" : "error";
-      this.#trace.record(op, status, Date.now() - began, {
-        ...(outcomeDetail ?? { args: { ...params } }),
-        error: { name: nameOf(failure), message: messageOf(failure) },
-        ...(failure instanceof TimeoutError && failure.hostCondition !== undefined
-          ? { result: { hostCondition: failure.hostCondition } }
-          : {}),
-      });
-      throw failure;
+      return {
+        status,
+        error: failure,
+        detail: {
+          ...(outcomeDetail ?? { args: { ...params } }),
+          error: { name: nameOf(failure), message: messageOf(failure) },
+          ...(failure instanceof TimeoutError && failure.hostCondition !== undefined
+            ? { result: { hostCondition: failure.hostCondition } }
+            : {}),
+        },
+      };
     }
   }
 
