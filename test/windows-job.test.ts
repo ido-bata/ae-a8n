@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DirectoryChannel, UnsupportedChannelPathError } from "../src/platform/windows/channel.js";
-import { signJob, signResult, verifyJobAuth, type JobKey, type UnsignedJobResult } from "../src/platform/windows/auth.js";
+import { signJob, signResult, verifyJobAuth, verifyResultAuth, type JobKey, type UnsignedJobResult } from "../src/platform/windows/auth.js";
 import {
   JOB_SCHEMA_VERSION,
   decodeJob,
@@ -291,6 +291,42 @@ describe("the result file", () => {
     expect(
       decodeResult(new TextEncoder().encode(JSON.stringify({ ...result, exitCode: 1 }))).ok,
     ).toBe(false);
+  });
+
+  it("round-trips artifact digests the signature covers", () => {
+    const artifacts = { "stdout.log": "a".repeat(64), "logs/detail.txt": "b".repeat(64) };
+    const signed = signResult({ ...unsignedResult(), artifacts }, KEY);
+    expect(decodeResult(encodeResult(signed))).toEqual({ ok: true, value: signed });
+    // The map is inside the signed subset: rewriting a digest breaks the
+    // signature even though the document still decodes.
+    const tampered = {
+      ...signed,
+      artifacts: { "stdout.log": "c".repeat(64) },
+    };
+    expect(verifyResultAuth(tampered, [KEY]).ok).toBe(false);
+    // Key order in the map does not change the signature's meaning.
+    const reordered = signResult(
+      { ...unsignedResult(), artifacts: { "logs/detail.txt": "b".repeat(64), "stdout.log": "a".repeat(64) } },
+      KEY,
+    );
+    expect(verifyResultAuth(reordered, [KEY])).toEqual({ ok: true });
+  });
+
+  it("rejects a malformed artifact map", () => {
+    const bad: readonly unknown[] = [
+      "not-an-object",
+      { "../escape.txt": "a".repeat(64) },
+      { "/absolute.txt": "a".repeat(64) },
+      { "back\\slash.txt": "a".repeat(64) },
+      { "trailing/": "a".repeat(64) },
+      { "control\tname.txt": "a".repeat(64) },
+      { "fine.txt": "not-a-digest" },
+      { "fine.txt": 42 },
+    ];
+    for (const artifacts of bad) {
+      const bytes = new TextEncoder().encode(JSON.stringify({ ...result, artifacts }));
+      expect(decodeResult(bytes).ok, JSON.stringify(artifacts)).toBe(false);
+    }
   });
 });
 

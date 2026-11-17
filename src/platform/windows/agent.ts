@@ -28,6 +28,7 @@ import {
   decodeResult,
   encodeClaim,
   encodeResult,
+  isResultArtifactPath,
   jobPaths,
   sha256Hex,
   validateJob,
@@ -496,11 +497,35 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
     startedAt,
     finishedAt: timestamp(now),
   };
-  // Artifacts first: a result that names them never precedes them.
-  for (const [relativePath, bytes] of Object.entries(execution.artifacts ?? {})) {
-    await channel.writeAtomic(`${paths.resultDirectory}/${relativePath}`, bytes);
+  // Artifacts first: a result that names them never precedes them. Each
+  // digest is of the bytes just published, and the signature covers the map
+  // — a channel writer without the key can replace a log but cannot make
+  // the replacement match what the signed result claims.
+  let artifactDigests: Record<string, string> | undefined;
+  if (execution.artifacts !== undefined) {
+    artifactDigests = {};
+    for (const [relativePath, bytes] of Object.entries(execution.artifacts)) {
+      // The digest map is signed and decoded with the same path rules, so a
+      // name that is not inside the result directory is refused here rather
+      // than published into a result nobody can read back.
+      if (!isResultArtifactPath(relativePath)) {
+        throw new Error(
+          `the executor named an artifact "${relativePath}" outside the result directory`,
+        );
+      }
+      await channel.writeAtomic(`${paths.resultDirectory}/${relativePath}`, bytes);
+      artifactDigests[relativePath] = sha256Hex(bytes);
+    }
   }
-  const signed = await publishResult(channel, jobId, result, key);
+  const signed = await publishResult(
+    channel,
+    jobId,
+    {
+      ...result,
+      ...(artifactDigests === undefined ? {} : { artifacts: artifactDigests }),
+    },
+    key,
+  );
   return { state: "finished", result: signed };
 }
 

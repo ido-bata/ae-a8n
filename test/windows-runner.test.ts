@@ -330,7 +330,7 @@ describe("the Windows adapter", () => {
       value: { argv: ["/bin/echo", "hi"], env: { A8N_RUN: "run-1" } },
     });
 
-    const manifest = await readRunManifest(channel, RUN_ID);
+    const manifest = await readRunManifest(channel, RUN_ID, [KEY]);
     expect(manifest).toMatchObject({
       ok: true,
       value: {
@@ -346,6 +346,9 @@ describe("the Windows adapter", () => {
         outcome: "ok",
         destinationProof: "marker",
         ownershipProof: "unproven",
+        // The fixture's result carries no artifact digests, so the run's
+        // artifacts are honestly recorded as unproven, not verified.
+        artifactProof: "unproven",
       },
     });
     if (manifest.ok) {
@@ -357,6 +360,94 @@ describe("the Windows adapter", () => {
     expect(await channel.read(lockPath(RUN_ID))).toBeNull();
 
     expect(await session.close()).toEqual({ closed: true, reason: null });
+  });
+
+  it("verifies the run's artifacts against the signed result's digests", async () => {
+    const stdoutBytes = new TextEncoder().encode("verified-out\n");
+    const stderrBytes = new TextEncoder().encode("");
+    const { adapter, channel } = await fixture({
+      submit: async (files, request) => {
+        const jobResult = signResult(
+          {
+            schemaVersion: JOB_SCHEMA_VERSION,
+            jobId: JOB_ID,
+            status: "ok",
+            code: null,
+            exitCode: 0,
+            message: "exited with code 0",
+            payloadSha256: sha256Hex(request.payload),
+            agent: AGENT,
+            startedAt: NOW.toISOString(),
+            finishedAt: NOW.toISOString(),
+            artifacts: {
+              "stdout.log": sha256Hex(stdoutBytes),
+              "stderr.log": sha256Hex(stderrBytes),
+            },
+          },
+          KEY,
+        );
+        const bytes = encodeResult(jobResult);
+        const directory = jobPaths(JOB_ID).resultDirectory;
+        await files.writeAtomic(`${directory}/stdout.log`, stdoutBytes);
+        await files.writeAtomic(`${directory}/stderr.log`, stderrBytes);
+        await files.writeAtomic(jobPaths(JOB_ID).result, bytes);
+        return { status: "ok", jobId: JOB_ID, result: jobResult, resultSha256: sha256Hex(bytes) };
+      },
+    });
+    const session = await adapter.open(TARGET);
+    await session.open();
+    const outcome = await session.run(["/bin/echo", "hi"], RUN_OPTIONS);
+    expect(outcome.exitCode).toBe(0);
+    expect(await readFileText(outcome.stdoutPath)).toBe("verified-out\n");
+    expect(await readRunManifest(channel, RUN_ID, [KEY])).toMatchObject({
+      ok: true,
+      value: { outcome: "ok", artifactProof: "verified" },
+    });
+    await session.close();
+  });
+
+  it("refuses to copy artifacts rewritten after the result was signed", async () => {
+    // The signed result names the real bytes; the channel holds a forgery.
+    // The run's outcome is still recorded — the job did run — but the forged
+    // output is never copied into the run's artifacts.
+    const { adapter, channel } = await fixture({
+      submit: async (files, request) => {
+        const jobResult = signResult(
+          {
+            schemaVersion: JOB_SCHEMA_VERSION,
+            jobId: JOB_ID,
+            status: "ok",
+            code: null,
+            exitCode: 0,
+            message: "exited with code 0",
+            payloadSha256: sha256Hex(request.payload),
+            agent: AGENT,
+            startedAt: NOW.toISOString(),
+            finishedAt: NOW.toISOString(),
+            artifacts: { "stdout.log": sha256Hex(new TextEncoder().encode("real-out\n")) },
+          },
+          KEY,
+        );
+        const bytes = encodeResult(jobResult);
+        await files.writeAtomic(
+          `${jobPaths(JOB_ID).resultDirectory}/stdout.log`,
+          new TextEncoder().encode("forged-out\n"),
+        );
+        await files.writeAtomic(jobPaths(JOB_ID).result, bytes);
+        return { status: "ok", jobId: JOB_ID, result: jobResult, resultSha256: sha256Hex(bytes) };
+      },
+    });
+    const session = await adapter.open(TARGET);
+    await session.open();
+    await expect(session.run(["/bin/echo", "hi"], RUN_OPTIONS)).rejects.toThrow(
+      "failed verification",
+    );
+    expect(await readRunManifest(channel, RUN_ID, [KEY])).toMatchObject({
+      ok: true,
+      value: { outcome: "ok", artifactProof: "unproven" },
+    });
+    expect(await channel.read(lockPath(RUN_ID))).toBeNull();
+    await session.close();
   });
 
   it("returns the executor's exit code from a failed job", async () => {
@@ -373,7 +464,7 @@ describe("the Windows adapter", () => {
     const outcome = await session.run(["/bin/false"], RUN_OPTIONS);
     expect(outcome.exitCode).toBe(7);
 
-    expect(await readRunManifest(channel, RUN_ID)).toMatchObject({
+    expect(await readRunManifest(channel, RUN_ID, [KEY])).toMatchObject({
       ok: true,
       value: { outcome: "failed" },
     });
@@ -403,7 +494,7 @@ describe("the Windows adapter", () => {
       jobId: JOB_ID,
     });
     expect(calls).toBe(1);
-    expect(await readRunManifest(channel, RUN_ID)).toMatchObject({
+    expect(await readRunManifest(channel, RUN_ID, [KEY])).toMatchObject({
       ok: true,
       value: { outcome: "refused" },
     });
@@ -435,7 +526,7 @@ describe("the Windows adapter", () => {
     expect(calls).toBe(1);
     // No result was published, so the manifest must say null rather than
     // hashing an empty byte string and looking like a real result.
-    expect(await readRunManifest(channel, RUN_ID)).toMatchObject({
+    expect(await readRunManifest(channel, RUN_ID, [KEY])).toMatchObject({
       ok: true,
       value: { outcome: "unknown", resultSha256: null },
     });
@@ -481,7 +572,7 @@ describe("the Windows adapter", () => {
     await session.open();
     await session.run(["/bin/echo"], RUN_OPTIONS);
 
-    expect(await readRunManifest(channel, RUN_ID)).toMatchObject({
+    expect(await readRunManifest(channel, RUN_ID, [KEY])).toMatchObject({
       ok: true,
       value: { outcome: "ok", destinationProof: "unproven", ownershipProof: "unproven" },
     });
@@ -575,7 +666,7 @@ describe("the Windows adapter", () => {
     const session = await adapter.open(TARGET);
     await session.open();
     await session.run(["/bin/echo"], RUN_OPTIONS);
-    expect(await readRunManifest(channel, RUN_ID)).toMatchObject({
+    expect(await readRunManifest(channel, RUN_ID, [KEY])).toMatchObject({
       ok: true,
       value: { aeVersion: null },
     });

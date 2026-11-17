@@ -19,7 +19,8 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import type { Stats } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 
@@ -33,9 +34,10 @@ import {
   parseIcaclsReport,
   type AclRead,
 } from "./acl.js";
+import { channelModeVerdict } from "./channel-mode.js";
 import { loadKeyFile } from "./key-store.js";
 import { encodeJobPayload } from "./executor.js";
-import { jobPaths, newJobId, sha256Hex, type AgentIdentity } from "./job.js";
+import { newJobId, sha256Hex, type AgentIdentity } from "./job.js";
 import {
   checkPresence,
   readPresenceBytes,
@@ -44,6 +46,7 @@ import {
 } from "./presence.js";
 import type { CommandResult, CommandRunner, ProbeCommand } from "./probe.js";
 import { submitJob, type SubmitOptions, type SubmitResult } from "./remote.js";
+import { readResultArtifact } from "./result-artifacts.js";
 
 /** The controller's submit seam; the same signature `WindowsAdapter` takes. */
 export type SubmitFunction = (
@@ -323,7 +326,11 @@ export type OpenCommsOptions = {
   readonly sleep?: (ms: number) => Promise<void>;
   /** The version this controller is; the agent must match exactly. */
   readonly version: string;
-  /** Injected in tests. Defaults to `icacls` on Windows, unused elsewhere. */
+  /**
+   * The channel's access-control reader. An injected reader is called on
+   * every platform; without one, `icacls` is used on Windows and the POSIX
+   * mode check elsewhere.
+   */
   readonly acl?: (path: string) => Promise<AclRead>;
 };
 
@@ -400,13 +407,13 @@ export async function openComms(
     );
   }
 
-  // 2. On Windows the channel's own ACL is the sticky-bit equivalent: an
-  //    account that can write there can plant a job, so a channel writable
-  //    by anyone outside the trusted controller/agent accounts is refused
-  //    before the key is even considered (T105). The trusted set is the
-  //    agent account this config names plus this controller's own account;
-  //    when neither can be named the set is unknown and the verdict refuses.
-  if (process.platform === "win32") {
+  // 2. The channel's own access rules are the sticky-bit equivalent: an
+  //    account that can write there can plant a job. On Windows the ACL is
+  //    checked against the trusted controller/agent account set (T105); an
+  //    injected reader is honoured on every platform — gating it on win32
+  //    made the check silently absent on the POSIX controllers this product
+  //    actually runs from.
+  if (options.acl !== undefined || process.platform === "win32") {
     const readAcl = options.acl ?? defaultAclReader;
     const acl = await readAcl(config.channel);
     const trusted = channelTrustedAccounts(config);
@@ -420,6 +427,31 @@ export async function openComms(
           detail: `${verdict.detail}; channel ${config.channel}`,
           remedy:
             "Remove write access to the channel for every account but the controller's and the agent's, then run doctor again.",
+          remedyKind: "human",
+          evidence: { channel: config.channel },
+        }),
+      );
+    }
+  } else {
+    // POSIX has no `icacls`; the mode bits are the check. A channel root
+    // whose ownership or mode cannot be read is unproven, and unproven is
+    // refused — there is no probably-fine state.
+    let stats: Stats | null;
+    try {
+      stats = await stat(config.channel);
+    } catch {
+      stats = null;
+    }
+    const verdict =
+      stats === null
+        ? { ok: false as const, detail: "the channel directory's ownership and mode could not be read" }
+        : channelModeVerdict(stats);
+    if (!verdict.ok) {
+      checks.push(
+        diagnostic("A8N-PERM-006", {
+          detail: `${verdict.detail}; channel ${config.channel}`,
+          remedy:
+            "Restrict the channel directory so only the controller's and the agent's accounts can write it (mode 0700 or tighter, or a POSIX ACL), then run doctor again.",
           remedyKind: "human",
           evidence: { channel: config.channel },
         }),
@@ -654,13 +686,22 @@ export class ChannelCommandRunner implements CommandRunner {
         submitted.message,
       );
     }
-    const directory = jobPaths(submitted.jobId).resultDirectory;
-    const stdout = await state.channel.read(`${directory}/stdout.log`);
-    const stderr = await state.channel.read(`${directory}/stderr.log`);
+    // The artifacts are read through the signed result's digest map: a
+    // rewrite after publication is refused, not decoded. A result that
+    // predates the field keeps today's behaviour and reports unproven.
+    const stdout = await readResultArtifact(state.channel, submitted.jobId, submitted.result, "stdout.log");
+    const stderr = await readResultArtifact(state.channel, submitted.jobId, submitted.result, "stderr.log");
+    if (stdout.proof === "refused") {
+      throw new RemoteProbeError("A8N-JOB-003", stdout.detail);
+    }
+    if (stderr.proof === "refused") {
+      throw new RemoteProbeError("A8N-JOB-003", stderr.detail);
+    }
     return {
-      stdout: decodeUtf8(stdout, submitted.result.exitCode),
-      stderr: decodeUtf8(stderr, submitted.result.exitCode),
+      stdout: decodeUtf8(stdout.bytes, submitted.result.exitCode),
+      stderr: decodeUtf8(stderr.bytes, submitted.result.exitCode),
       exitCode: submitted.result.exitCode ?? 1,
+      artifactProof: stdout.proof === "verified" && stderr.proof === "verified" ? "verified" : "unproven",
     };
   }
 }
