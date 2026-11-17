@@ -117,7 +117,14 @@ describe("probeWindows", () => {
       isolation: "remote-host",
       targetUser: "tester",
     });
-    expect(result.checks).toEqual([]);
+    // Clean host, but the script-invocation prerequisites Windows cannot
+    // prove are still reported as unproven — never as a guessed pass.
+    expect(result.checks.map((check) => check.code).sort()).toEqual([
+      "A8N-AE-007",
+      "A8N-AE-008",
+      "A8N-PERM-008",
+    ]);
+    expect(result.checks.every((check) => check.severity !== "blocker")).toBe(true);
     expect(result.facts).toMatchObject({
       osCaption: CAPTION,
       osVersion: VERSION,

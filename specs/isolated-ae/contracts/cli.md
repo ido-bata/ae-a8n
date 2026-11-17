@@ -123,11 +123,17 @@ Initial set:
 | `A8N-PERM-004` | blocker | Adobe sign-in required in the target session |
 | `A8N-PERM-005` | blocker | The channel key file is readable by another account (nothing sent) |
 | `A8N-PERM-006` | blocker | The channel directory is writable by another account (nothing sent) |
-| `A8N-AE-001` | blocker | Another AE is running on the target (run refused) |
+| `A8N-PERM-007` | warning | AE script file/network preference state could not be determined |
+| `A8N-PERM-008` | warning | AE script approval (trust) state is unproven |
+| `A8N-AE-001` | blocker | Another AE is running on the target (run refused; `local` intent reports `A8N-AE-009` instead) |
 | `A8N-AE-002` | blocker | The AE is not owned by this run (lifecycle refused) |
 | `A8N-AE-003` | blocker | The script destination could not be proven (nothing sent) |
 | `A8N-AE-004` | warning | A timed-out script may still be running (run quarantined) |
 | `A8N-AE-005` | warning | After Effects was started but never answered the probe (run quarantined) |
+| `A8N-AE-006` | blocker | The AE scripting component was not found in the install |
+| `A8N-AE-007` | warning | The AE scripting component is unproven (presence does not prove it loads) |
+| `A8N-AE-008` | info | Per-user Scripts/Startup folder state (informational; unproven where untested) |
+| `A8N-AE-009` | info | After Effects is already running and a local launch will attach to it |
 | `A8N-JOB-001` | blocker | Job or result file failed ownership/integrity checks |
 | `A8N-JOB-002` | warning | Prior run left a lock or quarantine state |
 | `A8N-JOB-003` | blocker | Job or result is not from a trusted issuer (nothing executed/accepted) |
@@ -149,6 +155,14 @@ Output: the common envelope with `command: "doctor"` and `checks[]`.
 Exit: 0 when no `blocker`; 3 otherwise. A `refused`/`unknown` severity does not
 by itself fail `doctor` (it describes a live run, not the environment) but is
 reported.
+
+Probe intent: a bare `ae-a8n doctor` probes the **local** script-invocation
+path — the caller's own session is the target, so session-separation checks
+(`A8N-SESSION-*`) are not emitted and a running After Effects produces
+`A8N-AE-009` (info) instead of the `A8N-AE-001` blocker. An explicit
+`--target`, `--user` or `--host` probes the **session** path and keeps the
+isolated-session checks. `setup`, `test` and `recover` always probe with
+session intent.
 
 ## 7. `setup`
 

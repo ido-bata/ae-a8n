@@ -8,7 +8,7 @@
  */
 
 import { diagnostic, type DiagnosticCheck } from "../../doctor/diagnostics.js";
-import type { AdapterProbe, TargetSpec } from "../contract.js";
+import type { AdapterProbe, ProbeIntent, TargetSpec } from "../contract.js";
 import { windowsCapabilities } from "./capabilities.js";
 
 export type CommandResult = {
@@ -61,6 +61,12 @@ export type WindowsProbeOptions = {
   readonly isolation: TargetSpec["isolation"];
   /** The account that runs AE, when one is configured. */
   readonly targetUser: string | null;
+  /**
+   * `"session"` (default) evaluates the isolated-session prerequisites;
+   * `"local"` evaluates the local script-invocation path, where the caller's
+   * own session is the target and a running AE is attached to, not refused.
+   */
+  readonly intent?: ProbeIntent;
 };
 
 export type WindowsProbeResult = AdapterProbe & {
@@ -254,6 +260,8 @@ export async function probeWindows(
 
   const checks: DiagnosticCheck[] = [];
   const { sessionId, currentUser, consoleUser, aeInstalls, aeProcesses } = facts;
+  const intent: ProbeIntent = options.intent ?? "session";
+  const sessionIntent = intent === "session";
 
   if (facts.osCaption === null) {
     checks.push(
@@ -293,7 +301,7 @@ export async function probeWindows(
     );
   }
 
-  if (sessionId === null || sessionId === 0) {
+  if (sessionIntent && (sessionId === null || sessionId === 0)) {
     checks.push(
       diagnostic("A8N-SESSION-002", {
         detail:
@@ -308,6 +316,7 @@ export async function probeWindows(
   }
 
   if (
+    sessionIntent &&
     options.isolation === "session" &&
     currentUser !== null &&
     consoleUser !== null &&
@@ -335,7 +344,68 @@ export async function probeWindows(
     );
   }
 
-  if (aeProcesses.length > 0) {
+  // Script-invocation prerequisites that a read-only probe cannot prove on
+  // Windows: the ExtendScript component's on-disk locations are not verified
+  // for this backend, the script-trust approval store is unmeasured (#125),
+  // and the per-user Scripts/Startup equivalent is documented but untested
+  // (G0 evidence covers macOS only). They are reported "unproven", never
+  // guessed — the same honesty rule the macOS probe follows.
+  if (aeInstalls.length > 0) {
+    checks.push(
+      diagnostic("A8N-PERM-008", {
+        detail:
+          "whether After Effects will run scripts from this package's session folder " +
+          "without a per-location approval cannot be verified without launching AE; " +
+          "on AE 26.5+ an unapproved script is refused (-1708) with a modal. " +
+          "The approval granularity (folder vs script) is unproven (#125).",
+        remedy:
+          "On the first launch, approve the session's staging folder in After Effects " +
+          "(Edit > Preferences > Scripting & Expressions) when AE prompts. Until the " +
+          "approval granularity is measured, a new session directory may need its own " +
+          "approval; keep one sessionRoot per project to minimise prompts.",
+        remedyKind: "human",
+        evidence: { state: "unproven", approvalGranularity: "unproven" },
+      }),
+      diagnostic("A8N-AE-007", {
+        detail:
+          "the ExtendScript component's install locations are not verified for the " +
+          "Windows install layout, so whether the scripting component is usable is unproven",
+        remedy:
+          "Launch After Effects once and run a trivial script; if AE reports the " +
+          "Scripting plugin is not installed, repair the install through Creative Cloud.",
+        remedyKind: "human",
+        evidence: { state: "unproven", platform: "win32" },
+      }),
+      diagnostic("A8N-AE-008", {
+        detail:
+          "the per-user Scripts/Startup folder (%APPDATA%\\Adobe\\After Effects\\<ver>\\" +
+          "Scripts\\Startup) is documented but its execution is unproven on Windows; " +
+          "G0 evidence covers macOS only",
+        remedy:
+          "No action for AfterEffects.launch — the folder matters only for the in-AE " +
+          "dispatcher transport (#127).",
+        remedyKind: "none",
+        evidence: { state: "unproven", platform: "win32" },
+      }),
+    );
+  }
+
+  if (aeProcesses.length > 0 && !sessionIntent) {
+    // Local mode attaches to a running After Effects on purpose; it is not
+    // the "another AE on the target" collision the isolated path refuses.
+    checks.push(
+      diagnostic("A8N-AE-009", {
+        detail:
+          `After Effects is already running: ${describeProcesses(aeProcesses)}; ` +
+          "a local launch attaches to it and reports ownership \"attached\"",
+        remedy:
+          "Nothing to do — AfterEffects.launch reuses the running instance and " +
+          "close() will not quit it. Quit AE yourself first only if you want a fresh instance.",
+        remedyKind: "none",
+        evidence: { processes: evidence.processes },
+      }),
+    );
+  } else if (aeProcesses.length > 0) {
     checks.push(
       diagnostic("A8N-AE-001", {
         detail: `After Effects is already running: ${describeProcesses(aeProcesses)}`,

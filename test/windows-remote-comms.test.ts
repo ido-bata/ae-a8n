@@ -663,7 +663,13 @@ describe("through the channel, with an agent on the other side", () => {
       await waitFor(() => anyAgentPresence(rig.channelRoot));
 
       const probed = await rig.adapter.probe(TARGET);
-      expect(probed.checks).toEqual([]);
+      // No blockers; the unproven script-invocation checks Windows cannot
+      // measure are reported, not guessed away.
+      expect(probed.checks.map((check) => check.code).sort()).toEqual([
+        "A8N-AE-007",
+        "A8N-AE-008",
+        "A8N-PERM-008",
+      ]);
       // Every probe command travelled as a job; the local runner never ran.
       const probePrograms = rig.executor.seen.map(
         (argv) => (argv[0] ?? "").split(/[\\/]/u).at(-1)?.toLowerCase() ?? "",

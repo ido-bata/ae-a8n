@@ -56,12 +56,21 @@ Requirements on the machine that runs After Effects:
 - **Settings → Scripting & Expressions → Allow Scripts to Write Files and Access Network** enabled. Without it the first call times out instead of failing fast.
 - On **After Effects 2026 (26.5)** the host also needs AE's approval to run scripts from the driver's folder: AE refuses the first `DoScriptFile` with `-1708` and shows a modal that points at its Scripting & Expressions panel. Approve the session's `staging/` folder there (the folder holds the entry script and the staged host script). The approval's granularity — per folder, per script, or coarser — is still unmeasured; a read-only probe and protocol for measuring it on a real Mac are in [docs/script-trust-measurement.md](docs/script-trust-measurement.md).
 
+The full first-run sequence — install, `doctor`, the human permission
+approvals, first launch, version check, close, and reconnect after a restart —
+is in [docs/quickstart.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/quickstart.md).
+
 ## Doctor
 
-`ae-a8n doctor` is the read-only entry point. It inspects the machine an
-isolated After Effects session would use and reports every fact it could not
-read as a blocker, never as a pass. It does not start After Effects, open a
-session, change TCC or SIP, read a credential, or send an Apple Event.
+`ae-a8n doctor` is the read-only entry point. A bare `doctor` probes the
+**local** script-invocation path — the session you are running it in — so a
+running After Effects is reported as info (`A8N-AE-009`), not refused, and
+the console-session separation checks do not apply. `doctor --user` /
+`--host` / `--target` probe the isolated-session path instead. It reports
+every fact it could not read as `unproven` (a warning or info check), never
+as a pass, and every blocker with a human-readable remedy. It does not
+start After Effects, open a session, change TCC or SIP, read a credential,
+or send an Apple Event.
 
 ```bash
 npx @ido-bata/ae-a8n doctor

@@ -247,7 +247,14 @@ describe("the Windows adapter", () => {
       sessionIdentity: "host-and-user",
       quitsOnlyOwned: true,
     });
-    expect(remote.checks).toEqual([]);
+    // The script-invocation prerequisites Windows cannot prove are reported
+    // as unproven warnings/info, not blockers and not a guessed pass.
+    expect(remote.checks.map((check) => check.code).sort()).toEqual([
+      "A8N-AE-007",
+      "A8N-AE-008",
+      "A8N-PERM-008",
+    ]);
+    expect(remote.checks.every((check) => check.severity !== "blocker")).toBe(true);
 
     const session = await adapter.probe({ ...TARGET, isolation: "session" });
     expect(session.capabilities.nonInterference).toBe("unproven");
