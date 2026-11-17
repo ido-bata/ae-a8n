@@ -8,7 +8,11 @@
  * `scripts/check-consumer-smoke.js` itself, which CI executes.
  */
 
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -177,6 +181,29 @@ describe("the documented real-lane procedure matches the harness (#155)", () => 
     expect(rcDoc).toContain("A8N_RESULT");
     expect(rcDoc).not.toContain("dispatcher prepare");
   });
+
+  it("--prepare-only stages activate.jsx and the host script into the given channel", () => {
+    // Behavioural contract, not just string matching: run the real lane's
+    // prepare step against a durable channel and verify the artifacts a
+    // human would activate actually land there.
+    const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+    const channelDir = mkdtempSync(join(tmpdir(), "a8n-rc-channel-"));
+    const output = execFileSync(
+      process.execPath,
+      [
+        "scripts/check-dispatcher-acceptance.js",
+        "--channel-dir",
+        channelDir,
+        "--prepare-only",
+      ],
+      { cwd: repoRoot, encoding: "utf-8", timeout: 300_000 },
+    );
+    expect(output).toContain(channelDir);
+    expect(output).toContain("activate.jsx");
+    expect(output).toContain('"status":"prepared"');
+    expect(existsSync(join(channelDir, "activate.jsx"))).toBe(true);
+    expect(existsSync(join(channelDir, "a8n-host.js"))).toBe(true);
+  }, 300_000);
 });
 
 describe("examples/smoke.ts", () => {

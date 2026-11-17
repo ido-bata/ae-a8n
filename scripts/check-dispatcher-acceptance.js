@@ -45,10 +45,12 @@
  * Result contract: every probe prints a final `A8N_RESULT <json>` line and
  * exits 0 (pass / prepared / skipped), 1 (a scenario failed) or 3 (blocked —
  * no heartbeat inside the wait budget). The wrapper prints one
- * `A8N_RESULT {"fake":…,"real":…}` for the whole run and exits 3 when the
- * real lane is blocked. Exit code 0 therefore never means "real-host
- * verified" on its own: `real:"skipped"` and `real:"blocked"` are explicit
- * in the JSON, and only `real:"pass"` is real-host evidence.
+ * `A8N_RESULT {"fake":…,"real":…}` on every terminal path — including
+ * harness-level failures, where the affected lane reads "fail" or
+ * "unknown" — and exits 3 when the real lane is blocked. Exit code 0
+ * therefore never means "real-host verified" on its own: `real:"skipped"`
+ * and `real:"blocked"` are explicit in the JSON, and only `real:"pass"` is
+ * real-host evidence.
  *
  * The extension fixture is a consumer-side module built by the packed CLI
  * (`ae-a8n extension build`), exactly as a downstream consumer would.
@@ -112,25 +114,32 @@ function run(command, cmdArgs, options = {}) {
   return execFileSync(command, cmdArgs, { encoding: "utf-8", ...options });
 }
 
-function fail(message) {
-  console.error(`::error::${message}`);
-  process.exit(1);
-}
+/* The lane verdicts the wrapper reports: "pass" | "fail" | "blocked" |
+ * "prepared" | "skipped" | "unknown". Only "pass" is real-host evidence;
+ * the final A8N_RESULT line is the machine-readable contract callers must
+ * read — exit code 0 alone never means the real lane was verified. */
+const EXPECTED_PROBE_EXIT = { pass: 0, prepared: 0, skipped: 0, blocked: 3, fail: 1 };
 
-const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf-8"));
+let fakeStatus = "unknown";
+let realStatus = "skipped";
+let harnessFailed = false;
+let workdir = null;
+let tarball = null;
 
-console.log(`packing ${manifest.name}@${manifest.version}…`);
-// Same rule as check-consumer-smoke.js: npm runs as `node <npm-cli.js>`,
-// never through a shell (scripts/npm-cli.js).
-const npm = npmCommand();
-const tarballName = run(npm.command, [...npm.args, "pack", "--silent"], { cwd: PACKAGE_ROOT })
-  .trim()
-  .split("\n")
-  .at(-1);
-const tarball = join(PACKAGE_ROOT, tarballName);
-
-const workdir = mkdtempSync(join(tmpdir(), "a8n-dispatcher-acceptance-"));
 try {
+  const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf-8"));
+
+  console.log(`packing ${manifest.name}@${manifest.version}…`);
+  // Same rule as check-consumer-smoke.js: npm runs as `node <npm-cli.js>`,
+  // never through a shell (scripts/npm-cli.js).
+  const npm = npmCommand();
+  const tarballName = run(npm.command, [...npm.args, "pack", "--silent"], { cwd: PACKAGE_ROOT })
+    .trim()
+    .split("\n")
+    .at(-1);
+  tarball = join(PACKAGE_ROOT, tarballName);
+
+  workdir = mkdtempSync(join(tmpdir(), "a8n-dispatcher-acceptance-"));
   writeFileSync(
     join(workdir, "package.json"),
     `${JSON.stringify({ name: "dispatcher-acceptance", private: true, type: "module" }, null, 2)}\n`,
@@ -590,20 +599,20 @@ if (mode === "fake") {
   console.log("\nfake lane (packed package + fake AE host)…");
   const fake = runProbe("fake");
   console.log(fake.output.trim());
-  if (!fake.ok || !fake.output.includes("RESULT: fake pass")) {
-    fail(`fake lane failed${fake.ok ? "" : `: ${fake.message}`}`);
+  const fakeVerdict = probeResult(fake.output);
+  fakeStatus =
+    fake.ok && fakeVerdict !== null && fakeVerdict.status === "pass" ? "pass" : "fail";
+  if (fakeStatus !== "pass") {
+    console.log("fake lane failed — the real lane is not attempted on a broken candidate.");
   }
 
   // --- Real lane: needs an explicit fixture project and a human to
   //     activate the dispatcher inside After Effects. ----------------------
 
-  // The lane verdicts the wrapper reports: "pass" | "fail" | "blocked" |
-  // "prepared" | "skipped". Only "pass" is real-host evidence; the final
-  // A8N_RESULT line is the machine-readable contract callers must read —
-  // exit code 0 alone never means the real lane was verified.
-  let realStatus = "skipped";
   const skipReal = process.env.A8N_ACCEPTANCE_SKIP_REAL === "1";
-  if (skipReal) {
+  if (fakeStatus !== "pass") {
+    // realStatus stays "skipped": the lane never ran.
+  } else if (skipReal) {
     console.log("\nreal lane: skipped (A8N_ACCEPTANCE_SKIP_REAL=1)");
   } else if (projectPath === null && !prepareOnly) {
     console.log(
@@ -617,15 +626,12 @@ if (mode === "fake") {
     const real = runProbe("real");
     console.log(real.output.trim());
     const verdict = probeResult(real.output);
+    const status =
+      verdict !== null && typeof verdict.status === "string" ? verdict.status : null;
+    // A verdict only counts when the probe's exit status agrees with the
+    // documented mapping — a "pass" line from a crashed probe is a fail.
     realStatus =
-      verdict !== null && typeof verdict.status === "string"
-        ? verdict.status
-        : real.ok
-          ? "unknown"
-          : "fail";
-    if (realStatus === "fail" || (realStatus === "unknown" && !real.ok)) {
-      fail(`real lane failed${real.ok ? "" : `: ${real.message}`}`);
-    }
+      status !== null && EXPECTED_PROBE_EXIT[status] === real.status ? status : "fail";
     if (realStatus === "pass") {
       console.log("\nconsumer dispatcher acceptance passed against a real After Effects.");
     } else if (realStatus === "blocked") {
@@ -642,14 +648,25 @@ if (mode === "fake") {
       );
     }
   }
-
-  console.log("A8N_RESULT " + JSON.stringify({ fake: "pass", real: realStatus }));
-  if (realStatus === "blocked") {
+} catch (error) {
+  harnessFailed = true;
+  console.error(`::error::${error instanceof Error ? error.message : String(error)}`);
+} finally {
+  if (workdir !== null) rmSync(workdir, { recursive: true, force: true });
+  if (tarball !== null) rmSync(tarball, { force: true });
+  // The wrapper's own A8N_RESULT is the last line on every terminal path —
+  // pass, fail, blocked, skipped, or a harness-level failure above.
+  console.log("A8N_RESULT " + JSON.stringify({ fake: fakeStatus, real: realStatus }));
+  if (
+    harnessFailed ||
+    fakeStatus !== "pass" ||
+    realStatus === "fail" ||
+    realStatus === "unknown"
+  ) {
+    process.exitCode = 1;
+  } else if (realStatus === "blocked") {
     // Blocked is not a pass and not a harness failure: exit 3 matches the
     // CLI's blocked code so automation cannot mistake it for success.
     process.exitCode = 3;
   }
-} finally {
-  rmSync(workdir, { recursive: true, force: true });
-  rmSync(tarball, { force: true });
 }
