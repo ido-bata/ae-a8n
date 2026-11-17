@@ -587,6 +587,7 @@ async function realLaneRun() {
   });
   // The lane verdict is computed inside try and can still be overridden by
   // the close check in finally; A8N_RESULT is emitted exactly once, after.
+  const heartbeatVersion = status.heartbeat?.aeVersion ?? null;
   let laneStatus = "fail";
   let laneExtra = { channelDir };
   let cleanupNote = "not attempted";
@@ -612,7 +613,7 @@ async function realLaneRun() {
       channelDir,
       instance: boundInstance,
       version: VERSION,
-      aeVersion: status.heartbeat?.aeVersion ?? null,
+      aeVersion: heartbeatVersion,
       checks: results,
       ...(laneScenario === null ? {} : { pngSha256: laneScenario.pngSha256 }),
     };
@@ -658,9 +659,7 @@ async function realLaneRun() {
       console.log("RESULT: real-host FAIL — close() quit an attached host");
       laneStatus = "fail";
       laneExtra = {
-        channelDir,
-        version: VERSION,
-        aeVersion: status.heartbeat?.aeVersion ?? null,
+        ...laneExtra,
         reason: "close quit an attached host",
         cleanup: cleanupNote,
       };
