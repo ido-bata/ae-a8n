@@ -841,12 +841,9 @@ export async function runCli(
   // the in-AE dispatcher lifecycle and takes its own flags.
   if (argv[0] === "dispatcher") {
     const result = await runDispatcherCommand(argv.slice(1), {
-      writeOut: (text) => {
-        process.stdout.write(text);
-      },
-      writeErr: (text) => {
-        process.stderr.write(text);
-      },
+      ...(input.writeOut === undefined ? {} : { writeOut: input.writeOut }),
+      ...(input.writeErr === undefined ? {} : { writeErr: input.writeErr }),
+      ...(input.now === undefined ? {} : { now: input.now }),
     });
     return result.exitCode as ExitCode;
   }

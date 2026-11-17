@@ -41,12 +41,12 @@ ae-a8n dispatcher startup install|remove \
 
 per-user の `Scripts/Startup` に `a8n-dispatcher.jsx` を置くと AE 起動時に自動有効化される設計だが、**startup 実行そのものは実機未検証（unproven）**。macOS の `~/Library/Preferences/Adobe/After Effects/<メジャー.マイナー>/Scripts/Startup`、Windows の `%APPDATA%\Adobe\After Effects\<メジャー.マイナー>\Scripts\Startup` に配置される。
 
-API からは `DispatcherTransport.installStartupScript()` / `uninstallStartupScript()`。自分が生成した marker を持つファイルだけを上書き・削除し、無関係なファイルは拒否する。グローバルな scripting 権限や TCC 設定は一切変更しない。権限ダイアログが出た場合の承認は常に人間が行う。
+API からは `DispatcherTransport.installStartupScript()` / `uninstallStartupScript()`、CLI からは `ae-a8n dispatcher startup install|remove`。自分が生成した marker 行を持つファイルだけを上書き・削除し、無関係なファイルは拒否する。グローバルな scripting 権限や TCC 設定は一切変更しない。権限ダイアログが出た場合の承認は常に人間が行う。
 
 ## 無効化
 
 - dispatcher 自体は AE を終了しない。`ae.close()` / `driver.stop()` は ownership が `attached`（証明不可）のため `quit: false` で返る。
-- channel を止めるには `state.json` の `instance` が変わるまで待つか、AE を再起動する。Startup 設置済みなら `uninstallStartupScript()` で除去する。
+- channel を止めるには `state.json` の `instance` が変わるまで待つか、AE を再起動する。Startup 設置済みなら `ae-a8n dispatcher startup remove`（API では `uninstallStartupScript()`）で除去する。除去は将来の AE 起動にだけ効き、稼働中の dispatcher は AE 再起動まで応答し続ける。
 - `<channelDir>` は mode `0700`、request/result は `0600` で作られる。POSIX で group/other から読める dir・symlink は拒否される。
 
 ## Node 側の契約

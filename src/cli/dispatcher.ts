@@ -129,8 +129,8 @@ function parseDispatcherArgs(argv: readonly string[]): Parsed {
       return { ok: false, error: `unknown option ${name}`, json };
     }
     const value = inline ?? rest[index + 1];
-    if (value === undefined || (inline === undefined && value.startsWith("--"))) {
-      return { ok: false, error: `${name} needs a value`, json };
+    if (value === undefined || value.length === 0 || (inline === undefined && value.startsWith("--"))) {
+      return { ok: false, error: `${name} needs a non-empty value`, json };
     }
     if (inline === undefined) index += 1;
     if (name === "--channel-dir") channelDir = value;
@@ -219,6 +219,8 @@ function renderHuman(envelope: CliEnvelope): string {
         lines.push(`  ${key}: ${String(value)}`);
       } else if (Array.isArray(value) && value.every((v) => typeof v === "string")) {
         lines.push(`  ${key}: ${value.join(", ")}`);
+      } else if (value === null) {
+        lines.push(`  ${key}: null`);
       } else if (value !== null && typeof value === "object") {
         lines.push(`  ${key}: ${JSON.stringify(value)}`);
       }
@@ -236,10 +238,16 @@ function renderHuman(envelope: CliEnvelope): string {
   return `${lines.join("\n")}\n`;
 }
 
+type ResolvedDeps = {
+  readonly writeOut: (text: string) => void;
+  readonly writeErr: (text: string) => void;
+  readonly now: () => Date;
+};
+
 function emit(
   envelope: CliEnvelope,
   json: boolean,
-  deps: Required<Deps>,
+  deps: ResolvedDeps,
 ): void {
   if (json) {
     deps.writeOut(`${JSON.stringify(envelope, null, 2)}\n`);
@@ -251,7 +259,7 @@ function emit(
 function usageError(
   error: string,
   json: boolean,
-  deps: Required<Deps>,
+  deps: ResolvedDeps,
   startedAt: Date,
 ): ExitCode {
   if (json) {
@@ -296,6 +304,23 @@ export async function runDispatcherCommand(
     return { exitCode: usageError(parsed.error, parsed.json, fullDeps, startedAt) };
   }
 
+  const platform = deps.platform ?? osPlatform();
+  if (
+    parsed.command === "startup" &&
+    parsed.installDir !== null &&
+    platform !== "darwin"
+  ) {
+    return {
+      exitCode: usageError(
+        "--install-dir derives the AE version from the macOS app bundle only; " +
+          "pass --ae-version on this platform",
+        parsed.json,
+        fullDeps,
+        startedAt,
+      ),
+    };
+  }
+
   const channelDir = parsed.channelDir ?? defaultDispatcherChannelDir(deps.homeDir);
   const transport = new DispatcherTransport({
     channelDir,
@@ -328,7 +353,7 @@ export async function runDispatcherCommand(
     }
 
     if (parsed.command === "status") {
-      const status: DispatcherChannelStatus = await transport.status();
+      const status: DispatcherChannelStatus = transport.status();
       const finishedAt = now();
       if (status.heartbeat === null) {
         const envelope = envelopeFor(
@@ -340,9 +365,18 @@ export async function runDispatcherCommand(
           {
             channelDir: status.channelDir,
             activateScriptPath: status.activateScriptPath,
+            prepared: status.prepared,
             heartbeat: null,
           },
-          activationSteps(status.activateScriptPath, status.channelDir),
+          status.prepared
+            ? activationSteps(status.activateScriptPath, status.channelDir)
+            : [
+                {
+                  kind: "human",
+                  code: "dispatcher.prepare",
+                  action: `prepare the channel first: ae-a8n dispatcher prepare --channel-dir ${JSON.stringify(status.channelDir)}`,
+                },
+              ],
           "no dispatcher has answered on this channel; that is unproven, not a pass",
         );
         emit(envelope, parsed.json, fullDeps);
@@ -352,6 +386,7 @@ export async function runDispatcherCommand(
       const facts = {
         channelDir: status.channelDir,
         activateScriptPath: status.activateScriptPath,
+        prepared: status.prepared,
         instance: beat.instance,
         aeVersion: beat.aeVersion,
         activatedAt: beat.activatedAt,
@@ -386,7 +421,7 @@ export async function runDispatcherCommand(
       }
       const envelope = envelopeFor(command, "ok", EXIT.ok, startedAt, finishedAt, facts, [
         {
-          kind: "automatic",
+          kind: "human",
           code: "dispatcher.launch",
           action:
             `connect with AfterEffects.launch({ transport: { kind: "in-ae-dispatcher", ` +
@@ -444,7 +479,17 @@ export async function runDispatcherCommand(
         channelDir: transport.channelDir,
         note: removed === null ? "no ae-a8n Startup entry was installed" : undefined,
       },
-      [],
+      [
+        {
+          kind: "human",
+          code: "dispatcher.startup.confirm",
+          action:
+            removed === null
+              ? "nothing was installed, so no AE restart is needed for this entry"
+              : "the entry is gone for future AE launches; a dispatcher already running " +
+                "keeps answering until AE restarts — confirm with ae-a8n dispatcher status",
+        },
+      ],
     );
     emit(envelope, parsed.json, fullDeps);
     return { exitCode: EXIT.ok };
