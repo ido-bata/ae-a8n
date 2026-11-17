@@ -1,13 +1,16 @@
 # Changelog
 
-## 0.2.0
+## 0.2.0-beta.1
 
-Published under the `next` dist-tag; `latest` stays on `0.1.0-alpha.0` until a
-stable release is approved. This is the `release-0-2-0` train: the opt-in
-in-AE dispatcher transport with static consumer extensions, its lifecycle
-CLI, and the packed-consumer acceptance harness, on top of the isolated
+Published under the `next` dist-tag; `latest` stays on `0.1.0-alpha.0`. This
+is a **prerelease**: the `release-0-2-0` train — the opt-in in-AE
+dispatcher transport with static consumer extensions, its lifecycle CLI,
+and the packed-consumer acceptance harness, on top of the isolated
 testing, capability handshake, GUI recovery and session-marker work merged
-since `0.1.0-alpha.2`.
+since `0.1.0-alpha.2`. It is numbered `-beta.1` rather than `0.2.0` because
+the new dispatcher paths have no Windows real-host evidence and only
+`fake/mock only` coverage on macOS so far; a stable `0.2.0` requires the
+cross-platform evidence gate (#75) first.
 
 ### Added
 
@@ -30,13 +33,17 @@ since `0.1.0-alpha.2`.
   reporting (`blocked`/`unknown` are never passes), and per-user
   `Scripts/Startup` registration that refuses foreign files and states that
   AE's execution of the entry is unproven.
-- **Packed-consumer acceptance harness** (#148):
+- **Packed-consumer acceptance harness** (#148, #155):
   `scripts/check-dispatcher-acceptance.js` installs the packed tarball into a
   clean project, builds a consumer-side extension fixture through the packed
   CLI, and runs the dispatcher scenarios — handshake, editing, PNG render,
   extension call, authorization/pin refusals, UNKNOWN non-resend, safe
   shutdown — in a fake lane (always) and a human-gated real lane (`--project`
-  fixture required; no heartbeat is `blocked`, never a pass).
+  fixture required; no heartbeat is `blocked`, never a pass). The real lane
+  stages the extension host script into a dedicated `--channel-dir` (or a
+  per-run temporary one), prints the matching `activate.jsx`, reuses a live
+  heartbeat instead of asking for a second activation, and reports a
+  machine-readable `A8N_RESULT` JSON where `blocked` exits 3 — never a pass.
 
 ### Fixed
 

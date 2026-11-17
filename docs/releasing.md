@@ -9,6 +9,17 @@ the `publish` workflow *stages* each version with npm Trusted Publishing
 commit and the version was never published. Versions are immutable, so the
 first staged release is `0.1.0-alpha.2` and `alpha.1` is not reused.
 
+**Next vs latest.** Everything this document stages goes to the `next`
+dist-tag — that is a publish, not a promotion. Moving `latest` is a separate
+act that requires the cross-platform real-host evidence gate (#75, T093):
+both platforms' evidence files tied to the exact candidate commit and
+tarball. Until that gate exists, `scripts/check-release.js` refuses any
+version without a prerelease component, so a stable `x.y.z` cannot be
+staged by accident. A candidate whose real-host coverage is incomplete is
+published as an explicit prerelease (`x.y.z-beta.N`), with README,
+CHANGELOG, the package description and the evidence record saying exactly
+what is unverified (#63 T092/T093, `docs/consumer-acceptance.md` §4).
+
 ## What stops an accidental or double publish
 
 The repository is private and the organisation is on GitHub Free. On that

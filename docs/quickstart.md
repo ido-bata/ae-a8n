@@ -26,8 +26,10 @@ npm install → ae-a8n doctor → 人間による許可 → 初回 launch → ve
 npm install @ido-bata/ae-a8n@next
 ```
 
-Node 22 以上が必要。`@next` dist-tag の現行版は `0.1.0-alpha.2`
-（`latest` は `0.1.0-alpha.0` のまま。詳細は README の Alpha 注記）。
+Node 22 以上が必要。`@next` dist-tag の現行版は `0.2.0-beta.1`
+（`latest` は `0.1.0-alpha.0` のまま。`0.2.0-beta.1` は prerelease で、
+in-AE dispatcher 経路は Windows real-host 未検証。詳細は README の
+Alpha 注記）。
 
 ## 2. 初期診断
 

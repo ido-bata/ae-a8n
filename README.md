@@ -16,10 +16,12 @@ const frame = await (await project.comp("Main")).renderFrame(0); // { path, widt
 await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to throw away
 ```
 
-> **Alpha.** `0.1.0-alpha.2` is the release under the `next` dist-tag; `latest`
-> stays on `0.1.0-alpha.0` until a stable release is approved. If
-> `npm view @ido-bata/ae-a8n@next version` does not show this version, it has
-> not been published yet. The API may change before 0.1.0.
+> **Alpha / prerelease.** `0.2.0-beta.1` is the release under the `next`
+> dist-tag; `latest` stays on `0.1.0-alpha.0` until a stable release is
+> approved. If `npm view @ido-bata/ae-a8n@next version` does not show this
+> version, it has not been published yet. The API may change before 0.2.0,
+> and `0.2.0-beta.1` is a prerelease because the in-AE dispatcher transport
+> has no Windows real-host evidence (see below).
 
 ## Status
 
@@ -31,11 +33,23 @@ await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to th
 
 What has been checked, and how, is in [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md).
 
-What is **not** proven in `0.1.0-alpha.2`, so a green run is not read as more
+What is **not** proven in `0.2.0-beta.1`, so a green run is not read as more
 than it is:
 
-- Extension methods (`hostScript`, `ae.call`, `ae-a8n extension build`) are
-  `fake/mock only`: no `ae.call` has run against a real After Effects.
+- The opt-in **in-AE dispatcher transport** (`transport: "in-ae-dispatcher"`,
+  `ae-a8n dispatcher`, `ae-a8n extension build` through the dispatcher) is
+  `fake/mock only`: every dispatcher scenario is covered by the in-repo
+  fake host and the packed-tarball fake lane; the real lane of
+  `scripts/check-dispatcher-acceptance.js` requires a human activation
+  inside a real After Effects. Startup-folder execution is unverified on
+  both macOS and Windows.
+- **Windows real-host evidence for the dispatcher paths is absent.** The
+  dispatcher CLI, extensions and acceptance harness were verified on macOS
+  CI and the fake host only; no Windows real-host run exists for them. The
+  Windows-verified claims above cover the script-invocation path measured
+  on earlier tarballs, not this candidate.
+- Extension methods via `hostScript` / `ae.call` remain `fake/mock only` on
+  real After Effects.
 - On the Windows isolated backend `manifest.json` records
   `destinationProof: "unproven"` and `ownershipProof: "unproven"`; the backend
   never reports them as proven.

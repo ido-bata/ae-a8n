@@ -8,7 +8,11 @@
  * `scripts/check-consumer-smoke.js` itself, which CI executes.
  */
 
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -17,6 +21,7 @@ const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.ur
 const doc = read("docs/consumer-acceptance.md");
 const script = read("scripts/check-consumer-smoke.js");
 const dispatcherScript = read("scripts/check-dispatcher-acceptance.js");
+const rcDoc = read("docs/evidence/release-0-2-0-rc/README.md");
 const example = read("examples/smoke.ts");
 const workflow = read(".github/workflows/ci.yml");
 
@@ -108,6 +113,97 @@ describe("scripts/check-dispatcher-acceptance.js (#148)", () => {
     expect(dispatcherScript).toContain("fake/mock only");
     expect(dispatcherScript).toContain("RESULT: real-host pass");
   });
+
+  it("binds human activation and consumer operations to one channel (#155)", () => {
+    // The real lane accepts a durable --channel-dir and a --prepare-only
+    // stage, reuses a fresh heartbeat instead of asking for a second
+    // activation, and always drives the channel it prepared itself.
+    for (const needle of [
+      '"--channel-dir"',
+      '"--prepare-only"',
+      "CHANNEL_DIR ??",
+      "PREPARE_ONLY",
+      "already answering on this channel",
+      "do not run activate.jsx again",
+    ]) {
+      expect(dispatcherScript).toContain(needle);
+    }
+  });
+
+  it("reports a machine-readable result where blocked can never read as pass", () => {
+    // Every probe ends with an A8N_RESULT json line; the wrapper emits one
+    // for the whole run and maps blocked to exit 3, fail to exit 1.
+    expect(dispatcherScript).toContain("A8N_RESULT ");
+    expect(dispatcherScript).toContain('"blocked"');
+    expect(dispatcherScript).toContain("process.exitCode = 3");
+    expect(dispatcherScript).toContain("probeResult");
+    // The documented verdict set must match what the probe can emit.
+    for (const status of ["pass", "fail", "blocked", "prepared", "skipped"]) {
+      expect(dispatcherScript).toContain(`"${status}"`);
+    }
+  });
+});
+
+describe("the documented real-lane procedure matches the harness (#155)", () => {
+  it("consumer-acceptance.md names the same channel contract and result format", () => {
+    for (const needle of [
+      "--channel-dir",
+      "--prepare-only",
+      "A8N_RESULT",
+      "同一 channel",
+      "二重 activation",
+    ]) {
+      expect(doc).toContain(needle);
+    }
+  });
+
+  it("the RC evidence procedure only uses flags the script accepts", () => {
+    // Every invocation of the harness in the frozen RC doc must parse: the
+    // flags it shows are exactly the ones check-dispatcher-acceptance.js
+    // implements. This is what keeps the written procedure and the real
+    // lane from drifting apart again.
+    const invocations = rcDoc.match(/node scripts\/check-dispatcher-acceptance\.js[^\n]*/g) ?? [];
+    expect(invocations.length).toBeGreaterThan(0);
+    const allowed = new Set(["--project", "--channel-dir", "--prepare-only"]);
+    for (const line of invocations) {
+      const tokens = line.split(/\s+/).slice(1);
+      for (let i = 0; i < tokens.length; i += 1) {
+        const token = tokens[i];
+        if (token === undefined || !token.startsWith("--")) continue;
+        expect(allowed.has(token)).toBe(true);
+        // --project and --channel-dir take a value; --prepare-only does not.
+        if (token === "--project" || token === "--channel-dir") i += 1;
+      }
+    }
+    // The procedure must route activation through the harness's own channel,
+    // not through a separately prepared default channel.
+    expect(rcDoc).toContain("--channel-dir");
+    expect(rcDoc).toContain("A8N_RESULT");
+    expect(rcDoc).not.toContain("dispatcher prepare");
+  });
+
+  it("--prepare-only stages activate.jsx and the host script into the given channel", () => {
+    // Behavioural contract, not just string matching: run the real lane's
+    // prepare step against a durable channel and verify the artifacts a
+    // human would activate actually land there.
+    const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+    const channelDir = mkdtempSync(join(tmpdir(), "a8n-rc-channel-"));
+    const output = execFileSync(
+      process.execPath,
+      [
+        "scripts/check-dispatcher-acceptance.js",
+        "--channel-dir",
+        channelDir,
+        "--prepare-only",
+      ],
+      { cwd: repoRoot, encoding: "utf-8", timeout: 300_000 },
+    );
+    expect(output).toContain(channelDir);
+    expect(output).toContain("activate.jsx");
+    expect(output).toContain('"status":"prepared"');
+    expect(existsSync(join(channelDir, "activate.jsx"))).toBe(true);
+    expect(existsSync(join(channelDir, "a8n-host.js"))).toBe(true);
+  }, 300_000);
 });
 
 describe("examples/smoke.ts", () => {
