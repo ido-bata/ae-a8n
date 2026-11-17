@@ -137,7 +137,7 @@ export default {
   writeFileSync(
     probePath,
     `
-import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setInterval, clearInterval } from "node:timers";
@@ -177,7 +177,7 @@ const tmp = (prefix) => mkdtempSync(join(tmpdir(), prefix));
 
 /* Shared scenario suite. Runs identically in both lanes; only the way the
  * dispatcher gets activated inside AE differs (fake peer vs. human). */
-async function runScenarios({ ae, channelDir, hostScript, close }) {
+async function runScenarios(ae) {
   // 1. Connection + capability handshake + instance identity.
   const handshake = await ae.capabilities();
   assert(handshake.contractVersion, "handshake missing contractVersion");
@@ -230,7 +230,59 @@ async function runScenarios({ ae, channelDir, hostScript, close }) {
     "undeclared name refused with " + undeclared.name,
   );
 
-  return { instance, compName, frame };
+  return { instance };
+}
+
+/* Isolation checks shared by both lanes: an unauthorized session is refused,
+ * a wrong instance pin never launches, and the reported pin reconnects to
+ * the same dispatcher instance. */
+async function runIsolationChecks({ channelDir, instance }) {
+  const transport2 = new DispatcherTransport({ channelDir, hostScriptPath: HOST_SCRIPT });
+  const ae2 = await AfterEffects.launch({
+    transport: transport2,
+    sessionRoot: tmp("a8n-acc-session2-"),
+  });
+  await check("unauthorized extension call refused", async () => {
+    let refused = null;
+    try {
+      await ae2.call("acceptance.ping", { value: 1 });
+    } catch (error) {
+      refused = error;
+    }
+    assert(refused instanceof HostNotOwnedError, "expected HostNotOwnedError, got " + (refused && refused.name));
+  });
+  await ae2.close();
+
+  await check("wrong instance pin refused", async () => {
+    let refused = null;
+    try {
+      await AfterEffects.launch({
+        transport: { kind: "in-ae-dispatcher", channelDir, instance: "not-the-instance" },
+        hostScript: HOST_SCRIPT,
+        sessionRoot: tmp("a8n-acc-session3-"),
+      });
+    } catch (error) {
+      refused = error;
+    }
+    assert(refused !== null, "launch with a wrong instance pin was not refused");
+  });
+
+  if (typeof instance === "string" && instance.length > 0) {
+    const ae3 = await AfterEffects.launch({
+      transport: { kind: "in-ae-dispatcher", channelDir, instance },
+      hostScript: HOST_SCRIPT,
+      sessionRoot: tmp("a8n-acc-session4-"),
+      authorization: { extensionMethods: true },
+    });
+    await check("pinned reconnect reaches the same instance", async () => {
+      const hs3 = await ae3.capabilities();
+      assert(
+        hs3.target.dispatcherInstance === instance,
+        "reconnect bound a different instance",
+      );
+    });
+    await ae3.close();
+  }
 }
 
 async function fakeLane() {
@@ -262,63 +314,16 @@ async function fakeLane() {
     authorization: { extensionMethods: true },
   };
   const ae = await AfterEffects.launch(launchOptions);
-  let bound = null;
-  try {
-    await check("handshake, edit, render, extension call, undeclared refusal", async () => {
-      bound = await runScenarios({ ae, channelDir, hostScript: HOST_SCRIPT });
-    });
-  } finally {
-    // Sessions below need the dispatcher answering; the main session is
-    // closed only after every scenario, with the edits we made discarded —
-    // the fixture project on disk is never written.
-  }
-
-  // 6. Unauthorized refusal: a second session without the grant cannot call
-  //    the extension even though it is registered.
-  const transport2 = new DispatcherTransport({ channelDir, hostScriptPath: HOST_SCRIPT });
-  const ae2 = await AfterEffects.launch({
-    transport: transport2,
-    sessionRoot: tmp("a8n-acc-session2-"),
+  // The main session stays open for every scenario and is closed last, with
+  // the edits we made discarded — the fixture project on disk is never
+  // written.
+  let boundInstance = null;
+  await check("handshake, edit, render, extension call, undeclared refusal", async () => {
+    boundInstance = (await runScenarios(ae)).instance;
   });
-  await check("unauthorized extension call refused", async () => {
-    let refused = null;
-    try {
-      await ae2.call("acceptance.ping", { value: 1 });
-    } catch (error) {
-      refused = error;
-    }
-    assert(refused instanceof HostNotOwnedError, "expected HostNotOwnedError, got " + (refused && refused.name));
-  });
-  await ae2.close();
 
-  // 7. Instance pinning: a wrong pin is refused, the reported pin reconnects.
-  if (bound !== null) {
-    await check("wrong instance pin refused", async () => {
-      let refused = null;
-      try {
-        await AfterEffects.launch({
-          transport: { kind: "in-ae-dispatcher", channelDir, instance: "not-the-instance" },
-          hostScript: HOST_SCRIPT,
-          sessionRoot: tmp("a8n-acc-session3-"),
-        });
-      } catch (error) {
-        refused = error;
-      }
-      assert(refused !== null, "launch with a wrong instance pin was not refused");
-    });
-    const ae3 = await AfterEffects.launch({
-      transport: { kind: "in-ae-dispatcher", channelDir, instance: bound.instance },
-      hostScript: HOST_SCRIPT,
-      sessionRoot: tmp("a8n-acc-session4-"),
-      authorization: { extensionMethods: true },
-    });
-    const hs3 = await ae3.capabilities();
-    assert(
-      hs3.target.dispatcherInstance === bound.instance,
-      "reconnect bound a different instance",
-    );
-    await ae3.close();
-  }
+  // Sessions below need the dispatcher answering.
+  await runIsolationChecks({ channelDir, instance: boundInstance });
 
   // 8. UNKNOWN is never resent: with the dispatcher stopped, a call times
   //    out and exactly one request file remains — nothing is retried.
@@ -397,19 +402,14 @@ async function realLane() {
     if (PROJECT !== null) {
       await ae.openProject(PROJECT);
     }
+    let boundInstance = null;
     await check("handshake, edit, render, extension call, undeclared refusal", async () => {
-      await runScenarios({ ae, channelDir, hostScript: HOST_SCRIPT });
+      boundInstance = (await runScenarios(ae)).instance;
     });
-    const hs = await ae.capabilities();
-    const instance = hs.target.dispatcherInstance;
-    if (typeof instance === "string" && instance.length > 0) {
-      const ae2 = await AfterEffects.launch({
-        transport: { kind: "in-ae-dispatcher", channelDir, instance },
-        hostScript: HOST_SCRIPT,
-        sessionRoot: tmp("a8n-acc-session2-"),
-      });
-      await ae2.close();
-    }
+    // The same isolation checks as the fake lane: unauthorized refusal,
+    // wrong-pin refusal, pinned reconnect. UNKNOWN non-resend stays
+    // fake-lane-only — a human cannot be asked to stop the dispatcher.
+    await runIsolationChecks({ channelDir, instance: boundInstance });
 
     console.log("real lane results:");
     for (const line of results) console.log("  " + line);
@@ -453,11 +453,6 @@ if (mode === "fake") {
     try {
       const output = run(process.execPath, [probePath, mode], {
         cwd: workdir,
-        env: {
-          ...process.env,
-          A8N_ACCEPTANCE_HOST_SCRIPT: hostScriptPath,
-          ...(projectPath === null ? {} : {}),
-        },
         stdio: ["ignore", "pipe", "pipe"],
       });
       return { ok: true, output: String(output) };
