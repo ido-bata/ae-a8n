@@ -68,6 +68,14 @@ jobs:
       - name: Verify the public API from an installed package
         run: node scripts/check-public-api.js
 
+      # The consumer acceptance smoke (#130): pack, install into a clean
+      # project, import through the published exports map, and check the API
+      # surface a consumer codes against. The real-host steps skip when no
+      # After Effects is discoverable — a green run here is packaging
+      # evidence, not real-host acceptance.
+      - name: Verify the consumer smoke from a clean install
+        run: node scripts/check-consumer-smoke.js
+
   # Issue #16: the release tooling's tests on native Windows, checked out as
   # Git for Windows does by default (core.autocrlf=true, so CRLF files). Only
   # these files: the rest of the suite's Windows status belongs to the Windows
@@ -157,3 +165,6 @@ jobs:
 
       - name: Verify the public API from an installed package
         run: node scripts/check-public-api.js
+
+      - name: Verify the consumer smoke from a clean install
+        run: node scripts/check-consumer-smoke.js
