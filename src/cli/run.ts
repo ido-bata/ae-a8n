@@ -46,6 +46,7 @@ import {
   type TargetInfo,
 } from "./envelope.js";
 import { runAgentCommand } from "./agent.js";
+import { runDispatcherCommand } from "./dispatcher.js";
 import { runExtensionCommand } from "./extension.js";
 import { EXIT, type ExitCode } from "./exit-code.js";
 import {
@@ -833,6 +834,17 @@ export async function runCli(
 
   if (argv[0] === "extension") {
     const result = await runExtensionCommand(argv.slice(1));
+    return result.exitCode as ExitCode;
+  }
+
+  // `dispatcher` is likewise outside the five contract commands: it drives
+  // the in-AE dispatcher lifecycle and takes its own flags.
+  if (argv[0] === "dispatcher") {
+    const result = await runDispatcherCommand(argv.slice(1), {
+      ...(input.writeOut === undefined ? {} : { writeOut: input.writeOut }),
+      ...(input.writeErr === undefined ? {} : { writeErr: input.writeErr }),
+      ...(input.now === undefined ? {} : { now: input.now }),
+    });
     return result.exitCode as ExitCode;
   }
   const deps = dependencies(input);

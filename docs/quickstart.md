@@ -141,7 +141,26 @@ await ae.close({ unsavedChanges: "discard" }); // 自分が作った変更を捨
 - うまくいかない時はまず `ae-a8n doctor` を再実行する。権限や AE の
   バージョンが変わっていれば `unproven`/`blocker` として出る。
 
-## 8. 詰まった時
+## 8. in-AE dispatcher モード（opt-in・実機未検証）
+
+既定の script-invocation に加えて、**人間が AE 内で一度だけ有効化する dispatcher 経路**がある（`transport: "in-ae-dispatcher"`）。呼び出しごとの OS automation を通常経路から外す opt-in で、dispatcher が応答しなくても script-invocation へ fallback しない。
+
+```sh
+npx @ido-bata/ae-a8n dispatcher prepare   # channel と activate.jsx を用意（冪等）
+# → 起動済みの AE で File > Scripts > Run Script File → activate.jsx（人間の操作）
+npx @ido-bata/ae-a8n dispatcher status    # 接続確認。blocked/unknown は pass ではない
+```
+
+```ts
+const ae = await AfterEffects.launch({ transport: "in-ae-dispatcher" });
+```
+
+- dispatcher session は常に `attached`（所有権を証明できない）で、**`ae.close()` は AE を終了しない**。操作には `authorization` の明示 grant が要る。
+- 起動時の自動有効化は `dispatcher startup install`（per-user `Scripts/Startup`。**startup 実行は macOS/Windows とも実機未検証**）。
+- `ae-a8n doctor` は script-invocation 経路と環境の診断。dispatcher の生死は `dispatcher status` が見る。
+- 詳細と契約は [docs/in-ae-dispatcher.md](in-ae-dispatcher.md)。
+
+## 9. 詰まった時
 
 - doctor の各チェックには `remedy`（人間向けの直し方）が付く。
   `--json` で `checks[].evidence` を見れば、何を読んでそう判断したかが分かる。
