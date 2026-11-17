@@ -47,6 +47,18 @@ node examples/smoke.ts ["$PWD/project.aep"]
 
 pack 済み package を install した consumer から、あるいは repo の examples として直接実行する最小 smoke。read-only で、AE が見つからなければ skip を表示して exit 0。**exit 0 + skip 表示は pass ではない** — 記録するときは §4 のレベルを使う。
 
+### 1.4 dispatcher 受入: `scripts/check-dispatcher-acceptance.js`（#148）
+
+in-AE dispatcher 経路を consumer が実際に踏む受入ハーネス。`check-consumer-smoke.js` の pack→clean install に続けて、consumer 側の extension fixture を packed CLI（`ae-a8n extension build`）で build し、probe が 2 つの lane を実行する:
+
+```sh
+node scripts/check-dispatcher-acceptance.js --project /absolute/path/fixture.aep
+```
+
+- **fake lane（常に実行・AE 不要）**: pack した `@ido-bata/ae-a8n/testing` の fake AE が dispatcher を内側で動かし、実 `host/a8n-host.js`・実 channel ファイルで次を検査する: capability handshake と instance 識別、comp/layer 編集、`comp.renderFrame` の PNG 成果物、static extension `ae.call` 成功・未宣言名拒否・grant 無し拒否、誤った instance pin の拒否と正しい pin での再接続、timeout=UNKNOWN 非再送、attached での安全な終了（quit しない）。証拠レベルは **`fake/mock only`** — real-host の証拠にはならない。
+- **real lane（opt-in・人間 activation 前提）**: `--project` の明示 fixture が必須（開いている project や無指定の project では編集・render を行わない）。probe が channel を prepare し `activate.jsx` のパスを表示、human が AE で Run Script File するのを heartbeat が来るまで待つ（`A8N_ACCEPTANCE_WAIT_MS`、既定 10 分）。来なければ `RESULT: blocked` で、pass ではない。fake lane と同じ scenario を real AE で実行するが、UNKNOWN 非再送は dispatcher を人間が止められないため fake lane のみ。
+- `A8N_ACCEPTANCE_SKIP_REAL=1` は real lane を skip するだけで pass を捏造しない。CI はこの形で fake lane のみを回す。
+
 ## 2. consumer が ae-a8n に求めるもの（棚卸し）
 
 ### 2.1 ae-test [#19](https://github.com/ido-bata/ae-test/issues/19)（isolated real-host consumer）
@@ -84,8 +96,8 @@ consumer 受入（G4）の前に、次の 3 点を「ある」と言えるかを
 
 **ここに挙げるものは ae-a8n 側で実装しない。** consumer 固有処理は downstream に残し、generic に必要な欠落だけを ae-a8n の ticket に変換する。現時点の候補:
 
-- **G-a: disposable project / fixture 生成 API が無い。** `ae.project()` は開いている project の handle であり、新規 `.aep` の作成や comp/solid の生成を package からは行えない。consumer は fixture `.aep` を各自用意する必要がある。ae-test / Aulymo が必要とする最小 fixture の形を確認し、generic な `project.new` 相当が要るかを別 Issue で判断する。
-- **G-b: smoke が render / extension call を含まない。** `check-consumer-smoke.js` と `examples/smoke.ts` は launch→version→project→close の read-only 経路のみ。consumer 受入（US4 の「同じ named extension API と trace/report schema」）を満たすには、render・`ae.call` を含む経路を受入手順に追加するかを G4 で判断する。
+- ~~**G-a: disposable project / fixture 生成 API が無い。**~~ **解決済み（#148 T1）**: 判定は「generic な `project.new` は今回も実装せず、disposable project は operator 提供の明示 fixture（`--project`）で受ける」。編集・render を伴う受入が無指定の project を触る危険を避けるため、fixture は常に人間が指定する。ae-test / Aulymo が generic な project 生成を具体的に要求した時点で別 Issue 化する。
+- ~~**G-b: smoke が render / extension call を含まない。**~~ **解決済み（#148 T2–T4）**: `scripts/check-dispatcher-acceptance.js` が dispatcher 経路で handshake・編集・render（PNG 検証）・static extension `ae.call`・認可拒否・instance pin/再接続・UNKNOWN 非再送・安全終了を fake lane で自動検証し、real lane（人間 activation + `--project` fixture）で同じ scenario を実機確認する。
 - **G-c: `latest` dist-tag が `0.1.0-alpha.0` のまま。** `0.1.0-alpha.2` は `next` 配下。consumer は exact pin で回避済みだが、stable/latest 昇格は #63/#75 の gate 待ち。コード変更ではなく release 判断。
 - **G-d: Windows の real-host 証跡が古い / UNVERIFIED 項目が残る。** `docs/windows-verification.md` 参照。#75 の gate が candidate commit と tarball に紐付けて要求する。
 
@@ -110,3 +122,5 @@ consumer 受入（G4）の前に、次の 3 点を「ある」と言えるかを
 | blocked conditions | isolated lane 未整備、TCC 未付与、modal 残存など、再現に必要な前提 |
 
 `scripts/check-consumer-smoke.js` の出力は `RESULT: real-host pass` / `RESULT: skipped — …` を出し、末尾に到達レベルを明示する。skip 出力を「受入完了」と読み替えないこと。
+
+`check-dispatcher-acceptance.js` は lane ごとに別々に記録する: fake lane の `RESULT: fake pass` は **`fake/mock only`**、real lane の `RESULT: real-host pass` のみが `verified on real host` の候補になる。real lane が `blocked`（人間 activation 無し・AE 未起動）や skip の場合、dispatcher scenario の real-host 受入は**未実施**として扱う。

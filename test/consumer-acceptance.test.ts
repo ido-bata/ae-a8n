@@ -16,6 +16,7 @@ const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.ur
 
 const doc = read("docs/consumer-acceptance.md");
 const script = read("scripts/check-consumer-smoke.js");
+const dispatcherScript = read("scripts/check-dispatcher-acceptance.js");
 const example = read("examples/smoke.ts");
 const workflow = read(".github/workflows/ci.yml");
 
@@ -70,6 +71,45 @@ describe("scripts/check-consumer-smoke.js", () => {
   });
 });
 
+describe("scripts/check-dispatcher-acceptance.js (#148)", () => {
+  it("packs and clean-installs the candidate like the consumer smoke", () => {
+    expect(dispatcherScript).toContain("npmCommand");
+    expect(dispatcherScript).toContain('"pack"');
+    expect(dispatcherScript).toContain("mkdtempSync");
+    expect(dispatcherScript).toContain('"install"');
+  });
+
+  it("builds the extension fixture through the packed CLI", () => {
+    expect(dispatcherScript).toContain("extension");
+    expect(dispatcherScript).toContain("build");
+    expect(dispatcherScript).toContain("acceptance.ping");
+  });
+
+  it("covers the dispatcher scenarios in a fake lane and a human-gated real lane", () => {
+    for (const needle of [
+      "capabilities()",
+      "addTextLayer",
+      "renderFrame",
+      "ae.call",
+      "dispatcherInstance",
+      "HostNotOwnedError",
+      "TimeoutError",
+      "quitCount",
+      "in-ae-dispatcher",
+    ]) {
+      expect(dispatcherScript).toContain(needle);
+    }
+    // The real lane must wait for a human activation and report blocked,
+    // never a pass, when no heartbeat arrives.
+    expect(dispatcherScript).toContain("RESULT: blocked");
+    expect(dispatcherScript).toContain("A8N_ACCEPTANCE_WAIT_MS");
+    expect(dispatcherScript).toContain("A8N_ACCEPTANCE_SKIP_REAL");
+    // Fake-lane evidence is labelled, not passed off as real-host.
+    expect(dispatcherScript).toContain("fake/mock only");
+    expect(dispatcherScript).toContain("RESULT: real-host pass");
+  });
+});
+
 describe("examples/smoke.ts", () => {
   it("is the read-only consumer smoke and degrades without AE", () => {
     expect(example).toContain("AfterEffects.launch");
@@ -83,5 +123,12 @@ describe("CI wiring", () => {
   it("runs the consumer smoke on both check and windows jobs", () => {
     const runs = workflow.match(/node scripts\/check-consumer-smoke\.js/g) ?? [];
     expect(runs.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("runs the dispatcher acceptance fake lane on both check and windows jobs", () => {
+    const runs = workflow.match(/node scripts\/check-dispatcher-acceptance\.js/g) ?? [];
+    expect(runs.length).toBeGreaterThanOrEqual(2);
+    // CI must not attempt the real lane: it needs a human activation.
+    expect(workflow.match(/A8N_ACCEPTANCE_SKIP_REAL/g)?.length).toBeGreaterThanOrEqual(2);
   });
 });
