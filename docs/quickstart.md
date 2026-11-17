@@ -27,11 +27,11 @@ npm install @ido-bata/ae-a8n@next
 ```
 
 Node 22 以上が必要。`@next` dist-tag の公開済み最新版は `0.1.0-alpha.2`。
-`0.2.0-beta.1` は公開予定の prerelease 候補で（`latest` は
-`0.1.0-alpha.0` のまま）、in-AE dispatcher 経路は macOS AE 26.5.3 で
+`0.2.0` は `next` 向け公開予定の早期リリース（`0.x`、`latest` は
+`0.1.0-alpha.0` のまま）。in-AE dispatcher 経路は macOS AE 26.5.3 で
 実機検証済み・Windows は未検証。公開後は
 `npm view @ido-bata/ae-a8n@next version` で確認する。詳細は README の
-Alpha 注記。
+早期リリース注記。
 
 ## 2. 初期診断
 

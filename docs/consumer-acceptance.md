@@ -115,7 +115,7 @@ consumer 受入（G4）の前に、次の 3 点を「ある」と言えるかを
 
 ## 4. 検証レベルの記録形式（偽らないためのテンプレート）
 
-ルール: AGENTS.md の verification taxonomy に従う。`automated test`（pack 内容検査・CI green）を `verified on real host` と書かない。`fake/mock only` を「動く」と報告しない。**実機未受入の経路を stable / latest として公開しない** — G4 の real-host consumer 受入が通るまで prerelease（`next`）に留め、README / CHANGELOG / 本 Issue に未検証であることを明記する。
+ルール: AGENTS.md の verification taxonomy に従う。`automated test`（pack 内容検査・CI green）を `verified on real host` と書かない。`fake/mock only` を「動く」と報告しない。**実機未受入の経路を `latest` として昇格しない** — real-host consumer 受入が通るまで `next` dist-tag に留め、README / CHANGELOG / 本 Issue に未検証であることを明記する。`0.x` version に prerelease suffix を必須としない（#165 の方針変更）— 未検証範囲は version 番号ではなく記述で担保する。
 
 受入実行ごとに次の表を記録する（Issue コメント・PR・`docs/evidence/` のいずれか）:
 

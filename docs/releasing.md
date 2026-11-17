@@ -13,12 +13,13 @@ first staged release is `0.1.0-alpha.2` and `alpha.1` is not reused.
 dist-tag — that is a publish, not a promotion. Moving `latest` is a separate
 act that requires the cross-platform real-host evidence gate (#75, T093):
 both platforms' evidence files tied to the exact candidate commit and
-tarball. Until that gate exists, `scripts/check-release.js` refuses any
-version without a prerelease component, so a stable `x.y.z` cannot be
-staged by accident. A candidate whose real-host coverage is incomplete is
-published as an explicit prerelease (`x.y.z-beta.N`), with README,
-CHANGELOG, the package description and the evidence record saying exactly
-what is unverified (#63 T092/T093, `docs/consumer-acceptance.md` §4).
+tarball. A `0.x` version is an early-development release: its unverified
+scope is stated in README, CHANGELOG, the package description and the
+evidence record rather than encoded in a prerelease suffix
+(`docs/consumer-acceptance.md` §4). `scripts/check-release.js` enforces the
+`next`-only publish config (`tag`, `provenance`, `access`) and the tag =
+`v<version>` precondition; it does not decide which versions are
+evidence-complete — that judgement stays with the human release step.
 
 ## What stops an accidental or double publish
 

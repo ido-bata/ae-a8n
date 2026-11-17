@@ -1,16 +1,17 @@
 # Changelog
 
-## 0.2.0-beta.1
+## 0.2.0
 
-To be published under the `next` dist-tag; `latest` stays on `0.1.0-alpha.0`.
-This is a **prerelease**: the `release-0-2-0` train — the opt-in in-AE
-dispatcher transport with static consumer extensions, its lifecycle CLI,
-and the packed-consumer acceptance harness, on top of the isolated
-testing, capability handshake, GUI recovery and session-marker work merged
-since `0.1.0-alpha.2`. It is numbered `-beta.1` rather than `0.2.0` because
-the new dispatcher paths have no Windows real-host evidence; their
-real-host coverage is macOS AE 26.5.3 only. A stable `0.2.0` requires the
-cross-platform evidence gate (#75) first.
+Staged for the `next` dist-tag; `latest` stays on `0.1.0-alpha.0`. This is
+the `release-0-2-0` train — the opt-in in-AE dispatcher transport with
+static consumer extensions, its lifecycle CLI, and the packed-consumer
+acceptance harness, on top of the isolated testing, capability handshake,
+GUI recovery and session-marker work merged since `0.1.0-alpha.2`. As a
+`0.x` version it is an early-development release: the API may change
+before 1.0.0, and the scope without Windows real-host evidence is stated
+under "Not proven in this version" rather than encoded in the version
+number. A `latest` promotion still requires the cross-platform evidence
+gate (#75).
 
 ### Added
 
