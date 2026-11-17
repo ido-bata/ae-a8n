@@ -46,7 +46,7 @@ import { fileURLToPath } from "node:url";
 
 import { es3StringLiteral, toPosixPath } from "./bootstrap.js";
 import { HostUnavailableError } from "./driver.js";
-import { readExtensionManifest } from "../extensions/manifest.js";
+import { readExtensionManifest, type ExtensionManifest } from "../extensions/manifest.js";
 import {
   channelAclVerdict,
   icaclsCommand,
@@ -148,10 +148,8 @@ export type DispatcherHeartbeat = {
 };
 
 /** The staged host script's identity, recorded in `channel.json`. */
-export type StagedHostManifest = {
+export type StagedHostManifest = ExtensionManifest & {
   readonly sha256: string;
-  readonly methods: readonly string[];
-  readonly registration: string | null;
 };
 
 const CHANNEL_META = "channel.json";
@@ -475,29 +473,29 @@ export class DispatcherTransport implements HostTransport {
    */
   #stageHostScript(channel: string): void {
     const target = join(channel, "a8n-host.js");
-    if (this.#hostScriptPath === undefined) {
-      const shipped = join(HOST_DIR, "a8n-host.js");
-      copyFileSync(shipped, target);
-      const source = readFileSync(shipped);
-      this.#stagedHost = {
-        sha256: createHash("sha256").update(source).digest("hex"),
-        methods: [],
-        registration: null,
-      };
-      return;
-    }
+    // Read the effective bytes once: the staged file, the recorded sha256
+    // and the parsed manifest all describe the same buffer.
     let source: Buffer;
-    try {
-      source = readFileSync(this.#hostScriptPath);
-    } catch (error) {
-      throw new HostUnavailableError(
-        `host script not found: ${this.#hostScriptPath} (${messageOf(error)})`,
-      );
+    if (this.#hostScriptPath === undefined) {
+      source = readFileSync(join(HOST_DIR, "a8n-host.js"));
+    } else {
+      try {
+        source = readFileSync(this.#hostScriptPath);
+      } catch (error) {
+        throw new HostUnavailableError(
+          `host script not found: ${this.#hostScriptPath} (${messageOf(error)})`,
+        );
+      }
     }
     writeFileSync(target, source);
+    const sha256 = createHash("sha256").update(source).digest("hex");
+    if (this.#hostScriptPath === undefined) {
+      this.#stagedHost = { sha256, methods: [], registration: null };
+      return;
+    }
     const manifest = readExtensionManifest(source.toString("utf-8"));
     this.#stagedHost = {
-      sha256: createHash("sha256").update(source).digest("hex"),
+      sha256,
       methods: manifest === null ? [] : [...manifest.methods],
       registration: manifest === null ? null : manifest.registration,
     };
@@ -581,13 +579,25 @@ export class DispatcherTransport implements HostTransport {
         return null;
       }
       const beat = raw as DispatcherHeartbeat;
+      // Extension fields are fail-closed: absent means a pre-#146 heartbeat
+      // (normalised to "none"), but a field that is *present and malformed*
+      // invalidates the whole heartbeat — filtering it could make a wrong
+      // set compare equal to the staged one.
+      const rawRecord = raw as unknown as Record<string, unknown>;
+      if (
+        ("extensionMethods" in rawRecord &&
+          (!Array.isArray(rawRecord["extensionMethods"]) ||
+            !rawRecord["extensionMethods"].every((name) => typeof name === "string"))) ||
+        ("extensionsRegistration" in rawRecord &&
+          rawRecord["extensionsRegistration"] !== null &&
+          typeof rawRecord["extensionsRegistration"] !== "string")
+      ) {
+        return null;
+      }
       return {
         ...beat,
-        // Heartbeats written before #146 carry neither field; they normalise
-        // to "no extensions, no registration", which a staged extension set
-        // then mismatches at launch() rather than being trusted.
         extensionMethods: Array.isArray(beat.extensionMethods)
-          ? beat.extensionMethods.filter((name): name is string => typeof name === "string")
+          ? [...beat.extensionMethods]
           : [],
         extensionsRegistration:
           typeof beat.extensionsRegistration === "string" ? beat.extensionsRegistration : null,
@@ -699,6 +709,20 @@ export class DispatcherTransport implements HostTransport {
   }
 
   /**
+   * The extension method names the answering dispatcher reports *right
+   * now* in its heartbeat (#146), or null when no fresh heartbeat exists —
+   * "cannot say" is never reported as "none registered". The optional
+   * `HostTransport.activeExtensionMethods` hook.
+   */
+  activeExtensionMethods(): readonly string[] | null {
+    const beat = this.#readHeartbeat();
+    if (beat === null || this.#now() - beat.lastTick > this.#heartbeatStaleMs) {
+      return null;
+    }
+    return beat.extensionMethods ?? [];
+  }
+
+  /**
    * The dispatcher instance this session is bound to, or null before
    * `launch()` binds one. Evidence for target identification and reconnect
    * pinning — never authority for ownership.
@@ -723,6 +747,26 @@ export class DispatcherTransport implements HostTransport {
         `the answering dispatcher is now instance ${beat.instance}, not the ` +
           `${this.#boundInstance} this session bound to; the request was not sent`,
       );
+    }
+    // The extension set is fixed at activation, so a heartbeat that still
+    // names this instance but reports a different set means the channel's
+    // state file was replaced underneath the session — refuse rather than
+    // let the call reach a dispatcher whose real set is unproven (#146).
+    const bound = this.#boundExtensions;
+    if (bound !== null && beat !== null) {
+      const active = [...(beat.extensionMethods ?? [])].sort();
+      const expected = [...bound.methods].sort();
+      const same =
+        active.length === expected.length &&
+        active.every((name, index) => name === expected[index]) &&
+        (beat.extensionsRegistration ?? null) === bound.registration;
+      if (!same) {
+        throw new ScriptNotSentError(
+          "the answering dispatcher's extension set no longer matches what this " +
+            "session verified at launch; the request was not sent. Reactivate the " +
+            "dispatcher (restart After Effects, then run activate.jsx again).",
+        );
+      }
     }
   }
 

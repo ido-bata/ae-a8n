@@ -660,9 +660,16 @@ export class AfterEffects {
     // the staged declaration is the effective set.
     if (transport instanceof DispatcherTransport) {
       const bound = transport.boundExtensions();
-      if (bound !== null) {
-        extensionMethods = bound.methods;
+      if (bound === null) {
+        // launch() verified the staged manifest against the heartbeat, so a
+        // missing bound set means the verification never ran — fail closed
+        // rather than expose the staged declaration as if it were active.
+        throw new AfterEffectsError(
+          "the dispatcher session bound without a verified extension set; nothing was started",
+          op,
+        );
       }
+      extensionMethods = bound.methods;
     }
     // The grant is evidence, not just enforcement: the trace records which
     // operation classes this session may exercise on a host it does not own.

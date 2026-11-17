@@ -99,6 +99,8 @@ function channelToken(dir: string): string {
 type FakePeer = {
   readonly app: FakeApplication;
   readonly engineGlobal: Record<string, unknown>;
+  /** The script context global — where `__a8n` and its extension table live. */
+  readonly globals: Record<string, unknown>;
   readonly tick: () => void;
 };
 
@@ -121,6 +123,7 @@ function activateFakeDispatcher(dir: string): { peer: FakePeer; outcome: ReturnT
     peer: {
       app,
       engineGlobal,
+      globals: outcome.globals,
       tick: typeof tick === "function" ? (tick as () => void) : () => {},
     },
     outcome,
@@ -967,5 +970,97 @@ describe("static extensions through the dispatcher (#146)", () => {
       "utf-8",
     );
     await expect(transport.launch()).rejects.toThrow(/different extension set/);
+  });
+
+  it("keeps answering with the activation-time extension snapshot after the table mutates", async () => {
+    const dir = channelDir();
+    const built = buildExtensionHost([ECHO]);
+    const { ae, peer } = await launchAgainstDispatcher({
+      dir,
+      session: sessionRoot(),
+      hostScript: built.path,
+      authorization: { extensionMethods: true },
+    });
+
+    // Another script inside the same AE mutates the live table: it injects
+    // a name and replaces the registered function. The dispatcher captured
+    // its function table once at activation (#146), so neither change is
+    // adopted — the heartbeat still reports the fixed set.
+    const extensions = (peer.globals["__a8n"] as { extensions: Record<string, unknown> })
+      .extensions;
+    extensions["aulymo.injected"] = () => "pwned";
+    extensions["aulymo.echo"] = () => "replaced";
+
+    const call = ae.call("aulymo.echo", { value: "still-original" });
+    await waitFor(
+      () => readdirSync(join(dir, "inbox")).some((n) => n.endsWith(".request.json")),
+      "extension request",
+    );
+    peer.tick();
+    // The activation-time function answered, not the replacement.
+    await expect(call).resolves.toBe("still-original");
+
+    // And the API still refuses the injected name before it reaches the
+    // channel — the heartbeat-reported set is the bound set.
+    const inboxBefore = readdirSync(join(dir, "inbox")).length;
+    await expect(ae.call("aulymo.injected")).rejects.toBeInstanceOf(
+      ExtensionMethodNotFoundError,
+    );
+    expect(readdirSync(join(dir, "inbox"))).toHaveLength(inboxBefore);
+
+    await ae.close();
+  });
+
+  it("refuses calls once the heartbeat reports a different extension set", async () => {
+    const dir = channelDir();
+    const built = buildExtensionHost([ECHO]);
+    const { ae } = await launchAgainstDispatcher({
+      dir,
+      session: sessionRoot(),
+      hostScript: built.path,
+      authorization: { extensionMethods: true },
+    });
+
+    // Same instance, different extension set: the state file was replaced
+    // underneath the session. The next call must be refused before the
+    // request is written, not answered against an unproven set.
+    const state = JSON.parse(readFileSync(join(dir, "state.json"), "utf-8")) as Record<
+      string,
+      unknown
+    >;
+    state["extensionMethods"] = ["aulymo.other"];
+    writeFileSync(join(dir, "state.json"), JSON.stringify(state), "utf-8");
+
+    const inboxBefore = readdirSync(join(dir, "inbox")).length;
+    await expect(ae.call("aulymo.echo", { value: 1 })).rejects.toThrow(
+      /extension set[\s\S]*not sent|not sent[\s\S]*reactivate/i,
+    );
+    expect(readdirSync(join(dir, "inbox"))).toHaveLength(inboxBefore);
+    await ae.close();
+  });
+
+  it("treats a malformed extensionMethods heartbeat as no heartbeat", async () => {
+    const dir = channelDir();
+    const built = buildExtensionHost([ECHO]);
+    const transport = new DispatcherTransport({ channelDir: dir, hostScriptPath: built.path });
+    await transport.prepare();
+    writeFileSync(
+      join(dir, "state.json"),
+      JSON.stringify({
+        v: 1,
+        token: channelToken(dir),
+        instance: "i1",
+        aeVersion: "26.0.0",
+        activatedAt: Date.now(),
+        lastTick: Date.now(),
+        pollMs: 250,
+        // Filtering this to ["aulymo.echo"] could make a wrong set compare
+        // equal — a present-but-malformed field invalidates the heartbeat.
+        extensionMethods: ["aulymo.echo", 123],
+        extensionsRegistration: null,
+      }),
+      "utf-8",
+    );
+    await expect(transport.launch()).rejects.toThrow(/no fresh|heartbeat/i);
   });
 });

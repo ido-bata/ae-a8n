@@ -982,6 +982,22 @@
   }
 
   /**
+   * A shallow copy of the registered extension functions, taken once at
+   * dispatcher activation. Dispatch resolves against this snapshot so the
+   * set the heartbeat reports is the set that actually answers (#146).
+   */
+  function snapshotExtensionFunctions() {
+    var table = extensionTable();
+    var copy = {};
+    for (var key in table) {
+      if (has(table, key) && typeof table[key] === "function") {
+        copy[key] = table[key];
+      }
+    }
+    return copy;
+  }
+
+  /**
    * The registration fingerprint the build prelude left on `__a8n`, or null
    * when the running script was not built by `ae-a8n extension build`. It is
    * copied into the heartbeat verbatim — the host never recomputes it.
@@ -995,7 +1011,7 @@
     return typeof value === "string" && value.length > 0 ? value : null;
   }
 
-  function dispatch(request) {
+  function dispatch(request, extensionOverride) {
     if (request === null || typeof request !== "object") {
       throw new Error("request envelope is not an object");
     }
@@ -1009,7 +1025,11 @@
     // `extensions[name]` — undefined — and every call failed with "unknown
     // method". An explicitly grouped conditional and plain `if` both evaluate
     // correctly; this form is also correct in Node, so the fake host agrees.
-    var extensions = extensionTable();
+    // `extensionOverride` is the dispatcher path's activation-time snapshot
+    // (#146): the heartbeat reports that fixed set, so dispatch must resolve
+    // against the same fixed set — a later mutation of `__a8n.extensions`
+    // cannot widen what the dispatcher answers for.
+    var extensions = extensionOverride === undefined ? extensionTable() : extensionOverride;
     var method;
     if (has(methods, request.method)) {
       method = methods[request.method];
@@ -1220,7 +1240,7 @@
       stale.name = "StaleRequestError";
       throw stale;
     }
-    var result = dispatch(request);
+    var result = dispatch(request, state.extensionFunctions);
     return {
       v: request.v,
       id: id,
@@ -1239,14 +1259,12 @@
       activatedAt: state.activatedAt,
       lastTick: new Date().getTime(),
       pollMs: state.pollMs,
-      // The extension set this dispatcher actually registered (#146). It is
-      // captured once at activation: the table cannot change afterwards, so
-      // a heartbeat that keeps reporting it is proof the running script is
-      // still the one that was activated — not that the staged file matches.
-      extensionMethods:
-        state.extensionMethods === undefined ? [] : state.extensionMethods,
-      extensionsRegistration:
-        state.extensionsRegistration === undefined ? null : state.extensionsRegistration
+      // The extension set this dispatcher actually registered (#146).
+      // Captured once at activation into `state`; the table cannot change
+      // afterwards, so the heartbeat keeps reporting the fixed set — not a
+      // claim that the staged file matches.
+      extensionMethods: state.extensionMethods,
+      extensionsRegistration: state.extensionsRegistration
     };
     try {
       publishResult(state.paths.state, state.codec.stringify(report));
@@ -1412,7 +1430,11 @@
       // what this dispatcher will answer for its whole life. A host script
       // built without the extension prelude leaves both empty/null.
       extensionMethods: registeredExtensionNames(),
-      extensionsRegistration: extensionRegistration()
+      extensionsRegistration: extensionRegistration(),
+      // The function snapshot dispatch actually resolves against (#146):
+      // the heartbeat's names and this table are captured together, so a
+      // later mutation of `__a8n.extensions` cannot widen the answer set.
+      extensionFunctions: snapshotExtensionFunctions()
     };
     var tick = function () {
       dispatcherTick(state);
