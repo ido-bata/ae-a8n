@@ -191,7 +191,10 @@ Explicitly not claimed:
   therefore labelled `established OS behaviour` and are not cited to a URL.
   Before a release, each is re-checked against Microsoft documentation and the
   check is recorded with a date.
-- No Windows acceptance was performed. A Windows 11 host is reachable (§4) and
-  its environment was read, but no isolated session, script delivery, GUI
-  recovery or non-interference measurement has been run there. Nothing in this
-  document is a Windows real-host result.
+- When this decision was recorded (2026-11-10) no Windows acceptance had been
+  performed; only the host's environment had been read (§4). Real-host
+  verification has since run on that host — the dedicated-host backend
+  acceptance passed twice on 2026-11-10/11 — and is recorded in
+  `docs/windows-verification.md` and `docs/evidence/windows-2026-11-10/`, not
+  in this document. Nothing in this document is itself a Windows real-host
+  result.
