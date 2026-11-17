@@ -87,8 +87,8 @@ freeze SHA は package 内容を確定した commit を指す。本記録自体�
 | 経路 | レベル | 証拠 |
 | --- | --- | --- |
 | package / API / dispatcher fake lane | `automated test` + `fake/mock only` | CI（check / windows / verify / verify-windows / release-tooling-windows）green。`check-dispatcher-acceptance.js` fake lane が pack→clean install→全 scenario を pass |
-| dispatcher transport / extensions / CLI の real-host | **未検証（unproven）** | real lane は人間 activation が前提で未実施。`fake/mock only` を real-host と読み替えない |
-| Startup folder 実行 | **未検証（unproven）** | macOS / Windows とも実機未確認 |
+| dispatcher transport / extensions の real-host（macOS AE 26.5.3 = `26.5.3x9`） | **`verified on real host`（macOS のみ）** | 2026-11-17 実施。`check-dispatcher-acceptance.js --project fixture.aep --channel-dir … --install-dir "/Applications/Adobe After Effects 2026"` が `A8N_RESULT {"fake":"pass","real":"pass"}`。real lane 全 scenario（handshake・編集・render PNG・extension call・未宣言/未認可/誤 instance 拒否・pinned reconnect）pass、接続先 instance `i1a1e9d9e20c8b2896`、heartbeat `aeVersion:"26.5.3x9"`、cleanup「fixture reopen+discard / project left open clean」、close は `quit=false`（attached）。acceptance 中に fake 非再現の実機バグ 3 件（IIFE `this`・`Folder.isDirectory`・version suffix）を発見し PR #162 で修正済み |
+| Scripts/Startup folder 実行（macOS AE 26.5） | **`verified on real host`（macOS のみ）** | 同上の受入で `~/Library/Preferences/Adobe/After Effects/26.5/Scripts/Startup/a8n-dispatcher.jsx` が AE 起動時に dispatcher を自動 activation し heartbeat を生成することを確認。Windows の Startup 実行は未検証 |
 | Windows real-host（新規経路） | **未検証** | Windows 実機を現在利用できない。実装は停止せず、未検証として記録する |
 
 ## Mac 実機受入手順（人間が実施）
