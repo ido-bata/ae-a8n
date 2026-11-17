@@ -611,9 +611,15 @@ describe("startup placement helpers", () => {
     await transport.prepare();
 
     const installed = await transport.installStartupScript({ aeVersion: "26.5" });
-    expect(installed).toBe(
-      join(home, "Library/Preferences/Adobe/After Effects/26.5/Scripts/Startup", "a8n-dispatcher.jsx"),
-    );
+    // The Startup dir is computed with the *target* platform's separators
+    // (posix for the darwin seam); only the filename is host-joined.
+    const expectedDir = dispatcherStartupDir({
+      aeVersion: "26.5",
+      platform: "darwin",
+      homeDir: home,
+    });
+    expect(installed).toBe(join(expectedDir, "a8n-dispatcher.jsx"));
+    expect(installed).toContain("After Effects/26.5/Scripts/Startup");
     expect(readFileSync(installed, "utf-8")).toContain("ae-a8n in-AE dispatcher activation");
 
     // A foreign file at the same path is refused, not clobbered.

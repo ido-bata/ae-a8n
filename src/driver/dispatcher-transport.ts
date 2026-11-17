@@ -41,7 +41,7 @@ import {
 } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { es3StringLiteral, toPosixPath } from "./bootstrap.js";
@@ -75,7 +75,12 @@ export function defaultDispatcherChannelDir(home: string = homedir()): string {
 export type DispatcherTransportOptions = {
   /** Channel directory. Must be absolute; created private (0700) if absent. */
   readonly channelDir?: string;
-  /** Test seam: platform override. Defaults to `process.platform`. */
+  /**
+   * Test seam: the platform the *target* AE runs on — Startup placement,
+   * version probing, attestation. It does not change filesystem privacy
+   * checks, which always follow the real host (`process.platform`): mode
+   * bits mean nothing on Windows and `icacls` does not exist on POSIX.
+   */
   readonly platform?: NodeJS.Platform;
   /** Test seam: home directory for the default channel and ACL owner checks. */
   readonly homeDir?: string;
@@ -155,7 +160,10 @@ export function dispatcherStartupDir(options: {
   const env = options.env ?? process.env;
   const version = aeScriptsVersion(options.aeVersion);
   if (platform === "darwin") {
-    return join(
+    // The result names a path on the *target* platform: join with that
+    // platform's separators, not the host's — a Windows host computing a
+    // macOS path must still produce `~/Library/Preferences/...`.
+    return posix.join(
       home,
       "Library",
       "Preferences",
@@ -167,8 +175,8 @@ export function dispatcherStartupDir(options: {
     );
   }
   if (platform === "win32") {
-    const appData = env["APPDATA"] ?? join(home, "AppData", "Roaming");
-    return join(appData, "Adobe", "After Effects", version, "Scripts", "Startup");
+    const appData = env["APPDATA"] ?? win32.join(home, "AppData", "Roaming");
+    return win32.join(appData, "Adobe", "After Effects", version, "Scripts", "Startup");
   }
   throw new Error(`no per-user Scripts/Startup location is known for platform ${platform}`);
 }
@@ -272,7 +280,11 @@ export class DispatcherTransport implements HostTransport {
         `${what} must be a real ${kind === "file" ? "file" : "directory"}, not a symlink: ${path}`,
       );
     }
-    if (this.#platform === "win32") {
+    // Privacy is a property of the real filesystem, so it follows
+    // `process.platform` — never the target-platform seam: a darwin-seamed
+    // transport on a Windows host still gets the icacls ACL verdict, and a
+    // win32-seamed one on POSIX still gets mode bits.
+    if (process.platform === "win32") {
       this.#checkWindowsAcl(path, kind === "file");
       return;
     }
@@ -347,7 +359,7 @@ export class DispatcherTransport implements HostTransport {
       mkdirSync(channel, { recursive: true, mode: 0o700 });
     }
     this.#checkPrivate(channel, "the in-AE dispatcher channel");
-    if (this.#platform !== "win32") {
+    if (process.platform !== "win32") {
       chmodSync(channel, 0o700);
     }
     for (const dir of [this.#inbox(), this.#outbox()]) {
