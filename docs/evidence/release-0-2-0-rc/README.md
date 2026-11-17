@@ -27,10 +27,10 @@ prerelease へ再分類した:
 | --- | --- |
 | version | `0.2.0-beta.1` |
 | branch | `release-0-2-0` |
-| freeze SHA | `753046af39a33c25fee84a56277d55919cf634e3`（release head。PR #156〜#160 merge 済み。`--install-dir` / `--ae-version` による dispatcher 対象 version pin と real-lane cleanup 契約の修正（PR #160）を含む再 freeze。旧 freeze `d4d2804` とその tarball hash は内容変更により無効。さらに旧 freeze `9f340fa` も version・内容変更により無効） |
-| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,039 bytes） |
-| tarball shasum (sha1) | `ef7703835a0b0f83a35ce9fd623005d034dd855c` |
-| tarball integrity (sha512) | `sha512-yDL+wi8sCbVs66aFVxTjS+sN7llNcnp8qNdxrBNp4KYPtsXsLXI98ECuoIshd8JcIz970kLN7kIYPtQbuiquRA==` |
+| freeze SHA | `377c5ba0c15574c5b12c02dd07947c7fa0665c4b`（release head。PR #156〜#162 merge 済み。real ExtendScript での dispatcher activation 不成立・`Folder.isDirectory` 非存在・`app.version` build suffix の 3 件を修正（PR #162）し、AE 26.5.3 実機で heartbeat と session 完走を確認した上での再 freeze。旧 freeze `753046a`・`d4d2804`・`9f340fa` とそれぞれの tarball hash は内容変更により無効） |
+| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,483 bytes） |
+| tarball shasum (sha1) | `e1366acc89bdbea818c0e8b65e13fc65d1de26d6` |
+| tarball integrity (sha512) | `sha512-xBRI4ie38h3TmaJqgLwB/u9KwH6R+Xll5WlKFmPjRO1sVGQbf1uHs/fo5euwRtdvuD3Lb4WDwRMRcJ50PSZAuA==` |
 
 `npm pack` は同一 tree で再現する（`docs/releasing.md`）。hash が違う
 tarball はこの候補ではない。版番号・配布内容を変更した場合は旧 freeze
@@ -74,14 +74,21 @@ freeze SHA は package 内容を確定した commit を指す。本記録自体�
   実行ファイル同一性は証明しない）で修正。real lane の cleanup を
   attached session の実態に合わせ、`--project` fixture と一致する時だけ
   reopen+discard し、不一致時は残存を報告する契約に変更。
+- PR #162（#155 続き・実機で判明した fake 非再現バグ）: dispatcher
+  activation の分岐が IIFE トップレベルの `this.__a8n` に依存し real
+  ExtendScript では常に不成立だった問題を named function 化で修正、
+  real に存在しない `Folder.isDirectory` 参照を除去、`app.version` の
+  build suffix（`26.5.3x9`）を version parse が受理するよう修正。
+  AE 26.5.3 実機で Scripts/Startup activation → heartbeat →
+  handshake / comps / project.info / extension call / close を確認。
 
 ## 検証状況（verification level）
 
 | 経路 | レベル | 証拠 |
 | --- | --- | --- |
 | package / API / dispatcher fake lane | `automated test` + `fake/mock only` | CI（check / windows / verify / verify-windows / release-tooling-windows）green。`check-dispatcher-acceptance.js` fake lane が pack→clean install→全 scenario を pass |
-| dispatcher transport / extensions / CLI の real-host | **未検証（unproven）** | real lane は人間 activation が前提で未実施。`fake/mock only` を real-host と読み替えない |
-| Startup folder 実行 | **未検証（unproven）** | macOS / Windows とも実機未確認 |
+| dispatcher transport / extensions の real-host（macOS AE 26.5.3 = `26.5.3x9`） | **`verified on real host`（macOS のみ）** | 2026-11-17 実施。`check-dispatcher-acceptance.js --project fixture.aep --channel-dir … --install-dir "/Applications/Adobe After Effects 2026"` が `A8N_RESULT {"fake":"pass","real":"pass"}`。real lane 全 scenario（handshake・編集・render PNG・extension call・未宣言/未認可/誤 instance 拒否・pinned reconnect）pass、接続先 instance `i1a1e9d9e20c8b2896`、heartbeat `aeVersion:"26.5.3x9"`、cleanup「fixture reopen+discard / project left open clean」、close は `quit=false`（attached）。acceptance 中に fake 非再現の実機バグ 3 件（IIFE `this`・`Folder.isDirectory`・version suffix）を発見し PR #162 で修正済み |
+| Scripts/Startup folder 実行（macOS AE 26.5） | **`verified on real host`（macOS のみ）** | 同上の受入で `~/Library/Preferences/Adobe/After Effects/26.5/Scripts/Startup/a8n-dispatcher.jsx` が AE 起動時に dispatcher を自動 activation し heartbeat を生成することを確認。Windows の Startup 実行は未検証 |
 | Windows real-host（新規経路） | **未検証** | Windows 実機を現在利用できない。実装は停止せず、未検証として記録する |
 
 ## Mac 実機受入手順（人間が実施）
