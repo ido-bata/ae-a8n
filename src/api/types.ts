@@ -29,6 +29,24 @@ export type DispatcherTransportSelection = {
    * reached the same engine, and a different one is never operated.
    */
   readonly instance?: string;
+  /**
+   * Pin the session to one AE install (#155 follow-up): `launch()` refuses
+   * when the answering dispatcher's heartbeat `aeVersion` disagrees with
+   * this install's version on any component the heartbeat reports — a
+   * patch-level difference is refused whenever `app.version` carries one.
+   * The version is derived from the app bundle on macOS; on other
+   * platforms pass `aeVersion` instead. This is a version-level check, not
+   * executable identity — the heartbeat carries no pid or install path, so
+   * same-version installs are indistinguishable.
+   */
+  readonly installDir?: string;
+  /**
+   * Pin the session to one AE version explicitly (e.g. "26.5" or
+   * "26.5.3"), compared at the precision the heartbeat reports. Use this
+   * where `installDir` cannot derive a version (non-macOS), or to pin a
+   * version without naming an install.
+   */
+  readonly aeVersion?: string;
 };
 
 /** What `LaunchOptions.transport` accepts: a transport instance, or the named opt-in selection. */

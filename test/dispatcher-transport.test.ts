@@ -547,6 +547,53 @@ describe("public API selection and capabilities honesty", () => {
     ).rejects.toThrow(/cannot address another login session/);
   });
 
+  it("validates the install/version target pins on the dispatcher selection", async () => {
+    const dir = channelDir();
+    const session = sessionRoot();
+    const base = { kind: "in-ae-dispatcher", channelDir: dir } as const;
+
+    // installDir and aeVersion are alternative pins, never both.
+    await expect(
+      AfterEffects.launch({
+        sessionRoot: session,
+        transport: { ...base, installDir: "/nonexistent-ae", aeVersion: "26.5" },
+      }),
+    ).rejects.toThrow(/alternative pins/);
+
+    // A version that is not a version is refused before any channel work.
+    await expect(
+      AfterEffects.launch({
+        sessionRoot: session,
+        transport: { ...base, aeVersion: "not-a-version" },
+      }),
+    ).rejects.toThrow(/usable AE version/);
+
+    // An install dir that cannot yield a version fails closed on every
+    // platform (macOS reads the bundle plist; elsewhere there is no probe).
+    await expect(
+      AfterEffects.launch({
+        sessionRoot: session,
+        transport: { ...base, installDir: "/nonexistent-ae" },
+      }),
+    ).rejects.toThrow(/usable AE version/);
+  });
+
+  it("refuses through the public selection when the answering AE version differs", async () => {
+    const dir = channelDir();
+    const session = sessionRoot();
+    await new DispatcherTransport({ channelDir: dir }).prepare();
+    activateFakeDispatcher(dir); // heartbeat reports aeVersion 26.0.0
+
+    // The version check runs inside transport.launch(), before any request
+    // is written — no ticking needed for the refusal.
+    await expect(
+      AfterEffects.launch({
+        sessionRoot: session,
+        transport: { kind: "in-ae-dispatcher", channelDir: dir, aeVersion: "27.0" },
+      }),
+    ).rejects.toThrow(/not the pinned|different After Effects version/);
+  });
+
   it("reports execution mode and capped verification under the dispatcher", () => {
     const response = buildCapabilityHandshake({
       ae: { version: "26.0.0" },
@@ -719,6 +766,28 @@ describe("target binding and reconnect pinning (#145)", () => {
     const pinned = makeTransport(dir, { expectedInstance: instance });
     await pinned.launch();
     expect(pinned.boundInstance()).toBe(instance);
+    await pinned.close();
+    await transport.close();
+  });
+
+  it("pins the answering AE version and refuses a different one", async () => {
+    const dir = channelDir();
+    const transport = makeTransport(dir);
+    await transport.prepare();
+    activateFakeDispatcher(dir); // heartbeat reports aeVersion 26.0.0
+
+    // The heartbeat reports three components, so the pin is checked at
+    // that precision: a different minor AND a different patch both refuse.
+    await expect(
+      makeTransport(dir, { expectedAeVersion: "27.0" }).launch(),
+    ).rejects.toThrow(/not the pinned|different After Effects version/);
+    await expect(
+      makeTransport(dir, { expectedAeVersion: "26.0.1" }).launch(),
+    ).rejects.toThrow(/not the pinned|different After Effects version/);
+
+    // A coarser pin is verified only to the precision it names.
+    const pinned = makeTransport(dir, { expectedAeVersion: "26.0" });
+    await pinned.launch();
     await pinned.close();
     await transport.close();
   });

@@ -119,6 +119,19 @@ export type DispatcherTransportOptions = {
    * answering dispatcher's heartbeat reports a different registered set.
    */
   readonly hostScriptPath?: string;
+  /**
+   * Pin the session to one AE version (#155 follow-up): `launch()` refuses
+   * when the answering dispatcher's heartbeat `aeVersion` disagrees with
+   * the pin on any component both sides report — compared at the precision
+   * the *heartbeat* carries, so a patch-level difference is refused
+   * whenever `app.version` reports one, while a less precise heartbeat is
+   * verified only to its own precision (never claimed beyond it). This is
+   * a *version* pin, not an executable-identity proof: the heartbeat
+   * carries no pid or install path, so two installs reporting the same
+   * version are indistinguishable, and a same-version different binary
+   * would pass.
+   */
+  readonly expectedAeVersion?: string;
 };
 
 /** What `state.json` says about the activated dispatcher. */
@@ -251,7 +264,7 @@ export function dispatcherStartupDir(options: {
   throw new Error(`no per-user Scripts/Startup location is known for platform ${platform}`);
 }
 
-/** The `CFBundleShortVersionString` of an AE .app bundle, "26.x[.y]". */
+/** The `CFBundleShortVersionString` of an AE .app bundle, e.g. "26.5.3". */
 export function aeVersionFromMacBundle(appPath: string): string {
   const plist = join(appPath, "Contents", "Info.plist");
   const text = readFileSync(plist, "utf-8");
@@ -259,12 +272,46 @@ export function aeVersionFromMacBundle(appPath: string): string {
   if (short === undefined) {
     throw new Error(`cannot read CFBundleShortVersionString from ${plist}`);
   }
-  return aeScriptsVersion(short);
+  return short;
 }
 
 /** Resolves the .app bundle path from an install dir or a direct .app path. */
 export function macBundlePath(installDir: string): string {
   return installDir.endsWith(".app") ? installDir : join(installDir, `${basename(installDir)}.app`);
+}
+
+/**
+ * The AE version an install dir identifies, at the precision the install
+ * records (the bundle's `CFBundleShortVersionString`, e.g. "26.5.3"), for
+ * target pinning and Startup placement. Only macOS bundles carry a readable
+ * version; other platforms must name the version explicitly — there is no
+ * unproven version probe.
+ */
+export function aeVersionFromInstallDir(platform: NodeJS.Platform, installDir: string): string {
+  if (platform === "darwin") {
+    return aeVersionFromMacBundle(macBundlePath(installDir));
+  }
+  throw new Error(
+    "reading the AE version from an install dir is implemented for macOS only; " +
+      "pass aeVersion explicitly (unproven on this platform)",
+  );
+}
+
+/**
+ * The numeric components of an AE version ("26.5.3" → [26, 5, 3]). Throws
+ * on anything that is not at least `major.minor` of digits — the same
+ * floor `aeScriptsVersion` requires, because a pin that cannot name a
+ * minor version cannot refuse a different yearly AE.
+ */
+export function aeVersionParts(version: string): number[] {
+  const parts = version
+    .trim()
+    .split(".")
+    .map((part) => (/^\d+$/.test(part) ? Number(part) : Number.NaN));
+  if (parts.length < 2 || parts.some((part) => !Number.isFinite(part))) {
+    throw new Error(`cannot parse AE version ${JSON.stringify(version)}`);
+  }
+  return parts;
 }
 
 type PendingDelivery = {
@@ -293,6 +340,7 @@ export class DispatcherTransport implements HostTransport {
   readonly #channelDir: string;
   readonly #expectedInstance: string | undefined;
   readonly #hostScriptPath: string | undefined;
+  readonly #expectedAeVersionParts: readonly number[] | undefined;
 
   #prepared = false;
   #token: string | null = null;
@@ -328,6 +376,10 @@ export class DispatcherTransport implements HostTransport {
     this.#expectedInstance = options.expectedInstance;
     this.#hostScriptPath =
       options.hostScriptPath === undefined ? undefined : resolve(options.hostScriptPath);
+    this.#expectedAeVersionParts =
+      options.expectedAeVersion === undefined
+        ? undefined
+        : aeVersionParts(options.expectedAeVersion);
   }
 
   get channelDir(): string {
@@ -761,6 +813,38 @@ export class DispatcherTransport implements HostTransport {
           "Re-run without the instance pin, or with the instance `ae-a8n dispatcher status` reports.",
       );
     }
+    if (this.#expectedAeVersionParts !== undefined) {
+      // Version-level target binding: the heartbeat reports `app.version`
+      // but no pid or install path, so this proves the answering AE is the
+      // pinned *version*, never that it is the pinned executable. Every
+      // component both sides report must match, at the heartbeat's
+      // precision; a malformed heartbeat version fails closed the same
+      // way, and fewer than major.minor components can never satisfy a pin.
+      let answering: number[] | null = null;
+      try {
+        answering = aeVersionParts(beat.aeVersion);
+      } catch {
+        answering = null;
+      }
+      const shared =
+        answering === null
+          ? 0
+          : Math.min(this.#expectedAeVersionParts.length, answering.length);
+      const match =
+        answering !== null &&
+        shared >= 2 &&
+        this.#expectedAeVersionParts
+          .slice(0, shared)
+          .every((part, index) => part === answering[index]);
+      if (!match) {
+        throw new HostUnavailableError(
+          `the answering dispatcher reports AE ${beat.aeVersion}, not the pinned ` +
+            `${this.#expectedAeVersionParts.join(".")}: refusing to operate a different ` +
+            "After Effects version. Activate the dispatcher inside the intended install, " +
+            "or drop the version pin.",
+        );
+      }
+    }
     this.#assertExtensionSet(beat);
     this.#boundInstance = beat.instance;
   }
@@ -1116,13 +1200,9 @@ export class DispatcherTransport implements HostTransport {
     if (options.installDir === undefined) {
       throw new Error("pass aeVersion or installDir to place the dispatcher in Scripts/Startup");
     }
-    if (this.#platform === "darwin") {
-      return aeVersionFromMacBundle(macBundlePath(options.installDir));
-    }
-    throw new Error(
-      "reading the AE version from an install dir is implemented for macOS only; " +
-        "pass aeVersion explicitly (unproven on this platform)",
-    );
+    // Startup folders are named at major.minor; the install's recorded
+    // version may carry a patch component, so normalize here.
+    return aeScriptsVersion(aeVersionFromInstallDir(this.#platform, options.installDir));
   }
 
   /**
