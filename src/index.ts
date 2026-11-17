@@ -144,6 +144,7 @@ export {
   DISPATCHER_TRANSPORT_KIND,
   defaultDispatcherChannelDir,
   dispatcherStartupDir,
+  type DispatcherChannelStatus,
   type DispatcherHeartbeat,
   type DispatcherTransportOptions,
 } from "./driver/dispatcher-transport.js";

@@ -19,6 +19,24 @@ Tracking: [#127](https://github.com/ido-bata/ae-a8n/issues/127)。前提とな�
 
 同一 AE 内で二重に有効化しようとすると `__a8nDispatcherTask` ガードにより拒否される。
 
+## CLI lifecycle（#147）
+
+機械化できる部分は `ae-a8n dispatcher` が担う。**activation（AE 内での Run Script File）だけが人間の操作**で、それ以外の準備・確認・登録・解除は CLI が正確に案内する。
+
+```sh
+ae-a8n dispatcher prepare [--channel-dir <dir>]    # channel 作成 + activate.jsx 生成（冪等）
+ae-a8n dispatcher status  [--channel-dir <dir>]    # heartbeat を正直に報告
+ae-a8n dispatcher startup install|remove \
+    --ae-version <v> | --install-dir <path>        # per-user Scripts/Startup への登録・解除
+```
+
+- `prepare` / `status` は `--json` で contract envelope（`schemaVersion`/`status`/`exitCode`/`nextActions`/`facts`）1 文書を出す。人間向けには同じ事実を短いテキストで出す。
+- `prepare` の `nextActions` が「次に人間がやること」（Run Script File の対象パス、status での確認、スクリプト書き込み許可の同意）を列挙する。
+- `status` は heartbeat の `instance` / `aeVersion` / 最終 tick からの経過時間 / 登録 extension method を報告する。**無応答は `blocked`（exit 3）、heartbeat 陳腐化は `unknown`（exit 6）であり、どちらも pass ではない**。
+- `startup install|remove` は `--ae-version`（例 `26.5`）か `--install-dir`（macOS のみ、`.app`/install dir から version を導出）を要求する。他プラットフォームで installDir からの version 導出は未実装であり、Windows の Startup 実行自体が未検証（unproven）であることを出力も明記する。
+- `launch()` が dispatcher 不在で失敗する `HostUnavailableError` も、これらのコマンドと docs を次の手として示す。
+- `ae-a8n doctor` との関係: doctor は script-invocation 経路と環境の診断であり、dispatcher の生死は `ae-a8n dispatcher status` が見る。doctor の blocker が無くても dispatcher が未 activation なら launch は案内付きで失敗する。
+
 ## Startup への設置（任意・実機未検証）
 
 per-user の `Scripts/Startup` に `a8n-dispatcher.jsx` を置くと AE 起動時に自動有効化される設計だが、**startup 実行そのものは実機未検証（unproven）**。macOS の `~/Library/Preferences/Adobe/After Effects/<メジャー.マイナー>/Scripts/Startup`、Windows の `%APPDATA%\Adobe\After Effects\<メジャー.マイナー>\Scripts\Startup` に配置される。

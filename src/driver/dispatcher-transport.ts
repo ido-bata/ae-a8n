@@ -155,6 +155,26 @@ export type StagedHostManifest = ExtensionManifest & {
 const CHANNEL_META = "channel.json";
 const STATE_FILE = "state.json";
 const ACTIVATE_SCRIPT = "activate.jsx";
+
+/** What `DispatcherTransport.status()` reports (#147). */
+export type DispatcherChannelStatus = {
+  readonly channelDir: string;
+  readonly activateScriptPath: string;
+  readonly heartbeat: {
+    readonly instance: string;
+    readonly aeVersion: string;
+    readonly activatedAt: number;
+    readonly lastTick: number;
+    /** Milliseconds since the heartbeat's last tick, on the transport's clock. */
+    readonly ageMs: number;
+    /** Whether the heartbeat is fresh enough to count as answering. */
+    readonly fresh: boolean;
+    /** Extension methods the dispatcher registered at activation (#146). */
+    readonly extensionMethods: readonly string[];
+    /** The registration fingerprint it reported, or null. */
+    readonly extensionsRegistration: string | null;
+  } | null;
+};
 const STARTUP_SCRIPT_NAME = "a8n-dispatcher.jsx";
 const REQUEST_SUFFIX = ".request.json";
 const RESULT_SUFFIX = ".result.json";
@@ -612,6 +632,51 @@ export class DispatcherTransport implements HostTransport {
     return beat !== null && this.#now() - beat.lastTick <= this.#heartbeatStaleMs;
   }
 
+  /**
+   * What `ae-a8n dispatcher status` reports (#147): the channel paths, the
+   * freshest heartbeat the channel has, and whether it is still fresh.
+   * `heartbeat` is null when no dispatcher has ever answered — that is
+   * "unproven", never a pass. `extensionMethods`/`extensionsRegistration`
+   * are read defensively: heartbeats written before #146 carry neither
+   * field and report as empty/null rather than failing the read.
+   */
+  async status(): Promise<DispatcherChannelStatus> {
+    await this.prepare();
+    const beat = this.#readHeartbeat();
+    if (beat === null) {
+      return {
+        channelDir: this.#channelDir,
+        activateScriptPath: this.activateScriptPath,
+        heartbeat: null,
+      };
+    }
+    const raw = beat as unknown as Record<string, unknown>;
+    const extensionMethods = Array.isArray(raw["extensionMethods"])
+      ? (raw["extensionMethods"] as unknown[]).filter(
+          (name): name is string => typeof name === "string",
+        )
+      : [];
+    const extensionsRegistration =
+      typeof raw["extensionsRegistration"] === "string"
+        ? raw["extensionsRegistration"]
+        : null;
+    const ageMs = Math.max(0, this.#now() - beat.lastTick);
+    return {
+      channelDir: this.#channelDir,
+      activateScriptPath: this.activateScriptPath,
+      heartbeat: {
+        instance: beat.instance,
+        aeVersion: beat.aeVersion,
+        activatedAt: beat.activatedAt,
+        lastTick: beat.lastTick,
+        ageMs,
+        fresh: ageMs <= this.#heartbeatStaleMs,
+        extensionMethods,
+        extensionsRegistration,
+      },
+    };
+  }
+
   /* -------------------------------------------------------------- launch */
 
   async available(): Promise<boolean> {
@@ -639,8 +704,11 @@ export class DispatcherTransport implements HostTransport {
           `  1. In After Effects: File > Scripts > Run Script File, select\n` +
           `       ${this.activateScriptPath}\n` +
           "  2. Or install it into the per-user Scripts/Startup folder with\n" +
-          "       DispatcherTransport.installStartupScript() so it activates on AE launch.\n" +
-          "Check whether a dispatcher is answering with `ae-a8n dispatcher status`. " +
+          "       ae-a8n dispatcher startup install --ae-version <v>\n" +
+          "       (DispatcherTransport.installStartupScript() does the same from code).\n" +
+          "The lifecycle is also scriptable: `ae-a8n dispatcher prepare` stages the\n" +
+          "channel and prints these steps; `ae-a8n dispatcher status` reports what\n" +
+          "the heartbeat currently proves. " +
           "AE may ask once for 'Allow Scripts to Write Files and Access Network'; " +
           "that consent is yours to give. This transport never launches or quits AE.",
       );
