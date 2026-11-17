@@ -229,12 +229,13 @@ After Effects turned out to do and changes with it.
 ## Examples and the agent skill
 
 - [`examples/inspect.ts`](examples/inspect.ts) — install, ownership, listing; changes nothing.
+- [`examples/smoke.ts`](examples/smoke.ts) — the minimal real-host smoke: launch → version → handshake → project → close; read-only, skips cleanly without After Effects.
 - [`examples/render-compare.ts`](examples/render-compare.ts) — apply, set, render before/after, count changed pixels.
 - [`skills/after-effects-automation/SKILL.md`](skills/after-effects-automation/SKILL.md) — instructions for AI coding agents: how to use this package against a real After Effects without damaging anyone's work, and how to investigate failures. Both directories ship in the package; installing the package does not register the skill with any agent — copy it where your agent loads skills from.
 
 ## Development
 
-Contributors and coding agents: bootstrap, daily commands, worktree lifecycle, and verification levels are in [docs/development.md](docs/development.md). Agent-facing operating rules are in [AGENTS.md](AGENTS.md).
+Contributors and coding agents: bootstrap, daily commands, worktree lifecycle, and verification levels are in [docs/development.md](docs/development.md). Agent-facing operating rules are in [AGENTS.md](AGENTS.md). Consumer acceptance (clean install → real-host smoke, and what ae-test / Aulymo need) is in [docs/consumer-acceptance.md](docs/consumer-acceptance.md).
 
 ## Known risks
 
