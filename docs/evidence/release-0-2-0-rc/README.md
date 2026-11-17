@@ -1,7 +1,8 @@
 # release-0-2-0 リリース候補 (RC) 記録
 
-作成: 2026-11-17。`release-0-2-0` の ticket 統合（#145/#146/#147/#148）と
-version bump が完了した時点の候補を固定する。**これはリリースではない** —
+作成: 2026-11-17。`release-0-2-0` の ticket 統合（#145/#146/#147/#148）、
+#155 RC 監査・修正、macOS AE 26.5.3 実機受入、公開情報の整合を経た
+候補を固定する。**これはリリースではない** —
 `main` への release PR、tag、npm stage、2FA approve は人間の release 手順
 （`docs/releasing.md`）に従う。
 
@@ -27,10 +28,10 @@ prerelease へ再分類した:
 | --- | --- |
 | version | `0.2.0-beta.1` |
 | branch | `release-0-2-0` |
-| freeze SHA | `377c5ba0c15574c5b12c02dd07947c7fa0665c4b`（release head。PR #156〜#162 merge 済み。real ExtendScript での dispatcher activation 不成立・`Folder.isDirectory` 非存在・`app.version` build suffix の 3 件を修正（PR #162）し、AE 26.5.3 実機で heartbeat と session 完走を確認した上での再 freeze。旧 freeze `753046a`・`d4d2804`・`9f340fa` とそれぞれの tarball hash は内容変更により無効） |
-| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,483 bytes） |
-| tarball shasum (sha1) | `e1366acc89bdbea818c0e8b65e13fc65d1de26d6` |
-| tarball integrity (sha512) | `sha512-xBRI4ie38h3TmaJqgLwB/u9KwH6R+Xll5WlKFmPjRO1sVGQbf1uHs/fo5euwRtdvuD3Lb4WDwRMRcJ50PSZAuA==` |
+| freeze SHA | `ef5ac414ca22d340ab956b9c5d9983ae3c26cc3d`（package 内容を確定した commit。前 freeze `377c5ba` からの差分は `package.json` description・`CHANGELOG.md`・`README.md` の公開情報整合と `scripts/check-dispatcher-acceptance.js` の監査 field 追加のみで、`src/`・`host/`・`skills/`・`examples/`・`package-lock.json` は同一 — `git diff 377c5ba..ef5ac41` で確認済み。実機受入済みコードに変更なし。旧 freeze `377c5ba`・`753046a`・`d4d2804`・`9f340fa` とそれぞれの tarball hash は内容変更により無効） |
+| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,538 bytes） |
+| tarball shasum (sha1) | `c72c5898d6217ac874fbb0e74f1975863d81f5cc` |
+| tarball integrity (sha512) | `sha512-aqrXAbbwNH6w9J01iM2jB3Umt3NZEc/VSpKKGVonXkEGpRIXUOI8DpqNY9DdEZBkw/mVzGs5IVyrn6FVLYEBFQ==` |
 
 `npm pack` は同一 tree で再現する（`docs/releasing.md`）。hash が違う
 tarball はこの候補ではない。版番号・配布内容を変更した場合は旧 freeze
@@ -40,6 +41,22 @@ freeze SHA は package 内容を確定した commit を指す。本記録自体�
 `examples` / `CHANGELOG.md`）に含まれないため tarball hash は変わらない。
 
 ### 旧 freeze（superseded）
+
+| 項目 | 値 |
+| --- | --- |
+| version | `0.2.0-beta.1`（前回 freeze） |
+| freeze SHA | `377c5ba0c15574c5b12c02dd07947c7fa0665c4b`（PR #162 merge commit。real ExtendScript での dispatcher activation・`Folder.isDirectory`・`app.version` suffix の 3 件修正を含み、AE 26.5.3 実機受入を通した head） |
+| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,483 bytes） |
+| tarball shasum (sha1) | `e1366acc89bdbea818c0e8b65e13fc65d1de26d6` |
+| tarball integrity (sha512) | `sha512-xBRI4ie38h3TmaJqgLwB/u9KwH6R+Xll5WlKFmPjRO1sVGQbf1uHs/fo5euwRtdvuD3Lb4WDwRMRcJ50PSZAuA==` |
+
+この tarball は配布物としては有効だったが、公開情報（README / CHANGELOG /
+package description / quickstart）が「dispatcher は全 platform で
+fake/mock only・未公開でも公開済み表現」と実際の検証状況に追いついて
+いなかったため、内容変更として再 freeze した。runtime code
+（`src/`・`host/`）は同一であり、macOS 実機受入の証拠はそのまま有効。
+
+初回 freeze（`0.2.0` 番号・prerelease 再分類前）:
 
 | 項目 | 値 |
 | --- | --- |
@@ -81,6 +98,15 @@ freeze SHA は package 内容を確定した commit を指す。本記録自体�
   build suffix（`26.5.3x9`）を version parse が受理するよう修正。
   AE 26.5.3 実機で Scripts/Startup activation → heartbeat →
   handshake / comps / project.info / extension call / close を確認。
+- 公開情報整合（#155 続き・本 freeze）: `package.json` description・
+  README・CHANGELOG・quickstart・`docs/in-ae-dispatcher.md` を実際の
+  検証状況（macOS AE 26.5.3 で dispatcher scenario と Startup 実行が
+  `verified on real host`、Windows 未検証、`0.2.0-beta.1` は `next`
+  向け未公開 prerelease）に合わせた。`check-dispatcher-acceptance.js`
+  の lane 別 `A8N_RESULT` に監査 field（`version` / `aeVersion` /
+  `checks` / `pngSha256` / `cleanup`）を追加 — 次回 real lane 実行から
+  操作別結果・実 AE version・candidate・PNG hash・cleanup が
+  機械可読で残る。
 
 ## 検証状況（verification level）
 
@@ -90,6 +116,15 @@ freeze SHA は package 内容を確定した commit を指す。本記録自体�
 | dispatcher transport / extensions の real-host（macOS AE 26.5.3 = `26.5.3x9`） | **`verified on real host`（macOS のみ）** | 2026-11-17 実施。`check-dispatcher-acceptance.js --project fixture.aep --channel-dir … --install-dir "/Applications/Adobe After Effects 2026"` が `A8N_RESULT {"fake":"pass","real":"pass"}`。real lane 全 scenario（handshake・編集・render PNG・extension call・未宣言/未認可/誤 instance 拒否・pinned reconnect）pass、接続先 instance `i1a1e9d9e20c8b2896`、heartbeat `aeVersion:"26.5.3x9"`、cleanup「fixture reopen+discard / project left open clean」、close は `quit=false`（attached）。acceptance 中に fake 非再現の実機バグ 3 件（IIFE `this`・`Folder.isDirectory`・version suffix）を発見し PR #162 で修正済み |
 | Scripts/Startup folder 実行（macOS AE 26.5） | **`verified on real host`（macOS のみ）** | 同上の受入で `~/Library/Preferences/Adobe/After Effects/26.5/Scripts/Startup/a8n-dispatcher.jsx` が AE 起動時に dispatcher を自動 activation し heartbeat を生成することを確認。Windows の Startup 実行は未検証 |
 | Windows real-host（新規経路） | **未検証** | Windows 実機を現在利用できない。実装は停止せず、未検証として記録する |
+
+上記 macOS real-host 受入は freeze `377c5ba` の tree で実施した。
+現 freeze `ef5ac41` との差分は配布 metadata（`package.json` description・
+`CHANGELOG.md`・`README.md`）と未 ship の `scripts/` のみで、runtime
+code（`src/`・`host/`）は同一のため証拠は有効。ただし当時の
+`A8N_RESULT` には監査 field（`pngSha256` 等）が無く、PNG 成果物 hash
+は記録されていない。最終候補での real lane 再実行は人間 activation が
+前提のため未実施 — 実施した場合は `A8N_RESULT` の `checks` /
+`aeVersion` / `version` / `pngSha256` / `cleanup` を本記録へ転記する。
 
 ## Mac 実機受入手順（人間が実施）
 
