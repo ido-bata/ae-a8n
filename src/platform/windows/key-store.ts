@@ -136,7 +136,7 @@ export async function loadKeyFile(
     }
     const verdict = keyFileAclVerdict(
       acl.entries,
-      options.owner ?? currentUser(),
+      options.owner === undefined ? currentUser() : options.owner,
       ownerQualifiers(),
     );
     if (!verdict.ok) {

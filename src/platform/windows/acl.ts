@@ -30,7 +30,6 @@ export type AccessControlEntry = {
 const PRIVILEGED = [
   "nt authority\\system",
   "builtin\\administrators",
-  "builtin\\adminstrators",
   "nt authority\\local system",
 ];
 

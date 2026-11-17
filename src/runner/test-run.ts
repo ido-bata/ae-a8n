@@ -320,8 +320,8 @@ export async function runTest(input: TestRunInput): Promise<TestRunResult> {
       diagnostic("A8N-JOB-002", {
         detail: lock.detail,
         remedy:
-          "Wait for the running test, or inspect and clear the lock with `ae-a8n recover` " +
-          "(not implemented in this increment).",
+          "Wait for the running test, or inspect the lock with `ae-a8n recover`; " +
+          "it releases a lock whose owner is gone and never takes over a live one.",
         remedyKind: "human",
         evidence: { path: lock.path },
       }),
@@ -344,7 +344,7 @@ export async function runTest(input: TestRunInput): Promise<TestRunResult> {
         diagnostic("A8N-JOB-002", {
           detail: prior.detail,
           remedy:
-            "Inspect the quarantined run, then clear the quarantine with `ae-a8n recover` " +
+            "Inspect the quarantined run, then clear the quarantine with `ae-a8n recover --force` " +
             "before running again.",
           remedyKind: "human",
           evidence: { path: prior.path },

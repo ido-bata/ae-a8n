@@ -18,7 +18,7 @@
  * here requires `herdr` or any other developer tool.
  */
 
-import { createHash } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import type { Stats } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
@@ -37,7 +37,7 @@ import {
 import { channelModeVerdict } from "./channel-mode.js";
 import { loadKeyFile } from "./key-store.js";
 import { encodeJobPayload } from "./executor.js";
-import { newJobId, sha256Hex, type AgentIdentity } from "./job.js";
+import { newJobId, type AgentIdentity } from "./job.js";
 import {
   checkPresence,
   readPresenceBytes,
@@ -667,7 +667,7 @@ export class ChannelCommandRunner implements CommandRunner {
     // would let PATH decide which binary runs.
     const program = hostProgramPath(command.program, state.config.systemRoot);
     const now = options.now ?? (() => new Date());
-    const random = options.random ?? (() => new Uint8Array([0, 0, 0, 0]));
+    const random = options.random ?? randomBytes;
     const runId = newJobId(now(), random(4));
     const submitted = await (options.submit ?? submitJob)(state.channel, {
       payload: encodeJobPayload({ argv: [program, ...command.args], env: {} }),
@@ -698,8 +698,8 @@ export class ChannelCommandRunner implements CommandRunner {
       throw new RemoteProbeError("A8N-JOB-003", stderr.detail);
     }
     return {
-      stdout: decodeUtf8(stdout.bytes, submitted.result.exitCode),
-      stderr: decodeUtf8(stderr.bytes, submitted.result.exitCode),
+      stdout: decodeUtf8(stdout.bytes),
+      stderr: decodeUtf8(stderr.bytes),
       exitCode: submitted.result.exitCode ?? 1,
       artifactProof: stdout.proof === "verified" && stderr.proof === "verified" ? "verified" : "unproven",
     };
@@ -741,9 +741,9 @@ export class RemoteProbeError extends Error {
   }
 }
 
-function decodeUtf8(bytes: Uint8Array | null, exitCode: number | null): string {
+function decodeUtf8(bytes: Uint8Array | null): string {
   if (bytes === null) {
-    return exitCode === null ? "" : "";
+    return "";
   }
   if (bytes.length > MAX_PROBE_OUTPUT_BYTES) {
     throw new RemoteProbeError(
@@ -754,9 +754,3 @@ function decodeUtf8(bytes: Uint8Array | null, exitCode: number | null): string {
   return Buffer.from(bytes).toString("utf-8");
 }
 
-/** A stable description of a channel root, for an evidence record. */
-export function describeChannel(channel: string): string {
-  return createHash("sha256").update(channel).digest("hex").slice(0, 16);
-}
-
-export { sha256Hex };

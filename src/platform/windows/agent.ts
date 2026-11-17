@@ -59,7 +59,6 @@ export interface JobExecutor {
 }
 
 export type AgentRunOutcome =
-  | { readonly state: "no-job" }
   /**
    * The run directory exists but carries no `job.json` yet: the controller is
    * still publishing the submission. Nothing was claimed, run or refused.

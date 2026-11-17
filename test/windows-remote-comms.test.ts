@@ -570,9 +570,9 @@ describe("opening the channel to a host", () => {
     const root = await tempDirectory("a8n-acl-channel-");
     const keyFile = join(await tempDirectory("a8n-acl-key-"), "channel.key");
     await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o600 });
-    const acl = vi.fn(async () => [
-      { principal: "Everyone", rights: "F" },
-    ] as const);
+    const acl = vi.fn(() =>
+      Promise.resolve([{ principal: "Everyone", rights: "F" }] as const),
+    );
     const state = await openComms(
       { channel: new DirectoryChannel(root), version: AGENT.version, acl },
       { ok: true, config, source: "flags" },

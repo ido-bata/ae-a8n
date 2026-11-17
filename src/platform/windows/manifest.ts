@@ -100,6 +100,28 @@ function validDate(value: string): boolean {
 }
 
 /** Validate every field before a manifest is trusted. */
+const MANIFEST_KEYS: ReadonlySet<string> = new Set([
+  "schemaVersion",
+  "runId",
+  "host",
+  "user",
+  "sessionId",
+  "agentId",
+  "agentVersion",
+  "agentVerified",
+  "aeVersion",
+  "jobId",
+  "payloadSha256",
+  "resultSha256",
+  "outcome",
+  "destinationProof",
+  "ownershipProof",
+  "artifactProof",
+  "auth",
+  "startedAt",
+  "finishedAt",
+]);
+
 export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest> {
   let parsed: unknown;
   try {
@@ -109,6 +131,11 @@ export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest>
   }
   if (!isRecord(parsed)) {
     return { ok: false, detail: "manifest.json is not an object" };
+  }
+  for (const key of Object.keys(parsed)) {
+    if (!MANIFEST_KEYS.has(key)) {
+      return { ok: false, detail: `unknown manifest field "${key}"` };
+    }
   }
   if (parsed["schemaVersion"] !== RUN_MANIFEST_SCHEMA_VERSION) {
     return {
@@ -183,7 +210,10 @@ export function decodeRunManifest(bytes: Uint8Array): DecodeOutcome<RunManifest>
   // it never defaults to verified.
   const artifactProof = parsed["artifactProof"];
   if (artifactProof !== undefined && (typeof artifactProof !== "string" || !ARTIFACT_PROOFS.includes(artifactProof))) {
-    return { ok: false, detail: `unknown artifactProof ${String(artifactProof)}` };
+    return {
+      ok: false,
+      detail: `unknown artifactProof ${typeof artifactProof === "string" ? artifactProof : typeof artifactProof}`,
+    };
   }
   // Absent means unsigned: the claims are unproven, never assumed authentic.
   const auth = parsed["auth"];

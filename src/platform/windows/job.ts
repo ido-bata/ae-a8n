@@ -668,8 +668,10 @@ export function isResultArtifactPath(name: string): boolean {
   if (name === "" || name.startsWith("/") || name.endsWith("/") || name.includes("\\")) {
     return false;
   }
-  if (/[\x00-\x1f]/u.test(name)) {
-    return false;
+  for (const character of name) {
+    if ((character.codePointAt(0) ?? 0) <= 0x1f) {
+      return false;
+    }
   }
   return !name.split("/").includes("..");
 }

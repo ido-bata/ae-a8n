@@ -150,6 +150,7 @@ describe("the run manifest", () => {
       { ...MANIFEST, runId: "../escape" },
       { ...MANIFEST, startedAt: "yesterday" },
       { ...MANIFEST, host: "" },
+      { ...MANIFEST, surpriseField: true },
     ];
     for (const value of cases) {
       await files.writeAtomic(path, new TextEncoder().encode(JSON.stringify(value)));
