@@ -155,7 +155,10 @@ export class AfterEffects {
   constructor(session: Session, probe: ApplicationInfo, extensionMethods: readonly string[] = []) {
     this.#session = session;
     this.#probe = probe;
-    this.#extensionMethods = extensionMethods;
+    // Copied and frozen: `extensionMethods()` and the `declared` list on
+    // ExtensionMethodNotFoundError hand this array to callers, and a
+    // mutated list would let an undeclared name pass the pre-dispatch check.
+    this.#extensionMethods = Object.freeze([...extensionMethods]);
   }
 
   /**
@@ -233,6 +236,12 @@ export class AfterEffects {
     options: OperationOptions = {},
   ): Promise<T> {
     requireString(name, "name");
+    // The params object crosses the bridge verbatim; anything but a plain
+    // object would reach the host as a value the extension contract never
+    // promised (or fail deep inside serialization).
+    if (params === null || typeof params !== "object" || Array.isArray(params)) {
+      throw new TypeError("params must be an object");
+    }
     requireAuthorized(this.#session, "extension.call", "extensionMethods", name);
     if (!this.#extensionMethods.includes(name)) {
       throw new ExtensionMethodNotFoundError("extension.call", name, this.#extensionMethods);
