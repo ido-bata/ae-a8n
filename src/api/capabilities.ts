@@ -123,10 +123,63 @@ export type HandshakeDiagnostic = {
 export type OwnershipEvidence = "owned" | "explicitly-attached" | "unknown";
 export type NonInterferenceEvidence = "proven" | "by-construction" | "unproven";
 
+/**
+ * ae-a8n's stability statement for an ADR-0003 execution mode (#129).
+ * "experimental" is a product statement, not a transport claim: the mode
+ * exists and is reachable, but it has no clean-machine acceptance evidence.
+ * A mode the table does not know reports "unknown" — never upgraded.
+ */
+export type ExecutionModeStability = "stable" | "experimental" | "unknown";
+
+/**
+ * The execution-mode guarantees this connection can attest, per the spec
+ * Capability contract (`specs/execution-model/spec.md`). Every field is
+ * transport-attested evidence or null; `null` means unproven and is never
+ * reported as a guarantee.
+ */
+export type ExecutionGuarantees = {
+  /** The ADR-0003 mode the transport attests: "local", "remote", "isolated-user", or "unknown". */
+  readonly mode: string;
+  readonly stability: ExecutionModeStability;
+  /**
+   * Whether calls require delivery into a GUI login session. `null` = the
+   * transport cannot say — reported as unproven, never guessed.
+   */
+  readonly requiresGuiDelivery: boolean | null;
+  /**
+   * Whether the transport proves it refuses to target the console
+   * session's After Effects — the `isolated-user` invariant. `null` =
+   * unproven.
+   */
+  readonly refusesConsoleTarget: boolean | null;
+};
+
+/** The OS user and login session the host was verified to belong to. */
+export type HostSessionEvidence = {
+  readonly uid: number | null;
+  readonly asid: number | null;
+  readonly user: string | null;
+};
+
 export type HandshakeTarget = {
   identity: string | null;
   ownership: OwnershipEvidence;
   nonInterference: NonInterferenceEvidence;
+  /**
+   * ae-a8n's native ownership kind — the attach-vs-owned distinction the
+   * canonical `OwnershipEvidence` enum cannot express (#129). "attached"
+   * means a pre-existing host that belongs to someone else; the canonical
+   * `ownership` field still fails closed as "unknown" for it.
+   */
+  ownershipKind: HostOwnership["kind"];
+  /** What the ownership decision rests on, for the trace and a human. */
+  ownershipEvidence: string;
+  /**
+   * This session's quit policy, stated so a consumer need not infer it:
+   * After Effects is quit only on proven ownership — an attached or
+   * unidentified instance is never quit.
+   */
+  quitPolicy: "owned-only";
 };
 
 export type HandshakeResponse = {
@@ -140,7 +193,11 @@ export type HandshakeResponse = {
     arch: string;
     executionMode: string;
     transport: string;
+    /** The OS user and login session the host was verified to belong to; null fields = unattested. */
+    session: HostSessionEvidence;
   };
+  /** The execution-mode guarantees this connection attests (#129). */
+  execution: ExecutionGuarantees;
   target: HandshakeTarget;
   inventorySupply: { scripting: SupplyState; tools: SupplyState; sdk: SupplyState };
   availableCapabilities: CapabilityAdvertisement[];
@@ -268,6 +325,27 @@ function ownershipEvidence(kind: HostOwnership["kind"]): OwnershipEvidence {
   return kind === "owned" ? "owned" : "unknown";
 }
 
+/**
+ * ae-a8n's stability statement per ADR-0003 execution mode (#129).
+ *
+ * "local" is the shipping path. "remote" (dedicated host) and
+ * "isolated-user" (another GUI user on the same machine) are experimental
+ * until they have clean-machine acceptance evidence — ADR-0003 is still
+ * Proposed. A mode absent from this table reports "unknown": ae-a8n makes
+ * no stability claim it cannot back, which is also what lets a future
+ * transport (the in-AE dispatcher, a dedicated-host broker) attest its own
+ * mode without this file knowing it in advance.
+ */
+const EXECUTION_MODE_STABILITY: Readonly<Record<string, ExecutionModeStability>> = {
+  local: "stable",
+  remote: "experimental",
+  "isolated-user": "experimental",
+};
+
+function executionModeStability(mode: string): ExecutionModeStability {
+  return EXECUTION_MODE_STABILITY[mode] ?? "unknown";
+}
+
 /** Lowercase slug for capability-ID segments (canonical `slugSegment`). */
 function slugSegment(value: string): string {
   return value
@@ -379,6 +457,10 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
   availableCapabilities.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
   const ownership = ownershipEvidence(input.ownership.kind);
+  const executionMode = attestation.executionMode;
+  const stability = executionModeStability(executionMode);
+  const requiresGuiDelivery = attestation.requiresGuiDelivery ?? null;
+  const refusesConsoleTarget = attestation.refusesConsoleTarget ?? null;
   const diagnostics: HandshakeDiagnostic[] = [];
   for (const source of ["scripting", "tools", "sdk"] as const) {
     diagnostics.push({
@@ -409,6 +491,24 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
         "dispatch would refuse ownership-unproven.",
     });
   }
+  if (stability === "experimental") {
+    diagnostics.push({
+      code: "execution-mode-experimental",
+      effect:
+        `execution mode "${executionMode}" is experimental (ADR-0003): it has no ` +
+        "clean-machine acceptance evidence, so no non-interference or unattended-use " +
+        "guarantee is claimed for it.",
+    });
+  }
+  if (executionMode === "isolated-user" && refusesConsoleTarget !== true) {
+    diagnostics.push({
+      code: "console-target-refusal-unproven",
+      effect:
+        "the transport attests isolated-user but cannot prove it refuses the console " +
+        "session's After Effects; a start or script meant for another user could land " +
+        "on the screen the user is looking at.",
+    });
+  }
 
   const anyRealHost = availableCapabilities.some((c) => c.proofLevel === "verified-real-host");
   const anyAutomated = availableCapabilities.some((c) => c.proofLevel === "automated-test");
@@ -425,8 +525,19 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
       },
       os: attestation.platform?.os ?? "unknown",
       arch: attestation.platform?.arch ?? "unknown",
-      executionMode: attestation.executionMode,
+      executionMode,
       transport: input.transportKind,
+      session: {
+        uid: attestation.sessionUid ?? null,
+        asid: attestation.sessionAsid ?? null,
+        user: attestation.sessionUser ?? null,
+      },
+    },
+    execution: {
+      mode: executionMode,
+      stability,
+      requiresGuiDelivery,
+      refusesConsoleTarget,
     },
     target: {
       identity: targetIdentity,
@@ -434,6 +545,9 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
       // No dedicated-host non-interference proof exists yet (ADR-0003 is
       // still Proposed); nothing here may claim otherwise.
       nonInterference: "unproven",
+      ownershipKind: input.ownership.kind,
+      ownershipEvidence: input.ownership.evidence,
+      quitPolicy: "owned-only",
     },
     inventorySupply: { scripting: "not-supplied", tools: "not-supplied", sdk: "not-supplied" },
     availableCapabilities,
@@ -458,8 +572,9 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
         session: {
           pid,
           ownedProcess: owned,
-          sessionUid: attestation.sessionUid,
-          sessionAsid: attestation.sessionAsid,
+          sessionUid: attestation.sessionUid ?? null,
+          sessionAsid: attestation.sessionAsid ?? null,
+          sessionUser: attestation.sessionUser ?? null,
           transport: input.transportKind,
           aeVersion: input.ae.version ?? null,
           runtime: `ae-a8n/${A8N_VERSION}`,

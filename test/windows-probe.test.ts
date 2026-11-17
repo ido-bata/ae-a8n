@@ -134,6 +134,7 @@ describe("probeWindows", () => {
       provesDestination: true,
       guiRecovery: false,
       sessionIdentity: "host-and-user",
+      quitsOnlyOwned: true,
     });
   });
 

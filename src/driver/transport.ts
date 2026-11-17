@@ -129,6 +129,26 @@ export type HostAttestation = {
   /** The GUI session the host was verified to belong to, when known. */
   readonly sessionUid: number | null;
   readonly sessionAsid: number | null;
+  /**
+   * The session user's name, when the transport can name it. Evidence for
+   * the capability handshake's host/session report (#129); null when the
+   * transport cannot say — never guessed from the controller's account.
+   */
+  readonly sessionUser?: string | null;
+  /**
+   * Whether dispatch requires delivery into a GUI login session (an Apple
+   * Event into the session, `-r` into the interactive instance) rather than
+   * a headless channel. `null`/absent = unproven: the capability handshake
+   * reports "unknown", never a guess.
+   */
+  readonly requiresGuiDelivery?: boolean | null;
+  /**
+   * Whether the transport proves it refuses to target the console
+   * session's After Effects — the `isolated-user` invariant that a start
+   * or script meant for another user can never land on the screen the
+   * human is looking at. `null`/absent = unproven.
+   */
+  readonly refusesConsoleTarget?: boolean | null;
 };
 
 export interface HostTransport {

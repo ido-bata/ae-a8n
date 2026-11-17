@@ -133,9 +133,17 @@ export class FakeAfterEffectsTransport implements HostTransport {
   }
 
   /**
+   * Test seam: fields merged over the default attestation, so a test can
+   * play another execution mode ("isolated-user", "remote") or an
+   * unattested session without replacing the transport.
+   */
+  attestationOverrides: Partial<HostAttestation> = {};
+
+  /**
    * The fake stands in for a host on this machine in the caller's own
    * session: it attests "local" and the controller's platform, exactly what
-   * the script transport would report for the same shape.
+   * the script transport would report for the same shape — including the
+   * GUI-delivery requirement and the absent console refusal of "local".
    */
   attestation(): Partial<HostAttestation> {
     return {
@@ -145,6 +153,10 @@ export class FakeAfterEffectsTransport implements HostTransport {
       executionMode: "local",
       sessionUid: null,
       sessionAsid: null,
+      sessionUser: null,
+      requiresGuiDelivery: true,
+      refusesConsoleTarget: false,
+      ...this.attestationOverrides,
     };
   }
 

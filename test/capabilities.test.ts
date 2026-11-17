@@ -72,10 +72,30 @@ describe("capabilities() handshake", () => {
     expect(response.host.arch).toBe(process.arch);
     expect(response.host.executionMode).toBe("local");
     expect(response.host.transport).toBe("fake-in-process");
+    // The spec Capability contract's host OS/user/session report (#129):
+    // the fake attests no session, so every field stays null — never the
+    // controller's account.
+    expect(response.host.session).toEqual({ uid: null, asid: null, user: null });
+
+    // The execution-mode guarantees: "local" is the stable shipping mode;
+    // the fake stands in for the script transport, so calls need GUI
+    // delivery and no console refusal is claimed.
+    expect(response.execution).toEqual({
+      mode: "local",
+      stability: "stable",
+      requiresGuiDelivery: true,
+      refusesConsoleTarget: false,
+    });
+    expect(response.host.executionMode).toBe(response.execution.mode);
 
     expect(response.target.ownership).toBe("owned");
     expect(response.target.nonInterference).toBe("unproven");
     expect(response.target.identity).toContain("After Effects");
+    // The attach-vs-owned distinction the canonical enum cannot express,
+    // plus the quit invariant stated for consumers (#129).
+    expect(response.target.ownershipKind).toBe("owned");
+    expect(response.target.ownershipEvidence).toBe("fake transport");
+    expect(response.target.quitPolicy).toBe("owned-only");
 
     expect(response.inventorySupply).toEqual({
       scripting: "not-supplied",
@@ -187,8 +207,11 @@ describe("capabilities() handshake", () => {
 
     // "attached" means a pre-existing host that belongs to someone else;
     // claiming "explicitly-attached" would overstate the evidence, so the
-    // handshake fails closed and capability dispatch refuses.
+    // handshake fails closed and capability dispatch refuses. The native
+    // kind still tells the consumer it is an attach, not an own (#129).
     expect(response.target.ownership).toBe("unknown");
+    expect(response.target.ownershipKind).toBe("attached");
+    expect(response.target.quitPolicy).toBe("owned-only");
     expect(response.diagnostics.map((d) => d.code)).toContain("ownership-unproven");
     const gate = assertDispatchAllowed({
       response,
@@ -199,6 +222,72 @@ describe("capabilities() handshake", () => {
     if (gate.status === "refused") {
       expect(gate.reason).toBe("ownership-unproven");
     }
+    await ae.close({ unsavedChanges: "discard" });
+  });
+});
+
+describe("execution-mode guarantees (#129)", () => {
+  it("surfaces the attested host session and marks isolated-user experimental", async () => {
+    transport.attestationOverrides = {
+      executionMode: "isolated-user",
+      sessionUid: 502,
+      sessionAsid: 100021,
+      sessionUser: "ae-test",
+      refusesConsoleTarget: true,
+    };
+    transport.ownershipKind = "attached";
+    const ae = await launch();
+    const response = await ae.capabilities();
+
+    expect(response.host.session).toEqual({ uid: 502, asid: 100021, user: "ae-test" });
+    expect(response.host.executionMode).toBe("isolated-user");
+    expect(response.execution).toEqual({
+      mode: "isolated-user",
+      // Experimental per ADR-0003: reachable, but no clean-machine
+      // acceptance evidence — never reported as stable or proven.
+      stability: "experimental",
+      requiresGuiDelivery: true,
+      refusesConsoleTarget: true,
+    });
+    expect(response.target.nonInterference).toBe("unproven");
+    const codes = response.diagnostics.map((d) => d.code);
+    expect(codes).toContain("execution-mode-experimental");
+    expect(codes).not.toContain("console-target-refusal-unproven");
+    await ae.close({ unsavedChanges: "discard" });
+  });
+
+  it("reports an isolated-user claim without console-refusal proof as unproven", async () => {
+    transport.attestationOverrides = {
+      executionMode: "isolated-user",
+      sessionUid: 502,
+      refusesConsoleTarget: null,
+    };
+    const ae = await launch();
+    const response = await ae.capabilities();
+
+    expect(response.execution.refusesConsoleTarget).toBeNull();
+    expect(response.diagnostics.map((d) => d.code)).toContain("console-target-refusal-unproven");
+    await ae.close({ unsavedChanges: "discard" });
+  });
+
+  it("makes no stability claim for a mode ae-a8n does not know", async () => {
+    transport.attestationOverrides = {
+      executionMode: "quantum-foam",
+      requiresGuiDelivery: null,
+      refusesConsoleTarget: null,
+    };
+    const ae = await launch();
+    const response = await ae.capabilities();
+
+    // A future transport (the in-AE dispatcher, a dedicated-host broker)
+    // attests its own mode; unknown stays unknown rather than borrowing
+    // "local"'s stability.
+    expect(response.execution).toEqual({
+      mode: "quantum-foam",
+      stability: "unknown",
+      requiresGuiDelivery: null,
+      refusesConsoleTarget: null,
+    });
     await ae.close({ unsavedChanges: "discard" });
   });
 });

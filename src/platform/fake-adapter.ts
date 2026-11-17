@@ -31,6 +31,9 @@ export const FAKE_CAPABILITIES: Capabilities = {
   provesDestination: true,
   guiRecovery: true,
   sessionIdentity: "uid-asid",
+  // The fake never quits an After Effects at all, so it cannot quit an
+  // attached one either.
+  quitsOnlyOwned: true,
 };
 
 export const FAKE_IDENTITY: SessionIdentity = {
