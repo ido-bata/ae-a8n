@@ -26,10 +26,12 @@ npm install → ae-a8n doctor → 人間による許可 → 初回 launch → ve
 npm install @ido-bata/ae-a8n@next
 ```
 
-Node 22 以上が必要。`@next` dist-tag の現行版は `0.2.0-beta.1`
-（`latest` は `0.1.0-alpha.0` のまま。`0.2.0-beta.1` は prerelease で、
-in-AE dispatcher 経路は Windows real-host 未検証。詳細は README の
-Alpha 注記）。
+Node 22 以上が必要。`@next` dist-tag の公開済み最新版は `0.1.0-alpha.2`。
+`0.2.0-beta.1` は公開予定の prerelease 候補で（`latest` は
+`0.1.0-alpha.0` のまま）、in-AE dispatcher 経路は macOS AE 26.5.3 で
+実機検証済み・Windows は未検証。公開後は
+`npm view @ido-bata/ae-a8n@next version` で確認する。詳細は README の
+Alpha 注記。
 
 ## 2. 初期診断
 
@@ -143,7 +145,7 @@ await ae.close({ unsavedChanges: "discard" }); // 自分が作った変更を捨
 - うまくいかない時はまず `ae-a8n doctor` を再実行する。権限や AE の
   バージョンが変わっていれば `unproven`/`blocker` として出る。
 
-## 8. in-AE dispatcher モード（opt-in・実機未検証）
+## 8. in-AE dispatcher モード（opt-in・macOS 実機検証済み / Windows 未検証）
 
 既定の script-invocation に加えて、**人間が AE 内で一度だけ有効化する dispatcher 経路**がある（`transport: "in-ae-dispatcher"`）。呼び出しごとの OS automation を通常経路から外す opt-in で、dispatcher が応答しなくても script-invocation へ fallback しない。
 
@@ -158,7 +160,7 @@ const ae = await AfterEffects.launch({ transport: "in-ae-dispatcher" });
 ```
 
 - dispatcher session は常に `attached`（所有権を証明できない）で、**`ae.close()` は AE を終了しない**。操作には `authorization` の明示 grant が要る。
-- 起動時の自動有効化は `dispatcher startup install`（per-user `Scripts/Startup`。**startup 実行は macOS/Windows とも実機未検証**）。
+- 起動時の自動有効化は `dispatcher startup install`（per-user `Scripts/Startup`。macOS AE 26.5 では起動時自動 activation を実機確認済み。Windows は未検証）。
 - `ae-a8n doctor` は script-invocation 経路と環境の診断。dispatcher の生死は `dispatcher status` が見る。
 - 詳細と契約は [docs/in-ae-dispatcher.md](in-ae-dispatcher.md)。
 

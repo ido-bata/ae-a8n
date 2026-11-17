@@ -29,6 +29,7 @@ await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to th
 | --- | --- |
 | macOS | Verified against After Effects 2026 (26.5x89, Japanese UI) on macOS 27, arm64: launch, project/comp/layer lookup, effects by match name, parameter write/read, one-frame PNG render, typed failures, timeouts, session ownership; 20 consecutive fresh-session runs |
 | Windows | Verified against After Effects 2026 (26.5x89, English UI) on Windows 11 x64: cold launch, install discovery, process ownership and quit-only-what-this-session-started, menu commands, `hostEnvironment`, scene building, Undo/Redo, and Ae_Restro's 33-check E2E through this API (3 runs). The isolated backend also ran end to end on that host on 2026-11-11: a signed job over the channel, an in-session agent, AE started, comp and text layer built, frame 0 rendered, and the started process quit — twice. See [docs/windows-verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/windows-verification.md) and [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md). ARM64 and non-English UIs not run |
+| In-AE dispatcher (opt-in) | macOS AE 26.5.3 (`26.5.3x9`): the packed-consumer real lane passed on 2026-11-17 — handshake, comp/layer edit, PNG render, static extension call, authorization and instance-pin refusals, pinned reconnect, attached safe close — and `Scripts/Startup` auto-activation was observed. No Windows real-host run exists |
 | Node | 22 or later (developed on 24) |
 
 What has been checked, and how, is in [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md).
@@ -36,20 +37,17 @@ What has been checked, and how, is in [docs/verification.md](https://github.com/
 What is **not** proven in `0.2.0-beta.1`, so a green run is not read as more
 than it is:
 
-- The opt-in **in-AE dispatcher transport** (`transport: "in-ae-dispatcher"`,
-  `ae-a8n dispatcher`, `ae-a8n extension build` through the dispatcher) is
-  `fake/mock only`: every dispatcher scenario is covered by the in-repo
-  fake host and the packed-tarball fake lane; the real lane of
-  `scripts/check-dispatcher-acceptance.js` requires a human activation
-  inside a real After Effects. Startup-folder execution is unverified on
-  both macOS and Windows.
 - **Windows real-host evidence for the dispatcher paths is absent.** The
-  dispatcher CLI, extensions and acceptance harness were verified on macOS
-  CI and the fake host only; no Windows real-host run exists for them. The
-  Windows-verified claims above cover the script-invocation path measured
-  on earlier tarballs, not this candidate.
-- Extension methods via `hostScript` / `ae.call` remain `fake/mock only` on
-  real After Effects.
+  opt-in in-AE dispatcher transport (`transport: "in-ae-dispatcher"`,
+  `ae-a8n dispatcher`, `ae-a8n extension build` through the dispatcher),
+  its lifecycle CLI, Startup execution and the acceptance harness have
+  real-host evidence on macOS AE 26.5.3 only; no Windows real-host run
+  exists for them. The Windows-verified claims above cover the
+  script-invocation path measured on earlier tarballs, not this candidate.
+- Extension methods via `hostScript` / `ae.call` on the default
+  script-invocation transport remain `fake/mock only` on real After
+  Effects; they are verified on real host only through the dispatcher
+  path on macOS AE 26.5.3.
 - On the Windows isolated backend `manifest.json` records
   `destinationProof: "unproven"` and `ownershipProof: "unproven"`; the backend
   never reports them as proven.

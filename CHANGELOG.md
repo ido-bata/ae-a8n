@@ -2,14 +2,14 @@
 
 ## 0.2.0-beta.1
 
-Published under the `next` dist-tag; `latest` stays on `0.1.0-alpha.0`. This
-is a **prerelease**: the `release-0-2-0` train — the opt-in in-AE
+To be published under the `next` dist-tag; `latest` stays on `0.1.0-alpha.0`.
+This is a **prerelease**: the `release-0-2-0` train — the opt-in in-AE
 dispatcher transport with static consumer extensions, its lifecycle CLI,
 and the packed-consumer acceptance harness, on top of the isolated
 testing, capability handshake, GUI recovery and session-marker work merged
 since `0.1.0-alpha.2`. It is numbered `-beta.1` rather than `0.2.0` because
-the new dispatcher paths have no Windows real-host evidence and only
-`fake/mock only` coverage on macOS so far; a stable `0.2.0` requires the
+the new dispatcher paths have no Windows real-host evidence; their
+real-host coverage is macOS AE 26.5.3 only. A stable `0.2.0` requires the
 cross-platform evidence gate (#75) first.
 
 ### Added
@@ -53,15 +53,16 @@ cross-platform evidence gate (#75) first.
 
 ### Not proven in this version
 
-- **The dispatcher transport and dispatcher extensions are `fake/mock
-  only`.** Every dispatcher scenario is covered by the in-repo fake host and
-  the packed-tarball fake lane; the real lane of
-  `check-dispatcher-acceptance.js` requires a human activation inside a real
-  After Effects and has not been run for this candidate. Startup-folder
-  execution is unverified on both macOS and Windows.
-- **Windows real-host evidence for the new paths is absent.** The dispatcher
-  CLI, extensions and acceptance harness were verified on macOS CI and the
-  fake host only; no Windows real-host run exists for them.
+- **Windows real-host evidence for the new paths is absent.** The
+  dispatcher CLI, extensions, Startup execution and acceptance harness
+  passed the packed-consumer real lane on macOS AE 26.5.3 (`26.5.3x9`,
+  2026-11-17): handshake, edit, PNG render, extension call,
+  authorization/instance-pin refusals, pinned reconnect and safe close,
+  with `Scripts/Startup` auto-activation observed. No Windows real-host
+  run exists for them.
+- Extension methods via `hostScript` / `ae.call` are verified on real host
+  only through the dispatcher path on macOS AE 26.5.3; on the default
+  script-invocation transport they remain `fake/mock only`.
 - Everything below `verified on real host` stays unproven against real AE —
   see `docs/consumer-acceptance.md` §4 for the recording format.
 

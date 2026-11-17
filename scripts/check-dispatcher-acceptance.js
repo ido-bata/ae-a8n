@@ -231,6 +231,7 @@ export default {
   writeFileSync(
     probePath,
     `
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -250,6 +251,7 @@ import {
 } from ${JSON.stringify(`${manifest.name}/testing`)};
 
 const HOST_SCRIPT = ${JSON.stringify(hostScriptPath)};
+const VERSION = ${JSON.stringify(manifest.version)};
 const PROJECT = ${JSON.stringify(projectPath)};
 const CHANNEL_DIR = ${JSON.stringify(channelDir)};
 const INSTALL_DIR = ${JSON.stringify(installDir)};
@@ -259,6 +261,7 @@ const WAIT_MS = Number(process.env.A8N_ACCEPTANCE_WAIT_MS ?? 600000);
 
 const results = [];
 let failures = 0;
+let scenario = null;
 async function check(name, fn) {
   try {
     await fn();
@@ -305,6 +308,7 @@ async function runScenarios(ae) {
     png.length > 8 && png[0] === 0x89 && png[1] === 0x50,
     "rendered frame is not a PNG",
   );
+  const pngSha256 = createHash("sha256").update(png).digest("hex");
 
   // 4. Static extension call through the dispatcher.
   assert(
@@ -328,7 +332,7 @@ async function runScenarios(ae) {
     "undeclared name refused with " + undeclared.name,
   );
 
-  return { instance };
+  return { instance, pngSha256 };
 }
 
 /* Isolation checks shared by both lanes: an unauthorized session is refused,
@@ -417,7 +421,8 @@ async function fakeLane() {
   // written.
   let boundInstance = null;
   await check("handshake, edit, render, extension call, undeclared refusal", async () => {
-    boundInstance = (await runScenarios(ae)).instance;
+    scenario = await runScenarios(ae);
+    boundInstance = scenario.instance;
   });
 
   // Sessions below need the dispatcher answering.
@@ -582,6 +587,7 @@ async function realLaneRun() {
   });
   // The lane verdict is computed inside try and can still be overridden by
   // the close check in finally; A8N_RESULT is emitted exactly once, after.
+  const heartbeatVersion = status.heartbeat?.aeVersion ?? null;
   let laneStatus = "fail";
   let laneExtra = { channelDir };
   let cleanupNote = "not attempted";
@@ -590,8 +596,10 @@ async function realLaneRun() {
       await ae.openProject(PROJECT);
     }
     let boundInstance = null;
+    let laneScenario = null;
     await check("handshake, edit, render, extension call, undeclared refusal", async () => {
-      boundInstance = (await runScenarios(ae)).instance;
+      laneScenario = await runScenarios(ae);
+      boundInstance = laneScenario.instance;
     });
     // The same isolation checks as the fake lane: unauthorized refusal,
     // wrong-pin refusal, pinned reconnect. UNKNOWN non-resend stays
@@ -601,7 +609,14 @@ async function realLaneRun() {
     console.log("real lane results:");
     for (const line of results) console.log("  " + line);
     laneStatus = failures === 0 ? "pass" : "fail";
-    laneExtra = { channelDir, instance: boundInstance };
+    laneExtra = {
+      channelDir,
+      instance: boundInstance,
+      version: VERSION,
+      aeVersion: heartbeatVersion,
+      checks: results,
+      ...(laneScenario === null ? {} : { pngSha256: laneScenario.pngSha256 }),
+    };
     console.log(failures === 0 ? "RESULT: real-host pass" : "RESULT: real-host FAIL");
   } finally {
     // Attached sessions never quit AE, and unsavedChanges:"discard" only
@@ -643,7 +658,11 @@ async function realLaneRun() {
     if (closed.quit !== false) {
       console.log("RESULT: real-host FAIL — close() quit an attached host");
       laneStatus = "fail";
-      laneExtra = { channelDir, reason: "close quit an attached host", cleanup: cleanupNote };
+      laneExtra = {
+        ...laneExtra,
+        reason: "close quit an attached host",
+        cleanup: cleanupNote,
+      };
     } else {
       laneExtra = { ...laneExtra, cleanup: cleanupNote };
     }
@@ -655,7 +674,11 @@ async function realLaneRun() {
 const mode = process.argv[2];
 if (mode === "fake") {
   const fakeFailures = await fakeLane();
-  emitResult("fake", fakeFailures === 0 ? "pass" : "fail");
+  emitResult("fake", fakeFailures === 0 ? "pass" : "fail", {
+    version: VERSION,
+    checks: results,
+    ...(scenario === null ? {} : { pngSha256: scenario.pngSha256 }),
+  });
   process.exitCode = fakeFailures === 0 ? 0 : 1;
 } else if (mode === "real") {
   if (PROJECT === null && !PREPARE_ONLY) {

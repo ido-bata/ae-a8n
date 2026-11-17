@@ -2,7 +2,7 @@
 
 Tracking: [#127](https://github.com/ido-bata/ae-a8n/issues/127)。前提となる proof: [#98](https://github.com/ido-bata/ae-a8n/issues/98) / `docs/inprocess-proof.md`。実行モデル: [ADR-0003](adr/0003-ae-execution-modes.md)、`specs/execution-model/spec.md`。
 
-**検証レベル: `automated test` + `fake/mock only`。実機 AE での受入は未検証（unproven）であり、本 transport の capability は `verified-real-host` を名乗らない。**
+**検証レベル: dispatcher scenario（handshake・編集・render・extension call・認可/instance pin 拒否・pinned reconnect・安全終了）と `Scripts/Startup` 自動 activation は macOS AE 26.5.3（`26.5.3x9`）で `verified on real host`（2026-11-17、packed-consumer real lane）。Windows real-host は未検証であり、この記録は全 platform の保証を意味しない。`ae.capabilities()` が報告する検証レベルの丸めは従来どおり。**
 
 ## これは何か
 
@@ -33,13 +33,13 @@ ae-a8n dispatcher startup install|remove \
 - `prepare` / `status` は `--json` で contract envelope（`schemaVersion`/`status`/`exitCode`/`nextActions`/`facts`）1 文書を出す。人間向けには同じ事実を短いテキストで出す。
 - `prepare` の `nextActions` が「次に人間がやること」（Run Script File の対象パス、status での確認、スクリプト書き込み許可の同意）を列挙する。
 - `status` は heartbeat の `instance` / `aeVersion` / 最終 tick からの経過時間 / 登録 extension method を報告する。**無応答は `blocked`（exit 3）、heartbeat 陳腐化は `unknown`（exit 6）であり、どちらも pass ではない**。
-- `startup install|remove` は `--ae-version`（例 `26.5`）か `--install-dir`（macOS のみ、`.app`/install dir から version を導出）を要求する。他プラットフォームで installDir からの version 導出は未実装であり、Windows の Startup 実行自体が未検証（unproven）であることを出力も明記する。
+- `startup install|remove` は `--ae-version`（例 `26.5`）か `--install-dir`（macOS のみ、`.app`/install dir から version を導出）を要求する。他プラットフォームで installDir からの version 導出は未実装であり、Windows の Startup 実行自体が未検証（unproven）であることを出力も明記する（macOS では Startup 実行を実機確認済み）。
 - `launch()` が dispatcher 不在で失敗する `HostUnavailableError` も、これらのコマンドと docs を次の手として示す。
 - `ae-a8n doctor` との関係: doctor は script-invocation 経路と環境の診断であり、dispatcher の生死は `ae-a8n dispatcher status` が見る。doctor の blocker が無くても dispatcher が未 activation なら launch は案内付きで失敗する。
 
-## Startup への設置（任意・実機未検証）
+## Startup への設置（任意・macOS 実機検証済み / Windows 未検証）
 
-per-user の `Scripts/Startup` に `a8n-dispatcher.jsx` を置くと AE 起動時に自動有効化される設計だが、**startup 実行そのものは実機未検証（unproven）**。macOS の `~/Library/Preferences/Adobe/After Effects/<メジャー.マイナー>/Scripts/Startup`、Windows の `%APPDATA%\Adobe\After Effects\<メジャー.マイナー>\Scripts\Startup` に配置される。
+per-user の `Scripts/Startup` に `a8n-dispatcher.jsx` を置くと AE 起動時に自動有効化される設計。macOS AE 26.5 では 2026-11-17 に起動時自動 activation と heartbeat 生成を実機確認済み。Windows の Startup 実行は未検証（unproven）。macOS の `~/Library/Preferences/Adobe/After Effects/<メジャー.マイナー>/Scripts/Startup`、Windows の `%APPDATA%\Adobe\After Effects\<メジャー.マイナー>\Scripts\Startup` に配置される。
 
 API からは `DispatcherTransport.installStartupScript()` / `uninstallStartupScript()`、CLI からは `ae-a8n dispatcher startup install|remove`。自分が生成した marker 行を持つファイルだけを上書き・削除し、無関係なファイルは拒否する。グローバルな scripting 権限や TCC 設定は一切変更しない。権限ダイアログが出た場合の承認は常に人間が行う。
 
@@ -66,7 +66,7 @@ API からは `DispatcherTransport.installStartupScript()` / `uninstallStartupSc
 
 ## 既知の限界（unproven）
 
-- 実機 AE での activation・`app.scheduleTask` の polling 間隔・負荷時の挙動・Startup 自動実行はすべて未検証。
+- Windows での activation・`app.scheduleTask` の polling 間隔・負荷時の挙動・Startup 自動実行は未検証（macOS AE 26.5.3 では activation・通常負荷下の scenario・Startup 自動実行を確認済み）。
 - token は同一 OS ユーザーの別プロセスに対する強い認証ではない。channel dir の privacy が実質の防御。
 - dispatcher は「どの AE プロセスが受け取ったか」を証明しない。ownership・non-interference の証拠にはならない。
 - dispatcher instance は「probe に答えたエンジンと同じ dispatcher か」の識別であり、プロセス同一性の証明ではない。instance が変われば別の AE（または再起動後の同じ AE）として扱う。
