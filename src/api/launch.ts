@@ -60,6 +60,31 @@ function requireGrace(value: unknown): number {
 }
 
 /**
+ * `LaunchOptions.session`, validated once: a non-object (including `null`)
+ * or a `uid` that is not a positive integer is a `TypeError`, and a
+ * non-boolean `recover` is refused rather than silently disabling the GUI
+ * fallback `showModalDialog` relies on.
+ */
+function requireSessionOption(
+  value: unknown,
+): NonNullable<LaunchOptions["session"]> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("session must be an object with a uid and optional recover flag");
+  }
+  const { uid, recover } = value as { uid?: unknown; recover?: unknown };
+  if (typeof uid !== "number" || !Number.isInteger(uid) || uid <= 0) {
+    throw new TypeError("session.uid must be a positive integer");
+  }
+  if (recover !== undefined && typeof recover !== "boolean") {
+    throw new TypeError("session.recover must be a boolean");
+  }
+  return recover === undefined ? { uid } : { uid, recover };
+}
+
+/**
  * The login session of a uid, for the GUI fallback.
  *
  * A user who is not logged in has no session, and a session that is not an
@@ -67,6 +92,15 @@ function requireGrace(value: unknown): number {
  * halfway through a recovery.
  */
 function requireSession(uid: number): MacSession {
+  if (process.platform !== "darwin") {
+    // The fallback is macOS GUI automation; on another platform `launchctl`
+    // does not exist and its failure would read as "no login session",
+    // sending the caller to macOS troubleshooting for a Windows run.
+    throw new AfterEffectsError(
+      `session.recover is the macOS GUI fallback and is not available on ${process.platform}; nothing was started`,
+      "session.launch",
+    );
+  }
   const session = readGuiSession(uid);
   if (session === null) {
     // A refusal to answer is not an answer. `launchctl print gui/<other uid>`
@@ -261,16 +295,21 @@ export async function openAfterEffects(
   adopt: LaunchProvenance | null,
   op: string,
 ): Promise<OpenedSession> {
+  // `session` is the one option every consumer of `options` below reads, so
+  // it is validated and normalised once here rather than at each use.
+  const sessionOption = requireSessionOption(options.session);
+  const opts: LaunchOptions =
+    sessionOption === undefined ? options : { ...options, session: sessionOption };
   // Absolute, because AE resolves paths in the scripts it is given against
   // its own working directory rather than the caller's.
   const sessionRoot = resolve(options.sessionRoot ?? mkdtempSync(join(tmpdir(), "ae-a8n-")));
   const trace = new TraceRecorder({ file: join(sessionRoot, "trace.jsonl") });
-  const transport = resolveTransport(options.transport, adopt, options, op);
+  const transport = resolveTransport(options.transport, adopt, opts, op);
 
   // The GUI fallback is only wired when the caller asks for it, and it only
   // ever acts inside the session that owns the After Effects.
   let recovery: MacHostRecovery | undefined;
-  if (options.session?.recover === true) {
+  if (sessionOption !== undefined && sessionOption.recover === true) {
     // A caller-supplied transport that is not the script transport has no
     // pid to look up, so the fallback would be silently absent from a
     // session the caller asked to be recoverable. A requested safety
@@ -282,7 +321,7 @@ export async function openAfterEffects(
         op,
       );
     }
-    const targetSession = requireSession(options.session.uid);
+    const targetSession = requireSession(sessionOption.uid);
     // The pid comes from the transport, which scopes processes by its own
     // session uid. Pressing keys in a different session than the one the
     // pid lives in would automate somebody else's screen.
@@ -314,8 +353,12 @@ export async function openAfterEffects(
     let source: string;
     try {
       source = readFileSync(hostScript, "utf-8");
-    } catch {
-      throw new AfterEffectsError(`host script not found: ${hostScript}`, op);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new AfterEffectsError(
+        `host script not readable: ${hostScript} (${reason})`,
+        op,
+      );
     }
     const declared = readExtensionHeader(source);
     if (declared === null) {

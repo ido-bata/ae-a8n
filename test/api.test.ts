@@ -322,6 +322,49 @@ describe("a session that asked for the GUI fallback", () => {
       ).rejects.toThrow(/recoveryGraceMs must be a non-negative number/);
     }
   });
+
+  it("refuses a session option that is not an object with a valid uid", async () => {
+    for (const bad of [null, "501", { uid: 0 }, { uid: 1.5 }, { uid: "501" }, {}]) {
+      await expect(
+        AfterEffects.launch({
+          sessionRoot,
+          transport,
+          session: bad as never,
+        }),
+      ).rejects.toThrow(TypeError);
+    }
+    await expect(
+      AfterEffects.launch({ sessionRoot, transport, session: null as never }),
+    ).rejects.toThrow(/session must be an object/);
+    await expect(
+      AfterEffects.launch({ sessionRoot, transport, session: { uid: 0 } }),
+    ).rejects.toThrow(/session\.uid must be a positive integer/);
+  });
+
+  it("refuses a non-boolean session.recover instead of silently disabling the fallback", async () => {
+    await expect(
+      AfterEffects.launch({
+        sessionRoot,
+        transport,
+        session: { uid: 501, recover: "true" as never },
+      }),
+    ).rejects.toThrow(/session\.recover must be a boolean/);
+  });
+});
+
+describe("a host script path that cannot be read", () => {
+  it("reports the read failure with its reason, not 'not found'", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "a8n-hostscript-"));
+    try {
+      // A directory exists but cannot be read as a script: the refusal must
+      // carry the underlying reason rather than claim the file is missing.
+      await expect(
+        AfterEffects.launch({ sessionRoot, transport, hostScript: dir }),
+      ).rejects.toThrow(/host script not readable/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("the readiness budget", () => {
