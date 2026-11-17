@@ -272,6 +272,34 @@ describe("ae.call through the fake host", () => {
     await ae.close();
   });
 
+  it("refuses params that are not an object before anything is sent", async () => {
+    const dir = tempDir();
+    const ae = await launchedWithExtension(dir);
+    for (const params of [null, [], "value", 1]) {
+      await expect(
+        ae.call("aulymo.echo", params as unknown as Record<string, unknown>),
+      ).rejects.toThrow("params must be an object");
+    }
+    await ae.close();
+  });
+
+  it("hands out a read-only method list that mutation cannot extend", async () => {
+    const dir = tempDir();
+    const ae = await launchedWithExtension(dir);
+    const declared = ae.extensionMethods();
+    expect(Object.isFrozen(declared)).toBe(true);
+    expect(() => (declared as string[]).push("aulymo.injected")).toThrow(TypeError);
+    expect(ae.extensionMethods()).toEqual(["aulymo.echo", "aulymo.boom"]);
+    // The error's declared list is the same read-only state: mutating it
+    // must not widen what the session accepts either.
+    const error = await ae.call("aulymo.missing").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ExtensionMethodNotFoundError);
+    const declaredOnError = (error as ExtensionMethodNotFoundError).declared;
+    expect(Object.isFrozen(declaredOnError)).toBe(true);
+    expect(() => (declaredOnError as string[]).push("aulymo.injected")).toThrow(TypeError);
+    await ae.close();
+  });
+
   it("surfaces a failure inside the method as that failure", async () => {
     const dir = tempDir();
     const ae = await launchedWithExtension(dir);
