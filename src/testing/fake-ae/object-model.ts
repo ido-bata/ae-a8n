@@ -762,10 +762,10 @@ export class FakeApplication {
     return this.#quitCount;
   }
 
-  open(file: FakeFile): FakeFile {
+  open(file: FakeFile): FakeProject {
     this.openedPaths.push(file.fsName);
     this.project.load(createDefaultComp(), file);
-    return file;
+    return this.project;
   }
 
   quit(): void {

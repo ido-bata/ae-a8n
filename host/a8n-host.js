@@ -453,7 +453,13 @@
       app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
     }
     var opened = app.open(file);
-    return { file: String(opened.fsName || opened.name) };
+    // app.open answers with the Project it opened; the path is on
+    // project.file. An absent file (an untitled project) reports null.
+    var openedFile = opened === null || opened === undefined ? null : opened.file;
+    var openedPath = openedFile === null || openedFile === undefined
+      ? null
+      : openedFile.fsName || openedFile.name;
+    return { file: openedPath === null || openedPath === undefined ? null : String(openedPath) };
   };
 
   methods["project.close"] = function (params) {

@@ -66,7 +66,7 @@ describe("driver against the fake host", () => {
     writeFileSync(projectPath, "fake project");
 
     const opened = await driver.call<{ file: string }>("project.open", { path: projectPath });
-    expect(opened.file).toContain("fixture.aep");
+    expect(opened.file).toBe(projectPath);
 
     const comps = await driver.call<Array<{ name: string; layerCount: number }>>("project.comps");
     expect(comps).toEqual([
