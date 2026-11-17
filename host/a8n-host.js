@@ -580,7 +580,13 @@
   function requireProperty(effect, identifier) {
     var property = findParameter(effect, identifier);
     if (property === null || property === undefined) {
-      throw new Error("parameter not found on effect '" + effect.name + "': " + identifier);
+      var missing = new Error("parameter not found on effect '" + effect.name + "': " + identifier);
+      // Named and kinded like findComp's NotFoundError, so the API turns
+      // exactly this into EntityNotFoundError(kind: "parameter"); the kind
+      // keeps a missing composition inside the same call distinct.
+      missing.name = "NotFoundError";
+      missing.kind = "parameter";
+      throw missing;
     }
     return property;
   }
