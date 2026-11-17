@@ -29,7 +29,7 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, resolve, sep, win32 } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const SCHEMA_VERSION = 1;
@@ -87,17 +87,17 @@ export function defaultRoots(platform = process.platform, env = process.env, hom
   const roots = [];
   if (platform === "darwin") {
     roots.push({
-      path: join(home, "Library", "Preferences", "Adobe", "After Effects"),
+      path: posix.join(home, "Library", "Preferences", "Adobe", "After Effects"),
       kind: "ae-prefs-tree",
     });
     roots.push({
-      path: join(home, "Library", "Preferences"),
+      path: posix.join(home, "Library", "Preferences"),
       kind: "ae-prefs-dir",
       match: /after.?effects/i,
     });
   } else if (platform === "win32") {
-    const appData = env.APPDATA ?? join(home, "AppData", "Roaming");
-    roots.push({ path: join(appData, "Adobe", "After Effects"), kind: "ae-prefs-tree" });
+    const appData = env.APPDATA ?? win32.join(home, "AppData", "Roaming");
+    roots.push({ path: win32.join(appData, "Adobe", "After Effects"), kind: "ae-prefs-tree" });
     roots.push({ path: appData, kind: "ae-prefs-dir", match: /after.?effects/i });
   } else {
     roots.push({ path: home, kind: "ae-prefs-dir", match: /after.?effects/i });
