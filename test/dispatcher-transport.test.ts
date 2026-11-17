@@ -43,6 +43,7 @@ import {
   DispatcherTransport,
   DISPATCHER_TRANSPORT_KIND,
   aeScriptsVersion,
+  aeVersionParts,
   defaultDispatcherChannelDir,
   dispatcherStartupDir,
 } from "../src/driver/dispatcher-transport.js";
@@ -109,8 +110,12 @@ type FakePeer = {
  * File > Scripts > Run Script File would. Returns the tick the scheduler
  * would call; tests fire it by hand.
  */
-function activateFakeDispatcher(dir: string): { peer: FakePeer; outcome: ReturnType<typeof runHostScript> } {
+function activateFakeDispatcher(
+  dir: string,
+  version = "26.0.0",
+): { peer: FakePeer; outcome: ReturnType<typeof runHostScript> } {
   const app = new FakeApplication();
+  app.version = version;
   if (app.project.numItems === 0) {
     app.project.load(createDefaultComp(), null);
   }
@@ -790,6 +795,27 @@ describe("target binding and reconnect pinning (#145)", () => {
     await pinned.launch();
     await pinned.close();
     await transport.close();
+  });
+
+  it("accepts a heartbeat version with a real-host build suffix", async () => {
+    const dir = channelDir();
+    const transport = makeTransport(dir);
+    await transport.prepare();
+    // Real `app.version` on AE 26.5 reports "26.0.0x9"-style strings: the
+    // build suffix is not a version component and must not fail parsing.
+    activateFakeDispatcher(dir, "26.0.0x9");
+
+    const pinned = makeTransport(dir, { expectedAeVersion: "26.0" });
+    await pinned.launch();
+    await pinned.close();
+    await transport.close();
+  });
+
+  it("parses AE version components at their leading digit run", () => {
+    expect(aeVersionParts("26.5.3x9")).toEqual([26, 5, 3]);
+    expect(aeVersionParts("26.5")).toEqual([26, 5]);
+    expect(() => aeVersionParts("26.x.5")).toThrow(/cannot parse AE version/);
+    expect(() => aeVersionParts("26")).toThrow(/cannot parse AE version/);
   });
 
   it("refuses to deliver once the answering instance changes", async () => {

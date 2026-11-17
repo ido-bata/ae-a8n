@@ -304,10 +304,17 @@ export function aeVersionFromInstallDir(platform: NodeJS.Platform, installDir: s
  * minor version cannot refuse a different yearly AE.
  */
 export function aeVersionParts(version: string): number[] {
+  // Real `app.version` strings can carry a build suffix after the last
+  // numeric component (observed on AE 26.5: "26.5.3x9"). Each component
+  // contributes its leading digit run; a component with no leading digits
+  // is still malformed and fails closed.
   const parts = version
     .trim()
     .split(".")
-    .map((part) => (/^\d+$/.test(part) ? Number(part) : Number.NaN));
+    .map((part) => {
+      const match = /^(\d+)/.exec(part);
+      return match === null ? Number.NaN : Number(match[1]);
+    });
   if (parts.length < 2 || parts.some((part) => !Number.isFinite(part))) {
     throw new Error(`cannot parse AE version ${JSON.stringify(version)}`);
   }
