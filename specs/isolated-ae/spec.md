@@ -240,17 +240,18 @@ The product is not complete until all of these are true, each with evidence:
 
 ## 10. Decisions required from the owner
 
-1. **Windows backend.** This spec selects a dedicated Windows host/VM with an
-   in-session agent (see [research.md](research.md) §4). A same-machine
-   second-session or hidden-desktop backend is not selected, because neither
-   can currently be proven non-interfering. Owner confirmation is required
-   before implementation reaches the release gate.
-2. **Windows hardware.** Real-host verification of the Windows backend needs a
-   reachable Windows 11 machine or VM. Until then, Windows work can reach
-   `implemented` and `automated test`, never `verified on real host`.
-3. **Adobe licensing.** The chosen backend runs AE under a dedicated OS account
-   on a dedicated machine. Whether that is a separate "device" under the
-   owner's Adobe terms must be confirmed by the owner, not assumed.
+1. **Windows backend — confirmed 2026-11-10.** A dedicated Windows host/VM with
+   an in-session agent is the formal backend (see [research.md](research.md)
+   §4). A same-machine second-session or hidden-desktop backend is not selected,
+   because neither can currently be proven non-interfering.
+2. **Windows hardware — available as of 2026-11-10.** A Windows 11 host is
+   reachable through `herdr` (saved machine `Windows`). Its presence does not
+   make any Windows claim `verified on real host`; that requires T092 evidence
+   recorded in `docs/windows-verification.md`.
+3. **Adobe licensing — still an owner decision.** The chosen backend runs AE
+   under a dedicated OS account on a dedicated machine. Whether that is a
+   separate "device" under the owner's Adobe terms must be confirmed by the
+   owner, not assumed.
 
 ## 11. Out of scope
 
