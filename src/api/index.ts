@@ -397,6 +397,10 @@ export class AfterEffects {
       recovery = new MacHostRecovery({
         session: targetSession,
         pid: () => transport.recoveryTargetPid(),
+        // A pid is not an identity. The same re-check that produced the pid
+        // runs again immediately before every GUI action, so a process
+        // that exited and had its pid reused is never the one pressed.
+        verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
         screenshotDir: join(sessionRoot, "artifacts"),
       });
     }

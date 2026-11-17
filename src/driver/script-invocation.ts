@@ -704,11 +704,27 @@ export class ScriptInvocationTransport implements HostTransport {
    * it cannot tell the run's After Effects from one the human started a
    * moment later. Ownership itself stays as strict as it was: quitting still
    * requires the probe's proof.
+   *
+   * Every call re-reads the process list, for both the owned and the
+   * spawned-but-unproven host: a pid is not an identity, and the process
+   * can exit and have its pid reused between two calls — the GUI fallback
+   * calls this immediately before each action it takes.
    */
   recoveryTargetPid(): number | null {
     const owned = this.#owned;
     if (owned !== null) {
-      return owned.pid;
+      // The probe proved this pid *and* start time once; prove it again
+      // now. Same process and still the only instance of this install in
+      // scope, or no target: a reused pid or a second instance is
+      // ambiguity, and ambiguity fails closed.
+      let now: HostProcess[];
+      try {
+        now = this.#hostProcesses();
+      } catch {
+        return null;
+      }
+      const same = now.filter((p) => sameProcess(this.#platform, p, owned));
+      return same.length === 1 && now.length === 1 ? owned.pid : null;
     }
     if (this.#platform !== "darwin" || this.#spawnedPid === undefined) {
       return null;

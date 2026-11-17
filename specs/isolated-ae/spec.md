@@ -17,7 +17,8 @@ It cannot yet be handed to a general user as a testing tool, because:
    in `scripts/isolated-session/` on `release-0-2-0`. Draft PR #50, which
    carried the original version of those scripts, was closed as stale; its
    reviewed safety commits are on the release branch, and the residual
-   defences it still lacked were ported under issue #136.
+   defences it still lacked were ported under issues #136 (isolated-session
+   runner defences) and #135 (GUI-recovery process-identity revalidation).
 2. Isolation exists on macOS only, and only as scripts, not yet as a
    supported, diagnosed, installable flow. The packaged macOS adapter
    (`src/platform/darwin`) enters the target session through

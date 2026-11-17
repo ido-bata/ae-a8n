@@ -351,6 +351,56 @@ describe("who owns the After Effects process", () => {
     expect(t.ownership().kind).toBe("owned");
   });
 
+  it("re-verifies the owned process on every recoveryTargetPid call", async () => {
+    // Ownership was proven once, at confirmLaunched. The pid handed to the
+    // GUI fallback is re-proven on every call: while pid 42 is still the
+    // same single instance it is returned, and once the pid names a
+    // different process (reused pid) nothing is handed out.
+    const t = transportSeeing([], [ae(42)], [ae(42)], [ae(42)], [ae(42, T0 + 90_000)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership().kind).toBe("owned");
+    expect(t.recoveryTargetPid()).toBe(42);
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("hands the GUI fallback nothing once a second instance is running", async () => {
+    // Two instances of this install in scope: the owned pid can no longer
+    // be told apart, so the fallback gets no target even though ownership
+    // itself was proven earlier.
+    const t = transportSeeing([], [ae(42)], [ae(42)], [ae(42), ae(43)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership().kind).toBe("owned");
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("hands the GUI fallback nothing when the process list cannot be re-read", async () => {
+    let calls = 0;
+    const t = new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      now: () => T0,
+      processes: () => {
+        calls += 1;
+        if (calls === 1) {
+          return [];
+        }
+        if (calls === 2) {
+          return [ae(42)];
+        }
+        throw new Error("ps failed");
+      },
+      launchMacHost: () => Promise.resolve(42),
+    });
+    await t.launch();
+    t.confirmLaunched();
+    // The process is still recorded as owned, but it cannot be re-proven:
+    // the fallback gets no pid rather than an unverified one.
+    expect(t.hostPid()).toBe(42);
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
   it("is unsure when the only host started before launch began", async () => {
     // Someone else started it between the snapshot and the probe.
     const t = transportSeeing([], [ae(42, T0 - 30_000)]);

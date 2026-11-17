@@ -238,7 +238,9 @@ licence/sign-in class always reports and never presses; an unknown dialog is
 
 **Delivered 2026-11-10 (#71, PR #79):** `src/platform/recovery-policy.ts` is the
 platform-neutral policy (measured allow list, human-only classes, unknown =>
-`A8N-SEC-001`); macOS PR #50 can adopt it later and was not moved here.
+`A8N-SEC-001`). (PR #50 was later closed; the macOS path kept its own measured
+classes in `src/driver/recovery.ts`, which #135 extended with per-action
+process-identity revalidation.)
 `src/platform/windows/recovery.ts` reads only the passive `tasklist /V` window
 state. A responding or absent AE is reported; `Not Responding`, an unknown
 state or unreadable output is refused with `A8N-SEC-001` and a remedy. There is

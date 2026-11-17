@@ -20,6 +20,7 @@ import { join } from "node:path";
 
 import {
   GuiMutationError,
+  GuiRecoveryError,
   MacGuiRecovery,
   isBlockingWindow,
   type GuiWindowInfo,
@@ -46,10 +47,10 @@ export type RecoveryOutcome = {
   readonly outcome?: "dismissed" | "quarantined" | "refused";
   /**
    * The security code, when the recovery quarantined the run because the
-   * blocking window was not a measured class. Currently always
-   * `"A8N-SEC-001"`.
+   * blocking window was not a measured class. Currently `"A8N-SEC-001"`,
+   * or `"A8N-AE-004"` when the target process could not be re-proven.
    */
-  readonly code?: "A8N-SEC-001";
+  readonly code?: "A8N-SEC-001" | "A8N-AE-004";
   /** What was seen and what was done, for the trace and for a human. */
   readonly evidence: string;
   /** A screenshot of the target session, when one was taken. */
@@ -309,6 +310,13 @@ export type MacHostRecoveryOptions = {
   readonly session: MacSession;
   /** The pid of the After Effects instance, when it is known. */
   readonly pid: () => number | null;
+  /**
+   * Whether that pid still names the process this run started, re-read
+   * immediately before every GUI action the recovery takes. A pid alone
+   * is not an identity: the process may have exited and the pid been
+   * reused, and the Accessibility query matches on pid alone.
+   */
+  readonly verifyProcess?: ((pid: number) => boolean) | undefined;
   /** Where a screenshot of the target session is written. */
   readonly screenshotDir: string;
   /** The buttons that may be pressed. */
@@ -324,12 +332,14 @@ export type MacHostRecoveryOptions = {
 export class MacHostRecovery implements HostRecovery {
   readonly #session: MacSession;
   readonly #pid: () => number | null;
+  readonly #verifyProcess: ((pid: number) => boolean) | undefined;
   readonly #screenshotDir: string;
   readonly #buttons: readonly string[];
 
   constructor(options: MacHostRecoveryOptions) {
     this.#session = options.session;
     this.#pid = options.pid;
+    this.#verifyProcess = options.verifyProcess;
     this.#screenshotDir = options.screenshotDir;
     this.#buttons = options.buttons ?? RECOVERY_BUTTONS;
   }
@@ -354,16 +364,22 @@ export class MacHostRecovery implements HostRecovery {
       return {
         recovered: false,
         outcome: "refused",
-        evidence: `no After Effects process to recover: ${context.method} (${context.requestId}) timed out and no host process was found`,
+        code: "A8N-AE-004",
+        evidence: `no After Effects process this run started could be tied to it: ${context.method} (${context.requestId}) timed out and no host process was found`,
       };
     }
     let gui: MacGuiRecovery;
     try {
-      gui = new MacGuiRecovery({ session: this.#session, pid });
+      gui = new MacGuiRecovery({
+        session: this.#session,
+        pid,
+        ...(this.#verifyProcess === undefined ? {} : { verifyProcess: this.#verifyProcess }),
+      });
     } catch (error) {
       return {
         recovered: false,
         outcome: "refused",
+        ...(error instanceof GuiRecoveryError && error.code !== undefined ? { code: error.code } : {}),
         evidence: `no GUI recovery is possible: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
@@ -374,6 +390,7 @@ export class MacHostRecovery implements HostRecovery {
       return {
         recovered: false,
         outcome: "refused",
+        ...(error instanceof GuiRecoveryError && error.code !== undefined ? { code: error.code } : {}),
         evidence: `the target session could not be inspected: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
@@ -455,6 +472,7 @@ export class MacHostRecovery implements HostRecovery {
     // class was matched on. The press re-checks it inside the target session.
     const marker = window.texts.find((text) => /^\s*ae-a8n:/.test(text)) ?? "";
     let leaseRefusal: string | null = null;
+    let refusalCode: "A8N-AE-004" | undefined;
     let unknownMutation: string | null = null;
     for (const title of this.#buttons) {
       // One call for both cases: a button the listing showed and one it did
@@ -476,8 +494,10 @@ export class MacHostRecovery implements HostRecovery {
           // owner holds the session's mutation lease. Report who, and stop —
           // retrying under a held lease is exactly the contention it prevents.
           // Any other pre-mutation GuiRecoveryError (session entry, listing
-          // mismatch) also means nothing was pressed.
+          // mismatch, a failed process-identity re-check) also means nothing
+          // was pressed.
           leaseRefusal = error instanceof Error ? error.message : String(error);
+          refusalCode = error instanceof GuiRecoveryError ? error.code : undefined;
         }
         break;
       }
@@ -515,9 +535,14 @@ export class MacHostRecovery implements HostRecovery {
       return {
         recovered: false,
         outcome: "refused",
+        ...(refusalCode === undefined ? {} : { code: refusalCode }),
         evidence:
-          `After Effects ${pid} shows "${description}", but no GUI mutation was attempted: ` +
-          `${leaseRefusal}. The dialog stays up until the lease holder finishes or the lease is reaped.`,
+          refusalCode === "A8N-AE-004"
+            ? `After Effects ${pid} shows "${description}", but no GUI mutation was attempted: ` +
+              `${leaseRefusal}. The pid no longer provably names the process this run started, ` +
+              "so nothing was pressed and nothing will be until the target can be re-verified."
+            : `After Effects ${pid} shows "${description}", but no GUI mutation was attempted: ` +
+              `${leaseRefusal}. The dialog stays up until the lease holder finishes or the lease is reaped.`,
         ...(shot === undefined ? {} : { screenshotPath: shot }),
         window: description,
       };

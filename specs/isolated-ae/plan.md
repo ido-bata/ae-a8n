@@ -162,7 +162,11 @@ documented in `docs/offstage-macos.md`, and are **not** superseded by
 `src/platform/darwin`, which enters the target session through
 `src/driver/mac-session.ts` (`launchctl asuser` / already-inside) — a
 different mechanism that does not implement the job-file dispatch, the
-session agent, or the terminal/offstage substrates.
+session agent, or the terminal/offstage substrates. Issue #135 separately
+ported the last GUI-side residual: `MacGuiRecovery` now re-verifies the
+owned process's identity (pid + start time + uniqueness) immediately before
+every GUI action, closing the pid-reuse gap PR #50's `verifyProcess` had
+covered.
 
 Do not rebase the branch blindly. The PR is a Draft with 40 files; moving it
 into `src/platform/macos` changes its shape. Sequence:

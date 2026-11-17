@@ -456,12 +456,30 @@ export type GuiRecoveryOptions = {
    * exercised without a real GUI session.
    */
   readonly runSession?: typeof runInSession;
+  /**
+   * Re-checks, immediately before each GUI action, that `pid` still names
+   * the process this run started. A pid alone is not an identity: the
+   * process may have exited and the pid been reused by another After
+   * Effects — or by anything else — between the listing and the press.
+   * Returning false, or throwing, refuses the action with `A8N-AE-004`;
+   * nothing is sent to the Accessibility API or to `screencapture`.
+   *
+   * The check runs before *every* session command this recovery issues —
+   * each window listing, screenshot, press and click — not once per
+   * attempt, because the process can change between two actions of the
+   * same attempt.
+   */
+  readonly verifyProcess?: ((pid: number) => boolean) | undefined;
 };
 
 export class GuiRecoveryError extends Error {
-  constructor(message: string) {
+  /** A stable code for a refusal a caller may act on. */
+  readonly code: "A8N-AE-004" | undefined;
+
+  constructor(message: string, options: { code?: "A8N-AE-004" } = {}) {
     super(message);
     this.name = "GuiRecoveryError";
+    this.code = options.code;
   }
 }
 
@@ -500,6 +518,7 @@ export class MacGuiRecovery {
   readonly #census: (() => WindowCensus) | undefined;
   readonly #lease: GuiLeaseController;
   readonly #runSession: typeof runInSession;
+  readonly #verifyProcess: ((pid: number) => boolean) | undefined;
 
   constructor(options: GuiRecoveryOptions) {
     if (options.session.kind !== "Aqua") {
@@ -540,6 +559,7 @@ export class MacGuiRecovery {
         ownerId: options.ownerId ?? "ae-a8n",
       });
     this.#runSession = options.runSession ?? runInSession;
+    this.#verifyProcess = options.verifyProcess;
   }
 
   /**
@@ -597,6 +617,22 @@ export class MacGuiRecovery {
       } catch (error) {
         if (error instanceof MacSessionError) {
           // The session was never entered: provably nothing was mutated.
+          try {
+            this.#lease.audit({
+              kind: "mutate",
+              op,
+              outcome: "not-performed",
+              detail: error.message,
+            });
+          } catch {
+            // The original failure is the evidence that matters.
+          }
+          throw error;
+        }
+        if (error instanceof GuiRecoveryError && error.code !== undefined) {
+          // A coded refusal — today only the process-identity re-check —
+          // is raised *before* its session command runs, so nothing was
+          // pressed or clicked. It is a refusal, not an unknown mutation.
           try {
             this.#lease.audit({
               kind: "mutate",
@@ -675,6 +711,11 @@ export class MacGuiRecovery {
       );
     }
     const parsed = parseUiListing(result.stdout);
+    // The census is a second session command after the listing: the
+    // process is re-verified before it too, for the same reason. The
+    // refusal must not be swallowed by the census's degrade-to-unavailable
+    // handling below, so it runs outside that try.
+    this.#assertSameProcess();
     let census: WindowCensus;
     try {
       census = this.#census !== undefined ? this.#census() : { available: false, reason: "no census configured" };
@@ -704,6 +745,7 @@ export class MacGuiRecovery {
       mkdirSync(this.#screenshotDir, { recursive: true });
     }
     mkdirSync(dirname(path), { recursive: true });
+    this.#assertSameProcess();
     const result = runInSession(this.#session, "/usr/sbin/screencapture", ["-x", "-o", path], {
       timeoutMs: 30_000,
     });
@@ -832,6 +874,11 @@ export class MacGuiRecovery {
    * source: nothing that comes from the outside becomes AppleScript.
    */
   #osascript(script: readonly string[], args: readonly string[]): SessionCommandResult {
+    // Every AppleScript this recovery sends — a window listing, a button
+    // press, a coordinate click — is preceded by the identity re-check.
+    // The pid in `args` is only meaningful while it still names the
+    // process this run started.
+    this.#assertSameProcess();
     const result = this.#runSession(
       this.#session,
       "/usr/bin/osascript",
@@ -844,6 +891,39 @@ export class MacGuiRecovery {
       );
     }
     return result;
+  }
+
+  /**
+   * Refuses unless `pid` still names the process this run started.
+   *
+   * A pid can be reused between the moment ownership was decided and the
+   * moment a dialog is pressed; without this check the Accessibility query
+   * would find and act on whatever process now holds that pid. The check
+   * runs immediately before every session command — listing, screenshot,
+   * press, click — because the process can change between two actions of
+   * the same attempt.
+   *
+   * A verifier that throws counts as "cannot prove it is the same
+   * process": fail closed, never act on a maybe.
+   */
+  #assertSameProcess(): void {
+    const verify = this.#verifyProcess;
+    if (verify === undefined) {
+      return;
+    }
+    let same = false;
+    try {
+      same = verify(this.#pid);
+    } catch {
+      same = false;
+    }
+    if (!same) {
+      throw new GuiRecoveryError(
+        `the After Effects process ${this.#pid} is no longer the one this run started (A8N-AE-004); ` +
+          "no GUI action was taken.",
+        { code: "A8N-AE-004" },
+      );
+    }
   }
 }
 
