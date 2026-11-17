@@ -773,6 +773,27 @@ export class FakeApplication {
   }
 
   /**
+   * `app.scheduleTask` as AE documents it: registers `script` to run every
+   * `intervalMs`, and returns a task id. The fake never fires the script on
+   * its own — a test drives the dispatcher through the tick function the
+   * host script leaves on `$.global`, which is what a real scheduler calls.
+   */
+  readonly scheduledTasks: Array<{
+    readonly id: number;
+    readonly script: string;
+    readonly intervalMs: number;
+    readonly repeat: boolean;
+  }> = [];
+  #nextTaskId = 1;
+
+  scheduleTask(script: string, intervalMs: number, repeat: boolean): number {
+    const id = this.#nextTaskId;
+    this.#nextTaskId += 1;
+    this.scheduledTasks.push({ id, script: String(script), intervalMs, repeat: repeat === true });
+    return id;
+  }
+
+  /**
    * The process environment as `$.getenv` / `$.setenv` see it: this
    * process only, gone when it exits.
    */

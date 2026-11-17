@@ -22,6 +22,7 @@ import { randomUUID } from "node:crypto";
 
 import type { ApplicationInfo } from "./types.js";
 import type { HostAttestation, HostOwnership } from "../driver/transport.js";
+import { DISPATCHER_TRANSPORT_KIND } from "../driver/transport.js";
 import { A8N_VERSION } from "../version.js";
 
 export const CAPABILITY_CONTRACT_SCHEMA = "ae-devtools.capability-handshake/v1" as const;
@@ -375,13 +376,14 @@ function extensionCapabilityId(method: string): string | null {
 function builtinAdvertisement(
   capability: BuiltinCapability,
   adapter: string,
+  verification: VerificationAxis,
 ): CapabilityAdvertisement {
   return {
     id: capability.id,
     kind: "semantic-operation",
     persistence: "repository",
     permissions: [...capability.permissions],
-    proofLevel: proofLevelFor(capability.verification, true),
+    proofLevel: proofLevelFor(verification, true),
     compatibility:
       capability.os === undefined ? {} : { os: [...capability.os] },
     execution: {
@@ -391,7 +393,7 @@ function builtinAdvertisement(
       canRemoteInvoke: true,
     },
     implementation: "implemented",
-    verification: capability.verification,
+    verification,
   };
 }
 
@@ -432,6 +434,15 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
   const { attestation } = input;
   const adapter = input.transportKind;
 
+  // The dispatch table's `verified-real-host` rows were earned through the
+  // script-invocation transport. Under the in-AE dispatcher (#127) the same
+  // host methods run, but *this* transport has no real-host evidence yet —
+  // the #98 gate is still open — so the advertised level is capped at
+  // `automated-fake` rather than borrowing another transport's proof.
+  const dispatcherUnproven = input.transportKind === DISPATCHER_TRANSPORT_KIND;
+  const capVerification = (verification: VerificationAxis): VerificationAxis =>
+    dispatcherUnproven && verification === "verified-real-host" ? "automated-fake" : verification;
+
   const owned = attestation.ownedProcess;
   const pid = attestation.pid ?? owned?.pid ?? null;
   const hostId = pid !== null ? `pid:${pid}` : `a8n-session:${input.hostNonce}`;
@@ -443,7 +454,7 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
         : null;
 
   const availableCapabilities: CapabilityAdvertisement[] = BUILTIN_CAPABILITIES.map((c) =>
-    builtinAdvertisement(c, adapter),
+    builtinAdvertisement(c, adapter, capVerification(c.verification)),
   );
   const seen = new Set(availableCapabilities.map((c) => c.id));
   for (const method of input.extensionMethods) {
@@ -507,6 +518,15 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
         "the transport attests isolated-user but cannot prove it refuses the console " +
         "session's After Effects; a start or script meant for another user could land " +
         "on the screen the user is looking at.",
+    });
+  }
+  if (dispatcherUnproven) {
+    diagnostics.push({
+      code: "dispatcher-transport-unverified",
+      effect:
+        "the in-AE dispatcher transport has no real-host evidence yet (the #98 acceptance " +
+        "gate is still open); advertised verification is capped at automated-fake and " +
+        "non-interference remains unproven.",
     });
   }
 

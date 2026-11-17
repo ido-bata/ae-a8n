@@ -83,6 +83,7 @@ export type {
   CompInfo,
   CreateCompOptions,
   DiagnosticsOptions,
+  DispatcherTransportSelection,
   EffectInfo,
   GuiAssessment,
   GuiSessionInfo,
@@ -109,6 +110,7 @@ export type {
   RenderOptions,
   RenderedFrame,
   SessionDiagnostics,
+  TransportSelection,
 } from "./api/types.js";
 
 export { TraceRecorder } from "./trace/trace.js";
@@ -137,6 +139,14 @@ export type {
   EvidenceAttribution,
 } from "./driver/session-diagnostics.js";
 export { ScriptInvocationTransport } from "./driver/script-invocation.js";
+export {
+  DispatcherTransport,
+  DISPATCHER_TRANSPORT_KIND,
+  defaultDispatcherChannelDir,
+  dispatcherStartupDir,
+  type DispatcherHeartbeat,
+  type DispatcherTransportOptions,
+} from "./driver/dispatcher-transport.js";
 export {
   launchProvenancePath,
   readLaunchProvenance,

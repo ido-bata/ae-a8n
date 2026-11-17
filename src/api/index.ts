@@ -29,6 +29,8 @@ import {
   type LaunchProvenance,
 } from "../driver/launch-provenance.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
+import { DispatcherTransport } from "../driver/dispatcher-transport.js";
+import { DISPATCHER_TRANSPORT_KIND, type HostTransport } from "../driver/transport.js";
 import { readExtensionHeader } from "../extensions/manifest.js";
 import { TraceRecorder, type TraceEvent } from "../trace/trace.js";
 import {
@@ -49,6 +51,7 @@ import {
 } from "./errors.js";
 import type { StopResult } from "../driver/driver.js";
 import type { HostOwnership } from "../driver/transport.js";
+import type { TransportSelection } from "./types.js";
 
 /** What `AfterEffects.close` did. */
 export type CloseResult = StopResult;
@@ -340,18 +343,25 @@ export class AfterEffects {
     return AfterEffects.#open({ ...options, sessionRoot }, provenance, "session.resume");
   }
 
-  static async #open(
-    options: LaunchOptions,
+  /**
+   * Resolves `LaunchOptions.transport` into a `HostTransport`.
+   *
+   * Absent, the script-invocation transport is built exactly as before —
+   * including adoption of recorded launch provenance. A `HostTransport`
+   * instance is used as-is (the fake host, a remote worker). The named
+   * `"in-ae-dispatcher"` selection — opt-in only, #127 — builds the
+   * file-channel dispatcher transport; it never falls back to script
+   * invocation, and launch provenance does not apply to it (the dispatcher
+   * cannot prove process ownership, so it records none).
+   */
+  static #resolveTransport(
+    selection: TransportSelection | undefined,
     adopt: LaunchProvenance | null,
+    options: LaunchOptions,
     op: string,
-  ): Promise<AfterEffects> {
-    // Absolute, because AE resolves paths in the scripts it is given against
-    // its own working directory rather than the caller's.
-    const sessionRoot = resolve(options.sessionRoot ?? mkdtempSync(join(tmpdir(), "ae-a8n-")));
-    const trace = new TraceRecorder({ file: join(sessionRoot, "trace.jsonl") });
-    const transport =
-      options.transport ??
-      new ScriptInvocationTransport({
+  ): HostTransport {
+    if (selection === undefined) {
+      return new ScriptInvocationTransport({
         ...(adopt === null
           ? {}
           : {
@@ -366,6 +376,55 @@ export class AfterEffects {
         ...(options.installDir === undefined ? {} : { installDir: options.installDir }),
         ...(options.session === undefined ? {} : { sessionUid: options.session.uid }),
       });
+    }
+    const isInstance =
+      typeof selection === "object" &&
+      selection !== null &&
+      typeof (selection as HostTransport).invoke === "function";
+    if (isInstance) {
+      return selection as HostTransport;
+    }
+    const kind = typeof selection === "string" ? selection : (selection as { kind?: unknown }).kind;
+    if (kind !== DISPATCHER_TRANSPORT_KIND) {
+      throw new AfterEffectsError(
+        `unknown transport selection ${JSON.stringify(kind)}; ` +
+          `supported selections are a HostTransport instance or "${DISPATCHER_TRANSPORT_KIND}"`,
+        op,
+      );
+    }
+    const channelDir =
+      typeof selection === "object" && selection !== null
+        ? (selection as { channelDir?: unknown }).channelDir
+        : undefined;
+    if (channelDir !== undefined && typeof channelDir !== "string") {
+      throw new AfterEffectsError("transport.channelDir must be a string", op);
+    }
+    if (options.session !== undefined) {
+      // The dispatcher channel is per-OS-user: it can only reach an After
+      // Effects running as this user. Silently ignoring a session target
+      // would run the call in the wrong session, so refuse instead.
+      throw new AfterEffectsError(
+        "transport \"in-ae-dispatcher\" cannot address another login session: " +
+          "the file channel is private to this OS user, so the dispatcher can only " +
+          "reach an After Effects running as the same user",
+        op,
+      );
+    }
+    return new DispatcherTransport({
+      ...(channelDir === undefined ? {} : { channelDir }),
+    });
+  }
+
+  static async #open(
+    options: LaunchOptions,
+    adopt: LaunchProvenance | null,
+    op: string,
+  ): Promise<AfterEffects> {
+    // Absolute, because AE resolves paths in the scripts it is given against
+    // its own working directory rather than the caller's.
+    const sessionRoot = resolve(options.sessionRoot ?? mkdtempSync(join(tmpdir(), "ae-a8n-")));
+    const trace = new TraceRecorder({ file: join(sessionRoot, "trace.jsonl") });
+    const transport = AfterEffects.#resolveTransport(options.transport, adopt, options, op);
 
     // The GUI fallback is only wired when the caller asks for it, and it only
     // ever acts inside the session that owns the After Effects.
