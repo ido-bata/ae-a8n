@@ -15,16 +15,47 @@
  *     channel files are real, and every scenario below executes. Evidence:
  *     `fake/mock only` — never report it as real-host verification.
  *   - `real` lane (opt-in, human activation required): the same scenarios
- *     against a real After Effects. The probe prepares the channel, prints
+ *     against a real After Effects. The probe prepares the channel — staging
+ *     the consumer extension host script built by the packed CLI — prints
  *     the `activate.jsx` path, and waits for a human to run it via
  *     File > Scripts > Run Script File. No heartbeat within the wait
  *     budget is `blocked`, not a pass.
+ *
+ * Channel lifecycle (#155): the real lane's channel is the unit that binds
+ * human activation to consumer operations — the `activate.jsx` a human runs
+ * and the `AfterEffects.launch` the probe performs must name the same
+ * channelDir and the same staged host script. By default the lane uses a
+ * fresh temporary channel per run; `--channel-dir <abs>` reuses a durable
+ * one instead, which is what makes re-runs work: `prepare()` is idempotent
+ * (the channel token is created once), so a dispatcher activated earlier
+ * keeps answering and a second activation is never needed. `--prepare-only`
+ * stops after staging and printing the activation instructions, so the
+ * human can activate before the scenario run. A channel that already has a
+ * fresh heartbeat is reused as-is — the lane never asks for a second
+ * activation on it. The staged host script lives inside the channel
+ * (`a8n-host.js`), so what After Effects runs is fixed at `prepare()` time;
+ * rebuilding the fixture later does not change a running dispatcher.
+ * Cleanup is the operator's: remove the channel directory when done
+ * (`rm -rf <channelDir>`); the default temporary channel is left for the OS
+ * tmp cleaner. Point `--channel-dir` at a dedicated directory — never at a
+ * channel another consumer uses — because the lane connects to whatever
+ * dispatcher answers there (the extension-set check still refuses a
+ * dispatcher running different staged bytes).
+ *
+ * Result contract: every probe prints a final `A8N_RESULT <json>` line and
+ * exits 0 (pass / prepared / skipped), 1 (a scenario failed) or 3 (blocked —
+ * no heartbeat inside the wait budget). The wrapper prints one
+ * `A8N_RESULT {"fake":…,"real":…}` for the whole run and exits 3 when the
+ * real lane is blocked. Exit code 0 therefore never means "real-host
+ * verified" on its own: `real:"skipped"` and `real:"blocked"` are explicit
+ * in the JSON, and only `real:"pass"` is real-host evidence.
  *
  * The extension fixture is a consumer-side module built by the packed CLI
  * (`ae-a8n extension build`), exactly as a downstream consumer would.
  *
  * Usage:
  *   node scripts/check-dispatcher-acceptance.js [--project <abs .aep>]
+ *         [--channel-dir <abs dir>] [--prepare-only]
  *
  * `--project` is required for the real lane: editing and rendering need an
  * explicit disposable fixture project, never whatever happens to be open.
@@ -50,19 +81,30 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const args = process.argv.slice(2);
 let projectPath = null;
+let channelDir = null;
+let prepareOnly = false;
 for (let i = 0; i < args.length; i += 1) {
   if (args[i] === "--project") {
     projectPath = args[i + 1];
     i += 1;
+  } else if (args[i] === "--channel-dir") {
+    channelDir = args[i + 1];
+    i += 1;
+  } else if (args[i] === "--prepare-only") {
+    prepareOnly = true;
   } else {
     console.error(
-      `::error::unknown argument ${args[i]}; usage: node scripts/check-dispatcher-acceptance.js [--project <path>]`,
+      `::error::unknown argument ${args[i]}; usage: node scripts/check-dispatcher-acceptance.js [--project <path>] [--channel-dir <dir>] [--prepare-only]`,
     );
     process.exit(1);
   }
 }
 if (projectPath !== null && !isAbsolute(projectPath)) {
   console.error("::error::--project must be an absolute path");
+  process.exit(1);
+}
+if (channelDir !== null && !isAbsolute(channelDir)) {
+  console.error("::error::--channel-dir must be an absolute path");
   process.exit(1);
 }
 
@@ -157,6 +199,8 @@ import {
 
 const HOST_SCRIPT = ${JSON.stringify(hostScriptPath)};
 const PROJECT = ${JSON.stringify(projectPath)};
+const CHANNEL_DIR = ${JSON.stringify(channelDir)};
+const PREPARE_ONLY = ${JSON.stringify(prepareOnly)};
 const WAIT_MS = Number(process.env.A8N_ACCEPTANCE_WAIT_MS ?? 600000);
 
 const results = [];
@@ -371,25 +415,73 @@ async function fakeLane() {
   return failures;
 }
 
+/* Prints the machine-readable lane result. It must stay the last stdout
+ * line: the wrapper and operators parse the A8N_RESULT json rather than
+ * exit codes or prose. (No backticks in here — this file is itself inside
+ * a template literal.) */
+function emitResult(status, extra = {}) {
+  console.log(
+    "A8N_RESULT " +
+      JSON.stringify({ lane: "real", status, failures, ...extra }),
+  );
+}
+
+function activationInstructions(transport, channelDir) {
+  console.log("real lane: activate the dispatcher inside After Effects:");
+  console.log("  File > Scripts > Run Script File");
+  console.log("  " + transport.activateScriptPath);
+  console.log("channel: " + channelDir);
+  console.log(
+    "rules: run activate.jsx once per After Effects process — never twice on " +
+      "the same AE, and never on a second AE while this channel is in use; " +
+      "the channel identifies one dispatcher instance.",
+  );
+}
+
 async function realLane() {
-  const channelDir = join(tmp("a8n-acc-channel-"), "channel");
+  // CHANNEL_DIR reuses a durable channel across runs (prepare() is
+  // idempotent: the token survives, the staged host script is refreshed);
+  // without it each run gets a fresh temporary channel.
+  const channelDir = CHANNEL_DIR ?? join(tmp("a8n-acc-channel-"), "channel");
   const sessionRoot = tmp("a8n-acc-session-");
   const transport = new DispatcherTransport({ channelDir, hostScriptPath: HOST_SCRIPT });
   await transport.prepare();
 
-  console.log("real lane: activate the dispatcher inside After Effects:");
-  console.log("  File > Scripts > Run Script File");
-  console.log("  " + transport.activateScriptPath);
-  console.log("waiting up to " + WAIT_MS + "ms for a heartbeat…");
-  const deadline = Date.now() + WAIT_MS;
+  if (PREPARE_ONLY) {
+    activationInstructions(transport, channelDir);
+    console.log(
+      "real lane: --prepare-only — channel staged, activation left to the " +
+        "human. Re-run without --prepare-only once the heartbeat is fresh.",
+    );
+    emitResult("prepared", { channelDir });
+    return 0;
+  }
+
   let status = transport.status();
-  while (!(status.heartbeat && status.heartbeat.fresh)) {
-    if (Date.now() > deadline) {
-      console.log("RESULT: blocked — no dispatcher heartbeat within the wait budget (human activation did not happen or AE is not running)");
-      return 0;
+  if (status.heartbeat && status.heartbeat.fresh) {
+    // A dispatcher is already answering this channel — almost always a
+    // previous run's activation. Reuse it; asking for a second activation
+    // would be wrong (the host refuses doubles anyway) and connecting to a
+    // *different* instance is what the pin checks below guard against.
+    console.log(
+      "dispatcher already answering on this channel (instance " +
+        status.heartbeat.instance +
+        ", ae " + status.heartbeat.aeVersion +
+        ") — reusing it; do not run activate.jsx again.",
+    );
+  } else {
+    activationInstructions(transport, channelDir);
+    console.log("waiting up to " + WAIT_MS + "ms for a heartbeat…");
+    const deadline = Date.now() + WAIT_MS;
+    while (!(status.heartbeat && status.heartbeat.fresh)) {
+      if (Date.now() > deadline) {
+        console.log("RESULT: blocked — no dispatcher heartbeat within the wait budget (human activation did not happen or AE is not running)");
+        emitResult("blocked", { channelDir });
+        return 3;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      status = transport.status();
     }
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    status = transport.status();
   }
   console.log("dispatcher heartbeat fresh (instance " + status.heartbeat.instance + ")");
 
@@ -413,8 +505,10 @@ async function realLane() {
 
     console.log("real lane results:");
     for (const line of results) console.log("  " + line);
+    const laneStatus = failures === 0 ? "pass" : "fail";
     console.log(failures === 0 ? "RESULT: real-host pass" : "RESULT: real-host FAIL");
-    return failures;
+    emitResult(laneStatus, { channelDir, instance: boundInstance });
+    return failures === 0 ? 0 : 1;
   } finally {
     // The fixture project's edits are never saved; discarding them is the
     // documented acceptance behaviour, not data loss.
@@ -426,23 +520,30 @@ async function realLane() {
     );
     if (closed.quit !== false) {
       console.log("RESULT: real-host FAIL — close() quit an attached host");
-      return Math.max(failures, 1);
+      emitResult("fail", { channelDir, reason: "close quit an attached host" });
+      return 1;
     }
   }
 }
 
 const mode = process.argv[2];
 if (mode === "fake") {
-  process.exitCode = (await fakeLane()) === 0 ? 0 : 1;
+  const fakeFailures = await fakeLane();
+  console.log(
+    "A8N_RESULT " +
+      JSON.stringify({ lane: "fake", status: fakeFailures === 0 ? "pass" : "fail", failures: fakeFailures }),
+  );
+  process.exitCode = fakeFailures === 0 ? 0 : 1;
 } else if (mode === "real") {
-  if (PROJECT === null) {
-    console.log("RESULT: blocked — the real lane needs --project <abs .aep> (an explicit disposable fixture; editing and rendering must not touch whatever project happens to be open)");
+  if (PROJECT === null && !PREPARE_ONLY) {
+    console.log("RESULT: skipped — the real lane needs --project <abs .aep> (an explicit disposable fixture; editing and rendering must not touch whatever project happens to be open)");
+    console.log('A8N_RESULT {"lane":"real","status":"skipped","reason":"no --project fixture"}');
     process.exitCode = 0;
   } else {
-    process.exitCode = (await realLane()) === 0 ? 0 : 1;
+    process.exitCode = await realLane();
   }
 } else {
-  console.error("usage: acceptance.mjs fake|real [--project via env]");
+  console.error("usage: acceptance.mjs fake|real");
   process.exitCode = 2;
 }
 `,
@@ -455,13 +556,30 @@ if (mode === "fake") {
         cwd: workdir,
         stdio: ["ignore", "pipe", "pipe"],
       });
-      return { ok: true, output: String(output) };
+      return { ok: true, status: 0, output: String(output) };
     } catch (error) {
       return {
         ok: false,
+        status: typeof error.status === "number" ? error.status : 1,
         output: `${String(error.stdout ?? "")}\n${String(error.stderr ?? "")}`,
         message: error instanceof Error ? error.message : String(error),
       };
+    }
+  }
+
+  /* The probe's last `A8N_RESULT <json>` line is the lane's machine-readable
+   * verdict; prose and exit codes only back it up. */
+  function probeResult(output) {
+    const line = output
+      .trim()
+      .split("\n")
+      .filter((l) => l.startsWith("A8N_RESULT "))
+      .at(-1);
+    if (line === undefined) return null;
+    try {
+      return JSON.parse(line.slice("A8N_RESULT ".length));
+    } catch {
+      return null;
     }
   }
 
@@ -477,10 +595,15 @@ if (mode === "fake") {
   // --- Real lane: needs an explicit fixture project and a human to
   //     activate the dispatcher inside After Effects. ----------------------
 
+  // The lane verdicts the wrapper reports: "pass" | "fail" | "blocked" |
+  // "prepared" | "skipped". Only "pass" is real-host evidence; the final
+  // A8N_RESULT line is the machine-readable contract callers must read —
+  // exit code 0 alone never means the real lane was verified.
+  let realStatus = "skipped";
   const skipReal = process.env.A8N_ACCEPTANCE_SKIP_REAL === "1";
   if (skipReal) {
     console.log("\nreal lane: skipped (A8N_ACCEPTANCE_SKIP_REAL=1)");
-  } else if (projectPath === null) {
+  } else if (projectPath === null && !prepareOnly) {
     console.log(
       "\nreal lane: skipped — no --project <abs .aep> fixture given. " +
         "The real lane edits and renders, so it never runs against an " +
@@ -491,18 +614,38 @@ if (mode === "fake") {
     console.log("A human must run the printed activate.jsx inside AE.");
     const real = runProbe("real");
     console.log(real.output.trim());
-    if (!real.ok && !real.output.includes("RESULT: blocked")) {
+    const verdict = probeResult(real.output);
+    realStatus =
+      verdict !== null && typeof verdict.status === "string"
+        ? verdict.status
+        : real.ok
+          ? "unknown"
+          : "fail";
+    if (realStatus === "fail" || (realStatus === "unknown" && !real.ok)) {
       fail(`real lane failed${real.ok ? "" : `: ${real.message}`}`);
     }
-    if (real.output.includes("RESULT: real-host pass")) {
+    if (realStatus === "pass") {
       console.log("\nconsumer dispatcher acceptance passed against a real After Effects.");
+    } else if (realStatus === "blocked") {
+      console.log(
+        "\nconsumer dispatcher acceptance: real lane blocked — no dispatcher " +
+          "heartbeat inside the wait budget. That is unverified, not a pass; " +
+          "re-run once a human has activated the printed activate.jsx.",
+      );
     } else {
       console.log(
         "\nconsumer dispatcher acceptance: fake lane verified from a clean " +
-          "install; real lane did not complete (verification level: " +
+          `install; real lane ${realStatus} (verification level: ` +
           "fake/mock only for the dispatcher scenarios — not real-host evidence).",
       );
     }
+  }
+
+  console.log("A8N_RESULT " + JSON.stringify({ fake: "pass", real: realStatus }));
+  if (realStatus === "blocked") {
+    // Blocked is not a pass and not a harness failure: exit 3 matches the
+    // CLI's blocked code so automation cannot mistake it for success.
+    process.exitCode = 3;
   }
 } finally {
   rmSync(workdir, { recursive: true, force: true });
