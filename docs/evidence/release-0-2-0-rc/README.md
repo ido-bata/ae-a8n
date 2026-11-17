@@ -27,7 +27,7 @@ prerelease へ再分類した:
 | --- | --- |
 | version | `0.2.0-beta.1` |
 | branch | `release-0-2-0` |
-| freeze SHA | `7aae003d7c17e6a244ce924db3499514dd81aee6`（PR #156 merge commit。旧 freeze `9f340fa` は version・内容変更により無効） |
+| freeze SHA | `d4d28048c93f084235dcfd1c2942b244c88f18b5`（release head。PR #156/#157/#158 merge 済み。`npm pack` の tarball hash は `7aae003` で採取し、`d4d2804` で byte 同一を再検証済み — 間の差分は package `files` 対象外の scripts/docs/test のみ。旧 freeze `9f340fa` は version・内容変更により無効） |
 | package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（380,118 bytes） |
 | tarball shasum (sha1) | `799f3a1b2e6d024f029e156f892e8c527f5e41fb` |
 | tarball integrity (sha512) | `sha512-9dy9GOSDvR350rtjb9mu6ZGVdBhtDFtWCeRj+NhAQuRgyTLBE2msSJhI/8DTwnUDiQa6EELZie71vDg9BGuLeQ==` |
