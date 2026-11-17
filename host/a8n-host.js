@@ -1389,7 +1389,11 @@
     }
     var codec = loadJson();
     var root = new Folder(String(config.root));
-    if (!root.exists || !root.isDirectory) {
+    // ExtendScript's Folder has no `isDirectory` (observed on AE 26.5 — the
+    // fake Folder models one, which is why only the real host tripped this).
+    // `exists` plus the inbox/outbox checks below are the real contract: a
+    // plain file at the root fails there with a clearer error anyway.
+    if (!root.exists) {
       throw new Error("ae-a8n dispatcher: channel root is not a directory: " + String(config.root));
     }
     var paths = dispatcherPaths(root.fsName);
@@ -1450,15 +1454,25 @@
     writeDispatcherState(state);
   }
 
-  var __a8nEntry = this.__a8n;
-  if (
-    __a8nEntry !== undefined &&
-    __a8nEntry !== null &&
-    __a8nEntry.dispatcher !== undefined &&
-    __a8nEntry.dispatcher !== null
-  ) {
-    startDispatcher(__a8nEntry.dispatcher);
-  } else {
-    main();
+  // The branch check must run inside a named function called plainly, not
+  // at the IIFE's top level: on real ExtendScript `this` inside
+  // `(function(){})()` is the function itself, not the global object
+  // (observed on AE 26.5/27.0 — the fake vm runtime cannot reproduce this).
+  // Inside a named function `this` is the global object, the same contract
+  // `main()` and the extension prelude already rely on. Evaluating
+  // `this.__a8n` here would always miss and silently fall into `main()`.
+  function boot() {
+    var __a8nEntry = this.__a8n;
+    if (
+      __a8nEntry !== undefined &&
+      __a8nEntry !== null &&
+      __a8nEntry.dispatcher !== undefined &&
+      __a8nEntry.dispatcher !== null
+    ) {
+      startDispatcher(__a8nEntry.dispatcher);
+    } else {
+      main();
+    }
   }
+  boot();
 })();
