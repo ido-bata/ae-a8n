@@ -117,6 +117,10 @@ function windowsAdapter(options: SelectOptions): WindowsAdapter {
     ...(options.channel === undefined ? {} : { channel: options.channel }),
     host,
     user,
+    // A placeholder, never proof: destination verification uses the agent
+    // identity from the signed result or the verified heartbeat (T099), so
+    // this name can no longer make an unproven marker count as proven. It
+    // still supplies the agent version the heartbeat must match.
     agent: {
       id: "ae-a8n-cli",
       host,

@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { SessionIdentity, TargetSpec } from "../src/platform/contract.js";
+import type { JobKey } from "../src/platform/windows/auth.js";
 import { DirectoryChannel } from "../src/platform/windows/channel.js";
 import type { AgentIdentity } from "../src/platform/windows/job.js";
 import type { WindowsFacts } from "../src/platform/windows/probe.js";
@@ -32,9 +33,11 @@ import {
   proveRunDestination,
   readSessionMarker,
   sessionMarkerPath,
+  signSessionMarker,
   verifySessionMarker,
   writeSessionMarker,
   type SessionMarker,
+  type UnsignedSessionMarker,
 } from "../src/platform/windows/session-marker.js";
 
 const NOW = new Date("2026-11-10T12:00:00.000Z");
@@ -50,6 +53,8 @@ const AGENT: AgentIdentity = {
   sessionId: 1,
   version: "0.1.0-alpha.1",
 };
+
+const KEY: JobKey = { keyId: "destination-key", secret: new Uint8Array(32).fill(3) };
 
 const IDENTITY: SessionIdentity = {
   kind: "host-and-user",
@@ -77,8 +82,8 @@ const FACTS: WindowsFacts = {
   evidence: {},
 };
 
-function marker(overrides: Partial<SessionMarker> = {}): SessionMarker {
-  return {
+function marker(overrides: Partial<UnsignedSessionMarker> = {}): SessionMarker {
+  const unsigned: UnsignedSessionMarker = {
     ...createSessionMarker({
       runId: RUN_ID,
       jobId: JOB_ID,
@@ -88,6 +93,7 @@ function marker(overrides: Partial<SessionMarker> = {}): SessionMarker {
     }),
     ...overrides,
   };
+  return signSessionMarker(unsigned, KEY);
 }
 
 const roots: string[] = [];
@@ -184,7 +190,7 @@ describe("the session marker", () => {
 
   it("accepts only a marker that names this run, job and agent", () => {
     expect(
-      verifySessionMarker(marker(), { runId: RUN_ID, jobId: JOB_ID, agent: AGENT }),
+      verifySessionMarker(marker(), { runId: RUN_ID, jobId: JOB_ID, agent: AGENT }, [KEY]),
     ).toMatchObject({
       proven: true,
       proof: "marker",
@@ -194,38 +200,63 @@ describe("the session marker", () => {
         runId: RUN_ID,
         jobId: JOB_ID,
         agent: AGENT,
-      }),
+      }, [KEY]),
     ).toMatchObject({ proven: false, code: "A8N-AE-002" });
     expect(
       verifySessionMarker(marker({ jobId: OTHER_JOB }), {
         runId: RUN_ID,
         jobId: JOB_ID,
         agent: AGENT,
-      }),
+      }, [KEY]),
     ).toMatchObject({ proven: false, code: "A8N-AE-002" });
     expect(
-      verifySessionMarker(marker(), { runId: RUN_ID, jobId: JOB_ID, agent: { ...AGENT, id: "agent-2" } }),
+      verifySessionMarker(marker(), { runId: RUN_ID, jobId: JOB_ID, agent: { ...AGENT, id: "agent-2" } }, [KEY]),
     ).toMatchObject({ proven: false, code: "A8N-AE-002" });
     expect(
       verifySessionMarker(marker(), {
         runId: RUN_ID,
         jobId: JOB_ID,
         agent: { ...AGENT, sessionId: 2 },
-      }),
+      }, [KEY]),
     ).toMatchObject({ proven: false, code: "A8N-AE-002" });
     expect(
       verifySessionMarker(marker(), {
         runId: RUN_ID,
         jobId: JOB_ID,
         agent: { ...AGENT, host: "WIN-AE-02" },
-      }),
+      }, [KEY]),
+    ).toMatchObject({ proven: false, code: "A8N-AE-002" });
+  });
+
+  it("refuses a marker whose signature does not verify, however well it names the run", () => {
+    // T098: every field a marker carries is copyable from the channel, so the
+    // names alone prove nothing. A forged marker — right run, right job,
+    // right agent, wrong or absent signature — must stay unproven.
+    const forged = marker();
+    const tampered: SessionMarker = {
+      ...forged,
+      secret: "cd".repeat(32),
+    };
+    expect(
+      verifySessionMarker(tampered, { runId: RUN_ID, jobId: JOB_ID, agent: AGENT }, [KEY]),
+    ).toMatchObject({ proven: false, code: "A8N-AE-002" });
+
+    const { auth: _auth, ...unsigned } = forged;
+    const decoded = decodeSessionMarker(
+      new TextEncoder().encode(JSON.stringify(unsigned)),
+    );
+    expect(decoded.ok).toBe(false);
+
+    const otherKey: JobKey = { keyId: "other-key", secret: new Uint8Array(32).fill(9) };
+    expect(
+      verifySessionMarker(marker(), { runId: RUN_ID, jobId: JOB_ID, agent: AGENT }, [otherKey]),
     ).toMatchObject({ proven: false, code: "A8N-AE-002" });
   });
 
   it("treats a missing or unreadable marker as unproven, never as these bytes", async () => {
     const files = await channel();
     expect(
-      await proveRunDestination(files, { runId: RUN_ID, jobId: JOB_ID, agent: AGENT }),
+      await proveRunDestination(files, { runId: RUN_ID, jobId: JOB_ID, agent: AGENT }, [KEY]),
     ).toMatchObject({ proven: false, code: "A8N-AE-002" });
 
     await files.writeAtomic(
@@ -233,7 +264,7 @@ describe("the session marker", () => {
       new TextEncoder().encode("{not json"),
     );
     expect(
-      await proveRunDestination(files, { runId: RUN_ID, jobId: JOB_ID, agent: AGENT }),
+      await proveRunDestination(files, { runId: RUN_ID, jobId: JOB_ID, agent: AGENT }, [KEY]),
     ).toMatchObject({ proven: false, code: "A8N-AE-002" });
   });
 
@@ -327,7 +358,7 @@ describe("the close path", () => {
         runId: run.runId,
         jobId: run.jobId ?? JOB_ID,
         agent: AGENT,
-      }),
+      }, [KEY]),
     );
     const session = await opened(backend);
     const closed = await session.close();

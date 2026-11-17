@@ -20,20 +20,24 @@
 
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 
 import type { DiagnosticCheck } from "../../doctor/diagnostics.js";
 import { diagnostic } from "../../doctor/diagnostics.js";
 import type { JobKey } from "./auth.js";
 import { ChannelFileTooLargeError, type FileChannel } from "./channel.js";
-import { channelAclVerdict, parseIcacls, type AccessControlEntry } from "./acl.js";
+import {
+  channelAclVerdict,
+  ownerQualifiers,
+  parseIcaclsReport,
+  type AclRead,
+} from "./acl.js";
 import { loadKeyFile } from "./key-store.js";
 import { encodeJobPayload } from "./executor.js";
 import { jobPaths, newJobId, sha256Hex, type AgentIdentity } from "./job.js";
 import {
   checkPresence,
-  presencePath,
   readPresenceBytes,
   type Presence,
   type PresenceVerdict,
@@ -263,16 +267,51 @@ export type CommsState =
     }
   | { readonly ok: false; readonly checks: readonly DiagnosticCheck[]; readonly detail: string };
 
-/** The OS's own ACL, or null when it cannot be read. */
-async function defaultAclReader(path: string): Promise<readonly AccessControlEntry[] | null> {
+/** The OS's own ACL, or the named reason it could not be read or parsed. */
+async function defaultAclReader(path: string): Promise<AclRead> {
   try {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     const { stdout } = await promisify(execFile)("icacls", [path], { windowsHide: true });
-    return parseIcacls(stdout, path);
-  } catch {
-    return null;
+    return parseIcaclsReport(stdout, path);
+  } catch (error) {
+    return {
+      ok: false,
+      detail: `icacls could not be run on ${path}: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
+}
+
+/**
+ * The accounts allowed to write the channel: the agent account the config
+ * names and this controller's own account, as the OS reports it. An empty
+ * result is an unknown trusted set, which `channelAclVerdict` refuses.
+ */
+function channelTrustedAccounts(config: RemoteHostConfig): readonly string[] {
+  const accounts: string[] = [];
+  if (config.user !== null && config.user.trim() !== "") {
+    accounts.push(config.user);
+  }
+  try {
+    const info = userInfo();
+    if (info.username.trim() !== "") {
+      accounts.push(info.username);
+    }
+  } catch {
+    // An unknown controller account narrows the trusted set; it never widens it.
+  }
+  return accounts;
+}
+
+/**
+ * The qualifiers a trusted bare account may appear under: this machine and
+ * domain (`ownerQualifiers`), plus the agent host's own name — a local
+ * account on the host prints as `HOST\user`, and `config.host` is the only
+ * place that name is known. A domain qualifier the config did not name
+ * (`CONTOSO\user` when `user` is bare) stays untrusted on purpose.
+ */
+function channelAclQualifiers(config: RemoteHostConfig): readonly string[] {
+  return [...ownerQualifiers(), config.host];
 }
 
 export type OpenCommsOptions = {
@@ -285,7 +324,7 @@ export type OpenCommsOptions = {
   /** The version this controller is; the agent must match exactly. */
   readonly version: string;
   /** Injected in tests. Defaults to `icacls` on Windows, unused elsewhere. */
-  readonly acl?: (path: string) => Promise<readonly AccessControlEntry[] | null>;
+  readonly acl?: (path: string) => Promise<AclRead>;
 };
 
 /**
@@ -362,15 +401,19 @@ export async function openComms(
   }
 
   // 2. On Windows the channel's own ACL is the sticky-bit equivalent: an
-  //    account that can write there can plant a job, so a channel left open
-  //    to Users or Everyone is refused before the key is even considered.
+  //    account that can write there can plant a job, so a channel writable
+  //    by anyone outside the trusted controller/agent accounts is refused
+  //    before the key is even considered (T105). The trusted set is the
+  //    agent account this config names plus this controller's own account;
+  //    when neither can be named the set is unknown and the verdict refuses.
   if (process.platform === "win32") {
     const readAcl = options.acl ?? defaultAclReader;
-    const entries = await readAcl(config.channel);
+    const acl = await readAcl(config.channel);
+    const trusted = channelTrustedAccounts(config);
     const verdict =
-      entries === null
-        ? { ok: false as const, detail: "the channel's access control list could not be read" }
-        : channelAclVerdict(entries);
+      !acl.ok
+        ? { ok: false as const, detail: `the channel's access control list could not be read: ${acl.detail}` }
+        : channelAclVerdict(acl.entries, trusted, channelAclQualifiers(config));
     if (!verdict.ok) {
       checks.push(
         diagnostic("A8N-PERM-006", {
@@ -410,16 +453,21 @@ export async function openComms(
   }
   const key = (loaded as { ok: true; key: JobKey }).key;
 
-  // 3. The agent's signed heartbeat: alive, interactive, this host, this
-  //    version. Absent is not "idle" — it is an agent that is not running.
-  let bytes: Uint8Array | null;
+  // 3. The agents' signed heartbeats under `agents/`: one file per running
+  //    instance (T102), so a restart or a second session cannot overwrite the
+  //    heartbeat the controller is about to believe. Every file is decoded
+  //    and authenticated; only the ones naming this agent id are candidates.
+  //    Exactly one fresh, interactive, matching heartbeat means the agent is
+  //    alive; more than one means two instances answer to the same id and a
+  //    job could reach either — refuse rather than guess which.
+  let names: readonly string[];
   try {
-    bytes = await options.channel.read(presencePath(config.agentId));
+    names = await options.channel.list("agents");
   } catch (error) {
     const detail =
       error instanceof ChannelFileTooLargeError
         ? `the agent heartbeat is larger than the channel allows`
-        : `the agent heartbeat could not be read: ${error instanceof Error ? error.message : String(error)}`;
+        : `the agent heartbeats could not be listed: ${error instanceof Error ? error.message : String(error)}`;
     return {
       ok: false,
       checks: [
@@ -433,10 +481,92 @@ export async function openComms(
       detail,
     };
   }
-  if (bytes === null) {
+  const candidates: Presence[] = [];
+  const heartbeatNotes: string[] = [];
+  for (const name of names) {
+    if (!name.endsWith(".json")) {
+      continue;
+    }
+    const path = `agents/${name}`;
+    let bytes: Uint8Array | null;
+    try {
+      bytes = await options.channel.read(path);
+    } catch (error) {
+      heartbeatNotes.push(
+        `${path} could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      continue;
+    }
+    if (bytes === null) {
+      continue;
+    }
+    const decoded = readPresenceBytes(bytes, [key]);
+    if (!decoded.ok) {
+      heartbeatNotes.push(`${path} is not a trusted heartbeat: ${decoded.detail}`);
+      continue;
+    }
+    if (decoded.presence.agent.id.toLowerCase() === config.agentId.toLowerCase()) {
+      candidates.push(decoded.presence);
+    }
+  }
+  const expectation = { host: config.host, user: config.user, version: options.version };
+  const alive: { presence: Presence; ageMs: number }[] = [];
+  let firstFailure: PresenceVerdict | null = null;
+  for (const presence of candidates) {
+    const verdict = checkPresence(presence, [key], expectation, now());
+    if (verdict.ok) {
+      alive.push({ presence: verdict.presence, ageMs: verdict.ageMs });
+    } else if (firstFailure === null) {
+      firstFailure = verdict;
+    }
+  }
+  if (alive.length > 1) {
+    const detail =
+      `${String(alive.length)} agents on this channel claim id "${config.agentId}" and are all ` +
+      "alive; the controller cannot tell which one a job would reach. Stop the extra agent on " +
+      "the host or give it a different --agent-id.";
+    return {
+      ok: false,
+      checks: [
+        diagnostic("A8N-JOB-005", {
+          detail,
+          remedy: "Run exactly one agent per agent id on the host.",
+          remedyKind: "human",
+          evidence: { agentId: config.agentId, channel: config.channel },
+        }),
+      ],
+      detail,
+    };
+  }
+  if (alive.length === 0) {
+    if (firstFailure !== null && !firstFailure.ok) {
+      const verdict = firstFailure;
+      return {
+        ok: false,
+        checks: [
+          diagnostic(verdict.code, {
+            detail: verdict.detail,
+            remedy:
+              verdict.code === "A8N-JOB-006"
+                ? "Point --host/--user at the host the agent actually runs on, and install matching versions."
+                : "Start, restart or upgrade the agent in the target's interactive session, then run doctor again.",
+            remedyKind: "human",
+            evidence: {
+              agentId: config.agentId,
+              host: verdict.code === "A8N-JOB-006" ? candidates[0]?.agent.host ?? config.host : config.host,
+            },
+          }),
+        ],
+        detail: verdict.detail,
+      };
+    }
+    const suffix =
+      heartbeatNotes.length === 0
+        ? ""
+        : ` (${String(heartbeatNotes.length)} heartbeat file(s) were present but not usable: ${heartbeatNotes[0] ?? ""})`;
     const detail =
       `no heartbeat from agent "${config.agentId}" is in the channel; ` +
-      "the agent is not running in an interactive session on the host";
+      `the agent is not running in an interactive session on the host${suffix}`;
     return {
       ok: false,
       checks: [
@@ -451,47 +581,22 @@ export async function openComms(
       detail,
     };
   }
-  const decoded = readPresenceBytes(bytes, [key]);
-  if (!decoded.ok) {
+  const chosen = alive[0];
+  if (chosen === undefined) {
+    // Unreachable: alive.length === 1 was handled above. Kept for the type
+    // checker; the refusal path is the safe direction anyway.
+    const detail = `no heartbeat from agent "${config.agentId}" is in the channel`;
     return {
       ok: false,
       checks: [
-        diagnostic("A8N-JOB-003", {
-          detail: `the agent heartbeat is not authentic: ${decoded.detail}`,
-          remedy:
-            "The controller and the agent disagree about the channel key, or the file was planted. " +
-            "Re-provision the same key on both sides; nothing will be sent until they match.",
+        diagnostic("A8N-JOB-005", {
+          detail,
+          remedy: "Start the agent on the host from a logged-in interactive session.",
           remedyKind: "human",
-          evidence: { agentId: config.agentId, keyFile: config.keyFile },
+          evidence: { agentId: config.agentId },
         }),
       ],
-      detail: decoded.detail,
-    };
-  }
-  const verdict: PresenceVerdict = checkPresence(
-    decoded.presence,
-    [key],
-    { host: config.host, user: config.user, version: options.version },
-    now(),
-  );
-  if (!verdict.ok) {
-    return {
-      ok: false,
-      checks: [
-        diagnostic(verdict.code, {
-          detail: verdict.detail,
-          remedy:
-            verdict.code === "A8N-JOB-006"
-              ? "Point --host/--user at the host the agent actually runs on, and install matching versions."
-              : "Start, restart or upgrade the agent in the target's interactive session, then run doctor again.",
-          remedyKind: "human",
-          evidence: {
-            agentId: config.agentId,
-            host: verdict.code === "A8N-JOB-006" ? decoded.presence.agent.host : config.host,
-          },
-        }),
-      ],
-      detail: verdict.detail,
+      detail,
     };
   }
   return {
@@ -499,9 +604,9 @@ export async function openComms(
     config,
     key,
     channel: options.channel,
-    agent: decoded.presence.agent,
-    presence: decoded.presence,
-    ageMs: verdict.ageMs,
+    agent: chosen.presence.agent,
+    presence: chosen.presence,
+    ageMs: chosen.ageMs,
   };
 }
 

@@ -176,6 +176,13 @@ export type RunBinding = {
   readonly runId: string;
   /** Null until a job has been submitted. */
   readonly jobId: string | null;
+  /**
+   * The best agent identity proven for this run so far: the signed result's
+   * agent when the job produced one, else the live heartbeat's. `null` means
+   * nothing verified exists and destination proof must stay `unproven` —
+   * the configured placeholder identity is never proof (T099).
+   */
+  readonly agent?: AgentIdentity | null;
 };
 
 export interface WindowsSessionBackend {
@@ -698,7 +705,7 @@ export class WindowsAdapter implements PlatformAdapter {
       prepare: () => this.#prepare(target),
       run: (identity, argv, options, onRun) =>
         this.#runInSession(target, identity, argv, options, onRun),
-      destination: (run) => this.#verifyDestination(run),
+      destination: (run) => this.#verifyDestination(target, run),
       release: async (runId) => {
         await releaseRunLock(this.#channel, runId, this.#owner());
       },
@@ -757,20 +764,51 @@ export class WindowsAdapter implements PlatformAdapter {
     return { host: this.#host, user: this.#user };
   }
 
-  /** The marker must name this run, this job and the configured agent. */
-  #verifyDestination(run: RunBinding): Promise<DestinationVerdict> {
+  /**
+   * The marker must be signed by the channel key, name this run and this
+   * job, and carry the agent identity that was *verified* for the run — the
+   * signed result's agent, or the live heartbeat's — never the configured
+   * placeholder (T099). With no verified identity the destination is
+   * unproven, which is the fail-closed answer.
+   */
+  async #verifyDestination(target: TargetSpec, run: RunBinding): Promise<DestinationVerdict> {
     if (run.jobId === null) {
-      return Promise.resolve({
+      return {
         proven: false,
         code: "A8N-AE-002",
         detail: "no job was submitted for this run, so it has no destination",
-      });
+      };
     }
-    return proveRunDestination(this.#channel, {
-      runId: run.runId,
-      jobId: run.jobId,
-      agent: this.#agent,
-    });
+    const agent = run.agent ?? null;
+    if (agent === null) {
+      return {
+        proven: false,
+        code: "A8N-AE-002",
+        detail:
+          "no verified agent identity is bound to this run, so its destination " +
+          "cannot be proven; the configured agent name is not evidence",
+      };
+    }
+    const keys = await this.#destinationKeys(target);
+    return proveRunDestination(
+      this.#channel,
+      { runId: run.runId, jobId: run.jobId, agent },
+      keys,
+    );
+  }
+
+  /**
+   * The keys a session marker may be signed with. The same key that signs
+   * jobs signs markers; a caller-injected key wins, a remote target takes
+   * the verified channel key. Any failure yields no keys, which makes every
+   * marker unverifiable — unproven, never assumed.
+   */
+  async #destinationKeys(target: TargetSpec): Promise<readonly JobKey[]> {
+    try {
+      return [await this.#signingKey(target)];
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -864,16 +902,20 @@ export class WindowsAdapter implements PlatformAdapter {
    * The heartbeat that was live during `probe` may be minutes old by the time
    * a job is about to be written. Re-verify immediately before sending; a
    * stale or mismatched heartbeat refuses the send rather than leaving a job
-   * for an agent that is not there.
+   * for an agent that is not there. Returns the verified agent identity —
+   * the heartbeat's own, not the configured placeholder — so the job can be
+   * addressed to it (T095) and the destination proven against it (T099).
+   * Non-remote targets have no heartbeat to verify and return null.
    */
-  async #assertAgentAlive(target: TargetSpec): Promise<void> {
+  async #liveAgent(target: TargetSpec): Promise<AgentIdentity | null> {
     if (this.#remote === null || target.isolation !== "remote-host" || this.#simulatedHostProbe) {
-      return;
+      return null;
     }
     const comms = await this.#freshComms();
     if (!comms.ok) {
       throw new WindowsAgentUnavailableError(comms.checks);
     }
+    return comms.agent;
   }
 
   async #prepare(target: TargetSpec): Promise<PreparedIdentity> {
@@ -994,7 +1036,7 @@ export class WindowsAdapter implements PlatformAdapter {
       throw new WindowsRunLockError(lock.state, runId);
     }
     try {
-      onRun({ runId, jobId: null });
+      onRun({ runId, jobId: null, agent: null });
 
       const payload = encodeJobPayload({
         argv: [...argv],
@@ -1002,25 +1044,42 @@ export class WindowsAdapter implements PlatformAdapter {
       });
       const startedAt = now.toISOString();
       const writer = owner;
+      const liveAgent = await this.#liveAgent(target);
       const submitOptions: SubmitOptions = {
         payload,
         runId,
         timeoutMs: options.timeoutMs,
         writer,
         key,
+        // Address the job to the agent the heartbeat just verified; absent a
+        // heartbeat (non-remote targets) the job keeps the one-agent rule.
+        ...(liveAgent === null
+          ? {}
+          : { target: { id: liveAgent.id, host: liveAgent.host, user: liveAgent.user } }),
         now: this.#now,
         random: this.#random,
         ...(this.#pollMs === undefined ? {} : { pollMs: this.#pollMs }),
         ...(this.#sleep === undefined ? {} : { sleep: this.#sleep }),
       };
 
-      await this.#assertAgentAlive(target);
       const submitted = await this.#submit(this.#channel, submitOptions);
-      onRun({ runId, jobId: submitted.jobId });
+      // What the run may claim as its agent: the signed result's identity
+      // when the job finished far enough to publish one, else the heartbeat's.
+      // Nothing else — the configured placeholder proves nothing (T099).
+      const runAgent =
+        (submitted.status === "ok" || submitted.status === "failed"
+          ? submitted.result.agent
+          : null) ?? liveAgent;
+      onRun({ runId, jobId: submitted.jobId, agent: runAgent });
       const facts = this.#facts ?? (await this.#prepare(target)).facts;
-      // Read the agent's marker back. Only a marker naming this run counts;
-      // anything else is recorded as unproven, never as a measured destination.
-      const destination = await this.#verifyDestination({ runId, jobId: submitted.jobId });
+      // Read the agent's signed marker back. Only a marker naming this run,
+      // this job and the verified agent counts; anything else is recorded as
+      // unproven, never as a measured destination.
+      const destination = await this.#verifyDestination(target, {
+        runId,
+        jobId: submitted.jobId,
+        agent: runAgent,
+      });
       // The manifest records what was proven, not what was configured: the
       // agent identity and session come from the signed result when there is
       // one. `agentVerified` says which of the two this is.

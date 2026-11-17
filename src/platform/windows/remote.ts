@@ -32,6 +32,12 @@ export type SubmitOptions = {
   readonly timeoutMs: number;
   readonly writer: JobWriter;
   /**
+   * The agent this job is addressed to. Signed into the job: an agent that is
+   * not this target refuses it. Absent means "this channel's only agent" —
+   * the compatibility rule while a channel may still carry one agent.
+   */
+  readonly target?: { readonly id: string; readonly host: string; readonly user: string };
+  /**
    * The shared channel secret. Every job is signed with it and every result
    * is accepted only when it carries a valid signature from it.
    */
@@ -204,6 +210,10 @@ export async function submitJob(channel: FileChannel, options: SubmitOptions): P
     payloadSha256: sha256Hex(options.payload),
     payloadFile: "payload.json",
     writer: options.writer,
+    // The controller's deadline travels signed into the job: past it the
+    // agent refuses rather than re-enabling work the controller gave up on.
+    deadline: new Date(createdAt.getTime() + options.timeoutMs).toISOString(),
+    ...(options.target === undefined ? {} : { target: options.target }),
   };
   const job: Job = signJob(unsigned, options.key);
 
