@@ -43,6 +43,17 @@ export type JobWriter = {
   readonly user: string;
 };
 
+/**
+ * The one agent allowed to run this job (T095). An agent that is not this
+ * target refuses the job even when its signature is valid: on a channel with
+ * more than one agent, every agent would otherwise claim every job.
+ */
+export type JobTarget = {
+  readonly id: string;
+  readonly host: string;
+  readonly user: string;
+};
+
 export type Job = {
   readonly schemaVersion: typeof JOB_SCHEMA_VERSION;
   readonly jobId: string;
@@ -54,6 +65,19 @@ export type Job = {
   /** A bare file name inside the job directory; never a path. */
   readonly payloadFile: string;
   readonly writer: JobWriter;
+  /**
+   * The agent this job is addressed to, or absent for "this channel's only
+   * agent" — the compatibility rule for one release. Signed like every other
+   * field: an agent cannot be retargeted without the channel key.
+   */
+  readonly target?: JobTarget;
+  /**
+   * The controller's deadline for this job, ISO-8601 (T097). The agent
+   * refuses a job whose deadline has passed even when it is still inside the
+   * outer `JOB_MAX_AGE_MS` bound, so `recover --force` cannot re-enable a job
+   * the controller already gave up on.
+   */
+  readonly deadline?: string;
   /** The issuer's HMAC over every field above. See `auth.ts`. */
   readonly auth: JobAuth;
 };
@@ -260,9 +284,12 @@ const JOB_KEYS = new Set([
   "payloadSha256",
   "payloadFile",
   "writer",
+  "target",
+  "deadline",
   "auth",
 ]);
 const WRITER_KEYS = new Set(["host", "user"]);
+const TARGET_KEYS = new Set(["id", "host", "user"]);
 const AUTH_KEYS = new Set(["alg", "keyId", "signature"]);
 const RESULT_KEYS = new Set([
   "schemaVersion",
@@ -398,6 +425,32 @@ export function decodeJob(bytes: Uint8Array): DecodeOutcome<Job> {
   if (!auth.ok) {
     return auth;
   }
+  const rawTarget = parsed["target"];
+  let target: JobTarget | undefined;
+  if (rawTarget !== undefined) {
+    if (!isRecord(rawTarget)) {
+      return { ok: false, detail: "target is not an object" };
+    }
+    const targetExtra = unknownField(rawTarget, TARGET_KEYS);
+    if (targetExtra !== null) {
+      return { ok: false, detail: `unknown target field "${targetExtra}"` };
+    }
+    const id = stringField(rawTarget, "id");
+    const targetHost = stringField(rawTarget, "host");
+    const targetUser = stringField(rawTarget, "user");
+    if (id === null || targetHost === null || targetUser === null) {
+      return { ok: false, detail: "target.id, target.host and target.user are required" };
+    }
+    target = { id, host: targetHost, user: targetUser };
+  }
+  const rawDeadline = parsed["deadline"];
+  let deadline: string | undefined;
+  if (rawDeadline !== undefined) {
+    if (typeof rawDeadline !== "string" || Number.isNaN(Date.parse(rawDeadline))) {
+      return { ok: false, detail: "deadline must be an ISO-8601 timestamp" };
+    }
+    deadline = rawDeadline;
+  }
   return {
     ok: true,
     value: {
@@ -408,6 +461,8 @@ export function decodeJob(bytes: Uint8Array): DecodeOutcome<Job> {
       payloadSha256,
       payloadFile,
       writer: { host, user },
+      ...(target === undefined ? {} : { target }),
+      ...(deadline === undefined ? {} : { deadline }),
       auth: auth.value,
     },
   };
@@ -469,6 +524,20 @@ export function validateJob(input: ValidateInput): JobCheck {
       code: "A8N-JOB-001",
       detail: `job is ${Math.round(age / 1000)}s old, beyond the ${Math.round(maxAge / 1000)}s limit; it may be a replay`,
     };
+  }
+  // The controller's own deadline is tighter than the replay bound: a job
+  // the controller already gave up on must not run just because it is young.
+  if (job.deadline !== undefined) {
+    const deadline = Date.parse(job.deadline);
+    if (input.now.getTime() > deadline) {
+      return {
+        ok: false,
+        code: "A8N-JOB-001",
+        detail:
+          `the job's deadline ${job.deadline} has passed; the controller already ` +
+          "gave up on it, so it is refused rather than re-enabled",
+      };
+    }
   }
   return { ok: true };
 }

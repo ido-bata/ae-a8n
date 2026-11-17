@@ -7,11 +7,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { JobExecutor } from "../src/platform/windows/agent.js";
 import { A8N_VERSION } from "../src/version.js";
 import { main } from "../src/platform/windows/agent-main.js";
-import { signClaim, signJob, signResult, encodeKeyFile, type JobKey } from "../src/platform/windows/auth.js";
+import { signClaim, signJob, signResult, encodeKeyFile, verifyClaimAuth, type JobKey } from "../src/platform/windows/auth.js";
 import { DirectoryChannel, type FileChannel } from "../src/platform/windows/channel.js";
 import {
   JOB_SCHEMA_VERSION,
   claimDiagnosticPath,
+  decodeClaim,
   encodeClaim,
   encodeJob,
   encodeResult,
@@ -255,7 +256,10 @@ describe("the Windows agent entry", () => {
     expect(await channel.read(jobPaths(jobId).claim)).toBeNull();
   });
 
-  it("quarantines a planted claim, records it, and keeps polling", async () => {
+  it("takes over a planted unsigned claim and keeps polling", async () => {
+    // T103: an unsigned claim file must not deny service. The agent replaces
+    // it with its own signed claim — read back before it acts — and runs the
+    // job, then continues to the healthy one.
     const { root, channel } = await makeChannel();
     const planted = "20261110T120000Z-aaaaaaaa";
     const healthy = "20261110T120000Z-bbbbbbbb";
@@ -269,7 +273,6 @@ describe("the Windows agent entry", () => {
     );
 
     const executed: string[] = [];
-    const messages: string[] = [];
     const controller = new AbortController();
     const code = await main(args(root), {
       channel,
@@ -282,22 +285,21 @@ describe("the Windows agent entry", () => {
         return Promise.resolve();
       },
       signal: controller.signal,
-      stderr: (text) => messages.push(text),
+      stderr: () => undefined,
     });
 
     expect(code).toBe(0);
-    expect(executed).toEqual([healthy]);
-    expect(await channel.read(jobPaths(planted).result)).toBeNull();
-    expect(messages.join("")).toContain(`job ${planted} is quarantined`);
-
-    const diagnostic = await channel.read(claimDiagnosticPath(planted));
-    expect(diagnostic).not.toBeNull();
-    const parsed = JSON.parse(new TextDecoder().decode(diagnostic ?? new Uint8Array())) as Record<
-      string,
-      unknown
-    >;
-    expect(parsed).toMatchObject({ jobId: planted, quarantinedAt: NOW.toISOString() });
-    expect(String(parsed["detail"])).toContain("not valid");
+    expect(executed).toEqual([planted, healthy]);
+    // The claim on disk is now this agent's signed one.
+    const claimBytes = await channel.read(jobPaths(planted).claim);
+    expect(claimBytes).not.toBeNull();
+    const stored = decodeClaim(claimBytes ?? new Uint8Array());
+    expect(stored.ok).toBe(true);
+    if (stored.ok) {
+      expect(verifyClaimAuth(stored.value, [KEY])).toEqual({ ok: true });
+    }
+    // No quarantine diagnostic was written: nothing was unauthenticated left.
+    expect(await channel.read(claimDiagnosticPath(planted))).toBeNull();
   });
 
   it("stops between jobs, not after the whole queue", async () => {
