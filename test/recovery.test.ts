@@ -17,6 +17,7 @@ import { AeDriver, TimeoutError } from "../src/driver/driver.js";
 import type { GuiWindowInfo } from "../src/driver/gui-recovery.js";
 import {
   KNOWN_DIALOG_CLASSES,
+  MacHostRecovery,
   chooseRecoveryWindow,
   classifyDialog,
   type HostRecovery,
@@ -343,5 +344,22 @@ describe("which window a recovery may act on", () => {
     expect(choice.kind).toBe("unpressable");
     if (choice.kind !== "unpressable") return;
     expect(choice.index).toBe(2);
+  });
+});
+
+describe("the macOS host recovery's target process", () => {
+  it("reports A8N-AE-004 when no process this run started can be named", async () => {
+    // `pid()` returning null means the transport could not tie a process to
+    // this run — attached, ambiguous, or already gone. That is a refusal
+    // with a stable code, not a generic "no host found".
+    const recovery = new MacHostRecovery({
+      session: { uid: 502, username: "test", asid: 100040, kind: "Aqua" },
+      pid: () => null,
+      screenshotDir: join(root, "shots"),
+    });
+    const outcome = await recovery.attempt({ requestId: "req-1", method: "app.info", timeoutMs: 1000 });
+    expect(outcome.recovered).toBe(false);
+    expect(outcome.outcome).toBe("refused");
+    expect(outcome.code).toBe("A8N-AE-004");
   });
 });

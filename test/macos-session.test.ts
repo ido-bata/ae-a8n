@@ -291,6 +291,98 @@ describe("the GUI recovery", () => {
         }),
     ).toThrow(/no Aqua session/);
   });
+
+  it("refuses every GUI action when the pid no longer names the run's process", () => {
+    // A pid is not an identity. The process is re-read immediately before
+    // each session command; when the check cannot prove the pid still names
+    // the process this run started, nothing — not even a read — is sent.
+    let sessionCommands = 0;
+    const gui = new MacGuiRecovery({
+      session: { uid: 502, username: "test", asid: 100040, kind: "Aqua" },
+      pid: 4242,
+      allowConsoleSession: true,
+      verifyProcess: () => false,
+      census: () => ({ available: false, reason: "no census in test" }),
+      lease: {
+        acquire: () => ({ path: "/fake/lease", release: () => {} }),
+        audit: () => {},
+      },
+      runSession: () => {
+        sessionCommands += 1;
+        return { status: 0, stdout: "", stderr: "", timedOut: false };
+      },
+    });
+    for (const act of [
+      () => gui.listWindows(),
+      () => gui.capture(join(tmpdir(), "a8n-not-this-process.png")),
+      () => gui.pressButton(1, "OK"),
+      () => gui.clickAt(10, 10),
+      () => gui.pressButtonIn(1, "OK"),
+    ]) {
+      expect(act).toThrow(/A8N-AE-004/);
+    }
+    expect(sessionCommands).toBe(0);
+  });
+
+  it("treats a verifier that throws as 'cannot prove it is the same process'", () => {
+    const gui = new MacGuiRecovery({
+      session: { uid: 502, username: "test", asid: 100040, kind: "Aqua" },
+      pid: 4242,
+      allowConsoleSession: true,
+      verifyProcess: () => {
+        throw new Error("ps failed");
+      },
+      census: () => ({ available: false, reason: "no census in test" }),
+      lease: {
+        acquire: () => ({ path: "/fake/lease", release: () => {} }),
+        audit: () => {},
+      },
+      runSession: () => ({ status: 0, stdout: "", stderr: "", timedOut: false }),
+    });
+    expect(() => gui.listWindows()).toThrow(/A8N-AE-004/);
+  });
+
+  it("stops acting mid-attempt when the process is swapped between actions", () => {
+    // The listing proves the process; the process then exits and its pid is
+    // reused. The press that follows must not reach the Accessibility API —
+    // and the refusal is a plain GuiRecoveryError, not a GuiMutationError,
+    // because nothing was pressed.
+    let sameProcess = true;
+    let sessionCommands = 0;
+    const audits: { kind: string; outcome?: string | undefined }[] = [];
+    const gui = new MacGuiRecovery({
+      session: { uid: 502, username: "test", asid: 100040, kind: "Aqua" },
+      pid: 4242,
+      allowConsoleSession: true,
+      verifyProcess: () => sameProcess,
+      census: () => ({ available: false, reason: "no census in test" }),
+      lease: {
+        acquire: () => ({ path: "/fake/lease", release: () => {} }),
+        audit: (event) => audits.push({ kind: event.kind, outcome: event.outcome }),
+      },
+      runSession: () => {
+        sessionCommands += 1;
+        return { status: 0, stdout: "", stderr: "", timedOut: false };
+      },
+    });
+    gui.listWindows();
+    expect(sessionCommands).toBe(1);
+    sameProcess = false;
+    let caught: unknown;
+    try {
+      gui.pressButton(1, "OK");
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toMatch(/A8N-AE-004/);
+    expect((caught as { code?: string }).code).toBe("A8N-AE-004");
+    // Provably nothing was pressed: the refusal is audited not-performed,
+    // never "unknown", and no session command ran for the press.
+    expect(sessionCommands).toBe(1);
+    expect(audits).toContainEqual({ kind: "mutate", outcome: "not-performed" });
+    expect(audits).not.toContainEqual({ kind: "mutate", outcome: "unknown" });
+  });
 });
 
 describe("starting a process in another user's session", () => {
