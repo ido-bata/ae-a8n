@@ -40,7 +40,17 @@
  * tmp cleaner. Point `--channel-dir` at a dedicated directory — never at a
  * channel another consumer uses — because the lane connects to whatever
  * dispatcher answers there (the extension-set check still refuses a
- * dispatcher running different staged bytes).
+ * dispatcher running different staged bytes, and `--install-dir` refuses a
+ * different AE version).
+ *
+ * Project cleanup on the real lane is fixture-scoped and honest: an
+ * attached session never quits AE and `unsavedChanges:"discard"` only
+ * applies to a quit this session would perform, so it does NOT revert
+ * project edits. Before closing, the lane verifies the open project is
+ * provably the `--project` fixture and only then reopens it with
+ * `unsavedChanges:"discard"` — dropping the in-memory edits without writing
+ * the file. If the open project is anything else, nothing is discarded and
+ * the leftover is reported in `A8N_RESULT`.
  *
  * Result contract: every probe prints a final `A8N_RESULT <json>` line and
  * exits 0 (pass / prepared / skipped), 1 (a scenario failed) or 3 (blocked —
@@ -57,13 +67,23 @@
  *
  * Usage:
  *   node scripts/check-dispatcher-acceptance.js [--project <abs .aep>]
- *         [--channel-dir <abs dir>] [--install-dir <abs dir>] [--prepare-only]
+ *         [--channel-dir <abs dir>] [--install-dir <abs dir>]
+ *         [--ae-version <v>] [--prepare-only]
  *
  * `--project` is required for the real lane: editing and rendering need an
  * explicit disposable fixture project, never whatever happens to be open.
- * `--install-dir` pins which After Effects install the lane launches and
- * owns; with several versions installed the default picks the newest, so
- * pass it explicitly and run activate.jsx inside that same install.
+ * `--install-dir` pins the AE *version* the lane accepts answers from: the
+ * dispatcher transport never launches or owns an AE process, so the check
+ * compares the answering heartbeat's `aeVersion` against the version
+ * derived from the named install — at the precision the heartbeat
+ * reports, so a patch-level difference is refused whenever `app.version`
+ * carries one — and refuses a mismatch. It is a
+ * version pin, not executable identity — the heartbeat carries no pid or
+ * install path, so same-version installs cannot be told apart. With
+ * several versions installed, pass it explicitly and run activate.jsx
+ * inside that same install. Where the version cannot be derived from an
+ * install dir (non-macOS), `--ae-version <v>` pins it explicitly instead;
+ * the two flags are alternatives, never combined.
  * `A8N_ACCEPTANCE_SKIP_REAL=1` skips the real lane entirely;
  * `A8N_ACCEPTANCE_WAIT_MS` bounds the human-activation wait (default 10 min).
  * Neither can manufacture a pass.
@@ -88,6 +108,7 @@ const args = process.argv.slice(2);
 let projectPath = null;
 let channelDir = null;
 let installDir = null;
+let aeVersion = null;
 let prepareOnly = false;
 for (let i = 0; i < args.length; i += 1) {
   if (args[i] === "--project") {
@@ -99,11 +120,14 @@ for (let i = 0; i < args.length; i += 1) {
   } else if (args[i] === "--install-dir") {
     installDir = args[i + 1];
     i += 1;
+  } else if (args[i] === "--ae-version") {
+    aeVersion = args[i + 1];
+    i += 1;
   } else if (args[i] === "--prepare-only") {
     prepareOnly = true;
   } else {
     console.error(
-      `::error::unknown argument ${args[i]}; usage: node scripts/check-dispatcher-acceptance.js [--project <path>] [--channel-dir <dir>] [--install-dir <dir>] [--prepare-only]`,
+      `::error::unknown argument ${args[i]}; usage: node scripts/check-dispatcher-acceptance.js [--project <path>] [--channel-dir <dir>] [--install-dir <dir>] [--ae-version <v>] [--prepare-only]`,
     );
     process.exit(1);
   }
@@ -118,6 +142,14 @@ if (channelDir !== null && !isAbsolute(channelDir)) {
 }
 if (installDir !== null && !isAbsolute(installDir)) {
   console.error("::error::--install-dir must be an absolute path");
+  process.exit(1);
+}
+if (aeVersion !== null && (typeof aeVersion !== "string" || aeVersion.length === 0)) {
+  console.error("::error::--ae-version needs a non-empty version, e.g. 26.5");
+  process.exit(1);
+}
+if (installDir !== null && aeVersion !== null) {
+  console.error("::error::--install-dir and --ae-version are alternative pins; pass one");
   process.exit(1);
 }
 
@@ -199,7 +231,7 @@ export default {
   writeFileSync(
     probePath,
     `
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setInterval, clearInterval } from "node:timers";
@@ -221,6 +253,7 @@ const HOST_SCRIPT = ${JSON.stringify(hostScriptPath)};
 const PROJECT = ${JSON.stringify(projectPath)};
 const CHANNEL_DIR = ${JSON.stringify(channelDir)};
 const INSTALL_DIR = ${JSON.stringify(installDir)};
+const AE_VERSION = ${JSON.stringify(aeVersion)};
 const PREPARE_ONLY = ${JSON.stringify(prepareOnly)};
 const WAIT_MS = Number(process.env.A8N_ACCEPTANCE_WAIT_MS ?? 600000);
 
@@ -422,9 +455,11 @@ async function fakeLane() {
     try { tick(); } catch { /* same as above */ }
   }, 25);
 
-  // 9. Safe shutdown: attached ownership never quits the host.
+  // 9. Safe shutdown: attached ownership never quits the host. The fake
+  //    app's in-memory edits die with the process; there is no disk project
+  //    to discard, so plain close() is the whole contract here.
   await check("close does not quit an attached host", async () => {
-    const closed = await ae.close({ unsavedChanges: "discard" });
+    const closed = await ae.close();
     assert(closed.quit === false, "close() reported quit on an attached session");
     assert(app.quitCount === 0, "the fake AE was quit");
   });
@@ -455,8 +490,9 @@ function activationInstructions(transport, channelDir) {
   if (INSTALL_DIR !== null) {
     console.log(
       "target install: " + INSTALL_DIR +
-        " — run activate.jsx inside this After Effects only; the lane " +
-        "launches and owns exactly this install.",
+        " — run activate.jsx inside this After Effects only. The lane " +
+        "never launches AE; it refuses answers whose reported version does " +
+        "not match this install (a version pin, not executable identity).",
     );
   }
   console.log(
@@ -466,7 +502,23 @@ function activationInstructions(transport, channelDir) {
   );
 }
 
+/* Every terminal path of the real lane must end in exactly one A8N_RESULT
+ * line — including harness-level throws (a refused launch, a prepare
+ * failure). The inner function emits on its own paths; the wrapper only
+ * fires when it threw before emitting, so the "one line per lane" contract
+ * holds either way. */
 async function realLane() {
+  try {
+    return await realLaneRun();
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    console.log("RESULT: real-host FAIL — " + message);
+    emitResult("real", "fail", { reason: "harness error: " + message });
+    return 1;
+  }
+}
+
+async function realLaneRun() {
   // CHANNEL_DIR reuses a durable channel across runs (prepare() is
   // idempotent: the token survives, the staged host script is refreshed);
   // without it each run gets a fresh temporary channel.
@@ -513,16 +565,26 @@ async function realLane() {
   }
   console.log("dispatcher heartbeat fresh (instance " + status.heartbeat.instance + ")");
 
+  // The named selection (not a transport instance) is what carries the
+  // install/version pin: launch() refuses when the answering dispatcher's
+  // reported AE version does not match the pin. hostScript names
+  // the same staged build so the registered-set check still applies.
   const ae = await AfterEffects.launch({
-    transport,
+    transport: {
+      kind: "in-ae-dispatcher",
+      channelDir,
+      ...(INSTALL_DIR === null ? {} : { installDir: INSTALL_DIR }),
+      ...(AE_VERSION === null ? {} : { aeVersion: AE_VERSION }),
+    },
+    hostScript: HOST_SCRIPT,
     sessionRoot,
     authorization: { extensionMethods: true },
-    ...(INSTALL_DIR === null ? {} : { installDir: INSTALL_DIR }),
   });
   // The lane verdict is computed inside try and can still be overridden by
   // the close check in finally; A8N_RESULT is emitted exactly once, after.
   let laneStatus = "fail";
   let laneExtra = { channelDir };
+  let cleanupNote = "not attempted";
   try {
     if (PROJECT !== null) {
       await ae.openProject(PROJECT);
@@ -542,9 +604,37 @@ async function realLane() {
     laneExtra = { channelDir, instance: boundInstance };
     console.log(failures === 0 ? "RESULT: real-host pass" : "RESULT: real-host FAIL");
   } finally {
-    // The fixture project's edits are never saved; discarding them is the
-    // documented acceptance behaviour, not data loss.
-    const closed = await ae.close({ unsavedChanges: "discard" });
+    // Attached sessions never quit AE, and unsavedChanges:"discard" only
+    // applies to a quit this session would perform — it does NOT revert
+    // project edits. The honest cleanup is fixture-scoped: only when the
+    // project AE reports open is provably the --project fixture do we
+    // reopen it with unsavedChanges:"discard", which closes the in-memory
+    // edits (DO_NOT_SAVE_CHANGES) and reopens the file clean — the fixture
+    // on disk is never written. Anything else is left untouched and the
+    // leftover is reported in A8N_RESULT.
+    try {
+      const info = await (await ae.project()).info();
+      const sameFile = (a, b) => {
+        try {
+          return realpathSync(a) === realpathSync(b);
+        } catch {
+          return a === b;
+        }
+      };
+      if (info.file !== null && sameFile(info.file, PROJECT)) {
+        await ae.openProject(PROJECT, { unsavedChanges: "discard" });
+        cleanupNote = "fixture edits discarded by reopen; project left open clean";
+      } else {
+        cleanupNote =
+          "open project is " + (info.file === null ? "none" : JSON.stringify(info.file)) +
+          ", not the fixture — nothing discarded";
+      }
+    } catch (error) {
+      cleanupNote =
+        "cleanup check failed: " + (error && error.message ? error.message : String(error));
+    }
+    console.log("project cleanup: " + cleanupNote);
+    const closed = await ae.close();
     console.log(
       "closed: quit=" + closed.quit +
         " ownership=" + closed.ownership.kind +
@@ -553,7 +643,9 @@ async function realLane() {
     if (closed.quit !== false) {
       console.log("RESULT: real-host FAIL — close() quit an attached host");
       laneStatus = "fail";
-      laneExtra = { channelDir, reason: "close quit an attached host" };
+      laneExtra = { channelDir, reason: "close quit an attached host", cleanup: cleanupNote };
+    } else {
+      laneExtra = { ...laneExtra, cleanup: cleanupNote };
     }
   }
   emitResult("real", laneStatus, laneExtra);

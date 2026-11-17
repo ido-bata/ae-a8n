@@ -29,7 +29,11 @@ import {
   type LaunchProvenance,
 } from "../driver/launch-provenance.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
-import { DispatcherTransport } from "../driver/dispatcher-transport.js";
+import {
+  aeVersionFromInstallDir,
+  aeVersionParts,
+  DispatcherTransport,
+} from "../driver/dispatcher-transport.js";
 import { DISPATCHER_TRANSPORT_KIND, type HostTransport } from "../driver/transport.js";
 import {
   AUTHORIZATION_SCOPES,
@@ -525,6 +529,47 @@ export class AfterEffects {
     if (instance !== undefined && typeof instance !== "string") {
       throw new AfterEffectsError("transport.instance must be a string", op);
     }
+    const installDir =
+      typeof selection === "object" && selection !== null
+        ? (selection as { installDir?: unknown }).installDir
+        : undefined;
+    if (installDir !== undefined && typeof installDir !== "string") {
+      throw new AfterEffectsError("transport.installDir must be a string", op);
+    }
+    const aeVersion =
+      typeof selection === "object" && selection !== null
+        ? (selection as { aeVersion?: unknown }).aeVersion
+        : undefined;
+    if (aeVersion !== undefined && typeof aeVersion !== "string") {
+      throw new AfterEffectsError("transport.aeVersion must be a string", op);
+    }
+    if (installDir !== undefined && aeVersion !== undefined) {
+      throw new AfterEffectsError(
+        "transport.installDir and transport.aeVersion are alternative pins; pass one",
+        op,
+      );
+    }
+    let expectedAeVersion: string | undefined;
+    try {
+      if (aeVersion !== undefined) {
+        expectedAeVersion = aeVersionParts(aeVersion).join(".");
+      } else if (installDir !== undefined) {
+        // The install's recorded version keeps its full precision; the
+        // transport compares it against the heartbeat at the heartbeat's
+        // own precision, so a patch difference is refused whenever
+        // app.version reports one.
+        expectedAeVersion = aeVersionParts(
+          aeVersionFromInstallDir(process.platform, installDir),
+        ).join(".");
+      }
+    } catch (error) {
+      throw new AfterEffectsError(
+        `transport target pin is not a usable AE version: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        op,
+      );
+    }
     if (options.session !== undefined) {
       // The dispatcher channel is per-OS-user: it can only reach an After
       // Effects running as this user. Silently ignoring a session target
@@ -539,6 +584,7 @@ export class AfterEffects {
     return new DispatcherTransport({
       ...(channelDir === undefined ? {} : { channelDir }),
       ...(instance === undefined ? {} : { expectedInstance: instance }),
+      ...(expectedAeVersion === undefined ? {} : { expectedAeVersion }),
       // The effective host script is staged into the channel and its
       // registered set is checked against the heartbeat at launch (#146).
       ...(options.hostScript === undefined

@@ -181,7 +181,7 @@ describe("the documented real-lane procedure matches the harness (#155)", () => 
       invocations.push(command);
     }
     expect(invocations.length).toBeGreaterThan(0);
-    const allowed = new Set(["--project", "--channel-dir", "--install-dir", "--prepare-only"]);
+    const allowed = new Set(["--project", "--channel-dir", "--install-dir", "--ae-version", "--prepare-only"]);
     for (const command of invocations) {
       const tokens = command.split(/\s+/).slice(2);
       for (let i = 0; i < tokens.length; i += 1) {
