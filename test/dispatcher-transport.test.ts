@@ -619,7 +619,9 @@ describe("startup placement helpers", () => {
       homeDir: home,
     });
     expect(installed).toBe(join(expectedDir, "a8n-dispatcher.jsx"));
-    expect(installed).toContain("After Effects/26.5/Scripts/Startup");
+    // Separator-agnostic: the dir part is posix-joined for the darwin seam,
+    // but the host-joined filename uses the host separator.
+    expect(installed.replace(/\\/g, "/")).toContain("After Effects/26.5/Scripts/Startup");
     expect(readFileSync(installed, "utf-8")).toContain("ae-a8n in-AE dispatcher activation");
 
     // A foreign file at the same path is refused, not clobbered.
@@ -648,6 +650,9 @@ describe("startup placement helpers", () => {
     const transport = new DispatcherTransport({ channelDir: dir, platform: "darwin" });
     await transport.prepare();
     expect(transport.resolveAeVersion({ installDir: app })).toBe("26.5");
-    expect(defaultDispatcherChannelDir("/home/u")).toBe("/home/u/.ae-a8n/dispatcher");
+    // A real host path: host separators, so compare with host join.
+    expect(defaultDispatcherChannelDir("/home/u")).toBe(
+      join("/home/u", ".ae-a8n", "dispatcher"),
+    );
   });
 });
