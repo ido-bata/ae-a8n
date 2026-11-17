@@ -31,6 +31,11 @@ import {
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
 import { DispatcherTransport } from "../driver/dispatcher-transport.js";
 import { DISPATCHER_TRANSPORT_KIND, type HostTransport } from "../driver/transport.js";
+import {
+  AUTHORIZATION_SCOPES,
+  type AuthorizationScope,
+  type SessionAuthorization,
+} from "../driver/transport.js";
 import { readExtensionHeader } from "../extensions/manifest.js";
 import { TraceRecorder, type TraceEvent } from "../trace/trace.js";
 import {
@@ -94,10 +99,13 @@ class Session {
   readonly driver: AeDriver;
   readonly trace: TraceRecorder;
   readonly events: TraceEvent[] = [];
+  /** The consumer's explicit grant for non-owned operations (#145). */
+  readonly authorization: SessionAuthorization;
 
-  constructor(driver: AeDriver, trace: TraceRecorder) {
+  constructor(driver: AeDriver, trace: TraceRecorder, authorization: SessionAuthorization = {}) {
     this.driver = driver;
     this.trace = trace;
+    this.authorization = authorization;
     trace.subscribe((event) => {
       this.events.push(event);
     });
@@ -254,12 +262,110 @@ function requirePositive(value: unknown, field: string): number {
   return value;
 }
 
-/** Refuses an operation that only the session that started AE may perform. */
-function requireOwned(session: Session, op: string): void {
-  const ownership = session.driver.ownership();
-  if (ownership.kind !== "owned") {
-    throw new HostNotOwnedError(op, ownership.kind, ownership.evidence);
+/**
+ * The operation classes a session grant can cover, for validation and for
+ * the handshake's `grantedOperations` report (#145).
+ */
+const GRANT_SCOPES = AUTHORIZATION_SCOPES;
+
+/**
+ * Validates `LaunchOptions.authorization`: an object whose keys are grant
+ * scopes, `extensionMethods` being `true`, `false`, or a list of declared
+ * method names, the rest booleans. Anything else is refused before launch —
+ * a grant that cannot be read is not a grant.
+ */
+function requireAuthorization(value: unknown): SessionAuthorization {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("authorization must be an object of grant scopes");
   }
+  const grant: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!(GRANT_SCOPES as readonly string[]).includes(key)) {
+      throw new TypeError(
+        `authorization.${key} is not a grant scope; known scopes: ${GRANT_SCOPES.join(", ")}`,
+      );
+    }
+    if (key === "extensionMethods") {
+      if (entry === true || entry === false) {
+        grant[key] = entry;
+      } else if (Array.isArray(entry) && entry.every((name) => typeof name === "string")) {
+        grant[key] = entry;
+      } else {
+        throw new TypeError("authorization.extensionMethods must be true, false, or a list of method names");
+      }
+    } else if (typeof entry === "boolean") {
+      grant[key] = entry;
+    } else {
+      throw new TypeError(`authorization.${key} must be a boolean`);
+    }
+  }
+  return grant;
+}
+
+/** The scope names this session is actually authorized for, for reporting. */
+export function grantedScopes(session: Session): readonly AuthorizationScope[] {
+  const ownership = session.driver.ownership();
+  if (ownership.kind === "owned") {
+    // An owned session needs no grant: every scope is allowed. Reporting the
+    // full list keeps "what may this session do" answerable in one place.
+    return GRANT_SCOPES;
+  }
+  const grant = session.authorization;
+  return GRANT_SCOPES.filter((scope) => {
+    const value = grant[scope];
+    return value === true || (Array.isArray(value) && value.length > 0);
+  });
+}
+
+/**
+ * Whether the session's grant covers `scope` for `method` (when the scope
+ * is method-scoped, as `extensionMethods` is). Owned sessions are always
+ * covered; anything else needs the explicit grant (#145).
+ */
+function grantCovers(session: Session, scope: AuthorizationScope, method?: string): boolean {
+  const ownership = session.driver.ownership();
+  if (ownership.kind === "owned") {
+    return true;
+  }
+  const value = session.authorization[scope];
+  if (value === true) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return method !== undefined && value.includes(method);
+  }
+  return false;
+}
+
+/**
+ * Refuses an operation the session is not authorized for.
+ *
+ * Three authorities stay separate (#145): quitting the host is owned-only
+ * and is enforced in the driver, never here; operating the connected
+ * target is what the session bound at launch; and each privileged
+ * operation class needs either ownership or the matching grant. Unknown
+ * ownership is never promoted: it is authorized exactly like "attached".
+ */
+function requireAuthorized(
+  session: Session,
+  op: string,
+  scope: AuthorizationScope,
+  method?: string,
+): void {
+  const ownership = session.driver.ownership();
+  if (ownership.kind === "owned" || grantCovers(session, scope, method)) {
+    return;
+  }
+  const granted = grantedScopes(session);
+  const hint =
+    granted.length === 0
+      ? `pass authorization: { ${scope}: true } (or the method names) in launch options`
+      : `the grant covers ${granted.join(", ")} but not "${scope}"`;
+  throw new HostNotOwnedError(
+    op,
+    ownership.kind,
+    `${ownership.evidence}; ${hint}`,
+  );
 }
 
 /** Layers in `after` and not in `before`, compared by id. */
@@ -399,6 +505,13 @@ export class AfterEffects {
     if (channelDir !== undefined && typeof channelDir !== "string") {
       throw new AfterEffectsError("transport.channelDir must be a string", op);
     }
+    const instance =
+      typeof selection === "object" && selection !== null
+        ? (selection as { instance?: unknown }).instance
+        : undefined;
+    if (instance !== undefined && typeof instance !== "string") {
+      throw new AfterEffectsError("transport.instance must be a string", op);
+    }
     if (options.session !== undefined) {
       // The dispatcher channel is per-OS-user: it can only reach an After
       // Effects running as this user. Silently ignoring a session target
@@ -412,6 +525,7 @@ export class AfterEffects {
     }
     return new DispatcherTransport({
       ...(channelDir === undefined ? {} : { channelDir }),
+      ...(instance === undefined ? {} : { expectedInstance: instance }),
     });
   }
 
@@ -505,7 +619,9 @@ export class AfterEffects {
     // The session subscribes before the probe runs, so the live view and the
     // trace file record the same operations. Subscribing afterwards would make
     // `traceEvents` quietly disagree with `tracePath`.
-    const session = new Session(driver, trace);
+    const authorization =
+      options.authorization === undefined ? {} : requireAuthorization(options.authorization);
+    const session = new Session(driver, trace, authorization);
     const environment =
       options.hostEnvironment === undefined ? undefined : requireEnvironment(options.hostEnvironment);
     let probe: ApplicationInfo;
@@ -515,10 +631,16 @@ export class AfterEffects {
       contextualise(op, error);
     }
     if (environment !== undefined) {
-      // Never change the environment of an AE someone else is running.
-      requireOwned(session, "session.hostEnvironment");
+      // Never change the environment of an AE someone else is running
+      // without the consumer's explicit grant (#145).
+      requireAuthorized(session, "session.hostEnvironment", "hostEnvironment");
       await session.call("session.hostEnvironment", "app.setEnvironment", { variables: environment });
     }
+    // The grant is evidence, not just enforcement: the trace records which
+    // operation classes this session may exercise on a host it does not own.
+    session.trace.record("session.authorization", "ok", 0, {
+      result: { ownership: session.driver.ownership().kind, granted: [...grantedScopes(session)] },
+    });
     return new AfterEffects(session, probe, extensionMethods);
   }
 
@@ -545,7 +667,7 @@ export class AfterEffects {
     options: OperationOptions = {},
   ): Promise<T> {
     requireString(name, "name");
-    requireOwned(this.#session, "extension.call");
+    requireAuthorized(this.#session, "extension.call", "extensionMethods", name);
     if (!this.#extensionMethods.includes(name)) {
       throw new ExtensionMethodNotFoundError("extension.call", name, this.#extensionMethods);
     }
@@ -589,6 +711,7 @@ export class AfterEffects {
         attestation: driver.hostAttestation(),
         ownership: driver.ownership(),
         extensionMethods: this.#extensionMethods,
+        grantedOperations: grantedScopes(this.#session),
         hostNonce: this.#hostNonce,
         generatedAt: new Date().toISOString(),
       }),
@@ -1030,7 +1153,7 @@ export class MenuCommand {
    * blocks AE until a person dismisses it, and this then times out.
    */
   async execute(options: OperationOptions = {}): Promise<CommandExecution> {
-    requireOwned(this.#session, "menu.execute");
+    requireAuthorized(this.#session, "menu.execute", "menuCommands");
     const raw = await this.#session.call<Omit<CommandExecution, "added" | "removed" | "name">>(
       "menu.execute",
       "menu.execute",

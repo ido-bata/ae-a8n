@@ -8,7 +8,9 @@
 
 import type { DiagnosticCode } from "../doctor/diagnostics.js";
 import type { GuiAppState } from "../driver/gui-recovery.js";
-import type { HostTransport } from "../driver/transport.js";
+import type { HostTransport, SessionAuthorization } from "../driver/transport.js";
+
+export type { SessionAuthorization } from "../driver/transport.js";
 
 /**
  * The opt-in in-AE dispatcher transport (#127), selected by name. It is
@@ -19,6 +21,14 @@ export type DispatcherTransportSelection = {
   readonly kind: "in-ae-dispatcher";
   /** Channel directory; defaults to `~/.ae-a8n/dispatcher`. */
   readonly channelDir?: string;
+  /**
+   * Pin the session to one dispatcher instance (#145): the `instance` id a
+   * previous session reported through `ae.capabilities()` or
+   * `ae-a8n dispatcher status`. `launch()` refuses when the answering
+   * dispatcher is a different After Effects — a reconnect can prove it
+   * reached the same engine, and a different one is never operated.
+   */
+  readonly instance?: string;
 };
 
 /** What `LaunchOptions.transport` accepts: a transport instance, or the named opt-in selection. */
@@ -297,6 +307,21 @@ export type LaunchOptions = {
    * rejects with `HostNotOwnedError` and leaves the running AE untouched.
    */
   readonly hostEnvironment?: Readonly<Record<string, string>>;
+  /**
+   * Explicit authorization for operations that only an owned session may
+   * otherwise perform (#145). Ownership and authorization are separate
+   * authorities: a session that started its After Effects needs no grant;
+   * a session attached to — or unable to prove ownership of — a running
+   * one needs the grant for each privileged operation class it intends
+   * to use (`extensionMethods`, `hostEnvironment`, `menuCommands`).
+   *
+   * A grant never changes ownership and never permits quitting the host:
+   * `close()` still quits only a proven-owned instance. It is recorded in
+   * the session manifest, the trace and `ae.capabilities()`, and it ends
+   * with the session — a reconnect or a different target instance must be
+   * authorized again.
+   */
+  readonly authorization?: SessionAuthorization;
   /**
    * The macOS login session the After Effects lives in.
    *

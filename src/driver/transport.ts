@@ -84,6 +84,37 @@ export type PendingLaunch = {
 };
 
 /**
+ * What a session explicitly authorizes on a host it does not own (#145).
+ *
+ * Ownership and authorization are separate authorities: `owned` sessions
+ * may do everything; `attached`/`unknown` sessions may do everything except
+ * the operations a grant names here. A grant is the consumer's recorded
+ * consent — it never changes ownership, never permits quitting the host,
+ * and never survives into another session or another target instance.
+ *
+ * Each key is one operation class:
+ *
+ * - `extensionMethods`: consumer-declared static extension methods through
+ *   `ae.call`. `true` allows every declared method; a list of names allows
+ *   only those.
+ * - `hostEnvironment`: `app.setEnvironment` inside the host process.
+ * - `menuCommands`: AE menu commands (`menuCommand`, `undo`, `redo`).
+ */
+export type SessionAuthorization = {
+  readonly extensionMethods?: boolean | readonly string[];
+  readonly hostEnvironment?: boolean;
+  readonly menuCommands?: boolean;
+};
+
+/** The operation classes a grant can name, in reporting order. */
+export const AUTHORIZATION_SCOPES = [
+  "extensionMethods",
+  "hostEnvironment",
+  "menuCommands",
+] as const;
+export type AuthorizationScope = (typeof AUTHORIZATION_SCOPES)[number];
+
+/**
  * Whether the host process is still there, as far as the transport can prove.
  *
  * "alive": the process this session is talking to exists.
@@ -142,6 +173,14 @@ export type HostAttestation = {
    * reports "unknown", never a guess.
    */
   readonly requiresGuiDelivery?: boolean | null;
+  /**
+   * The dispatcher instance this session is bound to, when the transport
+   * identifies its target that way (the in-AE dispatcher reports an
+   * `instance` in its heartbeat). Diagnostics/target-identity evidence
+   * only — never authority for ownership or for addressing a process.
+   * `null`/absent = the transport cannot name an instance.
+   */
+  readonly targetInstance?: string | null;
   /**
    * Whether the transport proves it refuses to target the console
    * session's After Effects — the `isolated-user` invariant that a start
@@ -250,6 +289,14 @@ export interface HostTransport {
    * that then blocks the start (both observed on 26.5x89).
    */
   awaitScriptable?(timeoutMs: number): Promise<boolean>;
+
+  /**
+   * The extension method names the *live target* reports as registered, when
+   * the transport can ask (the in-AE dispatcher reports them in its
+   * heartbeat). `null` = the transport cannot say right now; the caller
+   * must not treat that as "none registered". Optional.
+   */
+  activeExtensionMethods?(): readonly string[] | null;
 
   /** Wait for a host this session quit to go away. */
   close(): Promise<void>;

@@ -1168,6 +1168,12 @@
     if (request.token !== state.token) {
       throw dispatcherRefusal("request token does not match this channel");
     }
+    // Defence in depth for the pre-claim filter in dispatcherTick: a request
+    // that names a different dispatcher instance must never run here, even
+    // if it was claimed before the filter could see it.
+    if (typeof request.target === "string" && request.target !== state.instance) {
+      throw dispatcherRefusal("request targets a different dispatcher instance");
+    }
     if (typeof request.method !== "string" || request.method.length === 0) {
       throw dispatcherRefusal("request names no method");
     }
@@ -1257,6 +1263,25 @@
           continue;
         }
         var id = match[1];
+        // Target binding (#145): a request that names a dispatcher instance
+        // is claimed only by that instance. Two After Effects can share one
+        // channel; without this check the first poller would run — or refuse
+        // — work addressed to the other. The file is left in place for the
+        // dispatcher it names; an unreadable file falls through to the
+        // claim path, which reports it as a refusal.
+        try {
+          var peek = state.codec.parse(readTextFile(file.fsName));
+          if (
+            peek !== null &&
+            typeof peek === "object" &&
+            typeof peek.target === "string" &&
+            peek.target !== state.instance
+          ) {
+            continue;
+          }
+        } catch (peekError) {
+          // Malformed JSON is the claim path's refusal to report, not ours.
+        }
         // Claim before running: a host restart cannot replay a claimed
         // operation, and a second dispatcher cannot take the same file.
         if (!file.rename(id + ".claimed")) {

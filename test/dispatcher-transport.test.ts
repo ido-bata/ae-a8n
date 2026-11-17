@@ -656,3 +656,137 @@ describe("startup placement helpers", () => {
     );
   });
 });
+
+describe("target binding and reconnect pinning (#145)", () => {
+  function stageCall(session: string): { entry: string; id: string } {
+    const paths = createSessionPaths(session);
+    const id = nextRequestId();
+    const request: RequestEnvelope = { v: 1, id, method: "app.info", params: {}, timeoutMs: 5_000 };
+    writeRequest(paths, request);
+    const entry = join(session, "staging", `${id}.entry.jsx`);
+    writeBootstrapScript({
+      entryPath: entry,
+      hostScriptPath: join(session, "host.js"),
+      requestPath: join(paths.inbox, `${id}.request.json`),
+      resultPath: join(paths.outbox, `${id}.result.json`),
+      id,
+    });
+    return { entry, id };
+  }
+
+  function heartbeatInstance(dir: string): string {
+    const state = JSON.parse(readFileSync(join(dir, "state.json"), "utf-8")) as { instance: string };
+    return state.instance;
+  }
+
+  it("binds the answering instance at launch and addresses every request to it", async () => {
+    const dir = channelDir();
+    const session = sessionRoot();
+    const transport = makeTransport(dir);
+    await transport.prepare();
+    activateFakeDispatcher(dir);
+    const instance = heartbeatInstance(dir);
+
+    await transport.launch();
+    expect(transport.boundInstance()).toBe(instance);
+
+    const { entry, id } = stageCall(session);
+    await transport.invoke(entry);
+    const channelRequest = JSON.parse(
+      readFileSync(join(dir, "inbox", `${id}.request.json`), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(channelRequest["target"]).toBe(instance);
+    await transport.close();
+  });
+
+  it("refuses to launch when the answering instance is not the pinned one", async () => {
+    const dir = channelDir();
+    const transport = makeTransport(dir);
+    await transport.prepare();
+    activateFakeDispatcher(dir);
+    const instance = heartbeatInstance(dir);
+
+    await expect(
+      makeTransport(dir, { expectedInstance: "a-different-instance" }).launch(),
+    ).rejects.toThrow(/not the pinned/);
+
+    const pinned = makeTransport(dir, { expectedInstance: instance });
+    await pinned.launch();
+    expect(pinned.boundInstance()).toBe(instance);
+    await pinned.close();
+    await transport.close();
+  });
+
+  it("refuses to deliver once the answering instance changes", async () => {
+    const dir = channelDir();
+    const session = sessionRoot();
+    const transport = makeTransport(dir);
+    await transport.prepare();
+    activateFakeDispatcher(dir);
+    await transport.launch();
+    const bound = transport.boundInstance();
+    expect(bound).not.toBeNull();
+
+    // The dispatcher was restarted: the heartbeat now names another AE.
+    const statePath = join(dir, "state.json");
+    const state = JSON.parse(readFileSync(statePath, "utf-8")) as Record<string, unknown>;
+    writeFileSync(statePath, JSON.stringify({ ...state, instance: "restarted-instance" }), "utf-8");
+
+    const { entry, id } = stageCall(session);
+    await expect(transport.invoke(entry)).rejects.toBeInstanceOf(ScriptNotSentError);
+    await expect(transport.invoke(entry)).rejects.toThrow(/not the .* this session bound to/);
+    // Nothing was written for the wrong target.
+    expect(existsSync(join(dir, "inbox", `${id}.request.json`))).toBe(false);
+    await transport.close();
+  });
+});
+
+describe("dispatcher host target filter (real ES3, fake AE)", () => {
+  it("claims only requests addressed to it; foreign and untargeted requests behave correctly", async () => {
+    const dir = channelDir();
+    const transport = makeTransport(dir);
+    await transport.prepare();
+    const { peer, outcome } = activateFakeDispatcher(dir);
+    expect(outcome.success).toBe(true);
+    const instance = (
+      JSON.parse(readFileSync(join(dir, "state.json"), "utf-8")) as { instance: string }
+    ).instance;
+    const compsBefore = peer.app.project.numItems;
+
+    const compParams = { name: "BoundComp", width: 16, height: 16, duration: 1, frameRate: 24 };
+    // Addressed to a different dispatcher instance: must be left untouched.
+    const foreign = validRequest(dir, "project.createComp", compParams);
+    foreign["target"] = "another-instance";
+    const foreignId = foreign["id"] as string;
+    writeChannelRequest(dir, foreign);
+
+    // Addressed to this instance: runs.
+    const mine = validRequest(dir, "project.createComp", { ...compParams, name: "MineComp" });
+    mine["target"] = instance;
+    const mineId = mine["id"] as string;
+    writeChannelRequest(dir, mine);
+
+    // No target at all (older writer): still runs — the filter only refuses
+    // a *named different* instance.
+    const untargeted = validRequest(dir, "app.info");
+    const untargetedId = untargeted["id"] as string;
+    writeChannelRequest(dir, untargeted);
+
+    for (let i = 0; i < 8; i++) {
+      peer.tick();
+    }
+
+    // The foreign request is still sitting unclaimed for its real target.
+    expect(existsSync(join(dir, "inbox", `${foreignId}.request.json`))).toBe(true);
+    expect(existsSync(join(dir, "outbox", `${foreignId}.result.json`))).toBe(false);
+
+    const read = (id: string) =>
+      JSON.parse(readFileSync(join(dir, "outbox", `${id}.result.json`), "utf-8")) as { ok: boolean };
+    expect(read(mineId).ok).toBe(true);
+    expect(read(untargetedId).ok).toBe(true);
+
+    // Exactly one comp was created: the foreign request never executed.
+    expect(peer.app.project.numItems).toBe(compsBefore + 1);
+    await transport.close();
+  });
+});
