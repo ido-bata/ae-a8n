@@ -91,7 +91,7 @@ to `4746ff3`.
 | 65 | A remote run's channel is settled once — by an injected channel, or by the first resolution that assigns one — and a later resolution may not replace it. Before, the send-time liveness check re-read the host configuration and could move the job, the manifest and the release to a new channel root while the run lock stayed in the old one, which nothing checks again. Test: `windows-remote-comms.test.ts` "keeps a run in the channel its configuration named when the file is rewritten" (fails without the guard) |
 | 66 | Every throw after the run lock is taken releases it: the liveness check, the publish, the manifest and the local artifacts all sit inside one `try`, and the catch releases before rethrowing. The deliberate `unknown` outcome is the single exception — the job may still be executing, and `close()` releases that lock after the caller decides. A failed release never replaces the original error. Test: `windows-runner.test.ts` "releases the run's lock when the run throws before it has an outcome" |
 | 72 | The runner closes the session it opened, in a `finally`, after the lock is released. The outcome is already decided at that point, so neither a refusing close (on Windows, a session marker that is not this run's) nor a throwing one changes it; the close and its reason are recorded as `session.closed` and appended to the run's trace when the directory was kept. Tests: `runner-test.test.ts` "closes the session after the command, and keeps the result in the trace", "keeps a refusing close out of the run's verdict", "does not let a close that throws change the run" |
-| 57 (T106) | `openComms` no longer gates the channel check on the controller's `process.platform`: an injected ACL reader is called on every platform, Windows keeps its `icacls` verdict, and POSIX falls back to `stat` + the new `channelModeVerdict` (`channel-mode.ts`), which refuses a channel root writable by group or others — `1777` included, since anyone can still create entries in it — and refuses outright when mode or ownership cannot be read (`A8N-PERM-006`). No "probably fine" state. Tests: `windows-remote-comms.test.ts` |
+| 57 (T106) | `openComms` no longer gates the channel check on the controller's `process.platform`: an injected ACL reader is called on every platform, Windows keeps its `icacls` verdict, and POSIX falls back to `stat` + the new `channelModeVerdict` (`channel-mode.ts`), which refuses a channel root writable by group or others — `1777` included, since anyone can still create entries in it — and refuses outright when mode or ownership cannot be read (`A8N-PERM-006`). No "probably fine" state. The Windows side of the same property was hardened in parallel by #93/T105 (PR #141: trusted controller/agent account set, locale-robust `icacls`); this branch adds the POSIX half and the every-platform injected-reader fix. Tests: `windows-remote-comms.test.ts`, `windows-channel-mode.test.ts` |
 | 58 (T107) | `JobResult` carries an `artifacts` map (relative path → SHA-256) that is inside the signed bytes, the agent publishes digests computed from the bytes it writes, and the reader verifies artifact bytes against the signed digests before decoding (`result-artifacts.ts`); a rewritten, undeclared or missing artifact is refused. A result that predates the field stays readable for one release and reports `unproven`, which the run manifest records as `artifactProof`. Tests: `windows-job.test.ts`, `windows-result-artifacts.test.ts`, `windows-agent.test.ts`, `windows-runner.test.ts` |
 | 64 (T108) | The run manifest is signed with the channel key (`auth` field, same HMAC construction as the sibling documents) and `readRunManifest` takes a keyring: with one, an unsigned, wrongly signed or tampered manifest is refused; without one it decodes for shape only and stays unproven. `artifactProof` was added alongside so artifact verification state survives into the manifest. Tests: `windows-manifest.test.ts`, `windows-runner.test.ts` |
 
@@ -137,8 +137,9 @@ it is picked up.
 
 All 98 lows are dispositioned. The 18 fixed above (88 was fixed earlier on the
 review branch; 151/152 and 168/169 share rows) are listed in the table; the
-remaining 80 are recorded here with a one-line reason each. None is a release blocker by the reviewer's own
-severity; deferred items are follow-up material for later number-only branches.
+remaining 80 are recorded here with a one-line reason each — two of them
+(159, 160) turned out to be fixed by #93's landing (PR #141), the rest are
+deferred follow-up material for later number-only branches.
 
 | # | Disposition |
 | --- | --- |
@@ -201,20 +202,20 @@ severity; deferred items are follow-up material for later number-only branches.
 | 131 | deferred — nested ternaries in `darwin/adapter.ts` plan reasons; extract named helpers |
 | 133 | deferred — `chooseAction` labels non-pressable measured classes "belongs to a human"; give them their own wording |
 | 134 | deferred — `DialogClass.button ?? "OK"` can turn a `presses: true` class with no button into an OK press; skip the window instead (needs a skip path) |
-| 136 | tracked in #93 — `quoteForPowerShell`/`icaclsCommand` dead exports sit in `acl.ts`, which T101 reworks |
+| 136 | deferred — #93 (T101) reworked `acl.ts` but `quoteForPowerShell`/`icaclsCommand` remain unused exports |
 | 137 | deferred — agent flag contract duplicated between `agent-detach.ts` and `agent-main.ts`; export one shared set |
 | 138 | deferred — `--log` swallows a missing/flag value in `agent-detach.ts`; report a usage error |
 | 139 | deferred — `messageOf` duplicated four times across the windows modules; extract a shared helper |
-| 142 | tracked in #93 — dead `writerOf` in `auth.ts`; the file is being reworked for T098 marker signing |
-| 148 | tracked in #93 — env values skip the control-character screen argv/cwd get; job payload schema is T095 territory |
-| 149 | tracked in #93 — `payloadFile` accepts `.`, device names and trailing dot/space; same T095 schema work |
-| 154 | tracked in #93 — `presencePath` interpolates the agent id unvalidated; presence documents are T102 territory |
-| 155 | tracked in #93 — `decodePresence` discards the received `alg` instead of refusing a mismatch; same T102 work |
+| 142 | deferred — `writerOf` in `auth.ts` is still dead after #93's auth rework; remove it |
+| 148 | deferred — #93 (T095) landed without screening env *values* for control characters (keys and argv/cwd are screened) |
+| 149 | deferred — #93 (T095) landed; `payloadFile` still accepts `.`, device names and trailing dot/space |
+| 154 | deferred — #93 (T102) landed; `presencePath` still interpolates the agent id into a path unvalidated |
+| 155 | deferred — #93 (T102) landed; `decodePresence` still discards the received `alg` instead of refusing a mismatch at decode |
 | 156 | deferred — `tasklist`/`parseState` English literals are localised on non-English Windows; needs shape-based recognition like `parseIcacls` |
 | 157 | deferred — nested ternary state-to-text in `recovery.ts`; lookup table |
 | 158 | deferred — nested ternaries in `runner.ts` `plan()` reasons; style refactor |
-| 159 | tracked in #93 — `sessionMarkerPath` call kept only for its throw; marker module is T098 territory |
-| 160 | tracked in #93 — `decodeSessionMarker` accepts unknown fields; same T098/T102 decoder strictness work |
+| 159 | **fixed by #93** (PR #141) — the marker builder now checks `isJobId` explicitly instead of relying on a discarded `sessionMarkerPath` call |
+| 160 | **fixed by #93** (PR #141) — `decodeSessionMarker` refuses unknown fields via `MARKER_KEYS`, matching its siblings |
 | 161 | deferred — `exitCodeOf` maps `ERR_CHILD_PROCESS_STDIO_MAXBUFFER` to "could not start"; distinguish start failures from run failures |
 | 162 | deferred — `RUN_TRACE_SCHEMA` has no reader; stamp it into `trace.jsonl` or drop the constant |
 | 164 | deferred — plain `recover` never inspects the run a stale lock names; fall back to `lock.record.runId` for cleared stale locks only |
