@@ -15,7 +15,6 @@
  * only` evidence.
  */
 
-import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -24,6 +23,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
@@ -178,9 +178,10 @@ describe("channel preparation", () => {
     await transport.prepare();
 
     expect((await transport.available()) === false).toBe(true); // prepared but silent
-    const stat = execFileSync("stat", ["-f", "%Lp", dir], { encoding: "utf-8" }).trim();
     if (process.platform !== "win32") {
-      expect(stat).toBe("700");
+      // POSIX privacy is mode bits; on Windows the same property is the
+      // icacls ACL verdict, exercised for real by every prepare() here.
+      expect(statSync(dir).mode & 0o777).toBe(0o700);
     }
     expect(existsSync(join(dir, "inbox"))).toBe(true);
     expect(existsSync(join(dir, "outbox"))).toBe(true);
@@ -199,13 +200,17 @@ describe("channel preparation", () => {
     expect(channelToken(dir)).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it("refuses a channel directory accessible to group/other", async () => {
-    if (process.platform === "win32") return;
-    const dir = channelDir();
-    chmodSync(dir, 0o777);
-    const transport = makeTransport(dir);
-    await expect(transport.prepare()).rejects.toThrow(/accessible to group\/other/);
-  });
+  // POSIX mode bits have no Windows meaning; there the ACL verdict decides,
+  // and windows-acl.test.ts covers the verdict itself.
+  it.skipIf(process.platform === "win32")(
+    "refuses a channel directory accessible to group/other",
+    async () => {
+      const dir = channelDir();
+      chmodSync(dir, 0o777);
+      const transport = makeTransport(dir);
+      await expect(transport.prepare()).rejects.toThrow(/accessible to group\/other/);
+    },
+  );
 
   it("refuses a symlinked channel directory", async () => {
     const real = channelDir();

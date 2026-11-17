@@ -258,31 +258,28 @@ export class DispatcherTransport implements HostTransport {
     return this.outboxDir;
   }
 
-  #checkPrivateDir(dir: string, what: string): void {
-    const info = lstatSync(dir);
-    if (!info.isDirectory() || info.isSymbolicLink()) {
-      throw new HostUnavailableError(
-        `${what} must be a real directory, not a symlink: ${dir}`,
-      );
-    }
-    if (this.#platform !== "win32" && (info.mode & 0o077) !== 0) {
-      throw new HostUnavailableError(
-        `${what} is accessible to group/other (${(info.mode & 0o777).toString(8)}); ` +
-          `the in-AE channel must be private — chmod 700 ${dir}`,
-      );
-    }
-  }
-
-  /** POSIX check for a channel file that carries the token: owner-only. */
-  #checkPrivateFile(path: string, what: string): void {
+  /**
+   * Every channel path must be a real file or directory — never a symlink —
+   * on every platform: a link would let the privacy checks pass on one tree
+   * while requests and the token live in another. After the shape check,
+   * POSIX proves privacy with mode bits and Windows with the ACL verdict.
+   */
+  #checkPrivate(path: string, what: string, kind: "dir" | "file" = "dir"): void {
     const info = lstatSync(path);
-    if (!info.isFile() || info.isSymbolicLink()) {
-      throw new HostUnavailableError(`${what} must be a real file, not a symlink: ${path}`);
+    const shapeOk = kind === "file" ? info.isFile() : info.isDirectory();
+    if (!shapeOk || info.isSymbolicLink()) {
+      throw new HostUnavailableError(
+        `${what} must be a real ${kind === "file" ? "file" : "directory"}, not a symlink: ${path}`,
+      );
     }
-    if (this.#platform !== "win32" && (info.mode & 0o077) !== 0) {
+    if (this.#platform === "win32") {
+      this.#checkWindowsAcl(path, kind === "file");
+      return;
+    }
+    if ((info.mode & 0o077) !== 0) {
       throw new HostUnavailableError(
         `${what} is accessible to group/other (${(info.mode & 0o777).toString(8)}); ` +
-          `the in-AE channel must be private`,
+          `the in-AE channel must be private — chmod 700 ${path}`,
       );
     }
   }
@@ -333,18 +330,6 @@ export class DispatcherTransport implements HostTransport {
         );
     if (!verdict.ok) {
       throw new HostUnavailableError(`in-AE channel refused: ${verdict.detail}`);
-    }
-  }
-
-  #checkPrivate(path: string, what: string, kind: "dir" | "file" = "dir"): void {
-    if (this.#platform === "win32") {
-      this.#checkWindowsAcl(path, kind === "file");
-      return;
-    }
-    if (kind === "file") {
-      this.#checkPrivateFile(path, what);
-    } else {
-      this.#checkPrivateDir(path, what);
     }
   }
 
