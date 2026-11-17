@@ -27,10 +27,10 @@ prerelease へ再分類した:
 | --- | --- |
 | version | `0.2.0-beta.1` |
 | branch | `release-0-2-0` |
-| freeze SHA | `d4d28048c93f084235dcfd1c2942b244c88f18b5`（release head。PR #156/#157/#158 merge 済み。`npm pack` の tarball hash は `7aae003` で採取し、`d4d2804` で byte 同一を再検証済み — 間の差分は package `files` 対象外の scripts/docs/test のみ。旧 freeze `9f340fa` は version・内容変更により無効） |
-| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（380,118 bytes） |
-| tarball shasum (sha1) | `799f3a1b2e6d024f029e156f892e8c527f5e41fb` |
-| tarball integrity (sha512) | `sha512-9dy9GOSDvR350rtjb9mu6ZGVdBhtDFtWCeRj+NhAQuRgyTLBE2msSJhI/8DTwnUDiQa6EELZie71vDg9BGuLeQ==` |
+| freeze SHA | `753046af39a33c25fee84a56277d55919cf634e3`（release head。PR #156〜#160 merge 済み。`--install-dir` / `--ae-version` による dispatcher 対象 version pin と real-lane cleanup 契約の修正（PR #160）を含む再 freeze。旧 freeze `d4d2804` とその tarball hash は内容変更により無効。さらに旧 freeze `9f340fa` も version・内容変更により無効） |
+| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,039 bytes） |
+| tarball shasum (sha1) | `ef7703835a0b0f83a35ce9fd623005d034dd855c` |
+| tarball integrity (sha512) | `sha512-yDL+wi8sCbVs66aFVxTjS+sN7llNcnp8qNdxrBNp4KYPtsXsLXI98ECuoIshd8JcIz970kLN7kIYPtQbuiquRA==` |
 
 `npm pack` は同一 tree で再現する（`docs/releasing.md`）。hash が違う
 tarball はこの候補ではない。版番号・配布内容を変更した場合は旧 freeze
@@ -68,6 +68,12 @@ freeze SHA は package 内容を確定した commit を指す。本記録自体�
   機械判定可能な `A8N_RESULT` JSON（`blocked` は exit 3）に整えた。
   version を `0.2.0-beta.1` へ再分類し、`check-release.js` が `next` への
   stage と `latest` 昇格の区別（prerelease 必須）を検証する。
+- PR #160（#155 続き）: `--install-dir` が dispatcher 接続先を実際に
+  固定していなかった問題を、transport selection の `installDir` /
+  `aeVersion` pin（heartbeat `aeVersion` との照合、version pin であり
+  実行ファイル同一性は証明しない）で修正。real lane の cleanup を
+  attached session の実態に合わせ、`--project` fixture と一致する時だけ
+  reopen+discard し、不一致時は残存を報告する契約に変更。
 
 ## 検証状況（verification level）
 
