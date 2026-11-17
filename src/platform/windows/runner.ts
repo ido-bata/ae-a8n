@@ -53,11 +53,10 @@ import {
 import {
   RUN_MANIFEST_SCHEMA_VERSION,
   writeRunManifest,
-  type RunManifest,
+  type UnsignedRunManifest,
 } from "./manifest.js";
 import { encodeJobPayload } from "./executor.js";
 import {
-  jobPaths,
   newJobId,
   sha256Hex,
   type AgentIdentity,
@@ -78,6 +77,7 @@ import {
   WINDOWS_RECOVERY_COMMAND,
 } from "./recovery.js";
 import { submitJob, type SubmitOptions, type SubmitResult } from "./remote.js";
+import { readResultArtifact } from "./result-artifacts.js";
 
 export const SETUP_STATE_PATH = "setup/state.json";
 
@@ -1080,12 +1080,50 @@ export class WindowsAdapter implements PlatformAdapter {
         jobId: submitted.jobId,
         agent: runAgent,
       });
+      // The run's artifacts are read and checked against the digests the
+      // signed result carries before the manifest says anything about them:
+      // a rewrite after publication is detected here, not trusted later.
+      // Refused/unknown submissions carry no artifacts to verify.
+      let artifacts: {
+        readonly stdout: Uint8Array | null;
+        readonly stderr: Uint8Array | null;
+        readonly proof: "verified" | "unproven";
+      } | null = null;
+      let artifactRefusal: string | null = null;
+      if (submitted.status === "ok" || submitted.status === "failed") {
+        const stdout = await readResultArtifact(
+          this.#channel,
+          submitted.jobId,
+          submitted.result,
+          "stdout.log",
+        );
+        const stderr = await readResultArtifact(
+          this.#channel,
+          submitted.jobId,
+          submitted.result,
+          "stderr.log",
+        );
+        if (stdout.proof === "refused") {
+          artifactRefusal = stdout.detail;
+        } else if (stderr.proof === "refused") {
+          artifactRefusal = stderr.detail;
+        } else {
+          artifacts = {
+            stdout: stdout.bytes,
+            stderr: stderr.bytes,
+            proof:
+              stdout.proof === "verified" && stderr.proof === "verified"
+                ? "verified"
+                : "unproven",
+          };
+        }
+      }
       // The manifest records what was proven, not what was configured: the
       // agent identity and session come from the signed result when there is
       // one. `agentVerified` says which of the two this is.
       const verified =
         submitted.status === "ok" || submitted.status === "failed" ? submitted.result.agent : null;
-      const manifest: RunManifest = {
+      const manifest: UnsignedRunManifest = {
         schemaVersion: RUN_MANIFEST_SCHEMA_VERSION,
         runId,
         host: this.#host,
@@ -1105,8 +1143,9 @@ export class WindowsAdapter implements PlatformAdapter {
         ownershipProof: "unproven",
         startedAt,
         finishedAt: this.#now().toISOString(),
+        artifactProof: artifacts?.proof ?? "unproven",
       };
-      await writeRunManifest(this.#channel, runId, manifest);
+      await writeRunManifest(this.#channel, runId, manifest, key);
 
       if (submitted.status === "refused") {
         // The catch below releases the lock: this run is leaving without an
@@ -1119,14 +1158,24 @@ export class WindowsAdapter implements PlatformAdapter {
         throw new WindowsJobUnknownError(submitted.message, submitted.jobId);
       }
 
-      const artifacts = await this.#writeLocalArtifacts(submitted.jobId, runId);
+      if (artifactRefusal !== null) {
+        // The job ran and its result is signed; what failed is the artifact
+        // layer — a file was rewritten after publication. The manifest above
+        // already records the run with artifactProof "unproven"; this throw
+        // keeps the forged bytes from being copied into the run's artifacts
+        // and reported as the command's output.
+        throw new Error(
+          `the run's reported artifacts failed verification: ${artifactRefusal}`,
+        );
+      }
+      const localArtifacts = await this.#writeLocalArtifacts(runId, artifacts);
       await releaseRunLock(this.#channel, runId, owner);
       return {
         // The published exit code is authoritative; 1 is the conventional
         // fallback when the process did not exit normally (signal or kill).
         exitCode: submitted.result.exitCode ?? (submitted.status === "ok" ? 0 : 1),
-        stdoutPath: artifacts.stdoutPath,
-        stderrPath: artifacts.stderrPath,
+        stdoutPath: localArtifacts.stdoutPath,
+        stderrPath: localArtifacts.stderrPath,
       };
     } catch (error) {
       // Everything above acquired this run's lock: the liveness check, the
@@ -1143,19 +1192,25 @@ export class WindowsAdapter implements PlatformAdapter {
     }
   }
 
+  /**
+   * Copy the run's stdout/stderr into the local run directory. The bytes
+   * arrive already read and verified against the signed result's digests —
+   * this method never reads the channel again, so what is written here is
+   * exactly what was checked.
+   */
   async #writeLocalArtifacts(
-    jobId: string,
     runId: string,
+    artifacts: {
+      readonly stdout: Uint8Array | null;
+      readonly stderr: Uint8Array | null;
+    } | null,
   ): Promise<{ readonly stdoutPath: string; readonly stderrPath: string }> {
     const directory = join(this.#runDirectory, runId);
     await mkdir(directory, { recursive: true });
-    const resultDirectory = jobPaths(jobId).resultDirectory;
-    const stdout = (await this.#channel.read(`${resultDirectory}/stdout.log`)) ?? new Uint8Array();
-    const stderr = (await this.#channel.read(`${resultDirectory}/stderr.log`)) ?? new Uint8Array();
     const stdoutPath = join(directory, "stdout.log");
     const stderrPath = join(directory, "stderr.log");
-    await writeFile(stdoutPath, stdout);
-    await writeFile(stderrPath, stderr);
+    await writeFile(stdoutPath, artifacts?.stdout ?? new Uint8Array());
+    await writeFile(stderrPath, artifacts?.stderr ?? new Uint8Array());
     return { stdoutPath, stderrPath };
   }
 

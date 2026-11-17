@@ -11,7 +11,7 @@
  * real-host verification: no After Effects is installed or started.
  */
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -561,6 +561,96 @@ describe("opening the channel to a host", () => {
     expect(state.ok).toBe(false);
     if (!state.ok) {
       expect(state.checks.map((check) => check.code)).toEqual(["A8N-JOB-007"]);
+    }
+  });
+
+  it("calls an injected ACL reader on every platform, not only Windows", async () => {
+    // This process is not win32; before the fix the reader was gated on the
+    // controller's platform and never called here at all.
+    const root = await tempDirectory("a8n-acl-channel-");
+    const keyFile = join(await tempDirectory("a8n-acl-key-"), "channel.key");
+    await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o600 });
+    const acl = vi.fn(() =>
+      Promise.resolve({
+        ok: true as const,
+        entries: [{ principal: "Everyone", rights: "F" }],
+      }),
+    );
+    const state = await openComms(
+      { channel: new DirectoryChannel(root), version: AGENT.version, acl },
+      { ok: true, config, source: "flags" },
+      { ...config, channel: root, keyFile },
+    );
+    expect(acl).toHaveBeenCalledWith(root);
+    expect(state.ok).toBe(false);
+    if (!state.ok) {
+      expect(state.checks.map((check) => check.code)).toContain("A8N-PERM-006");
+    }
+  });
+
+  // chmod(0o777) only means something where mode bits are real: on win32
+  // openComms takes the icacls branch and the POSIX path is unreachable.
+  // The verdict itself is covered on every platform by
+  // windows-channel-mode.test.ts.
+  it.skipIf(process.platform === "win32")(
+    "refuses a POSIX channel directory writable by group or others",
+    async () => {
+    const root = await tempDirectory("a8n-open-channel-");
+    await chmod(root, 0o777);
+    const keyFile = join(await tempDirectory("a8n-open-key-"), "channel.key");
+    await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o600 });
+    const state = await openComms(
+      { channel: new DirectoryChannel(root), version: AGENT.version },
+      { ok: true, config, source: "flags" },
+      { ...config, channel: root, keyFile },
+    );
+    expect(state.ok).toBe(false);
+    if (!state.ok) {
+      const check = state.checks.find((entry) => entry.code === "A8N-PERM-006");
+      expect(check?.detail).toContain("writable by group or others");
+    }
+    },
+  );
+
+  it("accepts a POSIX channel directory closed to group and others", async () => {
+    // mkdtemp creates 0700; the mode check must not refuse the ordinary case.
+    const root = await tempDirectory("a8n-closed-channel-");
+    const keyFile = join(await tempDirectory("a8n-closed-key-"), "channel.key");
+    await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o600 });
+    const state = await openComms(
+      { channel: new DirectoryChannel(root), version: AGENT.version },
+      { ok: true, config, source: "flags" },
+      { ...config, channel: root, keyFile },
+    );
+    expect(state.ok).toBe(false);
+    if (!state.ok) {
+      // No heartbeat was ever written, so the run still refuses — but not for
+      // the channel's permissions.
+      expect(state.checks.map((check) => check.code)).not.toContain("A8N-PERM-006");
+      expect(state.checks.map((check) => check.code)).toContain("A8N-JOB-005");
+    }
+  });
+
+  it("refuses when the channel directory's mode cannot be read", async () => {
+    // The channel answers for a directory that does not exist on this
+    // filesystem: the write probe passes through the injected channel, but
+    // the mode check cannot prove anything about the configured root.
+    const root = await tempDirectory("a8n-stat-channel-");
+    const keyFile = join(await tempDirectory("a8n-stat-key-"), "channel.key");
+    await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o600 });
+    const state = await openComms(
+      { channel: new DirectoryChannel(root), version: AGENT.version },
+      { ok: true, config, source: "flags" },
+      {
+        ...config,
+        channel: join(root, "no-such-directory"),
+        keyFile,
+      },
+    );
+    expect(state.ok).toBe(false);
+    if (!state.ok) {
+      const check = state.checks.find((entry) => entry.code === "A8N-PERM-006");
+      expect(check?.detail).toContain("could not be read");
     }
   });
 });

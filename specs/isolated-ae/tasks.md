@@ -576,6 +576,14 @@ on the release branch: 57 needs a POSIX design, and 58 and 64 change the
 signed-document schema. Each needs a fresh T092 run before the version that
 carries it may be called `verified on real host`.
 
+**Status (2026-11, branch `94` / PR #139):** T106, T107 and T108 are
+implemented — the manifest is signed with the channel key (T108's first
+option), artifacts carry signed SHA-256 digests verified before decode, and
+the POSIX channel check refuses group/other-writable or unreadable channel
+roots on every controller platform. All are `implemented` + `automated test`
+against the in-repo fake host only; the T092 re-run above is still owed before
+any of them may be called `verified on real host`.
+
 ### T106 — verify the channel directory on a POSIX controller (finding 57)
 
 **Source:** `docs/evidence/review-2026-11-11/FINDINGS.md`, finding 57.

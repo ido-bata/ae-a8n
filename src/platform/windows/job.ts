@@ -34,6 +34,8 @@ export const MAX_RESULT_BYTES = 1024 * 1024;
 export const MAX_PAYLOAD_BYTES = 1024 * 1024;
 /** A claim is a fixed, small document; anything larger is not one we wrote. */
 export const MAX_CLAIM_BYTES = 16 * 1024;
+/** A result names a handful of logs; a map past this is not one we wrote. */
+export const MAX_RESULT_ARTIFACTS = 64;
 
 const JOB_ID_PATTERN = /^\d{8}T\d{6}Z-[0-9a-f]{8}$/;
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
@@ -120,6 +122,14 @@ export type JobResult = {
   readonly agent: AgentIdentity;
   readonly startedAt: string;
   readonly finishedAt: string;
+  /**
+   * SHA-256 of each artifact the agent published under the result directory,
+   * keyed by its relative path. The signature covers this map, so a channel
+   * writer without the key can rewrite `stdout.log` but cannot make the
+   * rewrite match the digest the signed result names. Absent — a result
+   * from an agent that predates the field — the artifacts are unproven.
+   */
+  readonly artifacts?: Readonly<Record<string, string>>;
   /** The agent's HMAC over every field above. See `auth.ts`. */
   readonly auth: JobAuth;
 };
@@ -302,6 +312,7 @@ const RESULT_KEYS = new Set([
   "agent",
   "startedAt",
   "finishedAt",
+  "artifacts",
   "auth",
 ]);
 const AGENT_KEYS = new Set(["id", "host", "user", "sessionId", "version"]);
@@ -339,7 +350,7 @@ function unknownField(record: Record<string, unknown>, allowed: ReadonlySet<stri
   return null;
 }
 
-function decodeAuthField(parsed: Record<string, unknown>): DecodeOutcome<JobAuth> {
+export function decodeAuthField(parsed: Record<string, unknown>): DecodeOutcome<JobAuth> {
   const auth = parsed["auth"];
   if (!isRecord(auth)) {
     return { ok: false, detail: "auth is missing" };
@@ -621,6 +632,10 @@ export function decodeResult(bytes: Uint8Array): DecodeOutcome<JobResult> {
   if (!identity.ok) {
     return identity;
   }
+  const artifacts = decodeArtifactDigests(parsed["artifacts"]);
+  if (artifacts !== undefined && !artifacts.ok) {
+    return artifacts;
+  }
   const auth = decodeAuthField(parsed);
   if (!auth.ok) {
     return auth;
@@ -638,9 +653,56 @@ export function decodeResult(bytes: Uint8Array): DecodeOutcome<JobResult> {
       agent: identity.value,
       startedAt,
       finishedAt,
+      ...(artifacts?.ok === true ? { artifacts: artifacts.value } : {}),
       auth: auth.value,
     },
   };
+}
+
+/**
+ * An artifact name is a relative path inside the result directory: no
+ * absolute path, no parent segment, no backslash (the channel separator is
+ * `/`), no control characters.
+ */
+export function isResultArtifactPath(name: string): boolean {
+  if (name === "" || name.startsWith("/") || name.endsWith("/") || name.includes("\\")) {
+    return false;
+  }
+  for (const character of name) {
+    if ((character.codePointAt(0) ?? 0) <= 0x1f) {
+      return false;
+    }
+  }
+  return !name.split("/").includes("..");
+}
+
+function decodeArtifactDigests(
+  value: unknown,
+): DecodeOutcome<Record<string, string>> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    return { ok: false, detail: "artifacts must be an object" };
+  }
+  const entries = Object.entries(value);
+  if (entries.length > MAX_RESULT_ARTIFACTS) {
+    return {
+      ok: false,
+      detail: `artifacts names ${entries.length} files, beyond the ${MAX_RESULT_ARTIFACTS} limit`,
+    };
+  }
+  const digests: Record<string, string> = {};
+  for (const [name, digest] of entries) {
+    if (!isResultArtifactPath(name)) {
+      return { ok: false, detail: `artifact name "${name}" is not a path inside the result directory` };
+    }
+    if (typeof digest !== "string" || !HASH_PATTERN.test(digest)) {
+      return { ok: false, detail: `artifact "${name}" has no SHA-256 digest` };
+    }
+    digests[name] = digest;
+  }
+  return { ok: true, value: digests };
 }
 
 export function encodeClaim(claim: Claim): Uint8Array {

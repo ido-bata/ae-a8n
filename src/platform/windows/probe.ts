@@ -15,6 +15,13 @@ export type CommandResult = {
   readonly stdout: string;
   readonly stderr: string;
   readonly exitCode: number;
+  /**
+   * Whether the channel artifacts these answers were read from were checked
+   * against the digests the signed job result carries. Set only by runners
+   * that read signed artifacts; absent means the concept does not apply
+   * (a local probe) — never read it as "verified".
+   */
+  readonly artifactProof?: "verified" | "unproven";
 };
 
 export type ProbeCommand = {

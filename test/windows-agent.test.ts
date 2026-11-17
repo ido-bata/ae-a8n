@@ -16,6 +16,7 @@ import {
   signJob,
   signResult,
   verifyClaimAuth,
+  verifyResultAuth,
   type JobKey,
 } from "../src/platform/windows/auth.js";
 import {
@@ -111,6 +112,33 @@ describe("the agent", () => {
 
     const stored = decodeResult((await files.read(jobPaths(JOB_ID).result)) ?? new Uint8Array());
     expect(stored).toMatchObject({ ok: true, value: { jobId: JOB_ID, payloadSha256: sha256Hex(PAYLOAD) } });
+  });
+
+  it("binds the published artifacts to the signed result", async () => {
+    // Finding 58: stdout/stderr are consumed as fact, so the signed result
+    // must name their digests — a rewrite after publication then fails
+    // verification instead of being read as the job's answer.
+    const files = await channel();
+    await publish(files);
+    const outcome = await runJob({
+      channel: files,
+      identity: IDENTITY,
+      key: KEY,
+      executor: OK_EXECUTOR,
+      jobId: JOB_ID,
+      now: () => NOW,
+    });
+    expect(outcome.state).toBe("finished");
+
+    const stored = decodeResult((await files.read(jobPaths(JOB_ID).result)) ?? new Uint8Array());
+    expect(stored.ok).toBe(true);
+    if (!stored.ok) {
+      return;
+    }
+    expect(stored.value.artifacts).toEqual({
+      "artifacts/out.txt": sha256Hex(new TextEncoder().encode("artifact")),
+    });
+    expect(verifyResultAuth(stored.value, [KEY])).toEqual({ ok: true });
   });
 
   it("leaves a run directory with no job.json alone and runs it on a later poll", async () => {

@@ -25,6 +25,7 @@ import type {
   JobResult,
   JobWriter,
 } from "./job.js";
+import type { RunManifest, UnsignedRunManifest } from "./manifest.js";
 
 export const JOB_AUTH_ALG = "hmac-sha256";
 export const KEY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -47,6 +48,7 @@ export type JobAuth = {
 export type UnsignedJob = Omit<Job, "auth">;
 export type UnsignedJobResult = Omit<JobResult, "auth">;
 export type UnsignedClaim = Omit<Claim, "auth">;
+export type { UnsignedRunManifest };
 
 export type AuthCheck =
   | { readonly ok: true }
@@ -55,6 +57,7 @@ export type AuthCheck =
 const JOB_DOMAIN = "ae-a8n job v1";
 const RESULT_DOMAIN = "ae-a8n result v1";
 const CLAIM_DOMAIN = "ae-a8n claim v1";
+const MANIFEST_DOMAIN = "ae-a8n run manifest v1";
 
 /** The signed subset, in a fixed order; `auth` itself is never signed. */
 export function jobSigningBytes(job: UnsignedJob | Job): Uint8Array {
@@ -78,6 +81,22 @@ export function jobSigningBytes(job: UnsignedJob | Job): Uint8Array {
   );
 }
 
+/**
+ * The artifact digest map in a canonical form: sorted `[name, digest]`
+ * pairs, or null when the result carries none. Sorting keeps the signature
+ * independent of the JSON object's key order.
+ */
+function canonicalArtifacts(
+  artifacts: Readonly<Record<string, string>> | undefined,
+): readonly (readonly [string, string])[] | null {
+  if (artifacts === undefined) {
+    return null;
+  }
+  return Object.keys(artifacts)
+    .sort()
+    .map((name) => [name, artifacts[name] ?? ""] as const);
+}
+
 /** The signed subset, in a fixed order; `auth` itself is never signed. */
 export function resultSigningBytes(result: UnsignedJobResult | JobResult): Uint8Array {
   const agent: AgentIdentity = result.agent;
@@ -98,6 +117,7 @@ export function resultSigningBytes(result: UnsignedJobResult | JobResult): Uint8
       agent.version,
       result.startedAt,
       result.finishedAt,
+      canonicalArtifacts(result.artifacts),
     ]),
     "utf-8",
   );
@@ -196,6 +216,59 @@ export function verifyJobAuth(job: Job, keys: readonly JobKey[]): AuthCheck {
 
 export function verifyResultAuth(result: JobResult, keys: readonly JobKey[]): AuthCheck {
   return checkAuth(result.auth, resultSigningBytes(result), keys);
+}
+
+/**
+ * The signed subset of a run manifest, in a fixed order; `auth` itself is
+ * never signed. `artifactProof` normalises to "unproven" when absent, so a
+ * manifest written before the field existed signs the same bytes a reader
+ * recomputes.
+ */
+export function runManifestSigningBytes(
+  manifest: RunManifest | UnsignedRunManifest,
+): Uint8Array {
+  return Buffer.from(
+    JSON.stringify([
+      MANIFEST_DOMAIN,
+      manifest.schemaVersion,
+      manifest.runId,
+      manifest.host,
+      manifest.user,
+      manifest.sessionId,
+      manifest.agentId,
+      manifest.agentVersion,
+      manifest.agentVerified,
+      manifest.aeVersion,
+      manifest.jobId,
+      manifest.payloadSha256,
+      manifest.resultSha256,
+      manifest.outcome,
+      manifest.destinationProof,
+      manifest.ownershipProof,
+      manifest.artifactProof ?? "unproven",
+      manifest.startedAt,
+      manifest.finishedAt,
+    ]),
+    "utf-8",
+  );
+}
+
+export function signRunManifest(manifest: UnsignedRunManifest, key: JobKey): RunManifest {
+  return {
+    ...manifest,
+    auth: {
+      alg: JOB_AUTH_ALG,
+      keyId: key.keyId,
+      signature: signatureOf(runManifestSigningBytes(manifest), key),
+    },
+  };
+}
+
+export function verifyRunManifestAuth(manifest: RunManifest, keys: readonly JobKey[]): AuthCheck {
+  if (manifest.auth === undefined) {
+    return { ok: false, detail: "the manifest carries no signature" };
+  }
+  return checkAuth(manifest.auth, runManifestSigningBytes(manifest), keys);
 }
 
 export function verifyClaimAuth(claim: Claim, keys: readonly JobKey[]): AuthCheck {

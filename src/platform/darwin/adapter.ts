@@ -1085,7 +1085,7 @@ export class DarwinAdapter implements PlatformAdapter {
           stateFile: this.#setupStateFile,
           outcomes: steps.map((step) => ({
             id: step.id,
-            state: step.state === "planned" ? "planned" : step.state,
+            state: step.state,
             detail: "dry run: nothing was changed",
           })),
         };
