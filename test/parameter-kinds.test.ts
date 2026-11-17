@@ -17,6 +17,7 @@ import { AeDriver } from "../src/driver/driver.js";
 import {
   AfterEffects,
   AfterEffectsError,
+  EntityNotFoundError,
   PropertyHasNoValueError,
   type Effect,
   type PropertyInfo,
@@ -154,6 +155,29 @@ describe("parameters with a value", () => {
     await tint.parameter("ADBE Fake Tint-0001").set(50);
     const atFifty = readFileSync((await comp.renderFrame(0, { prefix: "fifty" })).path);
     expect(atFifty.equals(bare)).toBe(false);
+  });
+});
+
+describe("a parameter the effect does not have (#24)", () => {
+  it("info() rejects with EntityNotFoundError(kind: \"parameter\")", async () => {
+    const tint = await effectOnSolid("ADBE Fake Tint");
+    const error = await tint.parameter("No Such Parameter").info().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(EntityNotFoundError);
+    expect(error).toMatchObject({ kind: "parameter", op: "effect.getParameter" });
+  });
+
+  it("get() rejects the same way", async () => {
+    const tint = await effectOnSolid("ADBE Fake Tint");
+    const error = await tint.parameter("No Such Parameter").get().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(EntityNotFoundError);
+    expect(error).toMatchObject({ kind: "parameter" });
+  });
+
+  it("set() rejects the same way", async () => {
+    const tint = await effectOnSolid("ADBE Fake Tint");
+    const error = await tint.parameter("No Such Parameter").set(1).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(EntityNotFoundError);
+    expect(error).toMatchObject({ kind: "parameter", op: "effect.setParameter" });
   });
 });
 

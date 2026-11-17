@@ -1413,19 +1413,30 @@ export class Parameter {
       parameter: this.name,
       ...(value === undefined ? {} : { value }),
     };
-    if (value === undefined) {
-      return this.#session.call<PropertyInfo>("effect.getParameter", "effect.getParameter", params);
-    }
-    requireParameterValue(value);
+    const op = value === undefined ? "effect.getParameter" : "effect.setParameter";
     try {
-      return await this.#session.call<PropertyInfo>("effect.setParameter", "effect.setParameter", params);
+      if (value === undefined) {
+        return await this.#session.call<PropertyInfo>(op, "effect.getParameter", params);
+      }
+      requireParameterValue(value);
+      return await this.#session.call<PropertyInfo>(op, "effect.setParameter", params);
     } catch (error) {
       const cause = error instanceof AfterEffectsError ? error.cause : undefined;
+      if (cause instanceof HostError && cause.name === "NotFoundError" && cause.kind === "parameter") {
+        throw new EntityNotFoundError(
+          "parameter",
+          `${this.name} (on "${this.#effect}" of layer "${this.#layer}")`,
+          op,
+        );
+      }
+      if (value === undefined) {
+        throw error;
+      }
       if (cause instanceof HostError && cause.name === "NoValueError" && isNoValueKind(cause.kind)) {
-        throw new PropertyHasNoValueError(cause.kind, this.name, "effect.setParameter", { cause });
+        throw new PropertyHasNoValueError(cause.kind, this.name, op, { cause });
       }
       if (cause instanceof HostError && cause.name === "ValueShapeError") {
-        throw new ParameterValueError(cause.kind ?? "unknown", this.name, "effect.setParameter", cause.message, {
+        throw new ParameterValueError(cause.kind ?? "unknown", this.name, op, cause.message, {
           cause,
         });
       }
