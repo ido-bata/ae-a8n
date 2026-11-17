@@ -34,18 +34,34 @@ const PRIVILEGED = [
   "nt authority\\local system",
 ];
 
-/** Accounts every interactive user belongs to, or that mean "everyone". */
-const SHARED = [
-  "everyone",
-  "builtin\\users",
-  "nt authority\\authenticated users",
-  "nt authority\\interactive",
-  "nt authority\\service",
-  "builtin\\remote desktop users",
-];
-
 function normalise(principal: string): string {
   return principal.trim().toLowerCase();
+}
+
+/**
+ * Does `principal` name one of `trusted`? An exact match always counts; a
+ * qualified `QUALIFIER\account` also counts when the bare account is trusted
+ * and the qualifier is a machine or domain this side can vouch for — the
+ * same rule `keyFileAclVerdict` applies to its owner, so `CONTOSO\alice`
+ * cannot stand in for a different `alice` the caller never named.
+ */
+function trustedMatcher(
+  trusted: readonly string[],
+  qualifiers: readonly string[],
+): (principal: string) => boolean {
+  const names = new Set(trusted.map(normalise).filter((name) => name !== ""));
+  const ownQualifiers = new Set(qualifiers.map(normalise));
+  return (principal: string): boolean => {
+    const name = normalise(principal);
+    if (names.has(name)) {
+      return true;
+    }
+    const slash = name.lastIndexOf("\\");
+    if (slash <= 0) {
+      return false;
+    }
+    return names.has(name.slice(slash + 1)) && ownQualifiers.has(name.slice(0, slash));
+  };
 }
 
 /** The parenthesis groups of a rights token: `(OI)(CI)(RX)` is `OI CI RX`. */
@@ -65,12 +81,20 @@ function looksLikePath(token: string): boolean {
   return /^[A-Za-z]:[\\/]/u.test(token) || token.startsWith("\\\\") || token.startsWith("/");
 }
 
+/** What an ACL read produced: entries, or the named reason there are none. */
+export type AclRead =
+  | { readonly ok: true; readonly entries: readonly AccessControlEntry[] }
+  | { readonly ok: false; readonly detail: string };
+
 /**
- * Parse `icacls <path>` output. Each entry is `<path> <principal>:(<rights>)`
- * on the first line and `<principal>:(<rights>)` on the lines under it, with
- * principals that may contain spaces (`NT AUTHORITY\SYSTEM`). Anything that
- * does not parse as an entry is refused rather than skipped: a line this does
- * not understand might be the one carrying a grant.
+ * Parse `icacls <path>` output, keeping *why* it failed. Each entry is
+ * `<path> <principal>:(<rights>)` on the first line and
+ * `<principal>:(<rights>)` on the lines under it, with principals that may
+ * contain spaces (`NT AUTHORITY\SYSTEM`). The ACE shape — a colon and a
+ * parenthesised rights token — is locale-independent, so a Japanese or
+ * German summary line is skipped by shape, not by wording; a line that
+ * carries a colon but no rights token is a parse failure with a named
+ * reason, never a skipped grant (T101).
  *
  * `path`, when given, is the path handed to `icacls`. The first line echoes
  * it, and a Windows path can contain spaces — `C:\Users\First Last\key` is
@@ -78,13 +102,15 @@ function looksLikePath(token: string): boolean {
  * says which is which. With no `path`, the first token is taken as the path
  * only when it looks like one.
  */
-export function parseIcacls(
+export function parseIcaclsReport(
   output: string,
   path?: string,
-): readonly AccessControlEntry[] | null {
+): AclRead {
   const entries: AccessControlEntry[] = [];
   let first = true;
+  let lineNumber = 0;
   for (const raw of output.split(/\r?\n/)) {
+    lineNumber += 1;
     let line = raw.trim();
     if (line === "") {
       continue;
@@ -106,7 +132,13 @@ export function parseIcacls(
     const tokens = line.split(/\s+/u).filter((token) => token !== "");
     const rightsIndex = tokens.findIndex((token) => token.includes(":("));
     if (rightsIndex === -1) {
-      return null;
+      return {
+        ok: false,
+        detail:
+          `icacls line ${String(lineNumber)} has a colon but no rights token; ` +
+          "the output may be localized or truncated, and a grant this parser " +
+          "cannot read must not be treated as absent",
+      };
     }
     const head = tokens.slice(0, rightsIndex + 1).join(" ");
     const colon = head.indexOf(":(");
@@ -114,16 +146,36 @@ export function parseIcacls(
     const rights = rightsOf(head.slice(colon));
     const principal = principals.trim();
     if (principal === "" || rights === "") {
-      return null;
+      return {
+        ok: false,
+        detail: `icacls line ${String(lineNumber)} did not yield a principal and rights`,
+      };
     }
     const named = first && looksLikePath(principal) ? principal.split(/\s+/u).slice(1).join(" ") : principal;
     first = false;
     if (named === "") {
-      return null;
+      return { ok: false, detail: `icacls line ${String(lineNumber)} named no principal` };
     }
     entries.push({ principal: named, rights });
   }
-  return entries.length === 0 ? null : entries;
+  if (entries.length === 0) {
+    return {
+      ok: false,
+      detail:
+        "icacls produced no access-control entries; the output may be localized, " +
+        "empty, or from a failed command, and an unread ACL is not an open one",
+    };
+  }
+  return { ok: true, entries };
+}
+
+/** Entries, or null — kept for callers that only need the fail-closed shape. */
+export function parseIcacls(
+  output: string,
+  path?: string,
+): readonly AccessControlEntry[] | null {
+  const report = parseIcaclsReport(output, path);
+  return report.ok ? report.entries : null;
 }
 
 /**
@@ -149,10 +201,6 @@ function hasWrite(rights: string): boolean {
 function isPrivileged(principal: string): boolean {
   const name = normalise(principal);
   return PRIVILEGED.includes(name) || name.endsWith("\\administrators");
-}
-
-function isShared(principal: string): boolean {
-  return SHARED.includes(normalise(principal));
 }
 
 export type AclVerdict =
@@ -225,12 +273,39 @@ export function keyFileAclVerdict(
 }
 
 /**
- * The channel directory must not be writable by accounts outside the two that
- * use it. Writes are what injects a job, so a writable channel is a forgeable
- * one — the same property the POSIX path proves with the sticky bit.
+ * The channel directory must not be writable by any account outside the set
+ * the caller trusts (T105). Writes are what inject an agent's claim, a
+ * result or a presence heartbeat — and, before T103, what let an unsigned
+ * file block a job — so "writable by anyone but SYSTEM, Administrators and
+ * the named accounts" is the same property the POSIX path proves with the
+ * sticky bit.
+ *
+ * `trusted` is the controller's and the agent's accounts, as the OS will
+ * print them (`alice`, `HOST\alice`, `CONTOSO\alice`, or a SID). Passing
+ * `null` or an empty list means the trusted set is unknown, and an unknown
+ * set refuses: a channel whose writers cannot be named is a channel whose
+ * jobs cannot be attributed. `isShared`/`SHARED` no longer decide anything —
+ * `CONTOSO\Domain Users` is refused not because it is on a list but because
+ * it is not in the trusted set.
  */
-export function channelAclVerdict(entries: readonly AccessControlEntry[]): AclVerdict {
-  const open = entries.filter((entry) => isShared(entry.principal) && hasWrite(entry.rights));
+export function channelAclVerdict(
+  entries: readonly AccessControlEntry[],
+  trusted: readonly string[] | null,
+  qualifiers: readonly string[] = [],
+): AclVerdict {
+  if (trusted === null || trusted.filter((name) => name.trim() !== "").length === 0) {
+    return {
+      ok: false,
+      detail:
+        "the set of accounts trusted to write the channel is unknown; " +
+        "name the controller's and the agent's accounts before the channel " +
+        "can be called closed",
+    };
+  }
+  const isTrusted = trustedMatcher(trusted, qualifiers);
+  const open = entries.filter(
+    (entry) => hasWrite(entry.rights) && !isPrivileged(entry.principal) && !isTrusted(entry.principal),
+  );
   if (open.length === 0) {
     return { ok: true };
   }
@@ -238,8 +313,9 @@ export function channelAclVerdict(entries: readonly AccessControlEntry[]): AclVe
   return {
     ok: false,
     detail:
-      `the channel directory is writable by ${named}; ` +
-      "any account that can write there can inject a job, so it must be closed to them",
+      `the channel directory is writable by ${named}, which is outside the trusted ` +
+      "controller/agent accounts; any account that can write there can inject a " +
+      "job, so it must be closed to them",
   };
 }
 

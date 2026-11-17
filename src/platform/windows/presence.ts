@@ -51,6 +51,24 @@ export function presencePath(agentId: string): string {
   return `agents/${agentId}.json`;
 }
 
+/**
+ * One heartbeat file per running agent *instance* (T102). Two agents that
+ * share an id — a restart, or two sessions on one host — must not overwrite
+ * each other's heartbeat: the controller would read whichever wrote last and
+ * believe it described both. The instance id is random per agent process, so
+ * a dead agent's file simply goes stale while its replacement writes a new
+ * one; neither can impersonate the other because both are signed.
+ */
+export function presenceInstancePath(agentId: string, instanceId: string): string {
+  return `agents/${fileSafe(agentId)}.${fileSafe(instanceId)}.json`;
+}
+
+/** Path components the channel treats as one name; anything else is folded. */
+function fileSafe(value: string): string {
+  const safe = value.replace(/[^A-Za-z0-9._-]/gu, "_");
+  return safe === "" || safe === "." || safe === ".." ? "unnamed" : safe;
+}
+
 export function presenceSigningBytes(presence: UnsignedPresence | Presence): Uint8Array {
   const { agent } = presence;
   return Buffer.from(

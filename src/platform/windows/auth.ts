@@ -69,6 +69,10 @@ export function jobSigningBytes(job: UnsignedJob | Job): Uint8Array {
       job.payloadFile,
       job.writer.host,
       job.writer.user,
+      job.target?.id ?? null,
+      job.target?.host ?? null,
+      job.target?.user ?? null,
+      job.deadline ?? null,
     ]),
     "utf-8",
   );

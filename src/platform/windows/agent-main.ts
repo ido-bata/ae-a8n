@@ -6,6 +6,7 @@
  * `.mjs` wrapper stays thin; this module is the testable entry.
  */
 
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import { A8N_VERSION } from "../../version.js";
@@ -17,7 +18,7 @@ import { claimDiagnosticPath, isJobId, jobPaths, type AgentIdentity } from "./jo
 import {
   PRESENCE_SCHEMA_VERSION,
   encodePresence,
-  presencePath,
+  presenceInstancePath,
   signPresence,
 } from "./presence.js";
 import { loadKeyFile } from "./key-store.js";
@@ -38,6 +39,8 @@ export type AgentMainDeps = {
   readonly maxAgeMs?: number;
   /** The marker secret; injected in tests, `randomBytes` otherwise. */
   readonly random?: (size: number) => Uint8Array;
+  /** The presence filename's instance id; injected in tests, `randomUUID` otherwise. */
+  readonly instanceId?: string;
   readonly signal?: AbortSignal;
   /** Diagnostics; defaults to `process.stderr`. */
   readonly stderr?: (text: string) => void;
@@ -226,6 +229,9 @@ export async function main(
   }
 
   const now = deps.now ?? (() => new Date());
+  // One heartbeat file per agent instance (T102): a restart writes a new
+  // file instead of overwriting the one a still-running twin may be using.
+  const instanceId = deps.instanceId ?? randomUUID();
   // The controller's only immediate evidence that an agent is alive, in which
   // session, at which version. Written before the first poll and refreshed
   // every poll; a controller that finds it stale refuses to send.
@@ -239,7 +245,10 @@ export async function main(
       },
       key,
     );
-    await channel.writeAtomic(presencePath(identity.id), encodePresence(presence));
+    await channel.writeAtomic(
+      presenceInstancePath(identity.id, instanceId),
+      encodePresence(presence),
+    );
   };
   try {
     await publishPresence();
@@ -316,6 +325,15 @@ export async function main(
                 `${outcome.claim.claimedAt} and is not run again; if that agent is gone, remove ` +
                 `${jobPaths(jobId).claim} by hand\n`,
             );
+          }
+        }
+        if (outcome.state === "not-for-us") {
+          // The job names another agent. Stepping aside is correct, but a
+          // silent skip hides a mis-addressed job from the person watching
+          // this agent's log; say it once.
+          if (!announcedClaims.has(jobId)) {
+            announcedClaims.add(jobId);
+            stderr(`windows-agent: job ${jobId} is addressed to another agent and is not run here\n`);
           }
         }
         if (outcome.state === "claim-unauthenticated") {

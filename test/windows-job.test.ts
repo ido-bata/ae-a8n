@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DirectoryChannel, UnsupportedChannelPathError } from "../src/platform/windows/channel.js";
-import { signJob, signResult, type JobKey, type UnsignedJobResult } from "../src/platform/windows/auth.js";
+import { signJob, signResult, verifyJobAuth, type JobKey, type UnsignedJobResult } from "../src/platform/windows/auth.js";
 import {
   JOB_SCHEMA_VERSION,
   decodeJob,
@@ -185,6 +185,61 @@ describe("the decision to execute a job", () => {
     expect(validateJob({ ...base(), job: validJob({ createdAt: "yesterday" }) })).toMatchObject({
       ok: false,
     });
+  });
+
+  it("round-trips a signed target and deadline (T095, T097)", () => {
+    const job = validJob({
+      target: { id: "agent-1", host: "WIN-AE-01", user: "a8n" },
+      deadline: "2026-11-10T12:05:00.000Z",
+    });
+    const decoded = decodeJob(encodeJob(job));
+    expect(decoded).toEqual({ ok: true, value: job });
+    // The signature covers them: retargeting without the key breaks verification.
+    expect(verifyJobAuth(job, [KEY])).toEqual({ ok: true });
+    const retargeted = validJob({
+      target: { id: "agent-2", host: "WIN-AE-01", user: "a8n" },
+    });
+    expect(verifyJobAuth(retargeted, [KEY])).toEqual({ ok: true });
+    const tampered = JSON.parse(Buffer.from(encodeJob(job)).toString("utf-8")) as {
+      target: { id: string };
+    };
+    tampered.target.id = "agent-2";
+    const retampered = decodeJob(new TextEncoder().encode(JSON.stringify(tampered)));
+    expect(retampered.ok).toBe(true);
+    if (retampered.ok) {
+      expect(verifyJobAuth(retampered.value, [KEY]).ok).toBe(false);
+    }
+  });
+
+  it("rejects a malformed target or deadline", () => {
+    const bad = (field: string) =>
+      decodeJob(
+        new TextEncoder().encode(
+          JSON.stringify({ ...JSON.parse(Buffer.from(encodeJob(validJob())).toString("utf-8")), [field]: { bad: true } }),
+        ),
+      );
+    expect(bad("target").ok).toBe(false);
+    const noUser = JSON.parse(Buffer.from(encodeJob(validJob())).toString("utf-8")) as Record<string, unknown>;
+    noUser["target"] = { id: "a", host: "h" };
+    expect(decodeJob(new TextEncoder().encode(JSON.stringify(noUser))).ok).toBe(false);
+    const badDeadline = JSON.parse(Buffer.from(encodeJob(validJob())).toString("utf-8")) as Record<string, unknown>;
+    badDeadline["deadline"] = "soon";
+    expect(decodeJob(new TextEncoder().encode(JSON.stringify(badDeadline))).ok).toBe(false);
+  });
+
+  it("rejects a job whose controller deadline has passed, inside the age window", () => {
+    // T097: `recover --force` can re-enable a job that is still young; the
+    // signed deadline is what stops it running after the controller gave up.
+    const job = validJob({ deadline: new Date(NOW.getTime() + 60_000).toISOString() });
+    const outcome = validateJob({ ...base(), job, now: new Date(NOW.getTime() + 61_000) });
+    expect(outcome).toMatchObject({ ok: false, code: "A8N-JOB-001" });
+    if (!outcome.ok) {
+      expect(outcome.detail).toContain("deadline");
+    }
+    // A deadline still ahead does not refuse.
+    expect(validateJob({ ...base(), job, now: NOW })).toEqual({ ok: true });
+    // No deadline keeps the old behaviour.
+    expect(validateJob(base())).toEqual({ ok: true });
   });
 });
 

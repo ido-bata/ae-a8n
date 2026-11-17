@@ -224,6 +224,30 @@ async function waitFor<T>(produce: () => Promise<T | null>, budgetMs = 3000): Pr
   }
 }
 
+/** Any heartbeat file under `agents/` — presence is per instance (T102). */
+async function anyAgentPresence(channelRoot: string): Promise<Uint8Array | null> {
+  const channel = new DirectoryChannel(channelRoot);
+  const names = await channel.list("agents").catch(() => [] as readonly string[]);
+  for (const name of names) {
+    if (!name.endsWith(".json")) {
+      continue;
+    }
+    const bytes = await channel.read(`agents/${name}`);
+    if (bytes !== null) {
+      return bytes;
+    }
+  }
+  return null;
+}
+
+/** Remove every heartbeat, so a stopped agent leaves nothing fresh behind. */
+async function clearAgentPresence(channelRoot: string): Promise<void> {
+  const channel = new DirectoryChannel(channelRoot);
+  for (const name of await channel.list("agents").catch(() => [] as readonly string[])) {
+    await channel.remove(`agents/${name}`);
+  }
+}
+
 describe("a payload that names a Windows program", () => {
   it("decodes a drive and a UNC path on any controller", async () => {
     const { decodeJobPayload: decode } = await import("../src/platform/windows/executor.js");
@@ -466,6 +490,65 @@ describe("opening the channel to a host", () => {
     }
   });
 
+  it("refuses when two live agents claim the same id (T102)", async () => {
+    // Per-instance presence means two agents CAN both be visible. When both
+    // heartbeats are fresh and name the configured id, the controller cannot
+    // tell which one a job would reach — it refuses rather than guessing.
+    const root = await tempDirectory("a8n-two-agents-");
+    const keyFile = join(await tempDirectory("a8n-two-agents-key-"), "channel.key");
+    await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o600 });
+    const channel = new DirectoryChannel(root);
+    for (const instance of ["one", "two"]) {
+      const presence = signPresence(
+        {
+          schemaVersion: PRESENCE_SCHEMA_VERSION,
+          agent: AGENT,
+          heartbeatAt: new Date().toISOString(),
+          interactive: true,
+        },
+        KEY,
+      );
+      await channel.writeAtomic(`agents/${AGENT.id}.${instance}.json`, encodePresence(presence));
+    }
+    const state = await openComms(
+      { channel, version: AGENT.version },
+      { ok: true, config, source: "flags" },
+      { ...config, channel: root, keyFile },
+    );
+    expect(state.ok).toBe(false);
+    if (!state.ok) {
+      expect(state.checks.map((check) => check.code)).toContain("A8N-JOB-005");
+      expect(state.detail).toContain("2 agents");
+    }
+  });
+
+  it("uses the one live agent when a dead twin's heartbeat has gone stale", async () => {
+    const root = await tempDirectory("a8n-one-live-");
+    const keyFile = join(await tempDirectory("a8n-one-live-key-"), "channel.key");
+    await writeFile(keyFile, encodeKeyFile(KEY), { mode: 0o600 });
+    const channel = new DirectoryChannel(root);
+    const heartbeat = (ageMs: number): Uint8Array =>
+      encodePresence(
+        signPresence(
+          {
+            schemaVersion: PRESENCE_SCHEMA_VERSION,
+            agent: AGENT,
+            heartbeatAt: new Date(Date.now() - ageMs).toISOString(),
+            interactive: true,
+          },
+          KEY,
+        ),
+      );
+    await channel.writeAtomic(`agents/${AGENT.id}.dead.json`, heartbeat(60_000));
+    await channel.writeAtomic(`agents/${AGENT.id}.live.json`, heartbeat(0));
+    const state = await openComms(
+      { channel, version: AGENT.version },
+      { ok: true, config, source: "flags" },
+      { ...config, channel: root, keyFile },
+    );
+    expect(state.ok).toBe(true);
+  });
+
   it("refuses when the channel root is not reachable", async () => {
     const state = await openComms(
       {
@@ -487,10 +570,7 @@ describe("through the channel, with an agent on the other side", () => {
     const rig = await startAgent();
     try {
       // The heartbeat appears only once the agent is in its loop.
-      await waitFor(async () => {
-        const bytes = await new DirectoryChannel(rig.channelRoot).read(presencePath(AGENT.id));
-        return bytes === null ? null : bytes;
-      });
+      await waitFor(() => anyAgentPresence(rig.channelRoot));
 
       const probed = await rig.adapter.probe(TARGET);
       expect(probed.checks).toEqual([]);
@@ -522,10 +602,7 @@ describe("through the channel, with an agent on the other side", () => {
   it("signs a run with the key the host configuration names, with none injected", async () => {
     const rig = await startAgent();
     try {
-      await waitFor(async () => {
-        const bytes = await new DirectoryChannel(rig.channelRoot).read(presencePath(AGENT.id));
-        return bytes === null ? null : bytes;
-      });
+      await waitFor(() => anyAgentPresence(rig.channelRoot));
       // The adapter a CLI builds for `--host`: neither the channel nor the key
       // is injected, so both have to come from the host's configuration. The
       // key is the one `openComms` verified, and a job signed with anything
@@ -571,10 +648,7 @@ describe("through the channel, with an agent on the other side", () => {
     // checks the first root again.
     const rig = await startAgent();
     try {
-      await waitFor(async () => {
-        const bytes = await new DirectoryChannel(rig.channelRoot).read(presencePath(AGENT.id));
-        return bytes === null ? null : bytes;
-      });
+      await waitFor(() => anyAgentPresence(rig.channelRoot));
       const elsewhere = await tempDirectory("a8n-remote-elsewhere-");
       const configPath = join(await tempDirectory("a8n-hosts-"), "hosts.json");
       const hosts = (channel: string): string =>
@@ -628,10 +702,7 @@ describe("through the channel, with an agent on the other side", () => {
   it("reads the host's recovery state through the channel, not this machine", async () => {
     const rig = await startAgent();
     try {
-      await waitFor(async () => {
-        const bytes = await new DirectoryChannel(rig.channelRoot).read(presencePath(AGENT.id));
-        return bytes === null ? null : bytes;
-      });
+      await waitFor(() => anyAgentPresence(rig.channelRoot));
       const findings = await rig.adapter.recover(await tempDirectory("a8n-recover-"));
       // The injected local probe throws if it is ever run, but `recover`
       // catches that as an unreadable answer — so the proof is that the
@@ -649,16 +720,16 @@ describe("through the channel, with an agent on the other side", () => {
   it("refuses a job when the agent stops checking in", async () => {
     const rig = await startAgent();
     try {
-      await waitFor(async () => {
-        const bytes = await new DirectoryChannel(rig.channelRoot).read(presencePath(AGENT.id));
-        return bytes === null ? null : bytes;
-      });
+      await waitFor(() => anyAgentPresence(rig.channelRoot));
       const session = await rig.adapter.open(TARGET);
       await session.open();
       // The agent stops, and its last heartbeat ages past the limit. A fresh
       // heartbeat alone cannot tell a stopped agent from an idle one, so the
-      // send-time check is specifically about a *stale* heartbeat.
+      // send-time check is specifically about a *stale* heartbeat. The dead
+      // instance's file is removed first: per-instance presence (T102) means
+      // it would otherwise still read as fresh until it aged out.
       await rig.stop();
+      await clearAgentPresence(rig.channelRoot);
       const stale = signPresence(
         {
           schemaVersion: PRESENCE_SCHEMA_VERSION,

@@ -33,6 +33,7 @@ import {
   createSessionMarker,
   encodeSessionMarker,
   sessionMarkerPath,
+  signSessionMarker,
 } from "../src/platform/windows/session-marker.js";
 import {
   WindowsAdapter,
@@ -69,13 +70,16 @@ async function writeMarker(
   await files.writeAtomic(
     sessionMarkerPath(jobId),
     encodeSessionMarker(
-      createSessionMarker({
-        runId,
-        jobId,
-        agent: AGENT,
-        now: () => NOW,
-        random: () => MARKER_RANDOM,
-      }),
+      signSessionMarker(
+        createSessionMarker({
+          runId,
+          jobId,
+          agent: AGENT,
+          now: () => NOW,
+          random: () => MARKER_RANDOM,
+        }),
+        KEY,
+      ),
     ),
   );
 }
