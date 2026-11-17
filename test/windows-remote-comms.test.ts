@@ -585,7 +585,13 @@ describe("opening the channel to a host", () => {
     }
   });
 
-  it("refuses a POSIX channel directory writable by group or others", async () => {
+  // chmod(0o777) only means something where mode bits are real: on win32
+  // openComms takes the icacls branch and the POSIX path is unreachable.
+  // The verdict itself is covered on every platform by
+  // windows-channel-mode.test.ts.
+  it.skipIf(process.platform === "win32")(
+    "refuses a POSIX channel directory writable by group or others",
+    async () => {
     const root = await tempDirectory("a8n-open-channel-");
     await chmod(root, 0o777);
     const keyFile = join(await tempDirectory("a8n-open-key-"), "channel.key");
@@ -600,7 +606,8 @@ describe("opening the channel to a host", () => {
       const check = state.checks.find((entry) => entry.code === "A8N-PERM-006");
       expect(check?.detail).toContain("writable by group or others");
     }
-  });
+    },
+  );
 
   it("accepts a POSIX channel directory closed to group and others", async () => {
     // mkdtemp creates 0700; the mode check must not refuse the ordinary case.
