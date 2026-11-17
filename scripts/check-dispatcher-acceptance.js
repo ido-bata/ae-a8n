@@ -417,12 +417,12 @@ async function fakeLane() {
 
 /* Prints the machine-readable lane result. It must stay the last stdout
  * line: the wrapper and operators parse the A8N_RESULT json rather than
- * exit codes or prose. (No backticks in here — this file is itself inside
- * a template literal.) */
-function emitResult(status, extra = {}) {
+ * exit codes or prose. Exactly one line per lane run — emit once, after
+ * every override (e.g. a failed close) has been applied. */
+function emitResult(lane, status, extra = {}) {
   console.log(
     "A8N_RESULT " +
-      JSON.stringify({ lane: "real", status, failures, ...extra }),
+      JSON.stringify({ lane, status, failures, ...extra }),
   );
 }
 
@@ -453,7 +453,7 @@ async function realLane() {
       "real lane: --prepare-only — channel staged, activation left to the " +
         "human. Re-run without --prepare-only once the heartbeat is fresh.",
     );
-    emitResult("prepared", { channelDir });
+    emitResult("real", "prepared", { channelDir });
     return 0;
   }
 
@@ -476,7 +476,7 @@ async function realLane() {
     while (!(status.heartbeat && status.heartbeat.fresh)) {
       if (Date.now() > deadline) {
         console.log("RESULT: blocked — no dispatcher heartbeat within the wait budget (human activation did not happen or AE is not running)");
-        emitResult("blocked", { channelDir });
+        emitResult("real", "blocked", { channelDir });
         return 3;
       }
       await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -490,6 +490,10 @@ async function realLane() {
     sessionRoot,
     authorization: { extensionMethods: true },
   });
+  // The lane verdict is computed inside try and can still be overridden by
+  // the close check in finally; A8N_RESULT is emitted exactly once, after.
+  let laneStatus = "fail";
+  let laneExtra = { channelDir };
   try {
     if (PROJECT !== null) {
       await ae.openProject(PROJECT);
@@ -505,10 +509,9 @@ async function realLane() {
 
     console.log("real lane results:");
     for (const line of results) console.log("  " + line);
-    const laneStatus = failures === 0 ? "pass" : "fail";
+    laneStatus = failures === 0 ? "pass" : "fail";
+    laneExtra = { channelDir, instance: boundInstance };
     console.log(failures === 0 ? "RESULT: real-host pass" : "RESULT: real-host FAIL");
-    emitResult(laneStatus, { channelDir, instance: boundInstance });
-    return failures === 0 ? 0 : 1;
   } finally {
     // The fixture project's edits are never saved; discarding them is the
     // documented acceptance behaviour, not data loss.
@@ -520,19 +523,18 @@ async function realLane() {
     );
     if (closed.quit !== false) {
       console.log("RESULT: real-host FAIL — close() quit an attached host");
-      emitResult("fail", { channelDir, reason: "close quit an attached host" });
-      return 1;
+      laneStatus = "fail";
+      laneExtra = { channelDir, reason: "close quit an attached host" };
     }
   }
+  emitResult("real", laneStatus, laneExtra);
+  return laneStatus === "pass" ? 0 : 1;
 }
 
 const mode = process.argv[2];
 if (mode === "fake") {
   const fakeFailures = await fakeLane();
-  console.log(
-    "A8N_RESULT " +
-      JSON.stringify({ lane: "fake", status: fakeFailures === 0 ? "pass" : "fail", failures: fakeFailures }),
-  );
+  emitResult("fake", fakeFailures === 0 ? "pass" : "fail");
   process.exitCode = fakeFailures === 0 ? 0 : 1;
 } else if (mode === "real") {
   if (PROJECT === null && !PREPARE_ONLY) {

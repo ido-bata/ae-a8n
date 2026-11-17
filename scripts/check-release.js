@@ -28,7 +28,7 @@ const prerelease = /^\d+\.\d+\.\d+-.+$/.test(version);
 const tag = manifest.publishConfig?.tag;
 if (tag !== "next") {
   problems.push(
-    `publishConfig.tag is ${tag ?? "undefined"}, must be "next": staging always targets next; ` +
+    `publishConfig.tag is ${String(tag)}, must be "next": staging always targets next; ` +
       "promoting latest is a separate gated act (#75), not the publish default",
   );
 }
