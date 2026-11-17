@@ -221,6 +221,17 @@ describe("driver against the fake host", () => {
     expect(last?.error?.message).toContain("composition not found");
   });
 
+  it("records a failed operation exactly once (#20)", async () => {
+    const driver = makeDriver();
+    await driver.start();
+    await driver.call("comp.info", { name: "Nope" }).catch(() => undefined);
+
+    const recorded = readTrace().filter((event) => event.op === "comp.info");
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]?.status).toBe("error");
+    expect(recorded[0]?.error?.name).toBe("NotFoundError");
+  });
+
   it("rejects a call after close", async () => {
     const driver = makeDriver();
     await driver.start();

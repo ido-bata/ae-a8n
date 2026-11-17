@@ -213,6 +213,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((done) => setTimeout(done, ms));
 }
 
+/** What waiting for the original request after a recovery found. */
+type RecoveryWait =
+  | { kind: "resolved"; value: unknown }
+  | {
+      kind: "answered";
+      error: Error;
+      detail: { args: Record<string, unknown>; error: { name: string; message: string } };
+    }
+  | { kind: "unresolved"; sawWindow: boolean };
+
 export class AeDriver {
   readonly #transport: HostTransport;
   readonly #paths: SessionPaths;
@@ -602,6 +612,14 @@ export class AeDriver {
           : {}),
     };
 
+    // When #awaitResult produced an error outcome, its detail is kept for
+    // the trace record in the catch: it carries the method, request id and
+    // timeout the generic failure path cannot rebuild. Recording the outcome
+    // here and again in the catch is what duplicated failed operations.
+    let outcomeDetail:
+      | { args: Record<string, unknown>; error: { name: string; message: string } }
+      | undefined;
+
     try {
       writeRequest(this.#paths, request);
       const entry = entryScriptPath(this.#paths.root, id);
@@ -645,19 +663,38 @@ export class AeDriver {
         Math.max(0, deadline - Date.now()),
         timeoutMs,
       );
-      this.#trace.record(op, outcome.status, Date.now() - began, outcome.detail);
-      if (outcome.status === "error") {
-        throw outcome.error;
+      if (outcome.status === "ok") {
+        this.#trace.record(op, "ok", Date.now() - began, outcome.detail);
+        return outcome.value;
       }
-      return outcome.value;
+      outcomeDetail = outcome.detail;
+      throw outcome.error;
     } catch (error) {
       let failure = error;
       if (error instanceof TimeoutError) {
         let sawWindow = false;
         if (this.#recovery !== undefined) {
-          const waited = await this.#recoverAndWait(id, method, params, timeoutMs, op);
+          let waited: RecoveryWait;
+          try {
+            waited = await this.#recoverAndWait(id, method, params, timeoutMs);
+          } catch (recoveryError) {
+            // A quarantined host is an answer about the session, recorded on
+            // session.recover; the operation still leaves its one record.
+            this.#trace.record(op, "error", Date.now() - began, {
+              ...(outcomeDetail ?? { args: { ...params } }),
+              error: { name: nameOf(recoveryError), message: messageOf(recoveryError) },
+            });
+            throw recoveryError;
+          }
           if (waited.kind === "resolved") {
+            this.#trace.record(op, "ok", Date.now() - began, {
+              result: { recovered: true, ...summariseResult(waited.value) },
+            });
             return waited.value;
+          }
+          if (waited.kind === "answered") {
+            this.#trace.record(op, "error", Date.now() - began, waited.detail);
+            throw waited.error;
           }
           sawWindow = waited.sawWindow;
         }
@@ -668,7 +705,7 @@ export class AeDriver {
       }
       const status: TraceStatus = failure instanceof TimeoutError ? "timeout" : "error";
       this.#trace.record(op, status, Date.now() - began, {
-        args: { ...params },
+        ...(outcomeDetail ?? { args: { ...params } }),
         error: { name: nameOf(failure), message: messageOf(failure) },
         ...(failure instanceof TimeoutError && failure.hostCondition !== undefined
           ? { result: { hostCondition: failure.hostCondition } }
@@ -719,8 +756,7 @@ export class AeDriver {
     method: string,
     params: Record<string, unknown>,
     timeoutMs: number,
-    op: string,
-  ): Promise<{ kind: "resolved"; value: unknown } | { kind: "unresolved"; sawWindow: boolean }> {
+  ): Promise<RecoveryWait> {
     const recovery = this.#recovery;
     if (recovery === undefined) {
       return { kind: "unresolved", sawWindow: false };
@@ -756,9 +792,6 @@ export class AeDriver {
     }
     const result = await this.#awaitResult(id, method, params, this.#recoveryGraceMs, timeoutMs);
     if (result.status === "ok") {
-      this.#trace.record(op, "ok", 0, {
-        result: { recovered: true, ...summariseResult(result.value) },
-      });
       return { kind: "resolved", value: result.value };
     }
     // An error the host itself sent is the answer to the request that timed
@@ -767,8 +800,7 @@ export class AeDriver {
     // invite the caller to send the operation again. A result that never
     // became readable is not an answer — the caller keeps the timeout.
     if (result.error instanceof HostError) {
-      this.#trace.record(op, "error", 0, result.detail);
-      throw result.error;
+      return { kind: "answered", error: result.error, detail: result.detail };
     }
     return { kind: "unresolved", sawWindow };
   }

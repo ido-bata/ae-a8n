@@ -8,7 +8,7 @@
  * sending it twice would run it twice.
  */
 
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -119,6 +119,14 @@ function startDriver(transport: HostTransport, recovery?: HostRecovery): AeDrive
   return driver;
 }
 
+function readOps(op: string): Array<{ status: string }> {
+  return readFileSync(join(root, "trace.jsonl"), "utf-8")
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as { op: string; status: string })
+    .filter((event) => event.op === op);
+}
+
 describe("a timeout followed by a recovery", () => {
   it("waits for the original request instead of sending it again", async () => {
     const transport = new BlockedTransport();
@@ -221,6 +229,63 @@ describe("a timeout followed by a recovery", () => {
     const error = await driver.call("app.info", {}).catch((reason: unknown) => reason);
     expect(error).toBeInstanceOf(TimeoutError);
     expect(transport.invocations).toBe(1);
+  });
+
+  it("records the operation exactly once when the recovery resolves it (#20)", async () => {
+    const transport = new BlockedTransport();
+    const recovery: HostRecovery = {
+      attempt: () => {
+        transport.finish({ version: "26.5x89" });
+        return Promise.resolve({ recovered: true, evidence: "closed the dialog" });
+      },
+    };
+    const driver = startDriver(transport, recovery);
+    await driver.call("app.info", {});
+    const ops = readOps("app.info");
+    expect(ops.map((event) => event.status)).toEqual(["ok"]);
+  });
+
+  it("records the operation exactly once when the host answers with an error (#20)", async () => {
+    const transport = new BlockedTransport();
+    const recovery: HostRecovery = {
+      attempt: () => {
+        transport.finishError("the project was not open");
+        return Promise.resolve({ recovered: true, evidence: "closed the dialog" });
+      },
+    };
+    const driver = startDriver(transport, recovery);
+    await driver.call("app.info", {}).catch(() => undefined);
+    const ops = readOps("app.info");
+    expect(ops.map((event) => event.status)).toEqual(["error"]);
+  });
+
+  it("records the operation exactly once as a timeout when nothing answers (#20)", async () => {
+    const transport = new BlockedTransport();
+    const recovery: HostRecovery = {
+      attempt: () => Promise.resolve({ recovered: false, evidence: "no dialog was found" }),
+    };
+    const driver = startDriver(transport, recovery);
+    await driver.call("app.info", {}).catch(() => undefined);
+    const ops = readOps("app.info");
+    // One record, and it is the timeout — not a spurious "error" first.
+    expect(ops.map((event) => event.status)).toEqual(["timeout"]);
+  });
+
+  it("records the operation exactly once when the host is quarantined (#20)", async () => {
+    const transport = new BlockedTransport();
+    const recovery: HostRecovery = {
+      attempt: () =>
+        Promise.resolve({
+          recovered: false,
+          outcome: "quarantined",
+          code: "A8N-SEC-001",
+          evidence: "a licence dialog is open; nothing was pressed",
+        }),
+    };
+    const driver = startDriver(transport, recovery);
+    await driver.call("app.info", {}).catch(() => undefined);
+    const ops = readOps("app.info");
+    expect(ops).toHaveLength(1);
   });
 });
 
