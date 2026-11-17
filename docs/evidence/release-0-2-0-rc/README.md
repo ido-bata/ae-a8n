@@ -27,14 +27,17 @@ prerelease へ再分類した:
 | --- | --- |
 | version | `0.2.0-beta.1` |
 | branch | `release-0-2-0` |
-| freeze SHA | **再 freeze 待ち** — #155 merge 後の release head（旧 freeze `9f340fa` は version・内容変更により無効） |
-| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz` |
-| tarball shasum (sha1) | **再 freeze 後に記録** |
-| tarball integrity (sha512) | **再 freeze 後に記録** |
+| freeze SHA | `7aae003d7c17e6a244ce924db3499514dd81aee6`（PR #156 merge commit。旧 freeze `9f340fa` は version・内容変更により無効） |
+| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（380,118 bytes） |
+| tarball shasum (sha1) | `799f3a1b2e6d024f029e156f892e8c527f5e41fb` |
+| tarball integrity (sha512) | `sha512-9dy9GOSDvR350rtjb9mu6ZGVdBhtDFtWCeRj+NhAQuRgyTLBE2msSJhI/8DTwnUDiQa6EELZie71vDg9BGuLeQ==` |
 
 `npm pack` は同一 tree で再現する（`docs/releasing.md`）。hash が違う
 tarball はこの候補ではない。版番号・配布内容を変更した場合は旧 freeze
 SHA・tarball hash を流用せず、必ず再 pack して再固定する。
+freeze SHA は package 内容を確定した commit を指す。本記録自体の commit
+は `docs/` のみの変更であり、`files`（`dist` / `host` / `skills` /
+`examples` / `CHANGELOG.md`）に含まれないため tarball hash は変わらない。
 
 ### 旧 freeze（superseded）
 
