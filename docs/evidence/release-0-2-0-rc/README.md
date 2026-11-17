@@ -6,67 +6,88 @@
 `main` への release PR、tag、npm stage、2FA approve は人間の release 手順
 （`docs/releasing.md`）に従う。
 
-## 候補の区分: `0.2.0-beta.1`（prerelease）
+## 候補の区分: `0.2.0`（`next` 向け早期リリース）
 
-初回 freeze は `0.2.0`（stable 番号）だったが、#155 の監査で次が確定し
-prerelease へ再分類した:
+version 番号の経緯:
 
-- 新規 dispatcher 経路（transport / extensions / lifecycle CLI /
-  acceptance harness）の real-host 証拠は `fake/mock only` のみ。
-- Windows real-host 証拠は存在しない（実機を現在利用できない）。
-- #63 T092/T093・`docs/consumer-acceptance.md` §4 の契約では、実機未検証の
-  まま提供する候補は明示的な prerelease として扱い、README / CHANGELOG /
-  package description / 本記録を実際の保証範囲に合わせる。
+- 初回 freeze は `0.2.0`（stable 番号）だったが、#155 の監査で
+  `0.2.0-beta.1`（prerelease）へ再分類した。当時の根拠は「実機未検証の
+  経路を提供する候補は明示的 prerelease として扱う」という
+  `docs/consumer-acceptance.md` §4 の契約だった。
+- `0.2.0-beta.1` は npm に stage されたが未公開のまま、#165 で方針が
+  変更された: SemVer の `0.x` は初期開発段階を表し、Windows real-host
+  未検証は README / CHANGELOG / package description / 本記録で明示すれば
+  よく、version 名に prerelease 識別子を付ける必然性はない。`next` と
+  `latest` は version と独立した dist-tag であり、`0.2.0` を `next` で
+  公開しても `latest` 昇格は別の gated act のまま維持できる。
+- これに伴い `scripts/check-release.js` の「prerelease 必須」制約を撤廃
+  した。同 script は `publishConfig`（`tag:"next"` / `provenance:false` /
+  `access:"public"`）と tag = `v<version>` の前提条件だけを検査し、
+  「この version が evidence 完備か」の判断は人間の release 手順に残る。
 
-`0.2.0` stable と `latest` への昇格は #75 の cross-platform evidence gate
-が別途必要であり、`next` への stage とは別の行為である
-（`scripts/check-release.js` が prerelease 以外を拒否する）。
+`latest` への昇格は #75 の cross-platform evidence gate が別途必要であり、
+`next` への stage とは別の行為である。
+
+なお `0.2.0-beta.1` の staged package（stage id
+`e9f74115-14e4-4119-96c4-d8a03dcf9f71`、shasum
+`9ada37bce03d87998239ba8a2fdf02f83bdfe878`）は**公開しない**。
+npm 側で人間が `npm stage reject` する。tag `v0.2.0-beta.1` は未公開
+version を指すだけなので削除する。
 
 ## 候補の固定
 
 | 項目 | 値 |
 | --- | --- |
-| version | `0.2.0-beta.1` |
-| branch | `release-0-2-0` |
-| freeze SHA | `d89517994a75da8b8bf5bfdb669941850629669f`（package 内容を確定した commit。前 freeze `377c5ba` からの差分は `package.json` description・`CHANGELOG.md`・`README.md` の公開情報整合と `scripts/check-dispatcher-acceptance.js` の監査 field 追加のみで、`src/`・`host/`・`skills/`・`examples/`・`package-lock.json` は同一 — `git diff 377c5ba..d895179` で確認済み。実機受入済みコードに変更なし。旧 freeze `377c5ba`・`ef5ac41`・`753046a`・`d4d2804`・`9f340fa` とそれぞれの tarball hash は内容変更により無効） |
-| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,574 bytes） |
-| tarball shasum (sha1) | `9ada37bce03d87998239ba8a2fdf02f83bdfe878` |
-| tarball integrity (sha512) | `sha512-G3UHhl4i5YJTOb8xBoRZRCy+rrRYiURmK8xByMLRdT3IC+6HpgXN3T2jLBBDj+THK0hFAjxvsoqRHWYpBGgsGw==` |
+| version | `0.2.0` |
+| branch | `main`（`release-0-2-0` 統合済み + #165 ticket PR） |
+| freeze SHA | `b2c6321c96fa01f333cc9bc5b696f00fdeb31f3f`（#165 の内容確定 commit。`package.json` version・`src/version.ts`・`CHANGELOG.md`・README・quickstart・`docs/releasing.md`・`docs/consumer-acceptance.md`・`scripts/check-release.js`。runtime の差分は `A8N_VERSION` 文字列のみで、実機受入済みのロジック（`src/` 他・`host/`・`skills/`・`examples/`・`package-lock.json`）は `377c5ba` 受入 tree と同一 — `git diff 377c5ba..b2c6321 -- src host skills examples package-lock.json` は `src/version.ts` の 1 行のみ） |
+| package bytes | `ido-bata-ae-a8n-0.2.0.tgz`（382,534 bytes） |
+| tarball shasum (sha1) | `3afeb68ba942daaf3451df80e3c0953c3ca6b96b` |
+| tarball integrity (sha512) | `sha512-NyKmrKIlm7zT4yHWPwf8VGxiW2FRBm5Dqf/IJWg1Dh04ceuk5KWLWHAEgNE5cPXc/N8vF3lQG/ny7axm25+shA==` |
 
 `npm pack` は同一 tree で再現する（`docs/releasing.md`）。hash が違う
 tarball はこの候補ではない。版番号・配布内容を変更した場合は旧 freeze
 SHA・tarball hash を流用せず、必ず再 pack して再固定する。
 freeze SHA は package 内容を確定した commit を指す。本記録自体の commit
 は `docs/` のみの変更であり、`files`（`dist` / `host` / `skills` /
-`examples` / `CHANGELOG.md`）に含まれないため tarball hash は変わらない。
+`examples` / `CHANGELOG.md`）に含まれないため tarball hash は変わらない
+（`CHANGELOG.md` は `files` に含まれる点に注意 — freeze commit `b2c6321`
+に含まれる版で pack すること）。
 
 ### 旧 freeze（superseded）
 
-`0.2.0-beta.1`・公開情報整合の初回 commit:
-
-| 項目 | 値 |
-| --- | --- |
-| version | `0.2.0-beta.1`（前々回 freeze） |
-| freeze SHA | `ef5ac414ca22d340ab956b9c5d9983ae3c26cc3d`（公開情報整合の初回 commit。review で package description の AE version 帰属誤りが見つかり `d895179` で修正） |
-| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,538 bytes） |
-| tarball shasum (sha1) | `c72c5898d6217ac874fbb0e74f1975863d81f5cc` |
-| tarball integrity (sha512) | `sha512-aqrXAbbwNH6w9J01iM2jB3Umt3NZEc/VSpKKGVonXkEGpRIXUOI8DpqNY9DdEZBkw/mVzGs5IVyrn6FVLYEBFQ==` |
-
-`0.2.0-beta.1`・実機受入を通した head（前回 freeze）:
+`0.2.0-beta.1`・#165 で破棄（npm staged・未公開）:
 
 | 項目 | 値 |
 | --- | --- |
 | version | `0.2.0-beta.1` |
+| freeze SHA | `d89517994a75da8b8bf5bfdb669941850629669f`（#155 公開情報整合の最終 commit） |
+| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,574 bytes） |
+| tarball shasum (sha1) | `9ada37bce03d87998239ba8a2fdf02f83bdfe878` |
+| tarball integrity (sha512) | `sha512-G3UHhl4i5YJTOb8xBoRZRCy+rrRYiURmK8xByMLRdT3IC+6HpgXN3T2jLBBDj+THK0hFAjxvsoqRHWYpBGgsGw==` |
+
+この tarball は GitHub Actions の publish workflow で npm stage 済み
+（stage id `e9f74115-14e4-4119-96c4-d8a03dcf9f71`）だが、#165 の version
+変更により publish しない。監査用に値だけ残す。runtime 内容は現候補と
+同一（version 文字列と配布 metadata のみ差分）。
+
+`0.2.0-beta.1` のさらに古い freeze:
+
+| 項目 | 値 |
+| --- | --- |
+| version | `0.2.0-beta.1`（前々回） |
+| freeze SHA | `ef5ac414ca22d340ab956b9c5d9983ae3c26cc3d` |
+| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,538 bytes） |
+| tarball shasum (sha1) | `c72c5898d6217ac874fbb0e74f1975863d81f5cc` |
+| tarball integrity (sha512) | `sha512-aqrXAbbwNH6w9J01iM2jB3Umt3NZEc/VSpKKGVonXkEGpRIXUOI8DpqNY9DdEZBkw/mVzGs5IVyrn6FVLYEBFQ==` |
+
+| 項目 | 値 |
+| --- | --- |
+| version | `0.2.0-beta.1`（実機受入を通した head） |
 | freeze SHA | `377c5ba0c15574c5b12c02dd07947c7fa0665c4b`（PR #162 merge commit。real ExtendScript での dispatcher activation・`Folder.isDirectory`・`app.version` suffix の 3 件修正を含み、AE 26.5.3 実機受入を通した head） |
 | package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,483 bytes） |
 | tarball shasum (sha1) | `e1366acc89bdbea818c0e8b65e13fc65d1de26d6` |
 | tarball integrity (sha512) | `sha512-xBRI4ie38h3TmaJqgLwB/u9KwH6R+Xll5WlKFmPjRO1sVGQbf1uHs/fo5euwRtdvuD3Lb4WDwRMRcJ50PSZAuA==` |
-
-この tarball は配布物としては有効だったが、公開情報（README / CHANGELOG /
-package description / quickstart）が「dispatcher は全 platform で
-fake/mock only・未公開でも公開済み表現」と実際の検証状況に追いついて
-いなかったため、内容変更として再 freeze した。runtime code
-（`src/`・`host/`）は同一であり、macOS 実機受入の証拠はそのまま有効。
 
 初回 freeze（`0.2.0` 番号・prerelease 再分類前）:
 
@@ -95,8 +116,8 @@ fake/mock only・未公開でも公開済み表現」と実際の検証状況に
   操作を行うよう `--channel-dir` / `--prepare-only` / `--install-dir`
   （対象 AE install の固定）を追加し、結果を
   機械判定可能な `A8N_RESULT` JSON（`blocked` は exit 3）に整えた。
-  version を `0.2.0-beta.1` へ再分類し、`check-release.js` が `next` への
-  stage と `latest` 昇格の区別（prerelease 必須）を検証する。
+  当時 version を `0.2.0-beta.1` へ再分類したが、#165 で `0.2.0` へ
+  戻した（上記「候補の区分」参照）。
 - PR #160（#155 続き）: `--install-dir` が dispatcher 接続先を実際に
   固定していなかった問題を、transport selection の `installDir` /
   `aeVersion` pin（heartbeat `aeVersion` との照合、version pin であり
@@ -110,15 +131,17 @@ fake/mock only・未公開でも公開済み表現」と実際の検証状況に
   build suffix（`26.5.3x9`）を version parse が受理するよう修正。
   AE 26.5.3 実機で Scripts/Startup activation → heartbeat →
   handshake / comps / project.info / extension call / close を確認。
-- 公開情報整合（#155 続き・本 freeze）: `package.json` description・
-  README・CHANGELOG・quickstart・`docs/in-ae-dispatcher.md` を実際の
-  検証状況（macOS AE 26.5.3 で dispatcher scenario と Startup 実行が
-  `verified on real host`、Windows 未検証、`0.2.0-beta.1` は `next`
-  向け未公開 prerelease）に合わせた。`check-dispatcher-acceptance.js`
-  の lane 別 `A8N_RESULT` に監査 field（`version` / `aeVersion` /
-  `checks` / `pngSha256` / `cleanup`）を追加 — 次回 real lane 実行から
-  操作別結果・実 AE version・candidate・PNG hash・cleanup が
-  機械可読で残る。
+- 公開情報整合（#155 続き）: `package.json` description・README・
+  CHANGELOG・quickstart・`docs/in-ae-dispatcher.md` を実際の検証状況
+  （macOS AE 26.5.3 で dispatcher scenario と Startup 実行が
+  `verified on real host`、Windows 未検証、`next` 向け未公開）に
+  合わせた。`check-dispatcher-acceptance.js` の lane 別 `A8N_RESULT`
+  に監査 field（`version` / `aeVersion` / `checks` / `pngSha256` /
+  `cleanup`）を追加 — 次回 real lane 実行から操作別結果・実 AE
+  version・candidate・PNG hash・cleanup が機械可読で残る。
+- #165 version 方針変更: version を `0.2.0`（`next` 向け）へ戻し、
+  `check-release.js` の prerelease 必須を撤廃。`latest` 昇格 gate
+  （#75）は変更なし。
 
 ## 検証状況（verification level）
 
@@ -130,13 +153,13 @@ fake/mock only・未公開でも公開済み表現」と実際の検証状況に
 | Windows real-host（新規経路） | **未検証** | Windows 実機を現在利用できない。実装は停止せず、未検証として記録する |
 
 上記 macOS real-host 受入は freeze `377c5ba` の tree で実施した。
-現 freeze `d895179` との差分は配布 metadata（`package.json` description・
-`CHANGELOG.md`・`README.md`）と未 ship の `scripts/` のみで、runtime
-code（`src/`・`host/`）は同一のため証拠は有効。ただし当時の
-`A8N_RESULT` には監査 field（`pngSha256` 等）が無く、PNG 成果物 hash
-は記録されていない。最終候補での real lane 再実行は人間 activation が
-前提のため未実施 — 実施した場合は `A8N_RESULT` の `checks` /
-`aeVersion` / `version` / `pngSha256` / `cleanup` を本記録へ転記する。
+現 freeze `b2c6321` との差分は `src/version.ts` の version 文字列と
+配布 metadata・文書のみで、runtime のロジックは同一のため証拠は
+有効。ただし当時の `A8N_RESULT` には監査 field（`pngSha256` 等）が
+無く、PNG 成果物 hash は記録されていない。最終候補での real lane
+再実行は人間 activation が前提のため未実施 — 実施した場合は
+`A8N_RESULT` の `checks` / `aeVersion` / `version` / `pngSha256` /
+`cleanup` を本記録へ転記する。
 
 ## Mac 実機受入手順（人間が実施）
 
@@ -156,7 +179,7 @@ node dist/cli.js doctor
 
 # 1. 配布候補を pack し、hash が上表と一致することを確認
 npm pack
-shasum -a 1 ido-bata-ae-a8n-0.2.0-beta.1.tgz   # → 記録値と一致
+shasum -a 1 ido-bata-ae-a8n-0.2.0.tgz   # → 記録値と一致
 
 # 2. 受入 channel を prepare（consumer extension の packaged host script を
 #    stage し、activate.jsx を生成。人間の activation はまだ）
@@ -215,19 +238,22 @@ exit 3、`fail` は exit 1、`skipped`/`prepared` は exit 0 であり、
 現在 Windows 実機を利用できないため、新規経路（dispatcher CLI /
 extensions / acceptance harness）の Windows real-host 証拠は**存在しない**。
 これは実装の blocker ではなく、release 記録上の未検証項目として明示する
-（`0.2.0-beta.1` が prerelease である理由の一つ）。Windows での確認が
-可能になった時点で §「Mac 実機受入手順」と同じ手順（`--project` fixture と
+（#165 以降、version 番号ではなく README / CHANGELOG / package
+description / 本記録の記述で担保する）。Windows での確認が可能に
+なった時点で §「Mac 実機受入手順」と同じ手順（`--project` fixture と
 人間 activation を Windows で行う）を実施し、結果を本ディレクトリまたは
-Issue #75 の gate 記録へ追記する。stable `0.2.0` / `latest` 昇格にはこの
-証拠が必須。
+Issue #75 の gate 記録へ追記する。`latest` 昇格にはこの証拠が必須。
 
 ## 残る release 手順（人間）
 
-1. `release-0-2-0` → `main` の release PR を作成し、explicit human
-   authorization で merge する。
-2. `main` head に `v0.2.0-beta.1` tag を打って push → publish workflow が
+1. #165 ticket PR を `main` へ merge する（`release-0-2-0` train は
+   `main` に統合済みのため base は `main`）。
+2. `main` head に `v0.2.0` tag を打って push → publish workflow が
    stage（publish はしない）。
-3. npm で人間が 2FA approve（`npm stage approve`）→ `next` dist-tag へ公開。
+3. npm で人間が `npm stage reject e9f74115-14e4-4119-96c4-d8a03dcf9f71`
+   （旧 `0.2.0-beta.1` staged package）した上で、新しい stage id を
+   `npm stage view` / `download` で照合し、2FA approve
+   （`npm stage approve`）→ `next` dist-tag へ公開。
 4. 公開後、version と `dist.integrity` を ae-test へ共有し、pin 更新
    ticket で新 SHA の real-host 受入をやり直す。
-5. `latest` への昇格・stable `0.2.0` は #75 の evidence gate 通過後の別判断。
+5. `latest` への昇格は #75 の evidence gate 通過後の別判断。
