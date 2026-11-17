@@ -12,11 +12,19 @@
 macOS and Windows for the *attached/owned* case (one AE, one user, one desktop).
 It cannot yet be handed to a general user as a testing tool, because:
 
-1. There is no packaged entry point. The package has no `bin`; the isolated
-   runner that exists lives in `scripts/isolated-session/` on the unmerged
-   Draft PR #50.
-2. Isolation exists on macOS only, and only as scripts, not as a supported,
-   diagnosed, installable flow.
+1. The packaged entry point exists (`ae-a8n` bin, `0.1.0-alpha.2` under
+   `next`), but the macOS isolated-session runner it does not yet wrap lives
+   in `scripts/isolated-session/` on `release-0-2-0`. Draft PR #50, which
+   carried the original version of those scripts, was closed as stale; its
+   reviewed safety commits are on the release branch, and the residual
+   defences it still lacked were ported under issue #136.
+2. Isolation exists on macOS only, and only as scripts, not yet as a
+   supported, diagnosed, installable flow. The packaged macOS adapter
+   (`src/platform/darwin`) enters the target session through
+   `src/driver/mac-session.ts` (`launchctl asuser` / already-inside), a
+   different mechanism from the job-file dispatch in
+   `scripts/isolated-session/`; the planned migration of the scripts into
+   `src/platform/` has not happened (see plan.md §4).
 3. On Windows there is no isolation design at all. The public API works on a
    real Windows host, but it operates the console user's own AE.
 4. Setup, diagnosis, recovery and reporting are manual and undocumented as a
@@ -119,7 +127,7 @@ flow that was verified.
 
 | Platform | Public API | Isolated backend | Evidence today |
 | --- | --- | --- | --- |
-| macOS 27 arm64, AE 2026 26.5x89 | verified on real host | exists only on Draft PR #50 | `verified on real host` for PR #50's scripts at the commits named there; **not merged** |
+| macOS 27 arm64, AE 2026 26.5x89 | verified on real host | scripts merged on `release-0-2-0`; packaged adapter exists but wraps a different session-entry mechanism | `verified on real host` for the scripts' E2E at the commits named in research.md §1; the packaged `ae-a8n test` macOS path is covered by `automated test` + `fake/mock only` |
 | Windows 11 x64, AE 2026 26.5x89 | verified on real host | **does not exist** | `verified on real host` for the public API (docs/windows-verification.md) |
 | Linux | unsupported | none | — |
 

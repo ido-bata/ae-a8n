@@ -8,8 +8,12 @@
 
 ## 1. What has already been measured on macOS
 
-Source: Draft PR #50 (`docs/offstage-macos.md`, §10.14–10.15), commits
-`59ef4e2`, `a11b969`, `414460a`, re-measured once on `a11b969`.
+Source: the work that was Draft PR #50 (`docs/offstage-macos.md`,
+§10.14–10.15), commits `59ef4e2`, `a11b969`, `414460a`, re-measured once on
+`a11b969`. PR #50 was later closed as stale; its reviewed commits are on
+`release-0-2-0` as `scripts/isolated-session/`, and issue #136 ported the residual
+safety defences listed in GitHub issue #136. The measurements below are
+unchanged by that bookkeeping.
 
 | Claim | Level | Where |
 | --- | --- | --- |

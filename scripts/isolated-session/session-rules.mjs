@@ -86,6 +86,14 @@ export function assertOutcomeSession(outcome, target, console) {
         "human's desktop. The result is not trusted.",
     );
   }
+  if (!Number.isInteger(console.asid)) {
+    // Without the console's session id, a job in any other session looks
+    // "different" only because one side is missing. Unknown is not isolated.
+    throw new Error(
+      "the console session's id could not be read, so the job cannot be shown to have run in a different " +
+        "session. The result is not trusted.",
+    );
+  }
   if (outcome.uid !== target.uid) {
     throw new Error(
       `the job ran as uid ${outcome.uid}, not ${target.uid}: it did not run in the requested session. ` +
@@ -104,7 +112,15 @@ export function assertOutcomeSession(outcome, target, console) {
         "The result is not trusted.",
     );
   }
-  if (console.asid !== null && outcome.asid !== null && outcome.asid === console.asid) {
+  if (!Number.isInteger(outcome.asid)) {
+    // A missing id is not a session id that differs from the console's. The
+    // job's own account of where it ran is incomplete, so isolation is unproven.
+    throw new Error(
+      "the job did not report a session id, so it cannot be shown to have run in a different session from " +
+        "the console. The result is not trusted.",
+    );
+  }
+  if (outcome.asid === console.asid) {
     throw new Error(
       `the job ran in session ${outcome.asid}, which is the console session: it ran on the human's own desktop. ` +
         "The result is not trusted.",
@@ -180,6 +196,125 @@ export function assertJobSession(job, session) {
     );
   }
   return job;
+}
+
+/**
+ * Whether the agent may still run a job it has just picked up.
+ *
+ * The job directory outlives the controller's wait. A controller that timed
+ * out writes a cancellation next to the job, and the deadline travels in the
+ * job itself. An agent pass that finds either is looking at work the caller
+ * was already told did not finish, so running it would execute an operation
+ * out of band. A job without a deadline is unknown state and is refused for
+ * the same reason: there is no way to tell whether it is still wanted.
+ *
+ * This is checked immediately before the command is started, not only when
+ * the file is first seen.
+ */
+export function assertJobRunnable(job, now, cancelled) {
+  const id = job?.id ?? "unknown";
+  if (cancelled === true) {
+    throw new Error(`the controller cancelled job ${id} before it ran; it was not run.`);
+  }
+  const deadline = job?.deadline;
+  if (!Number.isFinite(deadline)) {
+    throw new Error(`job ${id} has no deadline, so it cannot be shown to be still wanted; it was not run.`);
+  }
+  if (!Number.isFinite(now) || now >= deadline) {
+    throw new Error(
+      `job ${id} arrived after its deadline (${deadline}); the caller was already told it did not finish, ` +
+        "so it was not run.",
+    );
+  }
+  return job;
+}
+
+/**
+ * Whether this session is demonstrably off the console.
+ *
+ * `consoleUid !== uid` is not enough on its own: when `/dev/console` cannot
+ * be read the owner is -1, which is different from every real uid. That is an
+ * unknown owner, not a second user, and unknown is not isolated. A claim of
+ * isolation therefore needs both a readable console owner and a proven
+ * difference from this session's uid.
+ */
+export function sessionIsolation({ uid, consoleUid }) {
+  if (!Number.isInteger(uid) || uid < 0) {
+    return {
+      isolated: false,
+      reason: `this process's uid (${uid}) could not be read, so its session cannot be shown to be off the console.`,
+    };
+  }
+  if (!Number.isInteger(consoleUid) || consoleUid < 0) {
+    return {
+      isolated: false,
+      reason:
+        "the owner of /dev/console could not be read, so this session cannot be shown to be off the " +
+        "console the user is looking at.",
+    };
+  }
+  if (consoleUid === uid) {
+    return {
+      isolated: false,
+      reason: `uid ${uid} owns the console session, which is the screen the user is looking at.`,
+    };
+  }
+  return { isolated: true };
+}
+
+/**
+ * A report may only be believed when isolation is both claimed and provable.
+ *
+ * The report is written by the job, so its `isolated: true` is the job's own
+ * account. The console owner it recorded is checked again here: a report
+ * written on a machine where `/dev/console` was unreadable cannot be read as
+ * an isolated run, whatever it says about itself.
+ */
+export function assertReportIsolation(report) {
+  const isolation = sessionIsolation({
+    uid: report?.session?.uid,
+    consoleUid: report?.session?.consoleUid,
+  });
+  if (report?.session?.isolated !== true || !isolation.isolated) {
+    const reason =
+      isolation.isolated === true ? "the report does not say that it was isolated." : isolation.reason;
+    throw new Error(
+      `the run is not proven isolated (uid ${report?.session?.uid}, console uid ` +
+        `${report?.session?.consoleUid}): ${reason} The result is not trusted.`,
+    );
+  }
+  return report;
+}
+
+/**
+ * The refusal for a session that could not be read, with the true reason.
+ *
+ * "Operation not permitted" is the observer's limit: `launchctl print
+ * gui/<other uid>` is unreadable from outside that session. Reporting it as
+ * "not logged in" sends the caller to do the wrong thing. Only a missing
+ * domain is evidence that there is no login session to enter.
+ */
+export function describeMissingSession(uid, failure) {
+  const detail = typeof failure === "string" ? failure.trim() : "";
+  if (/operation not permitted|not permitted|EPERM/i.test(detail)) {
+    return new Error(
+      `the session of uid ${uid} could not be verified from this session: macOS refused this process ` +
+        `(launchctl: ${detail}). The user may still be logged in; only a process running in that session ` +
+        "(or root) can ask about it. Start the session agent inside that session, or run this from inside it. " +
+        "Nothing was run.",
+    );
+  }
+  if (/could not find domain|no such process|not found|invalid|does not exist/i.test(detail)) {
+    return new Error(
+      `uid ${uid} has no login session on this Mac (launchctl: ${detail}). Log that user in — a fast user ` +
+        "switch is enough — and try again. Nothing was run.",
+    );
+  }
+  return new Error(
+    `the session of uid ${uid} could not be confirmed from this session` +
+      (detail.length === 0 ? "" : ` (launchctl: ${detail})`) +
+      ". Check `offstage session status`, or run this inside the target session. Nothing was run.",
+  );
 }
 
 /**
@@ -479,19 +614,21 @@ export function parseTerminalResult(text) {
   const asid = number(asidText);
   const exitCode = number(exitText);
   const onConsole = fields.get("onconsole");
+  const asidKnown = asidText.trim().length > 0 && Number.isInteger(asid);
   return {
     // A file the controller has just seen is not necessarily a whole file:
     // the job publishes it by rename, but a reader can still catch an older
-    // direct write. `complete` is false until every field the session checks
-    // rely on is there — `onconsole` included, whose absence would otherwise
-    // be read as "not on the console" — so a half-written or malformed result
-    // is waited for instead of being read as uid -1, exit 1, or as proof that
-    // the job stayed off the human's desktop.
+    // direct write. `complete` is false until every field is there —
+    // `onconsole` included, whose absence would otherwise be read as "not on
+    // the console", and `asid`, without which isolation cannot be shown — so
+    // a half-written or malformed result is waited for instead of being read
+    // as uid -1, exit 1, or as proof that the job stayed off the human's
+    // desktop.
     complete:
-      uidText.trim().length > 0 && exitText.trim().length > 0 && onConsole !== undefined,
+      uidText.trim().length > 0 && exitText.trim().length > 0 && onConsole !== undefined && asidKnown,
     uid: Number.isInteger(uid) ? uid : -1,
     username: fields.get("username") ?? "unknown",
-    asid: asidText.trim().length > 0 && Number.isInteger(asid) ? asid : null,
+    asid: asidKnown ? asid : null,
     onConsole: onConsole === "1",
     exitCode: Number.isInteger(exitCode) ? exitCode : 1,
   };

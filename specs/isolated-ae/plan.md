@@ -150,6 +150,20 @@ turns that into a refusal, not a warning.
 
 ## 4. Migration of PR #50
 
+**Status (2026-11, #136):** PR #50 was closed as stale. Its reviewed commits
+live on `release-0-2-0` as `scripts/isolated-session/` (merged through the
+#49 line, not through the PR itself), and the residual defences it still
+lacked — the stale-job/cancel/deadline guard, strict session-id checks,
+unreadable-session classification and report isolation proof — were ported
+by issue #136 with regression tests in `test/isolated-session.check.mjs`. The
+scripts remain the supported repo-level macOS isolated-session runner: they
+are covered by `npm test` (`scripts/run-isolated-session-checks.mjs`),
+documented in `docs/offstage-macos.md`, and are **not** superseded by
+`src/platform/darwin`, which enters the target session through
+`src/driver/mac-session.ts` (`launchctl asuser` / already-inside) — a
+different mechanism that does not implement the job-file dispatch, the
+session agent, or the terminal/offstage substrates.
+
 Do not rebase the branch blindly. The PR is a Draft with 40 files; moving it
 into `src/platform/macos` changes its shape. Sequence:
 

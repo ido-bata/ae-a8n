@@ -21,6 +21,8 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import { sessionIsolation } from "./session-rules.mjs";
+
 function parseArgs(argv) {
   const options = {
     pkg: "/Users/Shared/ae-a8n/pkg",
@@ -56,13 +58,15 @@ function sessionIdentity() {
   } catch {
     // left as unknown
   }
+  const isolation = sessionIsolation({ uid, consoleUid });
   return {
     uid,
     username: execFileSync("id", ["-un"], { encoding: "utf-8" }).trim(),
     asid,
     kind,
     consoleUid,
-    isolated: consoleUid !== uid,
+    isolated: isolation.isolated,
+    ...(isolation.reason === undefined ? {} : { isolatedReason: isolation.reason }),
   };
 }
 
@@ -112,7 +116,8 @@ try {
   record("session", "ok", identity);
   if (!identity.isolated) {
     throw new Error(
-      "this session owns the console; the test would run on the user's own desktop. Log in as the test user first.",
+      `${identity.isolatedReason ?? "this session is not proven isolated"}. ` +
+        "Run the test in the isolated user's own session.",
     );
   }
   // A stable session root on purpose: AE 2026 asks a person to approve the
