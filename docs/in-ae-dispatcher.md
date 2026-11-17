@@ -51,4 +51,42 @@ API からは `DispatcherTransport.installStartupScript()` / `uninstallStartupSc
 - 実機 AE での activation・`app.scheduleTask` の polling 間隔・負荷時の挙動・Startup 自動実行はすべて未検証。
 - token は同一 OS ユーザーの別プロセスに対する強い認証ではない。channel dir の privacy が実質の防御。
 - dispatcher は「どの AE プロセスが受け取ったか」を証明しない。ownership・non-interference の証拠にはならない。
-- 複数 AE インスタンスが同一 channel を見る可能性があり、その場合の振る舞いは未定義（先着 1 件が claim）。
+- dispatcher instance は「probe に答えたエンジンと同じ dispatcher か」の識別であり、プロセス同一性の証明ではない。instance が変われば別の AE（または再起動後の同じ AE）として扱う。
+
+## 対象インスタンスの束縛（#145）
+
+複数の AE が同一 channel を見る場合に備え、要求は宛先 dispatcher instance を名指しする:
+
+- `launch()` は heartbeat の `instance` を読み、その session はその instance に束縛される。`{ kind: "in-ae-dispatcher", instance: "<id>" }` で過去の `ae.capabilities()` / `ae-a8n dispatcher status` が報告した instance に pin でき、異なる instance が応答した場合は `launch()` が拒否する（再接続時の対象識別）。
+- 以後の全要求は `target` フィールドで束縛 instance を名指しする。dispatcher は `target` が自分と異なる要求を claim せず inbox に残す（本来の宛先が処理する）。`target` を持たない要求は従来どおり実行される。
+- heartbeat が別 instance を報告し始めたら、transport は要求を書く前に `ScriptNotSentError` で拒否する。別 AE の dispatcher に誤配送しない。
+- `ae.capabilities()` の `target.dispatcherInstance` / `host.id`（`dispatcher:<instance>`）がこの識別子を報告する。
+
+## 操作認可（authorization grant、#145）
+
+所有権・接続対象・操作認可は別の権限である。dispatcher session は常に `attached`（quit 権限なし）だが、`launch()` の `authorization` で操作クラスごとに明示的に認可できる:
+
+```ts
+AfterEffects.launch({
+  transport: { kind: "in-ae-dispatcher", channelDir, instance },
+  authorization: {
+    extensionMethods: ["myext.ping"], // または true で宣言済み全 method
+    menuCommands: true,
+    hostEnvironment: true,
+  },
+});
+```
+
+- grant が無い（または該当 scope を含まない）非所有 session の `ae.call` / `menuCommand().execute()` / `hostEnvironment` は `HostNotOwnedError` で拒否される。拒否メッセージは不足している scope と付与方法を示す。
+- grant は呼び出し側の同意を記録する caller-side の gate であり、AE host が独立に認証・認可するものではない（host 側の検査は従来どおり channel token）。grant は所有権を変更せず、quit を許可しない。`close()` は従来どおり owned のみ AE を終了する。
+- grant は launch 時に snapshot され（caller が後から配列を変更しても効かない）、trace（`session.authorization` event）・`ae.capabilities()` の `target.grantedOperations` に記録され、session と共に終わる。再接続・別 instance への pin 変更では再度の認可が必要。
+- `unknown` ownership（対象未証明）には grant は効かない。`attached`/`owned` が証明されるまで特権操作は拒否される。
+
+## 複数 dispatcher の競合ポリシー
+
+同一 channel に複数の AE dispatcher が同時に応答し得る場合:
+
+- `target` を持つ要求は名指しされた instance のみが claim するため、**誤配送は起きない**。heartbeat（`state.json`）は last-writer-wins で instance が入れ替わり得るが、それは pin 判定と `#assertTargetCurrent` の fail-closed 拒否にのみ使われ、配送先を変えない。
+- ただし heartbeat が不安定な間は pin 不一致・instance 変更検知で `launch()` / `invoke()` が拒否し得る。**証明できない場合は拒否する**のが契約であり、正しい対応を推測して送らない。
+- 複数 AE を同時に使う場合は AE ごとに別 `channelDir` を指定することを推奨する（`{ kind: "in-ae-dispatcher", channelDir }`）。
+- `target` を持たない要求（旧 version の writer や外部ツール）は従来どおり先着の dispatcher が claim する。対象束縛の保証は `target` 付き要求にのみ適用され、混在 version での誤配送までは防げない。

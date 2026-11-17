@@ -61,6 +61,21 @@ Ownership after a successful resume is `owned`, so owned-only operations —
 session. A resume that cannot prove identity leaves the host `unknown` or
 `attached`, and `close()` still refuses to quit it.
 
+## Authorization is a separate grant (#145)
+
+Three authorities stay separate: quitting the host is owned-only and is
+enforced in the driver; the connected target is what the session bound at
+launch (the dispatcher's `instance` for the in-AE transport); and each
+privileged operation class — `extensionMethods` (`ae.call`),
+`hostEnvironment`, `menuCommands` — needs either ownership or the matching
+entry in `LaunchOptions.authorization`. A grant never promotes ownership,
+never permits quitting, is snapshotted at launch, recorded in the trace and
+`ae.capabilities().target.grantedOperations`, and ends with the session.
+It is a caller-side consent gate — the AE host does not authenticate or
+independently authorize it — and it applies only to `attached` sessions:
+`unknown` ownership stays fully restricted until the session establishes a
+proven target.
+
 ## A launch that fails after the process appeared
 
 On macOS the transport starts After Effects itself, then the readiness probe

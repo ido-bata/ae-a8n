@@ -181,6 +181,18 @@ export type HandshakeTarget = {
    * unidentified instance is never quit.
    */
   quitPolicy: "owned-only";
+  /**
+   * The operation classes this session is authorized to exercise on a host
+   * it does not own (#145): the grant scopes that apply, or every scope for
+   * an owned session. Empty for an attached/unknown session with no grant.
+   */
+  grantedOperations: readonly string[];
+  /**
+   * The dispatcher instance the session is bound to, when the transport
+   * names one (#145) — the reconnect-pinning identity. `null` when the
+   * transport cannot name an instance.
+   */
+  dispatcherInstance: string | null;
 };
 
 export type HandshakeResponse = {
@@ -299,6 +311,8 @@ export type CapabilityHandshakeInput = {
   readonly attestation: HostAttestation;
   readonly ownership: HostOwnership;
   readonly extensionMethods: readonly string[];
+  /** Grant scopes the session may exercise on a non-owned host (#145). */
+  readonly grantedOperations?: readonly string[];
   /** Per-session nonce used when no process identity can be attested. */
   readonly hostNonce: string;
   readonly generatedAt: string;
@@ -445,13 +459,21 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
 
   const owned = attestation.ownedProcess;
   const pid = attestation.pid ?? owned?.pid ?? null;
-  const hostId = pid !== null ? `pid:${pid}` : `a8n-session:${input.hostNonce}`;
+  const dispatcherInstance = attestation.targetInstance ?? null;
+  const hostId =
+    pid !== null
+      ? `pid:${pid}`
+      : dispatcherInstance !== null
+        ? `dispatcher:${dispatcherInstance}`
+        : `a8n-session:${input.hostNonce}`;
   const targetIdentity =
     owned !== null
       ? `${owned.executable} (pid ${owned.pid})`
       : pid !== null
         ? `pid:${pid}`
-        : null;
+        : dispatcherInstance !== null
+          ? `in-ae-dispatcher instance ${dispatcherInstance}`
+          : null;
 
   const availableCapabilities: CapabilityAdvertisement[] = BUILTIN_CAPABILITIES.map((c) =>
     builtinAdvertisement(c, adapter, capVerification(c.verification)),
@@ -568,6 +590,8 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
       ownershipKind: input.ownership.kind,
       ownershipEvidence: input.ownership.evidence,
       quitPolicy: "owned-only",
+      grantedOperations: [...(input.grantedOperations ?? [])],
+      dispatcherInstance,
     },
     inventorySupply: { scripting: "not-supplied", tools: "not-supplied", sdk: "not-supplied" },
     availableCapabilities,

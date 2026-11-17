@@ -431,6 +431,7 @@ export class AeDriver {
       sessionUser: attested.sessionUser ?? null,
       requiresGuiDelivery: attested.requiresGuiDelivery ?? null,
       refusesConsoleTarget: attested.refusesConsoleTarget ?? null,
+      targetInstance: attested.targetInstance ?? null,
     };
   }
 

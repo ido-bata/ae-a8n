@@ -103,6 +103,13 @@ export type DispatcherTransportOptions = {
    * recovery grace; after it the pending entry is dropped.
    */
   readonly lateResultMs?: number;
+  /**
+   * Pin the session to one dispatcher instance (#145). When set, `launch()`
+   * refuses unless the answering dispatcher's heartbeat `instance` equals
+   * it — a reconnect can prove it reached the same After Effects engine it
+   * meant to, and a different one is refused rather than operated.
+   */
+  readonly expectedInstance?: string;
 };
 
 /** What `state.json` says about the activated dispatcher. */
@@ -221,12 +228,20 @@ export class DispatcherTransport implements HostTransport {
   readonly #pumpIntervalMs: number;
   readonly #lateResultMs: number;
   readonly #channelDir: string;
+  readonly #expectedInstance: string | undefined;
 
   #prepared = false;
   #token: string | null = null;
   #closed = false;
   #inFlight: string | null = null;
   #pump: ReturnType<typeof setInterval> | null = null;
+  /**
+   * The dispatcher `instance` this session bound to at launch (#145).
+   * Requests carry it as `target`; a heartbeat that starts naming a
+   * different instance means the answering After Effects changed, and
+   * further calls are refused rather than delivered to the wrong engine.
+   */
+  #boundInstance: string | null = null;
   readonly #pending = new Map<string, PendingDelivery>();
 
   constructor(options: DispatcherTransportOptions = {}) {
@@ -238,6 +253,7 @@ export class DispatcherTransport implements HostTransport {
     this.#pumpIntervalMs = options.pumpIntervalMs ?? 50;
     this.#lateResultMs = options.lateResultMs ?? 120_000;
     this.#channelDir = resolve(options.channelDir ?? defaultDispatcherChannelDir(this.#homeDir));
+    this.#expectedInstance = options.expectedInstance;
   }
 
   get channelDir(): string {
@@ -501,19 +517,61 @@ export class DispatcherTransport implements HostTransport {
    */
   async launch(): Promise<void> {
     await this.prepare();
-    if (this.#heartbeatFresh()) {
+    if (!this.#heartbeatFresh()) {
+      throw new HostUnavailableError(
+        "the in-AE dispatcher channel is prepared but no dispatcher is answering " +
+          `(no fresh ${STATE_FILE}). Activate it once per After Effects process:\n` +
+          `  1. In After Effects: File > Scripts > Run Script File, select\n` +
+          `       ${this.activateScriptPath}\n` +
+          "  2. Or install it into the per-user Scripts/Startup folder with\n" +
+          "       DispatcherTransport.installStartupScript() so it activates on AE launch.\n" +
+          "Check whether a dispatcher is answering with `ae-a8n dispatcher status`. " +
+          "AE may ask once for 'Allow Scripts to Write Files and Access Network'; " +
+          "that consent is yours to give. This transport never launches or quits AE.",
+      );
+    }
+    const beat = this.#readHeartbeat();
+    if (beat === null) {
+      // #heartbeatFresh() passed, so this is unreachable in practice; kept
+      // so a future freshness change cannot silently bind to nothing.
+      throw new HostUnavailableError("the dispatcher heartbeat could not be read");
+    }
+    if (this.#expectedInstance !== undefined && beat.instance !== this.#expectedInstance) {
+      throw new HostUnavailableError(
+        `the answering dispatcher is instance ${beat.instance}, not the pinned ` +
+          `${this.#expectedInstance}: refusing to operate a different After Effects. ` +
+          "Re-run without the instance pin, or with the instance `ae-a8n dispatcher status` reports.",
+      );
+    }
+    this.#boundInstance = beat.instance;
+  }
+
+  /**
+   * The dispatcher instance this session is bound to, or null before
+   * `launch()` binds one. Evidence for target identification and reconnect
+   * pinning — never authority for ownership.
+   */
+  boundInstance(): string | null {
+    return this.#boundInstance;
+  }
+
+  /**
+   * Refuses to deliver when the channel's answering dispatcher is no longer
+   * the instance this session bound to (#145). A missing or stale heartbeat
+   * is *not* a mismatch: the request may still be claimed, so it is written
+   * and the caller's deadline decides UNKNOWN exactly as before.
+   */
+  #assertTargetCurrent(): void {
+    if (this.#boundInstance === null) {
       return;
     }
-    throw new HostUnavailableError(
-      "the in-AE dispatcher channel is prepared but no dispatcher is answering " +
-        `(no fresh ${STATE_FILE}). Activate it once per After Effects process:\n` +
-        `  1. In After Effects: File > Scripts > Run Script File, select\n` +
-        `       ${this.activateScriptPath}\n` +
-        "  2. Or install it into the per-user Scripts/Startup folder with\n" +
-        "       DispatcherTransport.installStartupScript() so it activates on AE launch.\n" +
-        "AE may ask once for 'Allow Scripts to Write Files and Access Network'; " +
-        "that consent is yours to give. This transport never launches or quits AE.",
-    );
+    const beat = this.#readHeartbeat();
+    if (beat !== null && beat.instance !== this.#boundInstance) {
+      throw new ScriptNotSentError(
+        `the answering dispatcher is now instance ${beat.instance}, not the ` +
+          `${this.#boundInstance} this session bound to; the request was not sent`,
+      );
+    }
   }
 
   /**
@@ -572,6 +630,7 @@ export class DispatcherTransport implements HostTransport {
       );
     }
     await this.prepare();
+    this.#assertTargetCurrent();
     const paths = this.#pathsFromEntry(entryScriptPath);
     let request: Record<string, unknown>;
     try {
@@ -586,7 +645,15 @@ export class DispatcherTransport implements HostTransport {
     }
     // The token is the channel's shared secret with its dispatcher; it is
     // added here, at the boundary, and never appears in the session files.
-    const channelRequest = { ...request, token: this.#token };
+    // `target` names the dispatcher instance this session bound to (#145):
+    // a dispatcher answering for a different After Effects skips the file
+    // instead of running it, which is what keeps two live dispatchers on one
+    // channel from misdelivering each other's work.
+    const channelRequest = {
+      ...request,
+      token: this.#token,
+      ...(this.#boundInstance === null ? {} : { target: this.#boundInstance }),
+    };
     const target = join(this.#inbox(), `${paths.id}${REQUEST_SUFFIX}`);
     if (existsSync(target)) {
       throw new ScriptNotSentError(`a channel request for ${paths.id} already exists`);
@@ -710,6 +777,7 @@ export class DispatcherTransport implements HostTransport {
       executionMode: "local",
       sessionUid: null,
       sessionAsid: null,
+      targetInstance: this.#boundInstance,
     };
   }
 
