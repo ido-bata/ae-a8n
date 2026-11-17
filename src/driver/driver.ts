@@ -579,9 +579,23 @@ export class AeDriver {
       method,
       params,
       timeoutMs,
-      ...(options.marker === undefined
-        ? {}
-        : { session: { id: this.#sessionId, ...(options.marker === "adopt" ? { adopt: true } : { require: true }) } }),
+      // On a transport that cannot aim a delivery at one instance, every
+      // call after the probe must prove it lands in the instance that
+      // answered it: `require` makes the host refuse before running anything
+      // when the marker is absent (T096). Before this, only `app.quit`
+      // carried the check, so an ordinary call could reach — and mutate —
+      // an After Effects this session never proved. A transport that can aim
+      // its deliveries sends no session field at all.
+      ...(options.marker !== undefined
+        ? {
+            session: {
+              id: this.#sessionId,
+              ...(options.marker === "adopt" ? { adopt: true } : { require: true }),
+            },
+          }
+        : this.#transport.verifiesDestination === true && this.#started
+          ? { session: { id: this.#sessionId, require: true } }
+          : {}),
     };
 
     try {
