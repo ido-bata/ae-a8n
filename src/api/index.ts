@@ -539,6 +539,11 @@ export class AfterEffects {
     return new DispatcherTransport({
       ...(channelDir === undefined ? {} : { channelDir }),
       ...(instance === undefined ? {} : { expectedInstance: instance }),
+      // The effective host script is staged into the channel and its
+      // registered set is checked against the heartbeat at launch (#146).
+      ...(options.hostScript === undefined
+        ? {}
+        : { hostScriptPath: resolve(options.hostScript) }),
     });
   }
 
@@ -648,6 +653,16 @@ export class AfterEffects {
       // without the consumer's explicit grant (#145).
       requireAuthorized(session, "session.hostEnvironment", "hostEnvironment");
       await session.call("session.hostEnvironment", "app.setEnvironment", { variables: environment });
+    }
+    // On the dispatcher transport the exposed set is what the heartbeat
+    // reported as actually registered inside After Effects (#146) — which
+    // launch() already proved equals the staged manifest. Everywhere else
+    // the staged declaration is the effective set.
+    if (transport instanceof DispatcherTransport) {
+      const bound = transport.boundExtensions();
+      if (bound !== null) {
+        extensionMethods = bound.methods;
+      }
     }
     // The grant is evidence, not just enforcement: the trace records which
     // operation classes this session may exercise on a host it does not own.

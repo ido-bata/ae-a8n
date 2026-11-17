@@ -964,6 +964,37 @@
     return context.extensions;
   }
 
+  /**
+   * The extension method names actually registered in this After Effects,
+   * sorted. Read once at dispatcher activation: the table does not grow
+   * afterwards, so the heartbeat reports a fixed set (#146).
+   */
+  function registeredExtensionNames() {
+    var table = extensionTable();
+    var names = [];
+    for (var key in table) {
+      if (has(table, key) && typeof table[key] === "function") {
+        names.push(key);
+      }
+    }
+    names.sort();
+    return names;
+  }
+
+  /**
+   * The registration fingerprint the build prelude left on `__a8n`, or null
+   * when the running script was not built by `ae-a8n extension build`. It is
+   * copied into the heartbeat verbatim — the host never recomputes it.
+   */
+  function extensionRegistration() {
+    var context = this.__a8n;
+    if (context === undefined || context === null) {
+      return null;
+    }
+    var value = context.extensionsRegistration;
+    return typeof value === "string" && value.length > 0 ? value : null;
+  }
+
   function dispatch(request) {
     if (request === null || typeof request !== "object") {
       throw new Error("request envelope is not an object");
@@ -1207,7 +1238,15 @@
       aeVersion: String(app.version),
       activatedAt: state.activatedAt,
       lastTick: new Date().getTime(),
-      pollMs: state.pollMs
+      pollMs: state.pollMs,
+      // The extension set this dispatcher actually registered (#146). It is
+      // captured once at activation: the table cannot change afterwards, so
+      // a heartbeat that keeps reporting it is proof the running script is
+      // still the one that was activated — not that the staged file matches.
+      extensionMethods:
+        state.extensionMethods === undefined ? [] : state.extensionMethods,
+      extensionsRegistration:
+        state.extensionsRegistration === undefined ? null : state.extensionsRegistration
     };
     try {
       publishResult(state.paths.state, state.codec.stringify(report));
@@ -1368,7 +1407,12 @@
         new Date().getTime().toString(16) +
         Math.floor(Math.random() * 0xffffff).toString(16),
       activatedAt: new Date().getTime(),
-      ticks: 0
+      ticks: 0,
+      // Fixed here, once: whatever `__a8n.extensions` holds right now is
+      // what this dispatcher will answer for its whole life. A host script
+      // built without the extension prelude leaves both empty/null.
+      extensionMethods: registeredExtensionNames(),
+      extensionsRegistration: extensionRegistration()
     };
     var tick = function () {
       dispatcherTick(state);
