@@ -430,6 +430,9 @@ export class AfterEffects {
       trace,
       ...(hostScript === null ? {} : { hostScriptPath: hostScript }),
       ...(options.timeoutMs === undefined ? {} : { defaultTimeoutMs: options.timeoutMs }),
+      ...(options.readinessTimeoutMs === undefined
+        ? {}
+        : { readinessTimeoutMs: requirePositive(options.readinessTimeoutMs, "readinessTimeoutMs") }),
       ...(recovery === undefined ? {} : { recovery }),
       ...(options.recoveryGraceMs === undefined
         ? {}
