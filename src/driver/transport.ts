@@ -87,10 +87,13 @@ export type PendingLaunch = {
  * What a session explicitly authorizes on a host it does not own (#145).
  *
  * Ownership and authorization are separate authorities: `owned` sessions
- * may do everything; `attached`/`unknown` sessions may do everything except
- * the operations a grant names here. A grant is the consumer's recorded
- * consent — it never changes ownership, never permits quitting the host,
- * and never survives into another session or another target instance.
+ * may do everything; `attached` sessions may do everything except the
+ * operations a grant names here; `unknown` sessions may do nothing a grant
+ * names — consent cannot substitute for an unproven target. A grant is the
+ * caller's recorded consent, a caller-side gate only: the AE host does not
+ * authenticate or independently authorize it, and it never changes
+ * ownership, never permits quitting the host, and never survives into
+ * another session or another target instance.
  *
  * Each key is one operation class:
  *

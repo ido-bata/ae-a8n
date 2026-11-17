@@ -69,9 +69,12 @@ launch (the dispatcher's `instance` for the in-AE transport); and each
 privileged operation class — `extensionMethods` (`ae.call`),
 `hostEnvironment`, `menuCommands` — needs either ownership or the matching
 entry in `LaunchOptions.authorization`. A grant never promotes ownership,
-never permits quitting, is recorded in the trace and
+never permits quitting, is snapshotted at launch, recorded in the trace and
 `ae.capabilities().target.grantedOperations`, and ends with the session.
-Unknown ownership is authorized exactly like `attached`: never promoted.
+It is a caller-side consent gate — the AE host does not authenticate or
+independently authorize it — and it applies only to `attached` sessions:
+`unknown` ownership stays fully restricted until the session establishes a
+proven target.
 
 ## A launch that fails after the process appeared
 

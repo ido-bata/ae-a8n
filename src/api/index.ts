@@ -289,7 +289,9 @@ function requireAuthorization(value: unknown): SessionAuthorization {
       if (entry === true || entry === false) {
         grant[key] = entry;
       } else if (Array.isArray(entry) && entry.every((name) => typeof name === "string")) {
-        grant[key] = entry;
+        // Snapshot: the session's grant must not follow later mutation of
+        // the caller's array — authorization is fixed when the session opens.
+        grant[key] = [...entry];
       } else {
         throw new TypeError("authorization.extensionMethods must be true, false, or a list of method names");
       }
@@ -310,6 +312,11 @@ export function grantedScopes(session: Session): readonly AuthorizationScope[] {
     // full list keeps "what may this session do" answerable in one place.
     return GRANT_SCOPES;
   }
+  if (ownership.kind === "unknown") {
+    // A grant never authorizes an unproven target, so reporting scopes here
+    // would overstate what the session may do.
+    return [];
+  }
   const grant = session.authorization;
   return GRANT_SCOPES.filter((scope) => {
     const value = grant[scope];
@@ -326,6 +333,12 @@ function grantCovers(session: Session, scope: AuthorizationScope, method?: strin
   const ownership = session.driver.ownership();
   if (ownership.kind === "owned") {
     return true;
+  }
+  if (ownership.kind === "unknown") {
+    // The grant is the caller's consent for a *known attached* target. On a
+    // host whose identity cannot be proven, consent alone must not carry an
+    // operation — the session has to establish attached/owned first.
+    return false;
   }
   const value = session.authorization[scope];
   if (value === true) {

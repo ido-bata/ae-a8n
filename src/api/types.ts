@@ -311,15 +311,19 @@ export type LaunchOptions = {
    * Explicit authorization for operations that only an owned session may
    * otherwise perform (#145). Ownership and authorization are separate
    * authorities: a session that started its After Effects needs no grant;
-   * a session attached to — or unable to prove ownership of — a running
-   * one needs the grant for each privileged operation class it intends
-   * to use (`extensionMethods`, `hostEnvironment`, `menuCommands`).
+   * a session attached to a running one needs the grant for each
+   * privileged operation class it intends to use (`extensionMethods`,
+   * `hostEnvironment`, `menuCommands`). A session whose ownership is
+   * `unknown` — target identity unproven — is never authorized by a grant;
+   * it must establish `attached`/`owned` first.
    *
-   * A grant never changes ownership and never permits quitting the host:
-   * `close()` still quits only a proven-owned instance. It is recorded in
-   * the session manifest, the trace and `ae.capabilities()`, and it ends
-   * with the session — a reconnect or a different target instance must be
-   * authorized again.
+   * The grant is the caller's recorded consent and a caller-side gate: the
+   * AE host does not authenticate or independently authorize it (the
+   * channel token remains the only host-side check). It never changes
+   * ownership and never permits quitting the host: `close()` still quits
+   * only a proven-owned instance. It is snapshotted at launch, recorded in
+   * the trace and `ae.capabilities()`, and it ends with the session — a
+   * reconnect or a different target instance must be authorized again.
    */
   readonly authorization?: SessionAuthorization;
   /**

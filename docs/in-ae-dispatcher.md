@@ -78,6 +78,15 @@ AfterEffects.launch({
 ```
 
 - grant が無い（または該当 scope を含まない）非所有 session の `ae.call` / `menuCommand().execute()` / `hostEnvironment` は `HostNotOwnedError` で拒否される。拒否メッセージは不足している scope と付与方法を示す。
-- grant は所有権を変更せず、quit を許可しない。`close()` は従来どおり owned のみ AE を終了する。
-- grant は session manifest・trace（`session.authorization` event）・`ae.capabilities()` の `target.grantedOperations` に記録され、session と共に終わる。再接続・別 instance への pin 変更では再度の認可が必要。
-- `unknown` ownership は `attached` と同じく grant なしでは拒否される（昇格しない）。
+- grant は呼び出し側の同意を記録する caller-side の gate であり、AE host が独立に認証・認可するものではない（host 側の検査は従来どおり channel token）。grant は所有権を変更せず、quit を許可しない。`close()` は従来どおり owned のみ AE を終了する。
+- grant は launch 時に snapshot され（caller が後から配列を変更しても効かない）、trace（`session.authorization` event）・`ae.capabilities()` の `target.grantedOperations` に記録され、session と共に終わる。再接続・別 instance への pin 変更では再度の認可が必要。
+- `unknown` ownership（対象未証明）には grant は効かない。`attached`/`owned` が証明されるまで特権操作は拒否される。
+
+## 複数 dispatcher の競合ポリシー
+
+同一 channel に複数の AE dispatcher が同時に応答し得る場合:
+
+- `target` を持つ要求は名指しされた instance のみが claim するため、**誤配送は起きない**。heartbeat（`state.json`）は last-writer-wins で instance が入れ替わり得るが、それは pin 判定と `#assertTargetCurrent` の fail-closed 拒否にのみ使われ、配送先を変えない。
+- ただし heartbeat が不安定な間は pin 不一致・instance 変更検知で `launch()` / `invoke()` が拒否し得る。**証明できない場合は拒否する**のが契約であり、正しい対応を推測して送らない。
+- 複数 AE を同時に使う場合は AE ごとに別 `channelDir` を指定することを推奨する（`{ kind: "in-ae-dispatcher", channelDir }`）。
+- `target` を持たない要求（旧 version の writer や外部ツール）は従来どおり先着の dispatcher が claim する。対象束縛の保証は `target` 付き要求にのみ適用され、混在 version での誤配送までは防げない。

@@ -86,6 +86,48 @@ describe("a host the session owns", () => {
 describe.each(["attached", "unknown"] as const)(
   "the authorization grant on a host the session does not own (%s)",
   (kind) => {
+    it("never lets a grant authorize operations on an unproven (unknown) target", async () => {
+      if (kind === "attached") {
+        return; // covered by the grant tests below
+      }
+      transport.ownershipKind = kind;
+      const ext = join(root, "ext.mjs");
+      writeFileSync(
+        ext,
+        'export default { name: "aulymo", version: "1.0.0", methods: ' +
+          '[{ name: "aulymo.echo", source: "function (params) { return params.value; }" }] };\n',
+        "utf-8",
+      );
+      const hostScript = join(root, "host.generated.js");
+      const built = await runExtensionCommand(
+        ["build", "--extension", ext, "--out", hostScript],
+        { writeOut: () => undefined, writeErr: () => undefined },
+      );
+      expect(built.exitCode).toBe(0);
+
+      // A full grant must not smuggle privileged operations through a host
+      // whose target identity is unproven: the grant is consent for a
+      // *known* attached target, not a substitute for target proof.
+      const ae = await AfterEffects.launch({
+        sessionRoot: join(root, "s"),
+        transport,
+        hostScript,
+        authorization: { extensionMethods: true, menuCommands: true, hostEnvironment: true },
+      });
+      await expect(ae.call("aulymo.echo", { value: "x" })).rejects.toBeInstanceOf(HostNotOwnedError);
+      const command = transport.app.registerMenuCommand("Fake Plugin: Trace", () => {});
+      await expect((await ae.menuCommand(command)).execute()).rejects.toBeInstanceOf(HostNotOwnedError);
+      await expect(
+        AfterEffects.launch({
+          sessionRoot: join(root, "s2"),
+          transport,
+          hostEnvironment: { FAKE_PLUGIN_OUT: "/tmp/out" },
+          authorization: { hostEnvironment: true },
+        }),
+      ).rejects.toBeInstanceOf(HostNotOwnedError);
+      await ae.close();
+    });
+
     async function buildExtension(): Promise<string> {
       const ext = join(root, "ext.mjs");
       writeFileSync(
@@ -128,7 +170,32 @@ describe.each(["attached", "unknown"] as const)(
       expect(transport.app.quitCount).toBe(0);
     });
 
+    it("snapshots the grant at launch: mutating the caller's array changes nothing", async () => {
+      if (kind !== "attached") {
+        return;
+      }
+      transport.ownershipKind = kind;
+      const hostScript = await buildExtension();
+      const grantedMethods = ["aulymo.echo"];
+      const ae = await AfterEffects.launch({
+        sessionRoot: join(root, "s"),
+        transport,
+        hostScript,
+        authorization: { extensionMethods: grantedMethods },
+      });
+
+      // The caller widens its array after launch; the session's grant must
+      // not follow it — authorization is fixed when the session opens.
+      grantedMethods.push("aulymo.boom");
+      await expect(ae.call("aulymo.echo", { value: "hi" })).resolves.toBe("hi");
+      await expect(ae.call("aulymo.boom")).rejects.toBeInstanceOf(HostNotOwnedError);
+      await ae.close();
+    });
+
     it("runs exactly the operations the grant names", async () => {
+      if (kind !== "attached") {
+        return; // unknown targets are never authorized by a grant
+      }
       transport.ownershipKind = kind;
       const hostScript = await buildExtension();
       const ae = await AfterEffects.launch({

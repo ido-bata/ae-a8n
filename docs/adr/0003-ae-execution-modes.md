@@ -77,6 +77,14 @@ References: [Adobe per-user Scripts support](https://blog.adobe.com/en/publish/2
 
 Do not merge a speculative new transport into a published entry path or remove existing working transports before evidence, review and migration coverage.
 
+## Addendum: target binding and operation authorization (#145)
+
+Review of the dispatcher contract established that three authorities had been collapsed into one ownership boolean. They are now separate:
+
+- **Termination authority** stays owned-only in the driver; no transport, grant or channel can quit an AE it did not launch.
+- **Connection/target authority** is the dispatcher `instance` a session binds at `launch()`. Requests name their target; a dispatcher skips requests addressed elsewhere, and a session refuses to send once the heartbeat names a different instance. Reconnect may pin a previously observed `instance`; mismatch refuses. When multiple AE instances share one channel, heartbeat contention can only produce fail-closed refusals — never a guessed target — and per-AE `channelDir`s are the supported arrangement. Untargeted requests carry no binding guarantee.
+- **Per-operation authorization** is `LaunchOptions.authorization`, caller-side recorded consent for `attached` sessions (`extensionMethods`, `hostEnvironment`, `menuCommands`). The AE host does not authenticate or independently authorize it; the channel token remains the only host-side check. The grant is snapshotted at launch, reported via `ae.capabilities()`, never promotes ownership, never permits quitting, and ends with the session. `unknown` ownership is never authorized by a grant: consent cannot substitute for an unproven target.
+
 ## External grounds
 
 - [Adobe After Effects scripts](https://helpx.adobe.com/after-effects/desktop/automate-in-after-effects/automate-animation/scripts.html)
