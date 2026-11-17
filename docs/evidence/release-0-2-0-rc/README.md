@@ -28,10 +28,10 @@ prerelease へ再分類した:
 | --- | --- |
 | version | `0.2.0-beta.1` |
 | branch | `release-0-2-0` |
-| freeze SHA | `ef5ac414ca22d340ab956b9c5d9983ae3c26cc3d`（package 内容を確定した commit。前 freeze `377c5ba` からの差分は `package.json` description・`CHANGELOG.md`・`README.md` の公開情報整合と `scripts/check-dispatcher-acceptance.js` の監査 field 追加のみで、`src/`・`host/`・`skills/`・`examples/`・`package-lock.json` は同一 — `git diff 377c5ba..ef5ac41` で確認済み。実機受入済みコードに変更なし。旧 freeze `377c5ba`・`753046a`・`d4d2804`・`9f340fa` とそれぞれの tarball hash は内容変更により無効） |
-| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,538 bytes） |
-| tarball shasum (sha1) | `c72c5898d6217ac874fbb0e74f1975863d81f5cc` |
-| tarball integrity (sha512) | `sha512-aqrXAbbwNH6w9J01iM2jB3Umt3NZEc/VSpKKGVonXkEGpRIXUOI8DpqNY9DdEZBkw/mVzGs5IVyrn6FVLYEBFQ==` |
+| freeze SHA | `d89517994a75da8b8bf5bfdb669941850629669f`（package 内容を確定した commit。前 freeze `377c5ba` からの差分は `package.json` description・`CHANGELOG.md`・`README.md` の公開情報整合と `scripts/check-dispatcher-acceptance.js` の監査 field 追加のみで、`src/`・`host/`・`skills/`・`examples/`・`package-lock.json` は同一 — `git diff 377c5ba..d895179` で確認済み。実機受入済みコードに変更なし。旧 freeze `377c5ba`・`ef5ac41`・`753046a`・`d4d2804`・`9f340fa` とそれぞれの tarball hash は内容変更により無効） |
+| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,574 bytes） |
+| tarball shasum (sha1) | `9ada37bce03d87998239ba8a2fdf02f83bdfe878` |
+| tarball integrity (sha512) | `sha512-G3UHhl4i5YJTOb8xBoRZRCy+rrRYiURmK8xByMLRdT3IC+6HpgXN3T2jLBBDj+THK0hFAjxvsoqRHWYpBGgsGw==` |
 
 `npm pack` は同一 tree で再現する（`docs/releasing.md`）。hash が違う
 tarball はこの候補ではない。版番号・配布内容を変更した場合は旧 freeze
@@ -42,9 +42,21 @@ freeze SHA は package 内容を確定した commit を指す。本記録自体�
 
 ### 旧 freeze（superseded）
 
+`0.2.0-beta.1`・公開情報整合の初回 commit:
+
 | 項目 | 値 |
 | --- | --- |
-| version | `0.2.0-beta.1`（前回 freeze） |
+| version | `0.2.0-beta.1`（前々回 freeze） |
+| freeze SHA | `ef5ac414ca22d340ab956b9c5d9983ae3c26cc3d`（公開情報整合の初回 commit。review で package description の AE version 帰属誤りが見つかり `d895179` で修正） |
+| package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,538 bytes） |
+| tarball shasum (sha1) | `c72c5898d6217ac874fbb0e74f1975863d81f5cc` |
+| tarball integrity (sha512) | `sha512-aqrXAbbwNH6w9J01iM2jB3Umt3NZEc/VSpKKGVonXkEGpRIXUOI8DpqNY9DdEZBkw/mVzGs5IVyrn6FVLYEBFQ==` |
+
+`0.2.0-beta.1`・実機受入を通した head（前回 freeze）:
+
+| 項目 | 値 |
+| --- | --- |
+| version | `0.2.0-beta.1` |
 | freeze SHA | `377c5ba0c15574c5b12c02dd07947c7fa0665c4b`（PR #162 merge commit。real ExtendScript での dispatcher activation・`Folder.isDirectory`・`app.version` suffix の 3 件修正を含み、AE 26.5.3 実機受入を通した head） |
 | package bytes | `ido-bata-ae-a8n-0.2.0-beta.1.tgz`（382,483 bytes） |
 | tarball shasum (sha1) | `e1366acc89bdbea818c0e8b65e13fc65d1de26d6` |
@@ -118,7 +130,7 @@ fake/mock only・未公開でも公開済み表現」と実際の検証状況に
 | Windows real-host（新規経路） | **未検証** | Windows 実機を現在利用できない。実装は停止せず、未検証として記録する |
 
 上記 macOS real-host 受入は freeze `377c5ba` の tree で実施した。
-現 freeze `ef5ac41` との差分は配布 metadata（`package.json` description・
+現 freeze `d895179` との差分は配布 metadata（`package.json` description・
 `CHANGELOG.md`・`README.md`）と未 ship の `scripts/` のみで、runtime
 code（`src/`・`host/`）は同一のため証拠は有効。ただし当時の
 `A8N_RESULT` には監査 field（`pngSha256` 等）が無く、PNG 成果物 hash
