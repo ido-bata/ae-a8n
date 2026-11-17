@@ -99,6 +99,24 @@ export type AdapterProbe = {
   readonly capabilities: Capabilities;
 };
 
+/**
+ * Which prerequisite set a probe evaluates.
+ *
+ * - `"session"`: the isolated-session path (`ae-a8n test`/`setup`, and
+ *   `doctor --user`/`--host`). Session-identity and target-separation
+ *   blockers apply: a console-session target is refused.
+ * - `"local"`: the local script-invocation path (`AfterEffects.launch` in
+ *   the caller's own session). Session-separation checks do not apply —
+ *   the caller's own GUI session is the intended target, and an already
+ *   running After Effects is attached to, not refused. The script
+ *   prerequisites (install, scripting component, file/network permission,
+ *   script-trust approval, startup folder) apply to both.
+ *
+ * `test`/`setup` always probe with `"session"`; only `doctor` may ask for
+ * `"local"`, and only when no separate account or host was named.
+ */
+export type ProbeIntent = "session" | "local";
+
 export type CommandOutcome = {
   readonly exitCode: number;
   readonly stdoutPath: string;
@@ -129,7 +147,7 @@ export interface PlatformAdapter {
   readonly platform: PlatformId;
   readonly id: string;
   capabilities(): Promise<Capabilities>;
-  probe(target: TargetSpec): Promise<AdapterProbe>;
+  probe(target: TargetSpec, intent?: ProbeIntent): Promise<AdapterProbe>;
   plan(target: TargetSpec): Promise<readonly SetupStep[]>;
   apply(
     steps: readonly SetupStep[],

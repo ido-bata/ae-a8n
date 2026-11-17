@@ -59,12 +59,12 @@ export class MacSessionError extends Error {
  * The `launchctl print gui/<uid>` document, as far as it is needed.
  *
  * ```
- * gui/501 = {
+ * gui/<uid> = {
  *     type = login
- *     handle = 100021
+ *     handle = <asid>
  *     session = Aqua
  *     …
- *         gui asid = 100021
+ *         gui asid = <asid>
  * ```
  */
 export function parseLaunchctlGuiSession(text: string): { asid: number | null; kind: MacSessionKind } {
@@ -82,7 +82,7 @@ export function parseLaunchctlGuiSession(text: string): { asid: number | null; k
  * The line that carries the identity is the process line:
  *
  * ```
- *     pid = 689 token=[sess=100021 pid=689 uid:501,501,501 g:20,20 pV:1698] type="Foreground" …
+ *     pid = <pid> token=[sess=<asid> pid=<pid> uid:<uid>,<uid>,<uid> g:<gid>,<gid> pV:<flags>] type="Foreground" …
  * ```
  *
  * `sess` is the login session id and `uid` the OS user, so one line answers

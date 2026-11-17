@@ -32,7 +32,7 @@ describe("the adapter contract", () => {
     const probe = await adapter.probe(TARGET);
     expect(probe.capabilities).toEqual(FAKE_CAPABILITIES);
     expect(probe.checks).toEqual([]);
-    expect(adapter.calls).toEqual(["probe:local-test-user"]);
+    expect(adapter.calls).toEqual(["probe:local-test-user:session"]);
   });
 
   it("records the session lifecycle in order", async () => {

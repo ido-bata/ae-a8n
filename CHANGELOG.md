@@ -117,7 +117,7 @@ tracked in #93 and #94.
   exists to prevent. It now reaches the caller as `HostQuarantinedError` with
   `A8N-SEC-001`.
 - The Windows key-file ACL accepted a domain account that merely shared the
-  owner's name (`CONTOSO\rebui` for the local `rebui`, two different
+  owner's name (`CONTOSO\alice` for the local `alice`, two different
   principals). Only the machine's or the domain's own qualifier is accepted.
 - `ae-a8n recover` on a `--host` target ran `tasklist` on the controller and
   reported the controller's process state as the host's. Recovery now reads

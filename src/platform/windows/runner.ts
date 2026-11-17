@@ -27,6 +27,7 @@ import {
   type CommandOutcome,
   type IsolatedSession,
   type PlatformAdapter,
+  type ProbeIntent,
   type RecoveryFinding,
   type RunOptions,
   type SessionIdentity,
@@ -445,8 +446,8 @@ export class WindowsAdapter implements PlatformAdapter {
     return Promise.resolve(windowsCapabilities(this.#isolation));
   }
 
-  async probe(target: TargetSpec): Promise<AdapterProbe> {
-    const prepared = await this.#prepare(target);
+  async probe(target: TargetSpec, intent: ProbeIntent = "session"): Promise<AdapterProbe> {
+    const prepared = await this.#prepare(target, intent);
     return {
       checks: prepared.checks,
       capabilities: windowsCapabilities(target.isolation),
@@ -918,7 +919,7 @@ export class WindowsAdapter implements PlatformAdapter {
     return comms.agent;
   }
 
-  async #prepare(target: TargetSpec): Promise<PreparedIdentity> {
+  async #prepare(target: TargetSpec, intent: ProbeIntent = "session"): Promise<PreparedIdentity> {
     this.#isolation = target.isolation;
     let runner: CommandRunner = this.#probeRunner;
     if (target.isolation === "remote-host" && this.#remote !== null && !this.#simulatedHostProbe) {
@@ -999,6 +1000,7 @@ export class WindowsAdapter implements PlatformAdapter {
     const result = await probeWindows(runner, {
       isolation: target.isolation,
       targetUser: target.user,
+      intent,
     });
     this.#facts = result.facts;
     const proven = !result.checks.some((check) => check.severity === "blocker");

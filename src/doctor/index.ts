@@ -15,7 +15,12 @@ import {
   type DiagnosticCheck,
   type DiagnosticStatus,
 } from "./diagnostics.js";
-import type { AdapterProbe, PlatformAdapter, TargetSpec } from "../platform/contract.js";
+import type {
+  AdapterProbe,
+  PlatformAdapter,
+  ProbeIntent,
+  TargetSpec,
+} from "../platform/contract.js";
 
 /** The package's Node floor, mirrored from `package.json` `engines`. */
 export const NODE_FLOOR_MAJOR = 22;
@@ -48,8 +53,9 @@ export function nodeMajor(version: string): number | null {
 export async function runDoctor(
   adapter: PlatformAdapter,
   target: TargetSpec,
+  intent: ProbeIntent = "session",
 ): Promise<DoctorResult> {
-  const probe = await adapter.probe(target);
+  const probe = await adapter.probe(target, intent);
   const checks: DiagnosticCheck[] = [...probe.checks];
 
   const major = nodeMajor(process.version);

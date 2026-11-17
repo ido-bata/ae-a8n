@@ -54,11 +54,32 @@ export const DIAGNOSTIC_CODES = {
   "A8N-PERM-004": { severity: "blocker", title: "Adobe sign-in required in the target session" },
   "A8N-PERM-005": { severity: "blocker", title: "The channel key file is readable by another account" },
   "A8N-PERM-006": { severity: "blocker", title: "The channel directory is writable by another account" },
+  "A8N-PERM-007": {
+    severity: "warning",
+    title: "After Effects script permission state could not be determined",
+  },
+  "A8N-PERM-008": {
+    severity: "warning",
+    title: "After Effects script approval (trust) state is unproven",
+  },
   "A8N-AE-001": { severity: "blocker", title: "Another After Effects is running on the target" },
   "A8N-AE-002": { severity: "blocker", title: "The After Effects is not owned by this run" },
   "A8N-AE-003": { severity: "blocker", title: "The script destination could not be proven" },
   "A8N-AE-004": { severity: "warning", title: "A timed-out script may still be running" },
   "A8N-AE-005": { severity: "warning", title: "After Effects was started but never answered the probe" },
+  "A8N-AE-006": { severity: "blocker", title: "After Effects scripting component not found" },
+  "A8N-AE-007": {
+    severity: "warning",
+    title: "After Effects scripting component is unproven",
+  },
+  "A8N-AE-008": {
+    severity: "info",
+    title: "Per-user Scripts/Startup folder state",
+  },
+  "A8N-AE-009": {
+    severity: "info",
+    title: "After Effects is already running",
+  },
   "A8N-JOB-001": { severity: "blocker", title: "Job or result file failed ownership or integrity checks" },
   "A8N-JOB-002": { severity: "warning", title: "A prior run left a lock or quarantine state" },
   "A8N-JOB-003": { severity: "blocker", title: "Job or result is not from a trusted issuer" },

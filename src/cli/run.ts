@@ -13,7 +13,12 @@ import { join } from "node:path";
 
 import { A8N_VERSION } from "../index.js";
 import { runDoctor } from "../doctor/index.js";
-import type { AdapterProbe, PlatformAdapter, TargetSpec } from "../platform/contract.js";
+import type {
+  AdapterProbe,
+  PlatformAdapter,
+  ProbeIntent,
+  TargetSpec,
+} from "../platform/contract.js";
 import type { CommsOptions } from "../platform/windows/comms.js";
 import {
   selectAdapter,
@@ -414,7 +419,15 @@ async function doctor(
   }
 
   try {
-    const result = await runDoctor(selection.adapter, target);
+    // A bare `ae-a8n doctor` checks the local script-invocation path: the
+    // caller's own session is the target, so session-separation and
+    // "another AE is running" blockers do not apply. Any explicit --target,
+    // --user or --host keeps the isolated-session checks.
+    const intent: ProbeIntent =
+      target.name === "local" && target.user === null && target.host === null
+        ? "local"
+        : "session";
+    const result = await runDoctor(selection.adapter, target, intent);
     const exitCode = result.status === "blocked" ? EXIT.blocked : EXIT.ok;
     const facts = factsOf(result.probe);
     const envelope = buildEnvelope({
@@ -428,6 +441,13 @@ async function doctor(
       checks: result.checks,
       facts,
       capabilities: result.probe.capabilities,
+      ...(intent === "local"
+        ? {
+            notice:
+              "local mode: doctor checks the script-invocation path for your own session; " +
+              "a running After Effects is attached to, not refused, and close() will not quit it.",
+          }
+        : {}),
       env: deps.env,
     });
     emit(envelope, options.json, deps, options.verbose);
