@@ -151,6 +151,13 @@ export type HostAttestation = {
   readonly refusesConsoleTarget?: boolean | null;
 };
 
+/**
+ * `HostTransport.kind` of the opt-in in-AE dispatcher transport (#127).
+ * Lives here, not in the transport module, so capability reporting can name
+ * it without importing the transport's filesystem machinery.
+ */
+export const DISPATCHER_TRANSPORT_KIND = "in-ae-dispatcher" as const;
+
 export interface HostTransport {
   /** Stable identifier recorded in the session manifest and trace. */
   readonly kind: string;

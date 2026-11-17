@@ -66,12 +66,16 @@ export class FakeFolder {
     }
   }
 
-  getFiles(): FakeFile[] {
+  getFiles(mask?: string): FakeFile[] {
     if (!this.exists) {
       return [];
     }
+    // ExtendScript's mask is a `*.ext` glob; anything else is ignored, as a
+    // real host ignores masks it does not understand.
+    const suffix = mask !== undefined && mask.startsWith("*.") ? mask.slice(1) : null;
     return readdirSync(this.fsName)
       .filter((name) => !name.startsWith("."))
+      .filter((name) => suffix === null || name.endsWith(suffix))
       .map((name) => new FakeFile(joinPath(this.fsName, name)))
       .filter((file) => file.exists && !file.isDirectory);
   }

@@ -10,6 +10,23 @@ import type { DiagnosticCode } from "../doctor/diagnostics.js";
 import type { GuiAppState } from "../driver/gui-recovery.js";
 import type { HostTransport } from "../driver/transport.js";
 
+/**
+ * The opt-in in-AE dispatcher transport (#127), selected by name. It is
+ * never chosen implicitly: `"script-invocation"` remains the default and
+ * there is no automatic fallback between transports.
+ */
+export type DispatcherTransportSelection = {
+  readonly kind: "in-ae-dispatcher";
+  /** Channel directory; defaults to `~/.ae-a8n/dispatcher`. */
+  readonly channelDir?: string;
+};
+
+/** What `LaunchOptions.transport` accepts: a transport instance, or the named opt-in selection. */
+export type TransportSelection =
+  | HostTransport
+  | "in-ae-dispatcher"
+  | DispatcherTransportSelection;
+
 export type { DiagnosticsOptions, SessionDiagnostics } from "../driver/session-diagnostics.js";
 
 export type ApplicationInfo = {
@@ -261,8 +278,15 @@ export type LaunchOptions = {
   /**
    * Supply a transport to bypass process invocation entirely. This is how the
    * fake host is injected, and how `ae-farm` runs against a remote worker.
+   *
+   * The named selection `"in-ae-dispatcher"` (or
+   * `{ kind: "in-ae-dispatcher", channelDir? }`) opts into the in-AE
+   * dispatcher transport (#127): requests go through a private file channel
+   * to a dispatcher a human activated inside After Effects, with no per-call
+   * Apple Events. It is explicit opt-in only — there is no fallback to the
+   * script transport, and the default is unchanged.
    */
-  readonly transport?: HostTransport;
+  readonly transport?: TransportSelection;
   /**
    * Environment variables to set inside the After Effects process once it
    * is ready, before anything else runs (`$.setenv`). Native plugins read

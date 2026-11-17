@@ -1096,5 +1096,278 @@
     return "direct";
   }
 
-  main();
+  // -------------------------------------------------------- dispatcher ---
+  //
+  // Opt-in in-AE transport (#127). Instead of answering one request file per
+  // script run, this mode keeps an `app.scheduleTask` polling a private
+  // channel directory and answers the *same* named operations from the same
+  // `methods` table — there is no second dispatch table and no eval of
+  // caller-supplied code.
+  //
+  // Activation is deliberate and human: File > Scripts > Run Script File on
+  // the generated `activate.jsx`, or a per-user `Scripts/Startup` entry the
+  // user installed. This file never installs itself, never opens a socket,
+  // and never quits After Effects.
+  //
+  // Channel contract (mirrors the one-shot path):
+  //   <root>/inbox/<id>.request.json   claimed by rename before it runs
+  //   <root>/outbox/<id>.result.json   published by rename
+  //   <root>/state.json                heartbeat the Node side reads
+  // A request that cannot be answered still gets a failure envelope when it
+  // can be published; when it cannot, the caller reports UNKNOWN and never
+  // resends — a claimed request is never replayed.
+
+  var DISPATCHER_POLL_MS = 250;
+  var DISPATCHER_MIN_POLL_MS = 50;
+  var DISPATCHER_MAX_POLL_MS = 5000;
+  /** Heartbeat refresh cadence, in ticks. */
+  var DISPATCHER_STATE_EVERY = 8;
+  /** Outbox results older than this are deleted; they are deliveries nobody read. */
+  var DISPATCHER_RESULT_MAX_AGE_MS = 60 * 60 * 1000;
+
+  function dispatcherRefusal(reason) {
+    var error = new Error("request refused: " + reason);
+    error.name = "RequestRefusedError";
+    return error;
+  }
+
+  function dispatcherPaths(root) {
+    var base = String(root);
+    while (base.length > 1 && base.substring(base.length - 1) === "/") {
+      base = base.substring(0, base.length - 1);
+    }
+    return {
+      root: base,
+      inbox: base + "/inbox",
+      outbox: base + "/outbox",
+      state: base + "/state.json"
+    };
+  }
+
+  /**
+   * Validates a claimed request and runs it through the same `dispatch` the
+   * one-shot path uses. Throws — the caller turns that into a failure
+   * envelope — for anything that is not a live, authorized, named operation.
+   */
+  function runDispatcherRequest(state, claimed, id) {
+    var started = new Date().getTime();
+    var request;
+    try {
+      request = state.codec.parse(readTextFile(claimed.fsName));
+    } catch (parseFailure) {
+      throw dispatcherRefusal("the request is not valid JSON");
+    }
+    if (request === null || typeof request !== "object" || request.v !== 1) {
+      throw dispatcherRefusal("unsupported request envelope");
+    }
+    if (String(request.id) !== id) {
+      // The id in the envelope must be the id in the file name: a mismatch
+      // means the file was not addressed to this request slot.
+      throw dispatcherRefusal("request id does not match its file name");
+    }
+    if (request.token !== state.token) {
+      throw dispatcherRefusal("request token does not match this channel");
+    }
+    if (typeof request.method !== "string" || request.method.length === 0) {
+      throw dispatcherRefusal("request names no method");
+    }
+    if (typeof request.timeoutMs !== "number" || !isFinite(request.timeoutMs)) {
+      throw dispatcherRefusal("request carries no usable deadline");
+    }
+    var now = new Date().getTime();
+    if (now > claimed.modified.getTime() + request.timeoutMs) {
+      // The caller's deadline already passed while the request waited
+      // unclaimed (AE busy, dispatcher not yet active). Refuse it: running
+      // it now would execute work nobody is still waiting for.
+      var stale = new Error("request expired before the dispatcher claimed it");
+      stale.name = "StaleRequestError";
+      throw stale;
+    }
+    var result = dispatch(request);
+    return {
+      v: request.v,
+      id: id,
+      ok: true,
+      durationMs: new Date().getTime() - started,
+      result: result === undefined ? null : result
+    };
+  }
+
+  function writeDispatcherState(state) {
+    var report = {
+      v: 1,
+      token: state.token,
+      instance: state.instance,
+      aeVersion: String(app.version),
+      activatedAt: state.activatedAt,
+      lastTick: new Date().getTime(),
+      pollMs: state.pollMs
+    };
+    try {
+      publishResult(state.paths.state, state.codec.stringify(report));
+    } catch (stateError) {
+      // A heartbeat that cannot be written is not worth a modal dialog; the
+      // Node side reads a stale file as "not answering" and says so.
+    }
+  }
+
+  /** Removes outbox results too old for any caller to still be waiting on. */
+  function sweepDispatcherOutbox(state) {
+    var outbox = new Folder(state.paths.outbox);
+    if (!outbox.exists) {
+      return;
+    }
+    var horizon = new Date().getTime() - DISPATCHER_RESULT_MAX_AGE_MS;
+    var files = outbox.getFiles("*.result.json");
+    for (var i = 0; i < files.length; i++) {
+      var file = files[i];
+      if (file instanceof File && file.modified.getTime() < horizon) {
+        file.remove();
+      }
+    }
+  }
+
+  function dispatcherTick(state) {
+    try {
+      var inbox = new Folder(state.paths.inbox);
+      if (!inbox.exists) {
+        return;
+      }
+      var files = inbox.getFiles("*.request.json");
+      files.sort(function (a, b) {
+        if (a.name < b.name) {
+          return -1;
+        }
+        if (a.name > b.name) {
+          return 1;
+        }
+        return 0;
+      });
+      // One request per tick: the channel contract is strictly serial, so a
+      // long operation can never overlap the next claim. Files that are not
+      // dispatcher requests (other writers, stale names) are skipped, never
+      // allowed to stall the queue.
+      for (var i = 0; i < files.length; i++) {
+        var file = files[i];
+        if (!(file instanceof File)) {
+          continue;
+        }
+        var match = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.request\.json$/.exec(file.name);
+        if (match === null) {
+          continue;
+        }
+        var id = match[1];
+        // Claim before running: a host restart cannot replay a claimed
+        // operation, and a second dispatcher cannot take the same file.
+        if (!file.rename(id + ".claimed")) {
+          continue;
+        }
+        var claimed = new File(inbox.fsName + "/" + id + ".claimed");
+        var began = new Date().getTime();
+        var reply;
+        try {
+          reply = runDispatcherRequest(state, claimed, id);
+        } catch (failure) {
+          reply = {
+            v: 1,
+            id: id,
+            ok: false,
+            durationMs: new Date().getTime() - began,
+            error: toErrorPayload(failure)
+          };
+        }
+        try {
+          publishResult(
+            state.paths.outbox + "/" + id + ".result.json",
+            state.codec.stringify(reply)
+          );
+        } catch (publishError) {
+          // The caller times out UNKNOWN; do not retry a claimed request.
+        }
+        claimed.remove();
+        break;
+      }
+      state.ticks += 1;
+      if (state.ticks % DISPATCHER_STATE_EVERY === 0) {
+        writeDispatcherState(state);
+        sweepDispatcherOutbox(state);
+      }
+    } catch (tickError) {
+      // A scheduled task must never raise a modal dialog while the user
+      // works. With no state update the Node side reports UNKNOWN.
+    }
+  }
+
+  function startDispatcher(config) {
+    if ($.global.__a8nDispatcherTask !== undefined) {
+      throw new Error(
+        "ae-a8n dispatcher is already active in this After Effects; " +
+          "refusing a second dispatcher"
+      );
+    }
+    var codec = loadJson();
+    var root = new Folder(String(config.root));
+    if (!root.exists || !root.isDirectory) {
+      throw new Error("ae-a8n dispatcher: channel root is not a directory: " + String(config.root));
+    }
+    var paths = dispatcherPaths(root.fsName);
+    var inbox = new Folder(paths.inbox);
+    var outbox = new Folder(paths.outbox);
+    if (!inbox.exists || !outbox.exists) {
+      throw new Error("ae-a8n dispatcher: channel folders are missing; prepare the channel first");
+    }
+    var token = String(config.token);
+    if (!/^[a-f0-9]{64}$/.test(token)) {
+      throw new Error("ae-a8n dispatcher: channel token is malformed");
+    }
+    var pollMs = config.pollMs;
+    if (typeof pollMs !== "number" || !isFinite(pollMs)) {
+      pollMs = DISPATCHER_POLL_MS;
+    }
+    if (pollMs < DISPATCHER_MIN_POLL_MS) {
+      pollMs = DISPATCHER_MIN_POLL_MS;
+    }
+    if (pollMs > DISPATCHER_MAX_POLL_MS) {
+      pollMs = DISPATCHER_MAX_POLL_MS;
+    }
+    if (typeof app.scheduleTask !== "function") {
+      throw new Error("ae-a8n dispatcher: this After Effects has no app.scheduleTask");
+    }
+    var state = {
+      codec: codec,
+      paths: paths,
+      token: token,
+      pollMs: pollMs,
+      instance:
+        "i" +
+        new Date().getTime().toString(16) +
+        Math.floor(Math.random() * 0xffffff).toString(16),
+      activatedAt: new Date().getTime(),
+      ticks: 0
+    };
+    var tick = function () {
+      dispatcherTick(state);
+    };
+    // The scheduled string names the global, so the function must be there
+    // before the first fire — pollMs later at the earliest.
+    $.global.__a8nDispatcherTick = tick;
+    $.global.__a8nDispatcherTask = app.scheduleTask(
+      "$.global.__a8nDispatcherTick()",
+      pollMs,
+      true
+    );
+    writeDispatcherState(state);
+  }
+
+  var __a8nEntry = this.__a8n;
+  if (
+    __a8nEntry !== undefined &&
+    __a8nEntry !== null &&
+    __a8nEntry.dispatcher !== undefined &&
+    __a8nEntry.dispatcher !== null
+  ) {
+    startDispatcher(__a8nEntry.dispatcher);
+  } else {
+    main();
+  }
 })();
