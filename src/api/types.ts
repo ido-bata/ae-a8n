@@ -6,7 +6,56 @@
  * what callers see.
  */
 
-import type { HostTransport } from "../driver/transport.js";
+import type { DiagnosticCode } from "../doctor/diagnostics.js";
+import type { GuiAppState } from "../driver/gui-recovery.js";
+import type { HostTransport, SessionAuthorization } from "../driver/transport.js";
+
+export type { SessionAuthorization } from "../driver/transport.js";
+
+/**
+ * The opt-in in-AE dispatcher transport (#127), selected by name. It is
+ * never chosen implicitly: `"script-invocation"` remains the default and
+ * there is no automatic fallback between transports.
+ */
+export type DispatcherTransportSelection = {
+  readonly kind: "in-ae-dispatcher";
+  /** Channel directory; defaults to `~/.ae-a8n/dispatcher`. */
+  readonly channelDir?: string;
+  /**
+   * Pin the session to one dispatcher instance (#145): the `instance` id a
+   * previous session reported through `ae.capabilities()` or
+   * `ae-a8n dispatcher status`. `launch()` refuses when the answering
+   * dispatcher is a different After Effects — a reconnect can prove it
+   * reached the same engine, and a different one is never operated.
+   */
+  readonly instance?: string;
+  /**
+   * Pin the session to one AE install (#155 follow-up): `launch()` refuses
+   * when the answering dispatcher's heartbeat `aeVersion` disagrees with
+   * this install's version on any component the heartbeat reports — a
+   * patch-level difference is refused whenever `app.version` carries one.
+   * The version is derived from the app bundle on macOS; on other
+   * platforms pass `aeVersion` instead. This is a version-level check, not
+   * executable identity — the heartbeat carries no pid or install path, so
+   * same-version installs are indistinguishable.
+   */
+  readonly installDir?: string;
+  /**
+   * Pin the session to one AE version explicitly (e.g. "26.5" or
+   * "26.5.3"), compared at the precision the heartbeat reports. Use this
+   * where `installDir` cannot derive a version (non-macOS), or to pin a
+   * version without naming an install.
+   */
+  readonly aeVersion?: string;
+};
+
+/** What `LaunchOptions.transport` accepts: a transport instance, or the named opt-in selection. */
+export type TransportSelection =
+  | HostTransport
+  | "in-ae-dispatcher"
+  | DispatcherTransportSelection;
+
+export type { DiagnosticsOptions, SessionDiagnostics } from "../driver/session-diagnostics.js";
 
 export type ApplicationInfo = {
   readonly version: string;
@@ -246,10 +295,26 @@ export type LaunchOptions = {
   /** Per-operation timeout, excluding the readiness probe. */
   readonly timeoutMs?: number;
   /**
+   * How long the readiness probe may wait for After Effects to become
+   * scriptable, in milliseconds. Default 180 000.
+   *
+   * A cold start can exceed the default: first-run dialogs, plugin scans and
+   * a busy machine all delay the moment AE answers `app.info`. This budget
+   * covers that wait only; it does not extend `timeoutMs`.
+   */
+  readonly readinessTimeoutMs?: number;
+  /**
    * Supply a transport to bypass process invocation entirely. This is how the
    * fake host is injected, and how `ae-farm` runs against a remote worker.
+   *
+   * The named selection `"in-ae-dispatcher"` (or
+   * `{ kind: "in-ae-dispatcher", channelDir? }`) opts into the in-AE
+   * dispatcher transport (#127): requests go through a private file channel
+   * to a dispatcher a human activated inside After Effects, with no per-call
+   * Apple Events. It is explicit opt-in only — there is no fallback to the
+   * script transport, and the default is unchanged.
    */
-  readonly transport?: HostTransport;
+  readonly transport?: TransportSelection;
   /**
    * Environment variables to set inside the After Effects process once it
    * is ready, before anything else runs (`$.setenv`). Native plugins read
@@ -260,6 +325,25 @@ export type LaunchOptions = {
    * rejects with `HostNotOwnedError` and leaves the running AE untouched.
    */
   readonly hostEnvironment?: Readonly<Record<string, string>>;
+  /**
+   * Explicit authorization for operations that only an owned session may
+   * otherwise perform (#145). Ownership and authorization are separate
+   * authorities: a session that started its After Effects needs no grant;
+   * a session attached to a running one needs the grant for each
+   * privileged operation class it intends to use (`extensionMethods`,
+   * `hostEnvironment`, `menuCommands`). A session whose ownership is
+   * `unknown` — target identity unproven — is never authorized by a grant;
+   * it must establish `attached`/`owned` first.
+   *
+   * The grant is the caller's recorded consent and a caller-side gate: the
+   * AE host does not authenticate or independently authorize it (the
+   * channel token remains the only host-side check). It never changes
+   * ownership and never permits quitting the host: `close()` still quits
+   * only a proven-owned instance. It is snapshotted at launch, recorded in
+   * the trace and `ae.capabilities()`, and it ends with the session — a
+   * reconnect or a different target instance must be authorized again.
+   */
+  readonly authorization?: SessionAuthorization;
   /**
    * The macOS login session the After Effects lives in.
    *
@@ -294,3 +378,110 @@ export type LaunchOptions = {
    */
   readonly recoveryGraceMs?: number;
 };
+
+/**
+ * Options for `AfterEffects.resume`: the same session shape as `launch`,
+ * except `sessionRoot` is required — it is the directory the original
+ * `launch()` used, which holds the launch-provenance record resume checks.
+ */
+export type ResumeOptions = Omit<LaunchOptions, "sessionRoot"> & {
+  readonly sessionRoot: string;
+};
+
+/*
+ * Read-only GUI observation (#109).
+ *
+ * `ae.guiState()` reports what the owned After Effects session's screen
+ * currently shows — windows, their classification against the same dialog
+ * policy `session.recover` uses, and the aggregate verdict — without
+ * pressing anything. "unavailable" is a first-class answer: when no owned
+ * target is attested or the session cannot be entered, the report says so
+ * instead of guessing.
+ */
+
+/** How one observed window stands against the recovery policy. */
+export type GuiWindowClassification =
+  /** The window does not hold the host at a modal state. */
+  | { readonly kind: "not-blocking" }
+  /**
+   * A measured dialog class whose safe button `session.recover` may press.
+   */
+  | { readonly kind: "pressable"; readonly dialogClass: string }
+  /**
+   * A recognised dialog class that may never be pressed (crash repair,
+   * startup warning, recovery project, scripting permission). `reason`
+   * says why it is a human's decision.
+   */
+  | {
+      readonly kind: "unpressable";
+      readonly dialogClass: string;
+      readonly reason: string;
+    }
+  /** A sign-in, licence or account window: always a human's decision. */
+  | { readonly kind: "human-only"; readonly dialogClass: string | null }
+  /** Blocking, but not a class the project has measured: quarantine. */
+  | { readonly kind: "unknown"; readonly code: "A8N-SEC-001" };
+
+export type GuiWindowReport = {
+  /** 1-based position in the Accessibility listing, as `listWindows` sees it. */
+  readonly index: number;
+  readonly title: string;
+  readonly role: string;
+  readonly subrole: string | null;
+  readonly texts: readonly string[];
+  readonly buttons: readonly string[];
+  readonly blocking: boolean;
+  readonly classification: GuiWindowClassification;
+};
+
+/**
+ * The verdict `session.recover` would reach over the same windows, from
+ * `chooseRecoveryWindow` — the same classifier the press path uses, so the
+ * report never disagrees with what a recovery would do.
+ */
+export type GuiAssessment = {
+  readonly action: "none" | "human-only" | "unpressable" | "known" | "quarantine";
+  /** Present only for `quarantine`: the diagnostic the run would report. */
+  readonly code: DiagnosticCode | null;
+  /** What was seen and what it means, for a human. */
+  readonly detail: string;
+  /** `describeWindow` of the window the verdict is about, when there is one. */
+  readonly window: string | null;
+};
+
+export type GuiSessionInfo = {
+  readonly uid: number;
+  readonly username: string;
+  readonly asid: number | null;
+  readonly kind: string;
+};
+
+export type GuiStateObservation = {
+  readonly pid: number;
+  readonly session: GuiSessionInfo;
+  /** Whether the AE process is the frontmost app of its session. */
+  readonly frontmost: boolean;
+  readonly windows: readonly GuiWindowReport[];
+  /**
+   * The WindowServer census for this pid. When unavailable the AX listing
+   * alone was used and `windows` may under-report what is on screen.
+   */
+  readonly windowServer: GuiAppState["windowServer"];
+  /**
+   * True when AX reported zero windows but the WindowServer lists some:
+   * the AX tree is unserviceable and `windows` is not evidence of a clean
+   * screen.
+   */
+  readonly axSuspect: boolean;
+  readonly assessment: GuiAssessment;
+  readonly observedAt: string;
+};
+
+export type GuiStateReport =
+  | ({ readonly status: "observed" } & GuiStateObservation)
+  | {
+      readonly status: "unavailable";
+      /** Why nothing could be observed; never a silent empty report. */
+      readonly reason: string;
+      readonly observedAt: string;
+    };

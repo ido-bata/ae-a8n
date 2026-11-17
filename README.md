@@ -16,10 +16,12 @@ const frame = await (await project.comp("Main")).renderFrame(0); // { path, widt
 await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to throw away
 ```
 
-> **Alpha.** `0.1.0-alpha.2` is the release under the `next` dist-tag; `latest`
-> stays on `0.1.0-alpha.0` until a stable release is approved. If
-> `npm view @ido-bata/ae-a8n@next version` does not show this version, it has
-> not been published yet. The API may change before 0.1.0.
+> **Alpha / prerelease.** `0.2.0-beta.1` is the release under the `next`
+> dist-tag; `latest` stays on `0.1.0-alpha.0` until a stable release is
+> approved. If `npm view @ido-bata/ae-a8n@next version` does not show this
+> version, it has not been published yet. The API may change before 0.2.0,
+> and `0.2.0-beta.1` is a prerelease because the in-AE dispatcher transport
+> has no Windows real-host evidence (see below).
 
 ## Status
 
@@ -27,15 +29,25 @@ await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to th
 | --- | --- |
 | macOS | Verified against After Effects 2026 (26.5x89, Japanese UI) on macOS 27, arm64: launch, project/comp/layer lookup, effects by match name, parameter write/read, one-frame PNG render, typed failures, timeouts, session ownership; 20 consecutive fresh-session runs |
 | Windows | Verified against After Effects 2026 (26.5x89, English UI) on Windows 11 x64: cold launch, install discovery, process ownership and quit-only-what-this-session-started, menu commands, `hostEnvironment`, scene building, Undo/Redo, and Ae_Restro's 33-check E2E through this API (3 runs). The isolated backend also ran end to end on that host on 2026-11-11: a signed job over the channel, an in-session agent, AE started, comp and text layer built, frame 0 rendered, and the started process quit — twice. See [docs/windows-verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/windows-verification.md) and [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md). ARM64 and non-English UIs not run |
+| In-AE dispatcher (opt-in) | macOS AE 26.5.3 (`26.5.3x9`): the packed-consumer real lane passed on 2026-11-17 — handshake, comp/layer edit, PNG render, static extension call, authorization and instance-pin refusals, pinned reconnect, attached safe close — and `Scripts/Startup` auto-activation was observed. No Windows real-host run exists |
 | Node | 22 or later (developed on 24) |
 
 What has been checked, and how, is in [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md).
 
-What is **not** proven in `0.1.0-alpha.2`, so a green run is not read as more
+What is **not** proven in `0.2.0-beta.1`, so a green run is not read as more
 than it is:
 
-- Extension methods (`hostScript`, `ae.call`, `ae-a8n extension build`) are
-  `fake/mock only`: no `ae.call` has run against a real After Effects.
+- **Windows real-host evidence for the dispatcher paths is absent.** The
+  opt-in in-AE dispatcher transport (`transport: "in-ae-dispatcher"`,
+  `ae-a8n dispatcher`, `ae-a8n extension build` through the dispatcher),
+  its lifecycle CLI, Startup execution and the acceptance harness have
+  real-host evidence on macOS AE 26.5.3 only; no Windows real-host run
+  exists for them. The Windows-verified claims above cover the
+  script-invocation path measured on earlier tarballs, not this candidate.
+- Extension methods via `hostScript` / `ae.call` on the default
+  script-invocation transport remain `fake/mock only` on real After
+  Effects; they are verified on real host only through the dispatcher
+  path on macOS AE 26.5.3.
 - On the Windows isolated backend `manifest.json` records
   `destinationProof: "unproven"` and `ownershipProof: "unproven"`; the backend
   never reports them as proven.
@@ -54,14 +66,23 @@ Requirements on the machine that runs After Effects:
 
 - After Effects installed in the default location (`/Applications/Adobe After Effects <version>/` on macOS), or pass `installDir`.
 - **Settings → Scripting & Expressions → Allow Scripts to Write Files and Access Network** enabled. Without it the first call times out instead of failing fast.
-- On **After Effects 2026 (26.5)** the host also needs AE's approval to run scripts from the driver's folder: AE refuses the first `DoScriptFile` with `-1708` and shows a modal that points at its Scripting & Expressions panel. Approve the session's `staging/` folder there (the folder holds the entry script and the staged host script); the approval covers later calls.
+- On **After Effects 2026 (26.5)** the host also needs AE's approval to run scripts from the driver's folder: AE refuses the first `DoScriptFile` with `-1708` and shows a modal that points at its Scripting & Expressions panel. Approve the session's `staging/` folder there (the folder holds the entry script and the staged host script). The approval's granularity — per folder, per script, or coarser — is still unmeasured; a read-only probe and protocol for measuring it on a real Mac are in [docs/script-trust-measurement.md](docs/script-trust-measurement.md).
+
+The full first-run sequence — install, `doctor`, the human permission
+approvals, first launch, version check, close, and reconnect after a restart —
+is in [docs/quickstart.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/quickstart.md).
 
 ## Doctor
 
-`ae-a8n doctor` is the read-only entry point. It inspects the machine an
-isolated After Effects session would use and reports every fact it could not
-read as a blocker, never as a pass. It does not start After Effects, open a
-session, change TCC or SIP, read a credential, or send an Apple Event.
+`ae-a8n doctor` is the read-only entry point. A bare `doctor` probes the
+**local** script-invocation path — the session you are running it in — so a
+running After Effects is reported as info (`A8N-AE-009`), not refused, and
+the console-session separation checks do not apply. `doctor --user` /
+`--host` / `--target` probe the isolated-session path instead. It reports
+every fact it could not read as `unproven` (a warning or info check), never
+as a pass, and every blocker with a human-readable remedy. It does not
+start After Effects, open a session, change TCC or SIP, read a credential,
+or send an Apple Event.
 
 ```bash
 npx @ido-bata/ae-a8n doctor
@@ -157,7 +178,7 @@ unsaved edit in someone's open project is still their work.
 
 | | |
 | --- | --- |
-| `AfterEffects.launch(options?)` | `{ sessionRoot?, installDir?, timeoutMs?, transport?, hostEnvironment? }`; `hostEnvironment` is set inside an owned AE process (`$.setenv`) for native plugins; `timeoutMs` is the per-call default, which `openProject`, `project` and `renderFrame` can override for one call; waits for a readiness probe (180 s budget) |
+| `AfterEffects.launch(options?)` | `{ sessionRoot?, installDir?, timeoutMs?, readinessTimeoutMs?, transport?, hostEnvironment? }`; `hostEnvironment` is set inside an owned AE process (`$.setenv`) for native plugins; `timeoutMs` is the per-call default, which `openProject`, `project` and `renderFrame` can override for one call; `readinessTimeoutMs` extends the readiness-probe budget (default 180 s) for slow cold starts; waits for a readiness probe |
 | `ae.info()`, `ae.version()` | version from the probe / live |
 | `ae.ownership()` | `{ kind: "owned" \| "attached" \| "unknown", evidence }` |
 | `ae.openProject(path, { unsavedChanges?, timeoutMs? })` | → `Project`; `path` must be absolute (`/…`, `C:\…`, `\\server\…`), otherwise `TypeError` before anything is sent |
@@ -174,6 +195,7 @@ unsaved edit in someone's open project is still their work.
 | `comp.openInViewer()`, `comp.selectLayers(names)` | make the comp active; select exactly these layers |
 | `layer.setEnabled(on)`, `layer.transform()`, `layer.shapePaths()` | video switch; transform values; a shape layer's paths in layer space |
 | `ae.close({ unsavedChanges? })` | → `{ quit, ownership, reason? }` |
+| `ae.diagnostics()` | → `SessionDiagnostics`: host crash reports, host logs and the trace collected into `ae.artifactsDir/diagnostics/`; `notes` says what could not be collected |
 | `ae.tracePath`, `ae.traceEvents`, `ae.artifactsDir` | evidence |
 
 Errors: `EntityNotFoundError` (with `kind`), `UnsavedChangesError`,
@@ -228,8 +250,13 @@ After Effects turned out to do and changes with it.
 ## Examples and the agent skill
 
 - [`examples/inspect.ts`](examples/inspect.ts) — install, ownership, listing; changes nothing.
+- [`examples/smoke.ts`](examples/smoke.ts) — the minimal real-host smoke: launch → version → handshake → project → close; read-only, skips cleanly without After Effects.
 - [`examples/render-compare.ts`](examples/render-compare.ts) — apply, set, render before/after, count changed pixels.
 - [`skills/after-effects-automation/SKILL.md`](skills/after-effects-automation/SKILL.md) — instructions for AI coding agents: how to use this package against a real After Effects without damaging anyone's work, and how to investigate failures. Both directories ship in the package; installing the package does not register the skill with any agent — copy it where your agent loads skills from.
+
+## Development
+
+Contributors and coding agents: bootstrap, daily commands, worktree lifecycle, and verification levels are in [docs/development.md](docs/development.md). Agent-facing operating rules are in [AGENTS.md](AGENTS.md). Consumer acceptance (clean install → real-host smoke, and what ae-test / Aulymo need) is in [docs/consumer-acceptance.md](docs/consumer-acceptance.md).
 
 ## Known risks
 

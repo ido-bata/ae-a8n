@@ -26,6 +26,7 @@ export {
   AfterEffectsError,
   EntityNotFoundError,
   HostError,
+  HostLeftRunningError,
   HostNotOwnedError,
   HostQuarantinedError,
   HostUnavailableError,
@@ -38,12 +39,58 @@ export {
 } from "./api/errors.js";
 export type { CloseResult } from "./api/index.js";
 
+/*
+ * Capability handshake surface (#102): `ae.capabilities()` plus the
+ * negotiation and dispatch-authorization helpers, structurally conforming
+ * to ae-devtools `ae-devtools.capability-handshake/v1`.
+ */
+export {
+  assertDispatchAllowed,
+  CAPABILITY_CONTRACT_SCHEMA,
+  CAPABILITY_CONTRACT_VERSION,
+  CAPABILITY_ID_SNAPSHOT,
+  negotiateCapabilities,
+  PERMISSION_VALUES,
+  type CapabilityAdvertisement,
+  type CapabilityKind,
+  type Compatibility,
+  type ContractVersion,
+  type DispatchCheck,
+  type DispatchResult,
+  type ExecutionClass,
+  type ExecutionDescriptor,
+  type ExecutionGuarantees,
+  type ExecutionModeStability,
+  type HandshakeDiagnostic,
+  type HandshakeResponse,
+  type HandshakeTarget,
+  type HostSessionEvidence,
+  type ImplementationAxis,
+  type NegotiationRequest,
+  type NegotiationResult,
+  type NonInterferenceEvidence,
+  type OwnershipEvidence,
+  type Permission,
+  type ProofLevel,
+  type RefusalReason,
+  type RowPersistence,
+  type VerificationAxis,
+} from "./api/capabilities.js";
+
 export type {
   ApplicationInfo,
   CommandExecution,
   CompInfo,
   CreateCompOptions,
+  DiagnosticsOptions,
+  DispatcherTransportSelection,
   EffectInfo,
+  GuiAssessment,
+  GuiSessionInfo,
+  GuiStateObservation,
+  GuiStateReport,
+  GuiWindowClassification,
+  GuiWindowReport,
   LaunchOptions,
   LayerInfo,
   LayerTransform,
@@ -62,19 +109,136 @@ export type {
   ValueType,
   RenderOptions,
   RenderedFrame,
+  SessionDiagnostics,
+  TransportSelection,
 } from "./api/types.js";
 
 export { TraceRecorder } from "./trace/trace.js";
 export type { TraceEvent, TraceStatus } from "./trace/trace.js";
+export type { DiagnosticCode } from "./doctor/diagnostics.js";
 
 export { AeDriver } from "./driver/driver.js";
-export type { DriverOptions, StopOptions, StopResult } from "./driver/driver.js";
-export type { HostOwnership, HostTransport, InvokeOptions } from "./driver/transport.js";
+export type { DriverOptions, HostCondition, StopOptions, StopResult } from "./driver/driver.js";
+export type {
+  HostAttestation,
+  HostOwnership,
+  HostState,
+  HostTransport,
+  InvokeOptions,
+  OwnedProcess,
+} from "./driver/transport.js";
+export {
+  darwinDiagnosticSources,
+  diagnosticSourcesFor,
+  unsupportedDiagnosticSources,
+} from "./driver/session-diagnostics.js";
+export type {
+  CrashReportEntry,
+  DiagnosticSources,
+  DiagnosticsFile,
+  EvidenceAttribution,
+} from "./driver/session-diagnostics.js";
 export { ScriptInvocationTransport } from "./driver/script-invocation.js";
+export {
+  DispatcherTransport,
+  DISPATCHER_TRANSPORT_KIND,
+  defaultDispatcherChannelDir,
+  dispatcherStartupDir,
+  type DispatcherChannelStatus,
+  type DispatcherHeartbeat,
+  type DispatcherTransportOptions,
+} from "./driver/dispatcher-transport.js";
+export {
+  launchProvenancePath,
+  readLaunchProvenance,
+} from "./driver/launch-provenance.js";
+export type { LaunchProvenance } from "./driver/launch-provenance.js";
 export {
   AfterEffectsNotInstalledError,
   resolveInstall,
   type AfterEffectsInstall,
 } from "./driver/install-path.js";
+
+/*
+ * macOS GUI observation and recovery surface (#109, #111).
+ *
+ * These are the building blocks a recovery orchestrator (ae-devtools #55)
+ * consumes: fail-closed session checks, AX + WindowServer observation,
+ * dialog classification, and lease-serialized mutation. Everything here is
+ * darwin-only in practice — non-Aqua sessions and non-darwin hosts refuse
+ * rather than guess.
+ */
+export {
+  assessGuiObservation,
+  censusRunnerInSession,
+  defaultLeaseController,
+  GuiMutationError,
+  GuiRecoveryError,
+  isBlockingWindow,
+  MacGuiRecovery,
+  parseUiListing,
+  screenshotLooksReal,
+  type GuiAppState,
+  type GuiButtonInfo,
+  type GuiLeaseController,
+  type GuiRecoveryOptions,
+  type GuiWindowInfo,
+} from "./driver/gui-recovery.js";
+export {
+  chooseRecoveryWindow,
+  classifyDialog,
+  classifyUnpressable,
+  describeWindow,
+  isHumanOnlyWindow,
+  KNOWN_DIALOG_CLASSES,
+  MacHostRecovery,
+  RECOVERY_BUTTONS,
+  UNPRESSABLE_DIALOG_CLASSES,
+  type HostRecovery,
+  type MacHostRecoveryOptions,
+  type RecoveryContext,
+  type RecoveryOutcome,
+  type RecoveryWindowChoice,
+} from "./driver/recovery.js";
+export {
+  listAppInstances,
+  MacSessionError,
+  parseLsappinfo,
+  readGuiSession,
+  readGuiSessionFailure,
+  readUsername,
+  type MacAppInstance,
+  type MacSession,
+  type MacSessionKind,
+} from "./driver/mac-session.js";
+export {
+  acquireGuiLease,
+  auditGuiEvent,
+  defaultGuiLeaseRoot,
+  defaultPidAlive,
+  defaultPidStartedAt,
+  guiLeasePaths,
+  guiSessionKey,
+  inspectGuiLease,
+  reapGuiLease,
+  type GuiAuditEvent,
+  type GuiLease,
+  type GuiLeaseOptions,
+  type GuiLeaseOutcome,
+  type GuiLeaseSession,
+  type PidAliveProbe,
+  type PidStartProbe,
+} from "./platform/darwin/gui-lease.js";
+export {
+  censusForPid,
+  execFileCensusRunner,
+  parseWindowCensus,
+  windowServerCensus,
+  WINDOW_CENSUS_PYTHON,
+  WINDOW_CENSUS_SCRIPT,
+  type CensusRunner,
+  type WindowCensus,
+  type WindowServerWindow,
+} from "./platform/darwin/window-census.js";
 
 export { A8N_VERSION } from "./version.js";

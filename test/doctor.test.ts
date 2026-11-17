@@ -70,6 +70,26 @@ function darwinFacts(overrides: Partial<DarwinFacts> = {}): DarwinFacts {
     aeProcesses: [],
     aeProcessesReadable: true,
     aeProcessesFailure: null,
+    aeScripting: {
+      state: "allowed",
+      prefsDir: "/Users/ae-test/Library/Preferences/Adobe/After Effects/26.5",
+      prefValue: "1",
+    },
+    aeScriptingComponent: {
+      state: "present",
+      found: [
+        "/Applications/Adobe After Effects 2026/Plug-ins/Keyframe/Scripting.plugin",
+      ],
+      checked: [
+        "/Applications/Adobe After Effects 2026/Plug-ins/Keyframe/Scripting.plugin",
+        "/Applications/Adobe After Effects 2026.app/Contents/Frameworks/extendscript.framework",
+        "/Applications/Adobe After Effects 2026.app/Contents/Frameworks/dvascripting.framework",
+      ],
+    },
+    aeStartupFolder: {
+      state: "present",
+      path: "/Users/ae-test/Library/Preferences/Adobe/After Effects/26.5/Scripts/Startup",
+    },
     evidence: EVIDENCE,
     ...overrides,
   };
@@ -84,9 +104,16 @@ function checkFor(facts: DarwinFacts, code: string) {
 }
 
 describe("the macOS probe is honest about what it read", () => {
-  it("reports no checks for a readable, dedicated account", () => {
+  it("reports no blockers for a readable, dedicated account", () => {
     const result = probe(darwinFacts());
-    expect(result.checks).toEqual([]);
+    // The script-invocation prerequisites that a read-only probe cannot prove
+    // are still reported — as warnings/info, never as guessed success.
+    expect(result.checks.map((check) => check.code).sort()).toEqual([
+      "A8N-AE-007",
+      "A8N-AE-008",
+      "A8N-PERM-008",
+    ]);
+    expect(result.checks.every((check) => check.severity !== "blocker")).toBe(true);
     expect(result.capabilities).toEqual({
       // The read-only probe did not measure non-interference; the runner owns
       // that proof, so this must not be "proven" here.
@@ -95,6 +122,7 @@ describe("the macOS probe is honest about what it read", () => {
       provesDestination: false,
       guiRecovery: false,
       sessionIdentity: "uid-asid",
+      quitsOnlyOwned: true,
     });
   });
 
@@ -206,6 +234,163 @@ describe("the macOS probe is honest about what it read", () => {
     );
     expect(check).toMatchObject({ severity: "blocker" });
     expect(check?.detail).toContain("pid 4242");
+  });
+
+  it("reports AE script file/network permission off as a blocker", () => {
+    const check = checkFor(
+      darwinFacts({
+        aeScripting: {
+          state: "blocked",
+          prefsDir: "/Users/ae-test/Library/Preferences/Adobe/After Effects/26.5",
+          prefValue: "0",
+        },
+      }),
+      "A8N-PERM-003",
+    );
+    expect(check).toMatchObject({ severity: "blocker" });
+    expect(check?.detail).toContain("Pref_SCRIPTING_FILE_NETWORK_SECURITY");
+    expect(check?.evidence).toMatchObject({ prefValue: "0" });
+  });
+
+  it("does not report the scripting permission when allowed, unreadable or unevaluated", () => {
+    for (const aeScripting of [
+      {
+        state: "allowed" as const,
+        prefsDir: "/Users/ae-test/Library/Preferences/Adobe/After Effects/26.5",
+        prefValue: "1",
+      },
+      {
+        state: "unreadable" as const,
+        prefsDir: "/Users/ae-test/Library/Preferences/Adobe/After Effects/26.5",
+        prefValue: null,
+      },
+      null,
+    ]) {
+      expect(checkFor(darwinFacts({ aeScripting }), "A8N-PERM-003")).toBeUndefined();
+    }
+  });
+
+  it("reports an undeterminable script permission as unproven, not blocked", () => {
+    for (const aeScripting of [
+      null,
+      {
+        state: "unreadable" as const,
+        prefsDir: "/Users/ae-test/Library/Preferences/Adobe/After Effects/26.5",
+        prefValue: null,
+      },
+    ]) {
+      const check = checkFor(darwinFacts({ aeScripting }), "A8N-PERM-007");
+      expect(check).toMatchObject({ severity: "warning" });
+      expect(check?.detail).toContain("unproven");
+      expect(checkFor(darwinFacts({ aeScripting }), "A8N-PERM-003")).toBeUndefined();
+    }
+  });
+
+  it("reports script-trust approval as unproven with its granularity unmeasured", () => {
+    const check = checkFor(darwinFacts(), "A8N-PERM-008");
+    expect(check).toMatchObject({ severity: "warning" });
+    expect(check?.evidence).toMatchObject({
+      state: "unproven",
+      approvalGranularity: "unproven",
+    });
+    expect(check?.detail).toContain("unproven");
+  });
+
+  it("reports a missing scripting component as a blocker", () => {
+    const check = checkFor(
+      darwinFacts({
+        aeScriptingComponent: { state: "absent", found: [], checked: ["/x", "/y"] },
+      }),
+      "A8N-AE-006",
+    );
+    expect(check).toMatchObject({ severity: "blocker" });
+    expect(check?.detail).toContain("component");
+  });
+
+  it("never treats component presence as proof it loads", () => {
+    const present = checkFor(darwinFacts(), "A8N-AE-007");
+    expect(present).toMatchObject({ severity: "warning" });
+    expect(present?.detail).toContain("does not prove");
+
+    const unreadable = checkFor(
+      darwinFacts({
+        aeScriptingComponent: { state: "unproven", found: [], checked: ["/x"] },
+      }),
+      "A8N-AE-007",
+    );
+    expect(unreadable).toMatchObject({ severity: "warning" });
+    expect(unreadable?.detail).toContain("unproven");
+  });
+
+  it("reports the per-user startup folder state without claiming execution", () => {
+    const present = checkFor(darwinFacts(), "A8N-AE-008");
+    expect(present).toMatchObject({ severity: "info" });
+    expect(present?.detail).toContain("present");
+
+    const absent = checkFor(
+      darwinFacts({
+        aeStartupFolder: { state: "absent", path: "/x/Scripts/Startup" },
+      }),
+      "A8N-AE-008",
+    );
+    expect(absent?.detail).toContain("absent");
+    expect(absent?.detail).toContain("unverified");
+  });
+
+  it("skips the script-invocation checks when no install resolved", () => {
+    const result = probe(darwinFacts({ aeInstalls: [] }));
+    const codes = result.checks.map((check) => check.code);
+    for (const code of ["A8N-PERM-007", "A8N-PERM-008", "A8N-AE-006", "A8N-AE-007", "A8N-AE-008"]) {
+      expect(codes).not.toContain(code);
+    }
+  });
+
+  it("local intent drops session checks and reports a running AE as info", () => {
+    const running = {
+      aeProcesses: [
+        {
+          pid: 4242,
+          uid: 501,
+          name: "/Applications/Adobe After Effects 2026/After Effects",
+        },
+      ],
+      evidence: {
+        ...EVIDENCE,
+        aeProcesses: "4242|501|/Applications/Adobe After Effects 2026/After Effects",
+      },
+    };
+    const local = probeDarwin(
+      darwinFacts({
+        ...running,
+        targetUser: "rebui",
+        targetUid: 501,
+        consoleUid: 501,
+        guiSession: { uid: 501, username: "rebui", asid: 100021, kind: "Aqua" },
+      }),
+      "local",
+    );
+    const codes = local.checks.map((check) => check.code);
+    expect(codes).not.toContain("A8N-SESSION-003");
+    expect(codes).not.toContain("A8N-AE-001");
+    expect(codes).toContain("A8N-AE-009");
+    expect(local.checks.find((check) => check.code === "A8N-AE-009")).toMatchObject({
+      severity: "info",
+    });
+
+    const session = probeDarwin(
+      darwinFacts({
+        ...running,
+        targetUser: "rebui",
+        targetUid: 501,
+        consoleUid: 501,
+        guiSession: { uid: 501, username: "rebui", asid: 100021, kind: "Aqua" },
+      }),
+      "session",
+    );
+    const sessionCodes = session.checks.map((check) => check.code);
+    expect(sessionCodes).toContain("A8N-SESSION-003");
+    expect(sessionCodes).toContain("A8N-AE-001");
+    expect(sessionCodes).not.toContain("A8N-AE-009");
   });
 
   it("never turns unreadable facts into success", () => {
@@ -437,7 +622,9 @@ describe("the Darwin adapter's non-probe methods do not lie", () => {
     const stateFile = join(root, "state.json");
     try {
       const adapter = new DarwinAdapter({
-        readFacts: () => darwinFacts(),
+        // `null` is the honest state for another account's prefs: unreadable,
+        // so the scripting step stays a human step.
+        readFacts: () => darwinFacts({ aeScripting: null }),
         setupStateFile: stateFile,
       });
       const steps = await adapter.plan(TARGET);
@@ -494,6 +681,46 @@ describe("the Darwin adapter's non-probe methods do not lie", () => {
       // Recovery on macOS is not implemented (#59); the finding must say so
       // rather than read as a clean sweep.
       expect(findings[0]?.detail).toContain("cannot yet inspect");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("marks the scripting step done only when the preference was read as allowed", async () => {
+    const root = mkdtempSync(join(tmpdir(), "a8n-mac-setup-"));
+    try {
+      const adapter = new DarwinAdapter({
+        readFacts: () =>
+          darwinFacts({
+            aeScripting: {
+              state: "allowed",
+              prefsDir: "/Users/rebui/Library/Preferences/Adobe/After Effects/26.5",
+              prefValue: "1",
+            },
+          }),
+        setupStateFile: join(root, "state.json"),
+      });
+      const steps = await adapter.plan(TARGET);
+      const step = steps.find((entry) => entry.id === "macos.ae-scripting");
+      expect(step?.state).toBe("done");
+      expect(step?.action).toBeNull();
+
+      const blocked = new DarwinAdapter({
+        readFacts: () =>
+          darwinFacts({
+            aeScripting: {
+              state: "blocked",
+              prefsDir: "/Users/rebui/Library/Preferences/Adobe/After Effects/26.5",
+              prefValue: "0",
+            },
+          }),
+        setupStateFile: join(root, "state2.json"),
+      });
+      const blockedStep = (await blocked.plan(TARGET)).find(
+        (entry) => entry.id === "macos.ae-scripting",
+      );
+      expect(blockedStep?.state).toBe("needs-human");
+      expect(blockedStep?.reason).toContain("script file/network access is off");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -697,7 +924,14 @@ describe("doctor on a Windows host, through the same CLI", () => {
       name: "WIN-AE-01",
       isolation: "remote-host",
     });
-    expect(envelope.checks).toEqual([]);
+    // No blockers, but the script-invocation prerequisites Windows cannot
+    // prove are still reported as unproven — never as a guessed pass.
+    expect(envelope.checks.map((check) => check.code).sort()).toEqual([
+      "A8N-AE-007",
+      "A8N-AE-008",
+      "A8N-PERM-008",
+    ]);
+    expect(envelope.checks.every((check) => check.severity !== "blocker")).toBe(true);
     expect(envelope.capabilities).toMatchObject({
       nonInterference: "by-construction",
       provesOwnership: false,
@@ -706,6 +940,7 @@ describe("doctor on a Windows host, through the same CLI", () => {
       provesDestination: true,
       guiRecovery: false,
       sessionIdentity: "host-and-user",
+      quitsOnlyOwned: true,
     });
   });
 

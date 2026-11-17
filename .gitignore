@@ -1,4 +1,3 @@
-node_modules/
 dist/
 coverage/
 *.tsbuildinfo
@@ -12,5 +11,9 @@ coverage/
 # npm pack output
 *.tgz
 
+# per-worktree lifecycle state (see scripts/worktree/)
+.worktree.env
+
 # scratch directories used while reviewing the published shape
 .review-probe/
+node_modules

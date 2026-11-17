@@ -24,9 +24,30 @@ import { join, resolve } from "node:path";
 import { AeDriver } from "../driver/driver.js";
 import { readGuiSession, readGuiSessionFailure, type MacSession } from "../driver/mac-session.js";
 import { MacHostRecovery } from "../driver/recovery.js";
+import {
+  readLaunchProvenance,
+  type LaunchProvenance,
+} from "../driver/launch-provenance.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
+import {
+  aeVersionFromInstallDir,
+  aeVersionParts,
+  DispatcherTransport,
+} from "../driver/dispatcher-transport.js";
+import { DISPATCHER_TRANSPORT_KIND, type HostTransport } from "../driver/transport.js";
+import {
+  AUTHORIZATION_SCOPES,
+  type AuthorizationScope,
+  type SessionAuthorization,
+} from "../driver/transport.js";
 import { readExtensionHeader } from "../extensions/manifest.js";
 import { TraceRecorder, type TraceEvent } from "../trace/trace.js";
+import {
+  buildCapabilityHandshake,
+  newCapabilityHostNonce,
+  type HandshakeResponse,
+} from "./capabilities.js";
+import { guiStateReport } from "./gui-state.js";
 import {
   AfterEffectsError,
   EntityNotFoundError,
@@ -39,6 +60,7 @@ import {
 } from "./errors.js";
 import type { StopResult } from "../driver/driver.js";
 import type { HostOwnership } from "../driver/transport.js";
+import type { TransportSelection } from "./types.js";
 
 /** What `AfterEffects.close` did. */
 export type CloseResult = StopResult;
@@ -48,36 +70,46 @@ import type {
   CommandExecution,
   CompInfo,
   CreateCompOptions,
+  DiagnosticsOptions,
   LayerTransform,
   SceneSnapshot,
   ShapePath,
   TextLayerInfo,
   TextLayerOptions,
   EffectInfo,
+  GuiStateReport,
   LaunchOptions,
   LayerInfo,
   OpenProjectOptions,
   OperationOptions,
+  ResumeOptions,
   ParameterValue,
   ProjectInfo,
   PropertyInfo,
   PropertyKind,
   RenderOptions,
   RenderedFrame,
+  SessionDiagnostics,
 } from "./types.js";
 
 export * from "./errors.js";
 export type * from "./types.js";
+// The capability-handshake surface is exported once, from the package
+// entry point (src/index.ts → ./api/capabilities.js); re-exporting it here
+// too would duplicate the list and leak test-only symbols twice.
 
 /** Internal call surface; not exported so callers cannot bypass the API. */
 class Session {
   readonly driver: AeDriver;
   readonly trace: TraceRecorder;
   readonly events: TraceEvent[] = [];
+  /** The consumer's explicit grant for non-owned operations (#145). */
+  readonly authorization: SessionAuthorization;
 
-  constructor(driver: AeDriver, trace: TraceRecorder) {
+  constructor(driver: AeDriver, trace: TraceRecorder, authorization: SessionAuthorization = {}) {
     this.driver = driver;
     this.trace = trace;
+    this.authorization = authorization;
     trace.subscribe((event) => {
       this.events.push(event);
     });
@@ -234,12 +266,123 @@ function requirePositive(value: unknown, field: string): number {
   return value;
 }
 
-/** Refuses an operation that only the session that started AE may perform. */
-function requireOwned(session: Session, op: string): void {
-  const ownership = session.driver.ownership();
-  if (ownership.kind !== "owned") {
-    throw new HostNotOwnedError(op, ownership.kind, ownership.evidence);
+/**
+ * The operation classes a session grant can cover, for validation and for
+ * the handshake's `grantedOperations` report (#145).
+ */
+const GRANT_SCOPES = AUTHORIZATION_SCOPES;
+
+/**
+ * Validates `LaunchOptions.authorization`: an object whose keys are grant
+ * scopes, `extensionMethods` being `true`, `false`, or a list of declared
+ * method names, the rest booleans. Anything else is refused before launch —
+ * a grant that cannot be read is not a grant.
+ */
+function requireAuthorization(value: unknown): SessionAuthorization {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("authorization must be an object of grant scopes");
   }
+  const grant: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!(GRANT_SCOPES as readonly string[]).includes(key)) {
+      throw new TypeError(
+        `authorization.${key} is not a grant scope; known scopes: ${GRANT_SCOPES.join(", ")}`,
+      );
+    }
+    if (key === "extensionMethods") {
+      if (entry === true || entry === false) {
+        grant[key] = entry;
+      } else if (Array.isArray(entry) && entry.every((name) => typeof name === "string")) {
+        // Snapshot: the session's grant must not follow later mutation of
+        // the caller's array — authorization is fixed when the session opens.
+        grant[key] = [...entry];
+      } else {
+        throw new TypeError("authorization.extensionMethods must be true, false, or a list of method names");
+      }
+    } else if (typeof entry === "boolean") {
+      grant[key] = entry;
+    } else {
+      throw new TypeError(`authorization.${key} must be a boolean`);
+    }
+  }
+  return grant;
+}
+
+/** The scope names this session is actually authorized for, for reporting. */
+export function grantedScopes(session: Session): readonly AuthorizationScope[] {
+  const ownership = session.driver.ownership();
+  if (ownership.kind === "owned") {
+    // An owned session needs no grant: every scope is allowed. Reporting the
+    // full list keeps "what may this session do" answerable in one place.
+    return GRANT_SCOPES;
+  }
+  if (ownership.kind === "unknown") {
+    // A grant never authorizes an unproven target, so reporting scopes here
+    // would overstate what the session may do.
+    return [];
+  }
+  const grant = session.authorization;
+  return GRANT_SCOPES.filter((scope) => {
+    const value = grant[scope];
+    return value === true || (Array.isArray(value) && value.length > 0);
+  });
+}
+
+/**
+ * Whether the session's grant covers `scope` for `method` (when the scope
+ * is method-scoped, as `extensionMethods` is). Owned sessions are always
+ * covered; anything else needs the explicit grant (#145).
+ */
+function grantCovers(session: Session, scope: AuthorizationScope, method?: string): boolean {
+  const ownership = session.driver.ownership();
+  if (ownership.kind === "owned") {
+    return true;
+  }
+  if (ownership.kind === "unknown") {
+    // The grant is the caller's consent for a *known attached* target. On a
+    // host whose identity cannot be proven, consent alone must not carry an
+    // operation — the session has to establish attached/owned first.
+    return false;
+  }
+  const value = session.authorization[scope];
+  if (value === true) {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return method !== undefined && value.includes(method);
+  }
+  return false;
+}
+
+/**
+ * Refuses an operation the session is not authorized for.
+ *
+ * Three authorities stay separate (#145): quitting the host is owned-only
+ * and is enforced in the driver, never here; operating the connected
+ * target is what the session bound at launch; and each privileged
+ * operation class needs either ownership or the matching grant. Unknown
+ * ownership is never promoted: it is authorized exactly like "attached".
+ */
+function requireAuthorized(
+  session: Session,
+  op: string,
+  scope: AuthorizationScope,
+  method?: string,
+): void {
+  const ownership = session.driver.ownership();
+  if (ownership.kind === "owned" || grantCovers(session, scope, method)) {
+    return;
+  }
+  const granted = grantedScopes(session);
+  const hint =
+    granted.length === 0
+      ? `pass authorization: { ${scope}: true } (or the method names) in launch options`
+      : `the grant covers ${granted.join(", ")} but not "${scope}"`;
+  throw new HostNotOwnedError(
+    op,
+    ownership.kind,
+    `${ownership.evidence}; ${hint}`,
+  );
 }
 
 /** Layers in `after` and not in `before`, compared by id. */
@@ -263,6 +406,8 @@ export class AfterEffects {
   readonly #probe: ApplicationInfo;
   /** Names the loaded host script declares; empty for the built-in host. */
   readonly #extensionMethods: readonly string[];
+  /** Fallback `hostId` when the transport cannot attest a process identity. */
+  readonly #hostNonce = newCapabilityHostNonce();
   #closed = false;
 
   constructor(session: Session, probe: ApplicationInfo, extensionMethods: readonly string[] = []) {
@@ -280,16 +425,184 @@ export class AfterEffects {
    * error names the operation rather than surfacing a raw bridge message.
    */
   static async launch(options: LaunchOptions = {}): Promise<AfterEffects> {
+    return AfterEffects.#open(options, null, "session.launch");
+  }
+
+  /**
+   * Rebinds to the After Effects an earlier `launch()` in the same
+   * `sessionRoot` started and proved it owned — for example after the
+   * calling process restarted.
+   *
+   * The launch-provenance record is checked against the live process list:
+   * the recorded pid must still be the same process (pid, start time, and
+   * the Windows creation identity), running the same install's executable,
+   * and the only instance of that install in scope. The readiness probe
+   * must then answer before ownership is claimed. Anything less refuses —
+   * resume never starts a replacement host and never quits what it cannot
+   * prove.
+   *
+   * A caller-supplied `transport` is used as-is: adoption is then the
+   * transport's own contract (the fake host, a remote worker), and the
+   * provenance record is not consulted.
+   */
+  static async resume(options: ResumeOptions): Promise<AfterEffects> {
+    const sessionRoot = resolve(options.sessionRoot);
+    let provenance: LaunchProvenance | null;
+    try {
+      provenance = readLaunchProvenance(sessionRoot);
+    } catch (error) {
+      throw new AfterEffectsError(
+        error instanceof Error ? error.message : String(error),
+        "session.resume",
+      );
+    }
+    if (provenance === null) {
+      throw new AfterEffectsError(
+        `no launch provenance in ${sessionRoot}: nothing this tooling owned was recorded there, ` +
+          "so there is no host to resume. Use launch() for a new session.",
+        "session.resume",
+      );
+    }
+    return AfterEffects.#open({ ...options, sessionRoot }, provenance, "session.resume");
+  }
+
+  /**
+   * Resolves `LaunchOptions.transport` into a `HostTransport`.
+   *
+   * Absent, the script-invocation transport is built exactly as before —
+   * including adoption of recorded launch provenance. A `HostTransport`
+   * instance is used as-is (the fake host, a remote worker). The named
+   * `"in-ae-dispatcher"` selection — opt-in only, #127 — builds the
+   * file-channel dispatcher transport; it never falls back to script
+   * invocation, and launch provenance does not apply to it (the dispatcher
+   * cannot prove process ownership, so it records none).
+   */
+  static #resolveTransport(
+    selection: TransportSelection | undefined,
+    adopt: LaunchProvenance | null,
+    options: LaunchOptions,
+    op: string,
+  ): HostTransport {
+    if (selection === undefined) {
+      return new ScriptInvocationTransport({
+        ...(adopt === null
+          ? {}
+          : {
+              adopt: {
+                pid: adopt.host.pid,
+                startedAt: adopt.host.startedAt,
+                identity: adopt.host.identity,
+                executable: adopt.host.executable,
+                recordedAt: adopt.recordedAt,
+              },
+            }),
+        ...(options.installDir === undefined ? {} : { installDir: options.installDir }),
+        ...(options.session === undefined ? {} : { sessionUid: options.session.uid }),
+      });
+    }
+    const isInstance =
+      typeof selection === "object" &&
+      selection !== null &&
+      typeof (selection as HostTransport).invoke === "function";
+    if (isInstance) {
+      return selection as HostTransport;
+    }
+    const kind = typeof selection === "string" ? selection : (selection as { kind?: unknown }).kind;
+    if (kind !== DISPATCHER_TRANSPORT_KIND) {
+      throw new AfterEffectsError(
+        `unknown transport selection ${JSON.stringify(kind)}; ` +
+          `supported selections are a HostTransport instance or "${DISPATCHER_TRANSPORT_KIND}"`,
+        op,
+      );
+    }
+    const channelDir =
+      typeof selection === "object" && selection !== null
+        ? (selection as { channelDir?: unknown }).channelDir
+        : undefined;
+    if (channelDir !== undefined && typeof channelDir !== "string") {
+      throw new AfterEffectsError("transport.channelDir must be a string", op);
+    }
+    const instance =
+      typeof selection === "object" && selection !== null
+        ? (selection as { instance?: unknown }).instance
+        : undefined;
+    if (instance !== undefined && typeof instance !== "string") {
+      throw new AfterEffectsError("transport.instance must be a string", op);
+    }
+    const installDir =
+      typeof selection === "object" && selection !== null
+        ? (selection as { installDir?: unknown }).installDir
+        : undefined;
+    if (installDir !== undefined && typeof installDir !== "string") {
+      throw new AfterEffectsError("transport.installDir must be a string", op);
+    }
+    const aeVersion =
+      typeof selection === "object" && selection !== null
+        ? (selection as { aeVersion?: unknown }).aeVersion
+        : undefined;
+    if (aeVersion !== undefined && typeof aeVersion !== "string") {
+      throw new AfterEffectsError("transport.aeVersion must be a string", op);
+    }
+    if (installDir !== undefined && aeVersion !== undefined) {
+      throw new AfterEffectsError(
+        "transport.installDir and transport.aeVersion are alternative pins; pass one",
+        op,
+      );
+    }
+    let expectedAeVersion: string | undefined;
+    try {
+      if (aeVersion !== undefined) {
+        expectedAeVersion = aeVersionParts(aeVersion).join(".");
+      } else if (installDir !== undefined) {
+        // The install's recorded version keeps its full precision; the
+        // transport compares it against the heartbeat at the heartbeat's
+        // own precision, so a patch difference is refused whenever
+        // app.version reports one.
+        expectedAeVersion = aeVersionParts(
+          aeVersionFromInstallDir(process.platform, installDir),
+        ).join(".");
+      }
+    } catch (error) {
+      throw new AfterEffectsError(
+        `transport target pin is not a usable AE version: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        op,
+      );
+    }
+    if (options.session !== undefined) {
+      // The dispatcher channel is per-OS-user: it can only reach an After
+      // Effects running as this user. Silently ignoring a session target
+      // would run the call in the wrong session, so refuse instead.
+      throw new AfterEffectsError(
+        "transport \"in-ae-dispatcher\" cannot address another login session: " +
+          "the file channel is private to this OS user, so the dispatcher can only " +
+          "reach an After Effects running as the same user",
+        op,
+      );
+    }
+    return new DispatcherTransport({
+      ...(channelDir === undefined ? {} : { channelDir }),
+      ...(instance === undefined ? {} : { expectedInstance: instance }),
+      ...(expectedAeVersion === undefined ? {} : { expectedAeVersion }),
+      // The effective host script is staged into the channel and its
+      // registered set is checked against the heartbeat at launch (#146).
+      ...(options.hostScript === undefined
+        ? {}
+        : { hostScriptPath: resolve(options.hostScript) }),
+    });
+  }
+
+  static async #open(
+    options: LaunchOptions,
+    adopt: LaunchProvenance | null,
+    op: string,
+  ): Promise<AfterEffects> {
     // Absolute, because AE resolves paths in the scripts it is given against
     // its own working directory rather than the caller's.
     const sessionRoot = resolve(options.sessionRoot ?? mkdtempSync(join(tmpdir(), "ae-a8n-")));
     const trace = new TraceRecorder({ file: join(sessionRoot, "trace.jsonl") });
-    const transport =
-      options.transport ??
-      new ScriptInvocationTransport({
-        ...(options.installDir === undefined ? {} : { installDir: options.installDir }),
-        ...(options.session === undefined ? {} : { sessionUid: options.session.uid }),
-      });
+    const transport = AfterEffects.#resolveTransport(options.transport, adopt, options, op);
 
     // The GUI fallback is only wired when the caller asks for it, and it only
     // ever acts inside the session that owns the After Effects.
@@ -303,7 +616,7 @@ export class AfterEffects {
         throw new AfterEffectsError(
           "session.recover needs the built-in script transport; the supplied transport cannot say which " +
             "process to recover. Nothing was started.",
-          "session.launch",
+          op,
         );
       }
       const targetSession = requireSession(options.session.uid);
@@ -315,12 +628,16 @@ export class AfterEffects {
           `session.recover: uid ${targetSession.uid} is not the session the transport talks into ` +
             `(${transport.targetSession?.uid ?? "unknown"}), so the fallback would act in another session. ` +
             "Nothing was started.",
-          "session.launch",
+          op,
         );
       }
       recovery = new MacHostRecovery({
         session: targetSession,
         pid: () => transport.recoveryTargetPid(),
+        // A pid is not an identity. The same re-check that produced the pid
+        // runs again immediately before every GUI action, so a process
+        // that exited and had its pid reused is never the one pressed.
+        verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
         screenshotDir: join(sessionRoot, "artifacts"),
       });
     }
@@ -335,14 +652,14 @@ export class AfterEffects {
       try {
         source = readFileSync(hostScript, "utf-8");
       } catch {
-        throw new AfterEffectsError(`host script not found: ${hostScript}`, "session.launch");
+        throw new AfterEffectsError(`host script not found: ${hostScript}`, op);
       }
       const declared = readExtensionHeader(source);
       if (declared === null) {
         throw new AfterEffectsError(
           `${hostScript} was not built by "ae-a8n extension build"; ` +
             "its header names no extension contract, so nothing was started",
-          "session.launch",
+          op,
         );
       }
       extensionMethods = declared;
@@ -354,6 +671,9 @@ export class AfterEffects {
       trace,
       ...(hostScript === null ? {} : { hostScriptPath: hostScript }),
       ...(options.timeoutMs === undefined ? {} : { defaultTimeoutMs: options.timeoutMs }),
+      ...(options.readinessTimeoutMs === undefined
+        ? {}
+        : { readinessTimeoutMs: requirePositive(options.readinessTimeoutMs, "readinessTimeoutMs") }),
       ...(recovery === undefined ? {} : { recovery }),
       ...(options.recoveryGraceMs === undefined
         ? {}
@@ -363,20 +683,45 @@ export class AfterEffects {
     // The session subscribes before the probe runs, so the live view and the
     // trace file record the same operations. Subscribing afterwards would make
     // `traceEvents` quietly disagree with `tracePath`.
-    const session = new Session(driver, trace);
+    const authorization =
+      options.authorization === undefined ? {} : requireAuthorization(options.authorization);
+    const session = new Session(driver, trace, authorization);
     const environment =
       options.hostEnvironment === undefined ? undefined : requireEnvironment(options.hostEnvironment);
     let probe: ApplicationInfo;
     try {
       probe = await driver.start();
     } catch (error) {
-      contextualise("session.launch", error);
+      contextualise(op, error);
     }
     if (environment !== undefined) {
-      // Never change the environment of an AE someone else is running.
-      requireOwned(session, "session.hostEnvironment");
+      // Never change the environment of an AE someone else is running
+      // without the consumer's explicit grant (#145).
+      requireAuthorized(session, "session.hostEnvironment", "hostEnvironment");
       await session.call("session.hostEnvironment", "app.setEnvironment", { variables: environment });
     }
+    // On the dispatcher transport the exposed set is what the heartbeat
+    // reported as actually registered inside After Effects (#146) — which
+    // launch() already proved equals the staged manifest. Everywhere else
+    // the staged declaration is the effective set.
+    if (transport instanceof DispatcherTransport) {
+      const bound = transport.boundExtensions();
+      if (bound === null) {
+        // launch() verified the staged manifest against the heartbeat, so a
+        // missing bound set means the verification never ran — fail closed
+        // rather than expose the staged declaration as if it were active.
+        throw new AfterEffectsError(
+          "the dispatcher session bound without a verified extension set; nothing was started",
+          op,
+        );
+      }
+      extensionMethods = bound.methods;
+    }
+    // The grant is evidence, not just enforcement: the trace records which
+    // operation classes this session may exercise on a host it does not own.
+    session.trace.record("session.authorization", "ok", 0, {
+      result: { ownership: session.driver.ownership().kind, granted: [...grantedScopes(session)] },
+    });
     return new AfterEffects(session, probe, extensionMethods);
   }
 
@@ -403,7 +748,7 @@ export class AfterEffects {
     options: OperationOptions = {},
   ): Promise<T> {
     requireString(name, "name");
-    requireOwned(this.#session, "extension.call");
+    requireAuthorized(this.#session, "extension.call", "extensionMethods", name);
     if (!this.#extensionMethods.includes(name)) {
       throw new ExtensionMethodNotFoundError("extension.call", name, this.#extensionMethods);
     }
@@ -419,6 +764,39 @@ export class AfterEffects {
   async version(): Promise<string> {
     const info = await this.#session.call<ApplicationInfo>("app.info", "app.info");
     return info.version;
+  }
+
+  /**
+   * What this session can attest about the After Effects it is connected
+   * to, in the ae-devtools `ae-devtools.capability-handshake/v1` shape
+   * (#102).
+   *
+   * Read-only discovery: it reports the launch probe's AE version/build,
+   * the transport's ownership/platform/execution-mode evidence, and the
+   * capabilities ae-a8n can back with evidence — built-in dispatch-table
+   * methods as `ae.operation.*` references and declared extension methods
+   * as `ae.tool.*`. It dispatches nothing.
+   *
+   * A compatible advertisement is not authorization to run anything: pair
+   * it with `negotiateCapabilities` (version/capability preflight) and
+   * `assertDispatchAllowed` (per-dispatch gate) before dispatching by
+   * capability ID. The existing typed API and `ae.call` keep their own
+   * contracts and are not gated by this handshake.
+   */
+  capabilities(): Promise<HandshakeResponse> {
+    const driver = this.#session.driver;
+    return Promise.resolve(
+      buildCapabilityHandshake({
+        ae: this.#probe,
+        transportKind: driver.transportKind,
+        attestation: driver.hostAttestation(),
+        ownership: driver.ownership(),
+        extensionMethods: this.#extensionMethods,
+        grantedOperations: grantedScopes(this.#session),
+        hostNonce: this.#hostNonce,
+        generatedAt: new Date().toISOString(),
+      }),
+    );
   }
 
   /**
@@ -485,6 +863,68 @@ export class AfterEffects {
    */
   ownership(): HostOwnership {
     return this.#session.driver.ownership();
+  }
+
+  /**
+   * Collects host-side evidence for this session — OS crash reports for the
+   * After Effects binaries, host logs touched while the session ran, and
+   * the session trace — into `<artifactsDir>/diagnostics/` and returns the
+   * report with the paths.
+   *
+   * This is how "AE stopped answering" becomes "AE crashed at 11:10 with
+   * SIGTERM from bash" instead of a guess: the report says what was found,
+   * and `notes` says what could not be collected. It never moves or deletes
+   * the user's files, and nothing is sent anywhere. Callable after a failed
+   * `close` too — the evidence is still there.
+   *
+   * `options` overrides where evidence is looked for: pass a fake `homeDir`
+   * or `sources` and collection never touches the real user directories.
+   */
+  diagnostics(options?: DiagnosticsOptions): SessionDiagnostics {
+    return this.#session.driver.diagnostics(options);
+  }
+
+  /**
+   * The owned After Effects process this session controls, for recovery
+   * authorization (ae-devtools #55). Returns the pid and the GUI session
+   * the process was verified to belong to — the identity a run marker must
+   * record before any GUI mutation is authorized.
+   *
+   * Returns null unless ownership is "owned" AND the transport can name
+   * its target. Callers must treat null as "no attested target", never
+   * substitute a pid found by other means: an unattested pid is exactly
+   * what recovery authorization exists to refuse.
+   */
+  recoveryTarget(): { pid: number; session: MacSession } | null {
+    if (this.#closed || this.ownership().kind !== "owned") {
+      return null;
+    }
+    return this.#session.driver.recoveryTarget();
+  }
+
+  /**
+   * What the owned After Effects instance's screen currently shows
+   * (ae-a8n #109): its windows, each classified against the measured
+   * recovery policy, and the aggregate verdict — without pressing anything.
+   *
+   * Read-only: the observation is audited but never takes the GUI mutation
+   * lease, and no button is ever pressed. It runs inside the session that
+   * owns the AE instance; when that session cannot be entered the report is
+   * `unavailable` with the reason, never an empty window list.
+   *
+   * `status: "unavailable"` is also the answer when no owned target is
+   * attested — an attached or unknown host has no proven pid/session, so
+   * there is no honest window list to report.
+   *
+   * On macOS the first observation in a session may raise the standard
+   * Accessibility consent prompt; that is the OS asking a human, not this
+   * API bypassing it.
+   */
+  guiState(): Promise<GuiStateReport> {
+    // The observation itself is synchronous (one Accessibility query inside
+    // the target session); `.then` keeps even a synchronous failure a
+    // rejection rather than a throw from a Promise-typed method.
+    return Promise.resolve().then(() => guiStateReport(this.recoveryTarget()));
   }
 
   /**
@@ -794,7 +1234,7 @@ export class MenuCommand {
    * blocks AE until a person dismisses it, and this then times out.
    */
   async execute(options: OperationOptions = {}): Promise<CommandExecution> {
-    requireOwned(this.#session, "menu.execute");
+    requireAuthorized(this.#session, "menu.execute", "menuCommands");
     const raw = await this.#session.call<Omit<CommandExecution, "added" | "removed" | "name">>(
       "menu.execute",
       "menu.execute",

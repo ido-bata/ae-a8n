@@ -45,11 +45,14 @@ import { fileURLToPath } from "node:url";
 import {
   assertOutcomeSession,
   assertNoRunningAfterEffects,
+  assertReportIsolation,
   assertResultSession,
   assertTargetSession,
   consoleAsid,
   consoleUid,
+  describeMissingSession,
   ensureSharedDir,
+  guiDomainError,
   parseAeProcesses,
   parseTerminalResult,
   readGuiSession,
@@ -375,12 +378,10 @@ function readReport(path, targetUid) {
   assertTrustedSharedFile(path, targetUid, "report");
   const report = JSON.parse(readFileSync(path, "utf-8"));
   assertResultSession(report, targetUid);
-  if (report.session?.isolated !== true) {
-    throw new Error(
-      `the run reported that it was not isolated (uid ${report.session?.uid}, console uid ` +
-        `${report.session?.consoleUid}); the result is not trusted.`,
-    );
-  }
+  // The report's own `isolated` flag is not evidence on its own: check the
+  // console owner it recorded. An unreadable /dev/console is -1, which must
+  // never read as a proven difference from the run's uid.
+  assertReportIsolation(report);
   return report;
 }
 
@@ -406,6 +407,12 @@ function main() {
   // the only channel that works there. Reading status runs nothing.
   const offstageStatus = readOffstageStatus(options.user);
   const session = resolveTargetSession(options.user, targetUid, offstageStatus);
+  if (session === null) {
+    // The launchd fallback is unreadable from the console for another user,
+    // and offstage may have no answer either. Report which happened instead
+    // of turning "cannot verify from here" into "not logged in".
+    throw describeMissingSession(targetUid, guiDomainError(targetUid));
+  }
   preflight({
     user: options.user,
     targetUid,

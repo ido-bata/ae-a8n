@@ -196,7 +196,7 @@ describe("the Windows execution path end to end", () => {
 
     const outcomes: string[] = [];
     for (const runId of runIds) {
-      const manifest = await readRunManifest(channel, runId);
+      const manifest = await readRunManifest(channel, runId, [KEY]);
       expect(manifest.ok).toBe(true);
       if (!manifest.ok) {
         continue;

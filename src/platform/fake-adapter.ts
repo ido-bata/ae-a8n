@@ -16,6 +16,7 @@ import {
   type IsolatedSession,
   type PlatformAdapter,
   type PlatformId,
+  type ProbeIntent,
   type RecoveryFinding,
   type RunOptions,
   type SessionIdentity,
@@ -31,6 +32,9 @@ export const FAKE_CAPABILITIES: Capabilities = {
   provesDestination: true,
   guiRecovery: true,
   sessionIdentity: "uid-asid",
+  // The fake never quits an After Effects at all, so it cannot quit an
+  // attached one either.
+  quitsOnlyOwned: true,
 };
 
 export const FAKE_IDENTITY: SessionIdentity = {
@@ -73,8 +77,8 @@ export class FakeAdapter implements PlatformAdapter {
     return Promise.resolve(this.capabilityValue);
   }
 
-  probe(target: TargetSpec): Promise<AdapterProbe> {
-    this.calls.push(`probe:${target.name}`);
+  probe(target: TargetSpec, intent: ProbeIntent = "session"): Promise<AdapterProbe> {
+    this.calls.push(`probe:${target.name}:${intent}`);
     return Promise.resolve({ checks: this.checksValue, capabilities: this.capabilityValue });
   }
 

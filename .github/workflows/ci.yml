@@ -68,6 +68,22 @@ jobs:
       - name: Verify the public API from an installed package
         run: node scripts/check-public-api.js
 
+      # The consumer acceptance smoke (#130): pack, install into a clean
+      # project, import through the published exports map, and check the API
+      # surface a consumer codes against. The real-host steps skip when no
+      # After Effects is discoverable — a green run here is packaging
+      # evidence, not real-host acceptance.
+      - name: Verify the consumer smoke from a clean install
+        run: node scripts/check-consumer-smoke.js
+
+      # Dispatcher consumer acceptance (#148): the fake lane runs the packed
+      # tarball against the in-repo fake AE — real lane needs a human
+      # activation and a fixture .aep, so CI skips it explicitly.
+      - name: Verify the dispatcher consumer acceptance (fake lane)
+        run: node scripts/check-dispatcher-acceptance.js
+        env:
+          A8N_ACCEPTANCE_SKIP_REAL: "1"
+
   # Issue #16: the release tooling's tests on native Windows, checked out as
   # Git for Windows does by default (core.autocrlf=true, so CRLF files). Only
   # these files: the rest of the suite's Windows status belongs to the Windows
@@ -157,3 +173,14 @@ jobs:
 
       - name: Verify the public API from an installed package
         run: node scripts/check-public-api.js
+
+      - name: Verify the consumer smoke from a clean install
+        run: node scripts/check-consumer-smoke.js
+
+      # Dispatcher consumer acceptance (#148): the fake lane runs the packed
+      # tarball against the in-repo fake AE — real lane needs a human
+      # activation and a fixture .aep, so CI skips it explicitly.
+      - name: Verify the dispatcher consumer acceptance (fake lane)
+        run: node scripts/check-dispatcher-acceptance.js
+        env:
+          A8N_ACCEPTANCE_SKIP_REAL: "1"

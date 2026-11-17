@@ -4,9 +4,11 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { signRunManifest, type JobKey } from "../src/platform/windows/auth.js";
 import { DirectoryChannel } from "../src/platform/windows/channel.js";
 import {
   RUN_MANIFEST_SCHEMA_VERSION,
+  encodeRunManifest,
   readRunManifest,
   runManifestPath,
   writeRunManifest,
@@ -15,6 +17,9 @@ import {
 
 const RUN_ID = "20261110T120000Z-abcdef01";
 const HASH = "a".repeat(64);
+
+const KEY: JobKey = { keyId: "manifest-key", secret: new Uint8Array(32).fill(7) };
+const OTHER_KEY: JobKey = { keyId: "other-key", secret: new Uint8Array(32).fill(3) };
 
 const MANIFEST: RunManifest = {
   schemaVersion: RUN_MANIFEST_SCHEMA_VERSION,
@@ -34,6 +39,7 @@ const MANIFEST: RunManifest = {
   ownershipProof: "unproven",
   startedAt: "2026-11-10T12:00:00.000Z",
   finishedAt: "2026-11-10T12:00:01.000Z",
+  artifactProof: "verified",
 };
 
 const roots: string[] = [];
@@ -49,18 +55,63 @@ afterEach(async () => {
 });
 
 describe("the run manifest", () => {
-  it("round-trips through runs/<runId>/manifest.json", async () => {
+  it("round-trips through runs/<runId>/manifest.json, signed", async () => {
     const files = await channel();
-    await writeRunManifest(files, RUN_ID, MANIFEST);
+    await writeRunManifest(files, RUN_ID, MANIFEST, KEY);
     expect(await files.read(runManifestPath(RUN_ID))).not.toBeNull();
-    expect(await readRunManifest(files, RUN_ID)).toEqual({ ok: true, value: MANIFEST });
+    expect(await readRunManifest(files, RUN_ID, [KEY])).toEqual({
+      ok: true,
+      value: signRunManifest(MANIFEST, KEY),
+    });
+  });
+
+  it("detects a manifest rewritten after publication", async () => {
+    // The manifest makes trust claims; a channel writer without the key can
+    // flip `outcome` but cannot re-sign it. Reading with the keyring refuses.
+    const files = await channel();
+    await writeRunManifest(files, RUN_ID, MANIFEST, KEY);
+    const signed = signRunManifest(MANIFEST, KEY);
+    await files.writeAtomic(
+      runManifestPath(RUN_ID),
+      encodeRunManifest({ ...signed, outcome: "failed" }),
+    );
+    const read = await readRunManifest(files, RUN_ID, [KEY]);
+    expect(read.ok).toBe(false);
+    if (!read.ok) {
+      expect(read.detail).toContain("not authentic");
+    }
+  });
+
+  it("refuses an unsigned manifest when a keyring is given, and reports it unproven without one", async () => {
+    const files = await channel();
+    // A manifest written before signing existed: shape-valid, no auth.
+    await files.writeAtomic(runManifestPath(RUN_ID), encodeRunManifest(MANIFEST));
+
+    const verified = await readRunManifest(files, RUN_ID, [KEY]);
+    expect(verified.ok).toBe(false);
+    if (!verified.ok) {
+      expect(verified.detail).toContain("no signature");
+    }
+
+    const shapeOnly = await readRunManifest(files, RUN_ID);
+    expect(shapeOnly).toMatchObject({ ok: true });
+    if (shapeOnly.ok) {
+      expect(shapeOnly.value.auth).toBeUndefined();
+    }
+  });
+
+  it("refuses a manifest signed with a key the reader does not hold", async () => {
+    const files = await channel();
+    await writeRunManifest(files, RUN_ID, MANIFEST, KEY);
+    const read = await readRunManifest(files, RUN_ID, [OTHER_KEY]);
+    expect(read.ok).toBe(false);
   });
 
   it("records an unproven AE version as null", async () => {
     const files = await channel();
     const manifest: RunManifest = { ...MANIFEST, aeVersion: null, outcome: "unknown" };
-    await writeRunManifest(files, RUN_ID, manifest);
-    expect(await readRunManifest(files, RUN_ID)).toMatchObject({
+    await writeRunManifest(files, RUN_ID, manifest, KEY);
+    expect(await readRunManifest(files, RUN_ID, [KEY])).toMatchObject({
       ok: true,
       value: { aeVersion: null, outcome: "unknown" },
     });
@@ -78,7 +129,7 @@ describe("the run manifest", () => {
     const files = await channel();
     const other = "20261110T110000Z-00000000";
     await expect(
-      writeRunManifest(files, RUN_ID, { ...MANIFEST, runId: other }),
+      writeRunManifest(files, RUN_ID, { ...MANIFEST, runId: other }, KEY),
     ).rejects.toThrow("does not match");
   });
 
@@ -93,10 +144,13 @@ describe("the run manifest", () => {
       { ...MANIFEST, aeVersion: "" },
       { ...MANIFEST, destinationProof: "guessed" },
       { ...MANIFEST, ownershipProof: "presumed" },
+      { ...MANIFEST, artifactProof: "probably" },
+      { ...MANIFEST, auth: { alg: "hmac-sha256", keyId: "k", signature: "not-hex" } },
       { ...MANIFEST, destinationProof: undefined },
       { ...MANIFEST, runId: "../escape" },
       { ...MANIFEST, startedAt: "yesterday" },
       { ...MANIFEST, host: "" },
+      { ...MANIFEST, surpriseField: true },
     ];
     for (const value of cases) {
       await files.writeAtomic(path, new TextEncoder().encode(JSON.stringify(value)));

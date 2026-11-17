@@ -17,7 +17,8 @@ const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 /** Run ids become one path component, so `.` and path separators are refused. */
 export function isRunId(value: string): boolean {
-  return RUN_ID_PATTERN.test(value) && value !== "." && value !== "..";
+  // The pattern's alphanumeric first character already excludes "." and "..".
+  return RUN_ID_PATTERN.test(value);
 }
 
 export type RunOwner = {
@@ -42,7 +43,7 @@ export type AcquireRunLockInput = {
 
 export type AcquireRunLockResult =
   | { readonly state: "acquired"; readonly lock: RunLock }
-  /** A fresh lock held by someone else (or with an unreadable timestamp). */
+  /** A fresh lock held by someone else. */
   | { readonly state: "busy"; readonly lock: RunLock }
   /** Older than the threshold, or unreadable. It is still on disk. */
   | { readonly state: "stale"; readonly lock: RunLock | null };

@@ -7,7 +7,6 @@
 
 [tools]
 node = "24"
-pnpm = "10"
 
 [tasks.build]
 description = "Compile TypeScript to dist/"
@@ -32,3 +31,11 @@ run = "npx vitest"
 [tasks.check]
 description = "Full local quality gate"
 depends = ["typecheck", "lint", "test"]
+
+[tasks."worktree:setup"]
+description = "Prepare the current worktree (toolchain + dependencies)"
+run = "bash scripts/worktree/setup.sh"
+
+[tasks."worktree:teardown"]
+description = "Release per-worktree resources before the worktree is removed"
+run = "bash scripts/worktree/teardown.sh"

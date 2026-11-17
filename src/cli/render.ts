@@ -24,6 +24,7 @@ export function generalHelp(): string {
     "  report   Print or re-render a prior run's report; never runs After Effects",
     "  agent    Run the in-session agent on a Windows host (setup starts this)",
     "  extension build   Build a host script declaring the consumer's own methods",
+    "  dispatcher        Prepare/status/Startup-register the in-AE dispatcher",
     "",
     "Common options:",
     "  --json             Print exactly one JSON document on stdout",
@@ -254,6 +255,7 @@ function renderCapabilities(capabilities: CliEnvelope["capabilities"]): string[]
     `  proves destination: ${capabilities.provesDestination ? "yes" : "no"}`,
     `  GUI recovery: ${capabilities.guiRecovery ? "yes" : "no"}`,
     `  session identity: ${capabilities.sessionIdentity}`,
+    `  quits only owned: ${capabilities.quitsOnlyOwned ? "yes" : "no"}`,
   ];
 }
 

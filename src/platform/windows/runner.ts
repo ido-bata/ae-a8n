@@ -27,6 +27,7 @@ import {
   type CommandOutcome,
   type IsolatedSession,
   type PlatformAdapter,
+  type ProbeIntent,
   type RecoveryFinding,
   type RunOptions,
   type SessionIdentity,
@@ -53,11 +54,10 @@ import {
 import {
   RUN_MANIFEST_SCHEMA_VERSION,
   writeRunManifest,
-  type RunManifest,
+  type UnsignedRunManifest,
 } from "./manifest.js";
 import { encodeJobPayload } from "./executor.js";
 import {
-  jobPaths,
   newJobId,
   sha256Hex,
   type AgentIdentity,
@@ -78,6 +78,7 @@ import {
   WINDOWS_RECOVERY_COMMAND,
 } from "./recovery.js";
 import { submitJob, type SubmitOptions, type SubmitResult } from "./remote.js";
+import { readResultArtifact } from "./result-artifacts.js";
 
 export const SETUP_STATE_PATH = "setup/state.json";
 
@@ -176,6 +177,13 @@ export type RunBinding = {
   readonly runId: string;
   /** Null until a job has been submitted. */
   readonly jobId: string | null;
+  /**
+   * The best agent identity proven for this run so far: the signed result's
+   * agent when the job produced one, else the live heartbeat's. `null` means
+   * nothing verified exists and destination proof must stay `unproven` —
+   * the configured placeholder identity is never proof (T099).
+   */
+  readonly agent?: AgentIdentity | null;
 };
 
 export interface WindowsSessionBackend {
@@ -438,8 +446,8 @@ export class WindowsAdapter implements PlatformAdapter {
     return Promise.resolve(windowsCapabilities(this.#isolation));
   }
 
-  async probe(target: TargetSpec): Promise<AdapterProbe> {
-    const prepared = await this.#prepare(target);
+  async probe(target: TargetSpec, intent: ProbeIntent = "session"): Promise<AdapterProbe> {
+    const prepared = await this.#prepare(target, intent);
     return {
       checks: prepared.checks,
       capabilities: windowsCapabilities(target.isolation),
@@ -698,7 +706,7 @@ export class WindowsAdapter implements PlatformAdapter {
       prepare: () => this.#prepare(target),
       run: (identity, argv, options, onRun) =>
         this.#runInSession(target, identity, argv, options, onRun),
-      destination: (run) => this.#verifyDestination(run),
+      destination: (run) => this.#verifyDestination(target, run),
       release: async (runId) => {
         await releaseRunLock(this.#channel, runId, this.#owner());
       },
@@ -757,20 +765,51 @@ export class WindowsAdapter implements PlatformAdapter {
     return { host: this.#host, user: this.#user };
   }
 
-  /** The marker must name this run, this job and the configured agent. */
-  #verifyDestination(run: RunBinding): Promise<DestinationVerdict> {
+  /**
+   * The marker must be signed by the channel key, name this run and this
+   * job, and carry the agent identity that was *verified* for the run — the
+   * signed result's agent, or the live heartbeat's — never the configured
+   * placeholder (T099). With no verified identity the destination is
+   * unproven, which is the fail-closed answer.
+   */
+  async #verifyDestination(target: TargetSpec, run: RunBinding): Promise<DestinationVerdict> {
     if (run.jobId === null) {
-      return Promise.resolve({
+      return {
         proven: false,
         code: "A8N-AE-002",
         detail: "no job was submitted for this run, so it has no destination",
-      });
+      };
     }
-    return proveRunDestination(this.#channel, {
-      runId: run.runId,
-      jobId: run.jobId,
-      agent: this.#agent,
-    });
+    const agent = run.agent ?? null;
+    if (agent === null) {
+      return {
+        proven: false,
+        code: "A8N-AE-002",
+        detail:
+          "no verified agent identity is bound to this run, so its destination " +
+          "cannot be proven; the configured agent name is not evidence",
+      };
+    }
+    const keys = await this.#destinationKeys(target);
+    return proveRunDestination(
+      this.#channel,
+      { runId: run.runId, jobId: run.jobId, agent },
+      keys,
+    );
+  }
+
+  /**
+   * The keys a session marker may be signed with. The same key that signs
+   * jobs signs markers; a caller-injected key wins, a remote target takes
+   * the verified channel key. Any failure yields no keys, which makes every
+   * marker unverifiable — unproven, never assumed.
+   */
+  async #destinationKeys(target: TargetSpec): Promise<readonly JobKey[]> {
+    try {
+      return [await this.#signingKey(target)];
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -864,19 +903,23 @@ export class WindowsAdapter implements PlatformAdapter {
    * The heartbeat that was live during `probe` may be minutes old by the time
    * a job is about to be written. Re-verify immediately before sending; a
    * stale or mismatched heartbeat refuses the send rather than leaving a job
-   * for an agent that is not there.
+   * for an agent that is not there. Returns the verified agent identity —
+   * the heartbeat's own, not the configured placeholder — so the job can be
+   * addressed to it (T095) and the destination proven against it (T099).
+   * Non-remote targets have no heartbeat to verify and return null.
    */
-  async #assertAgentAlive(target: TargetSpec): Promise<void> {
+  async #liveAgent(target: TargetSpec): Promise<AgentIdentity | null> {
     if (this.#remote === null || target.isolation !== "remote-host" || this.#simulatedHostProbe) {
-      return;
+      return null;
     }
     const comms = await this.#freshComms();
     if (!comms.ok) {
       throw new WindowsAgentUnavailableError(comms.checks);
     }
+    return comms.agent;
   }
 
-  async #prepare(target: TargetSpec): Promise<PreparedIdentity> {
+  async #prepare(target: TargetSpec, intent: ProbeIntent = "session"): Promise<PreparedIdentity> {
     this.#isolation = target.isolation;
     let runner: CommandRunner = this.#probeRunner;
     if (target.isolation === "remote-host" && this.#remote !== null && !this.#simulatedHostProbe) {
@@ -957,6 +1000,7 @@ export class WindowsAdapter implements PlatformAdapter {
     const result = await probeWindows(runner, {
       isolation: target.isolation,
       targetUser: target.user,
+      intent,
     });
     this.#facts = result.facts;
     const proven = !result.checks.some((check) => check.severity === "blocker");
@@ -994,7 +1038,7 @@ export class WindowsAdapter implements PlatformAdapter {
       throw new WindowsRunLockError(lock.state, runId);
     }
     try {
-      onRun({ runId, jobId: null });
+      onRun({ runId, jobId: null, agent: null });
 
       const payload = encodeJobPayload({
         argv: [...argv],
@@ -1002,31 +1046,86 @@ export class WindowsAdapter implements PlatformAdapter {
       });
       const startedAt = now.toISOString();
       const writer = owner;
+      const liveAgent = await this.#liveAgent(target);
       const submitOptions: SubmitOptions = {
         payload,
         runId,
         timeoutMs: options.timeoutMs,
         writer,
         key,
+        // Address the job to the agent the heartbeat just verified; absent a
+        // heartbeat (non-remote targets) the job keeps the one-agent rule.
+        ...(liveAgent === null
+          ? {}
+          : { target: { id: liveAgent.id, host: liveAgent.host, user: liveAgent.user } }),
         now: this.#now,
         random: this.#random,
         ...(this.#pollMs === undefined ? {} : { pollMs: this.#pollMs }),
         ...(this.#sleep === undefined ? {} : { sleep: this.#sleep }),
       };
 
-      await this.#assertAgentAlive(target);
       const submitted = await this.#submit(this.#channel, submitOptions);
-      onRun({ runId, jobId: submitted.jobId });
+      // What the run may claim as its agent: the signed result's identity
+      // when the job finished far enough to publish one, else the heartbeat's.
+      // Nothing else — the configured placeholder proves nothing (T099).
+      const runAgent =
+        (submitted.status === "ok" || submitted.status === "failed"
+          ? submitted.result.agent
+          : null) ?? liveAgent;
+      onRun({ runId, jobId: submitted.jobId, agent: runAgent });
       const facts = this.#facts ?? (await this.#prepare(target)).facts;
-      // Read the agent's marker back. Only a marker naming this run counts;
-      // anything else is recorded as unproven, never as a measured destination.
-      const destination = await this.#verifyDestination({ runId, jobId: submitted.jobId });
+      // Read the agent's signed marker back. Only a marker naming this run,
+      // this job and the verified agent counts; anything else is recorded as
+      // unproven, never as a measured destination.
+      const destination = await this.#verifyDestination(target, {
+        runId,
+        jobId: submitted.jobId,
+        agent: runAgent,
+      });
+      // The run's artifacts are read and checked against the digests the
+      // signed result carries before the manifest says anything about them:
+      // a rewrite after publication is detected here, not trusted later.
+      // Refused/unknown submissions carry no artifacts to verify.
+      let artifacts: {
+        readonly stdout: Uint8Array | null;
+        readonly stderr: Uint8Array | null;
+        readonly proof: "verified" | "unproven";
+      } | null = null;
+      let artifactRefusal: string | null = null;
+      if (submitted.status === "ok" || submitted.status === "failed") {
+        const stdout = await readResultArtifact(
+          this.#channel,
+          submitted.jobId,
+          submitted.result,
+          "stdout.log",
+        );
+        const stderr = await readResultArtifact(
+          this.#channel,
+          submitted.jobId,
+          submitted.result,
+          "stderr.log",
+        );
+        if (stdout.proof === "refused") {
+          artifactRefusal = stdout.detail;
+        } else if (stderr.proof === "refused") {
+          artifactRefusal = stderr.detail;
+        } else {
+          artifacts = {
+            stdout: stdout.bytes,
+            stderr: stderr.bytes,
+            proof:
+              stdout.proof === "verified" && stderr.proof === "verified"
+                ? "verified"
+                : "unproven",
+          };
+        }
+      }
       // The manifest records what was proven, not what was configured: the
       // agent identity and session come from the signed result when there is
       // one. `agentVerified` says which of the two this is.
       const verified =
         submitted.status === "ok" || submitted.status === "failed" ? submitted.result.agent : null;
-      const manifest: RunManifest = {
+      const manifest: UnsignedRunManifest = {
         schemaVersion: RUN_MANIFEST_SCHEMA_VERSION,
         runId,
         host: this.#host,
@@ -1046,8 +1145,9 @@ export class WindowsAdapter implements PlatformAdapter {
         ownershipProof: "unproven",
         startedAt,
         finishedAt: this.#now().toISOString(),
+        artifactProof: artifacts?.proof ?? "unproven",
       };
-      await writeRunManifest(this.#channel, runId, manifest);
+      await writeRunManifest(this.#channel, runId, manifest, key);
 
       if (submitted.status === "refused") {
         // The catch below releases the lock: this run is leaving without an
@@ -1060,14 +1160,24 @@ export class WindowsAdapter implements PlatformAdapter {
         throw new WindowsJobUnknownError(submitted.message, submitted.jobId);
       }
 
-      const artifacts = await this.#writeLocalArtifacts(submitted.jobId, runId);
+      if (artifactRefusal !== null) {
+        // The job ran and its result is signed; what failed is the artifact
+        // layer — a file was rewritten after publication. The manifest above
+        // already records the run with artifactProof "unproven"; this throw
+        // keeps the forged bytes from being copied into the run's artifacts
+        // and reported as the command's output.
+        throw new Error(
+          `the run's reported artifacts failed verification: ${artifactRefusal}`,
+        );
+      }
+      const localArtifacts = await this.#writeLocalArtifacts(runId, artifacts);
       await releaseRunLock(this.#channel, runId, owner);
       return {
         // The published exit code is authoritative; 1 is the conventional
         // fallback when the process did not exit normally (signal or kill).
         exitCode: submitted.result.exitCode ?? (submitted.status === "ok" ? 0 : 1),
-        stdoutPath: artifacts.stdoutPath,
-        stderrPath: artifacts.stderrPath,
+        stdoutPath: localArtifacts.stdoutPath,
+        stderrPath: localArtifacts.stderrPath,
       };
     } catch (error) {
       // Everything above acquired this run's lock: the liveness check, the
@@ -1084,19 +1194,25 @@ export class WindowsAdapter implements PlatformAdapter {
     }
   }
 
+  /**
+   * Copy the run's stdout/stderr into the local run directory. The bytes
+   * arrive already read and verified against the signed result's digests —
+   * this method never reads the channel again, so what is written here is
+   * exactly what was checked.
+   */
   async #writeLocalArtifacts(
-    jobId: string,
     runId: string,
+    artifacts: {
+      readonly stdout: Uint8Array | null;
+      readonly stderr: Uint8Array | null;
+    } | null,
   ): Promise<{ readonly stdoutPath: string; readonly stderrPath: string }> {
     const directory = join(this.#runDirectory, runId);
     await mkdir(directory, { recursive: true });
-    const resultDirectory = jobPaths(jobId).resultDirectory;
-    const stdout = (await this.#channel.read(`${resultDirectory}/stdout.log`)) ?? new Uint8Array();
-    const stderr = (await this.#channel.read(`${resultDirectory}/stderr.log`)) ?? new Uint8Array();
     const stdoutPath = join(directory, "stdout.log");
     const stderrPath = join(directory, "stderr.log");
-    await writeFile(stdoutPath, stdout);
-    await writeFile(stderrPath, stderr);
+    await writeFile(stdoutPath, artifacts?.stdout ?? new Uint8Array());
+    await writeFile(stderrPath, artifacts?.stderr ?? new Uint8Array());
     return { stdoutPath, stderrPath };
   }
 

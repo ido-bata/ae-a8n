@@ -598,3 +598,86 @@ Level: **`verified on real host` for this basic path only.**
 Rows 12–17 of the 2026-11-10 matrix keep the status they had, except row 14
 (ownership against a real AE on the isolated backend) is now **PASS for the
 basic path**, with the ownership proof still unproven.
+
+## 2026-11-12: job-protocol hardening follow-up (#93, T095–T105)
+
+The 2026-11-11 independent review found defects in the Windows job protocol.
+This section records what changed and — more importantly — what is still
+**not** proven. Every change below is `automated test` against the in-repo
+fake host and `DirectoryChannel` on a local filesystem. **No real Windows
+host was available for this work.** The schema-touching changes (signed job
+`target`/`deadline`, signed session markers, per-instance presence) change
+the bytes on the wire; the 2026-11-11 real-host acceptance does **not** cover
+them. T092 must be re-run on a real Windows host before any release carrying
+them is called `verified on real host`.
+
+### What changed
+
+| Task | Change | Level |
+| --- | --- | --- |
+| T095 | Jobs carry a signed `target: {id, host, user}`. An agent that is not the target steps aside before claiming (`not-for-us`); an absent target keeps the one-agent rule for one release. | automated test |
+| T096 | On transports that cannot aim a delivery (`verifiesDestination`), every call after the probe now carries `session.require`, so a mis-delivered call is refused inside the instance before anything runs — not only `app.quit`. Attached sessions remain callable *by design*: the marker binds calls to the instance that answered this session's probe, which is the strongest binding the transport offers. | automated test (fake AE) |
+| T097 | The controller's deadline is signed into the job (`createdAt + timeoutMs`); the agent refuses a job past it even inside the 10-minute replay window, so `recover --force` cannot re-enable abandoned work. | automated test |
+| T098 | `session-marker.json` is HMAC-signed with the channel key over a domain-separated field list; destination proof verifies the signature before comparing names. Unsigned or forged markers stay `unproven`. | automated test |
+| T099 | Destination proof uses the agent identity from the signed result, falling back to the verified heartbeat — never the configured `ae-a8n-cli`/`sessionId: 0` placeholder. No verified identity means `unproven`. | automated test |
+| T100 | Claim takeover now reads the claim path back and proceeds only when the bytes are exactly the agent's own signed claim. This narrows, but does not eliminate, the unmeasured `O_EXCL` assumption — see residual risks. | automated test |
+| T101 | `icacls` parsing reports *why* it failed (no entries, a colon without a rights token, empty output) and every caller refuses with that named reason; localized summary lines are still skipped by shape, never by wording. | automated test |
+| T102 | Presence is one file per agent *instance* (`agents/<id>.<instance>.json`). The controller scans `agents/`, authenticates every heartbeat, and refuses when two live instances claim the configured id. | automated test |
+| T103 | A claim blocks a job only after it decodes and its signature verifies *for that job*. Unsigned, foreign-key, unreadable or oversized claims are replaced by the agent's signed claim, proven by read-back; only a claim that still is not ours quarantines the job. | automated test |
+| T105 | `channelAclVerdict` takes the trusted controller/agent account set (config `user` + the controller's own account, with machine/domain/host qualifiers). Any writable ACE outside it — including `CONTOSO\Domain Users` or an arbitrary local account — refuses; an unknown trusted set refuses. | automated test |
+
+### Residual risks — still unproven or accepted
+
+1. **SMB `O_EXCL` / exclusive-create atomicity is still unmeasured (T100).**
+   The read-back check catches the common case — two agents both "winning"
+   the claim leaves only one agent's bytes at the path — but it cannot close
+   a share that lets two writers interleave such that each reads back its
+   own bytes inside the window. No real SMB mount was available; this stays
+   a T092 measurement item. A share that silently drops `O_EXCL` AND
+   interleaves writes inside one read-back window could still double-run a
+   job.
+2. **Claim takeover has a race.** Between the failed `createExclusive` and
+   the takeover `writeAtomic`, a legitimate agent can claim the job; the
+   read-back then sees *its* signed claim and this agent correctly reports
+   `claimed-by-other`. The reverse — an attacker rewriting the claim
+   between takeover write and read-back — lands in `claim-unauthenticated`
+   (quarantine), the fail-closed direction. A signed claim for a *different*
+   job id is never overwritten: it quarantines as corruption.
+3. **`icacls` locale handling refuses rather than interprets (T101).**
+   ACE shape (`principal:(rights)`) is locale-independent and summary lines
+   are skipped by shape, but rights *spellings* this parser does not know
+   already count as write access (`hasWrite` fails closed). What is
+   unproven on a real non-English host: whether every localized `icacls`
+   prints ACEs in the same shape at all. If it does not, the refusal names
+   the line — it does not silently accept.
+4. **The channel-ACL trusted set is only as good as the configuration
+   (T105).** `channelTrustedAccounts` trusts `config.user` plus the
+   controller's own `userInfo().username`, matched under `COMPUTERNAME`,
+   `USERDOMAIN` and `config.host` qualifiers. A domain account whose
+   qualifier none of those name (`CONTOSO\agent` when `user` is bare
+   `agent`) is refused — fail-closed, but it means real SMB ACLs must name
+   accounts the way the config does, or widen `user` to the qualified form.
+   Ordinary-SMB-ACL acceptance on a real share remains a T092 item.
+5. **Two live agents with one id refuse all work (T102).** That is the
+   intended fail-closed answer — but it also means a forgotten second agent
+   process on the host takes the channel down until stopped or given a
+   different `--agent-id`. There is no automatic resolution.
+6. **Clock disagreement widens the deadline's bite (T097).** The deadline
+   is compared on the *agent's* clock against a controller timestamp. A
+   controller clock ahead of the agent's makes deadlines later (jobs run
+   longer than intended); a controller clock behind makes the agent refuse
+   early. Both directions fail toward refusal or bounded overrun, never
+   toward running abandoned work — but skew is not measured on a real pair.
+7. **Driver `attached` sessions are callable (T096, documented choice).**
+   Per-call `session.require` binds every call to the instance that answered
+   this session's probe; it does not and cannot prove process ownership.
+   An attached session's calls still reach the AE it probed — that is the
+   documented semantic, and `stop()` still refuses to quit what it does not
+   own. What changed is that a call can no longer reach a *different*
+   instance than the probed one.
+8. **Schema changes await T092.** Signed `target`/`deadline` fields, signed
+   markers and per-instance presence filenames are wire-format changes.
+   Agents and controllers must be upgraded together; an old agent ignores
+   `target` (runs untargeted jobs — the compatibility rule) and cannot read
+   signed markers (destination stays `unproven`). Mixed-version channels are
+   safe but degrade proof; they are not verified on a real host.

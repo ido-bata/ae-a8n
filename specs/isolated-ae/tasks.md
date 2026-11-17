@@ -238,7 +238,9 @@ licence/sign-in class always reports and never presses; an unknown dialog is
 
 **Delivered 2026-11-10 (#71, PR #79):** `src/platform/recovery-policy.ts` is the
 platform-neutral policy (measured allow list, human-only classes, unknown =>
-`A8N-SEC-001`); macOS PR #50 can adopt it later and was not moved here.
+`A8N-SEC-001`). (PR #50 was later closed; the macOS path kept its own measured
+classes in `src/driver/recovery.ts`, which #135 extended with per-action
+process-identity revalidation.)
 `src/platform/windows/recovery.ts` reads only the passive `tasklist /V` window
 state. A responding or absent AE is reported; `Not Responding`, an unknown
 state or unreadable output is refused with `A8N-SEC-001` and a remedy. There is
@@ -389,6 +391,8 @@ here rather than reusing a taken ID.
 
 ### T095 — bind a job to the agent that may run it (F1)
 
+**Delivered 2026-11-12 (branch `93`, #93):** signed `target: {id, host, user}` on the job; a non-target agent returns `not-for-us` before claiming, so it can neither claim nor refuse the job for the real target. Absent `target` keeps the one-agent rule. `automated test`; T092 re-run still required.
+
 **Files:** extend `src/platform/windows/job.ts` (`JOB_KEYS`, encode/decode),
 the claim path in `src/platform/windows/agent.ts`; tests in
 `test/windows-job.test.ts`, `test/windows-agent.test.ts`.
@@ -406,6 +410,8 @@ carries it.
 
 ### T096 — per-call ownership gate in the driver (F2/F3)
 
+**Delivered 2026-11-12 (branch `93`, #93):** chose the per-call gate. On `verifiesDestination` transports every call after the probe carries `session.require`; a mis-delivered call is refused inside the instance before anything runs. `attached` stays callable by design — the marker binds calls to the probed instance, documented in `docs/windows-verification.md`. `automated test` (fake AE).
+
 **Files:** `src/driver/` (the call path) and the `launch()` path that returns
 `attached`; tests next to the existing ownership tests.
 
@@ -421,6 +427,8 @@ the `attached` case.
 
 ### T097 — a deadline in the job, enforced by the agent (F4)
 
+**Delivered 2026-11-12 (branch `93`, #93):** `deadline` is signed into the job (`createdAt + timeoutMs`) and `validateJob` refuses past it inside the age window. `automated test`; T092 re-run still required.
+
 **Files:** `src/platform/windows/job.ts` (the signed payload), the age check in
 `src/platform/windows/agent.ts`, the controller's publish path.
 
@@ -435,6 +443,8 @@ job.
 
 ### T098 — sign the session marker (F5)
 
+**Delivered 2026-11-12 (branch `93`, #93):** `session-marker.json` carries `auth` (domain-separated HMAC over every field); `verifySessionMarker`/`proveRunDestination` check the signature with the channel key before names count. `automated test`; T092 re-run still required.
+
 **Files:** the marker writer and reader (`src/platform/windows/`), the
 destination check in `runner.ts`; tests in `test/windows-destination.test.ts`.
 
@@ -447,6 +457,8 @@ proof is still `unproven` when it cannot be established.
 **Verification:** none yet. Schema change — re-run T092.
 
 ### T099 — destination proof uses the verified agent identity (F6, T090)
+
+**Delivered 2026-11-12 (branch `93`, #93):** `RunBinding.agent` carries the signed result's agent (else the verified heartbeat's); `#verifyDestination` proves against it and stays `unproven` with no verified identity. The `ae-a8n-cli`/`sessionId: 0` placeholder is comment-marked as never proof. `automated test`; T092 re-run still required.
 
 **Files:** `src/platform/select.ts` (`{ id: "ae-a8n-cli", sessionId: 0 }`),
 `src/platform/windows/runner.ts`'s comparison, `src/platform/windows/remote.ts`
@@ -463,6 +475,8 @@ cannot still says `unproven` and never `proven`.
 
 ### T100 — measure the SMB `O_EXCL` assumption (F7)
 
+**Delivered 2026-11-12 (branch `93`, #93) — partial, documented:** no SMB mount was available, so the issue's claim-check alternative was implemented: a won `createExclusive` is confirmed by reading the claim back, and any unauthenticated existing claim is replaced only when the read-back shows exactly the agent's own bytes. The residual interleave window is named in `docs/windows-verification.md` §2026-11-12 and stays a T092 measurement.
+
 **Files:** `src/platform/windows/channel.ts` (`createExclusive`), or a claim
 check that does not depend on it.
 
@@ -476,6 +490,8 @@ measured behaviour; the evidence is recorded with a date.
 
 ### T101 — `icacls` parsing for other locales (F8 remainder)
 
+**Delivered 2026-11-12 (branch `93`, #93):** `parseIcaclsReport` returns the named reason a parse failed (no entries, colon without rights token); `AclReader`/`acl` carry `AclRead` so key and channel refusals name the cause. Locale handling stays shape-based and fail-closed. `automated test`.
+
 **Files:** `src/platform/windows/acl.ts`, `test/windows-acl.test.ts`.
 
 **Deliverable:** parse a localized `icacls` output (the host runs a Japanese
@@ -487,6 +503,8 @@ account, and does not turn a foreign grant into an acceptance.
 **Verification:** none yet. `automated test` with a captured real output.
 
 ### T102 — presence is per agent, not per channel (F10)
+
+**Delivered 2026-11-12 (branch `93`, #93):** agents publish `agents/<id>.<instance>.json` (random instance id per process); the controller scans and authenticates every heartbeat and refuses when two live instances claim the configured id. `automated test`.
 
 **Files:** `src/platform/windows/presence.ts`, the controller's staleness check.
 
@@ -500,6 +518,8 @@ two agents on a channel are both visible, or neither is claimed alive.
 
 ### T103 — authenticate the claim before acting on it (F11)
 
+**Delivered 2026-11-12 (branch `93`, #93):** a claim blocks only after it decodes and verifies for that job; anything else is replaced by the agent's signed claim proven by read-back. Signed claims — including stranded ones — still block; wrong-job signed claims still quarantine. `automated test`.
+
 **Files:** the claim path in `src/platform/windows/agent.ts`.
 
 **Deliverable:** the claim's signature is decoded and checked before the claim
@@ -512,6 +532,8 @@ claim cannot deny service to a legitimate submission.
 
 ### T104 — document the residual risks (F12)
 
+**Delivered 2026-11-12 (branch `93`, #93):** `docs/windows-verification.md` §2026-11-12 names every residual risk left by T095–T103/T105 with the configuration each matters in, and states that no real Windows host was available.
+
 **Files:** `docs/windows-verification.md`.
 
 **Deliverable:** whatever T095–T103 do not fix is a named residual risk with
@@ -523,6 +545,8 @@ hostile writer, an unreachable clock) and the level it leaves unproven.
 **Verification:** documentation; read against the finished code.
 
 ### T105 — close the channel ACL to unknown writable accounts (F13)
+
+**Delivered 2026-11-12 (branch `93`, #93):** `channelAclVerdict(entries, trusted, qualifiers)` refuses any writable ACE outside the trusted set and refuses an unknown set; comms derives the set from `config.user` + the controller account. `CONTOSO\Domain Users` and arbitrary writable accounts are refused in tests. Ordinary-SMB-ACL acceptance remains a T092 item.
 
 **Source:** the pre-release review of the `release-0-1-0` diff (2026-11-11),
 finding 4 in `/tmp/a8n-ocr-findings.md`'s numbering — recorded here because
@@ -551,6 +575,14 @@ Findings 57, 58 and 64 of the 2026-11-11 review. They were recorded, not fixed,
 on the release branch: 57 needs a POSIX design, and 58 and 64 change the
 signed-document schema. Each needs a fresh T092 run before the version that
 carries it may be called `verified on real host`.
+
+**Status (2026-11, branch `94` / PR #139):** T106, T107 and T108 are
+implemented — the manifest is signed with the channel key (T108's first
+option), artifacts carry signed SHA-256 digests verified before decode, and
+the POSIX channel check refuses group/other-writable or unreadable channel
+roots on every controller platform. All are `implemented` + `automated test`
+against the in-repo fake host only; the T092 re-run above is still owed before
+any of them may be called `verified on real host`.
 
 ### T106 — verify the channel directory on a POSIX controller (finding 57)
 

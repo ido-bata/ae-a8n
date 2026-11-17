@@ -12,11 +12,20 @@
 macOS and Windows for the *attached/owned* case (one AE, one user, one desktop).
 It cannot yet be handed to a general user as a testing tool, because:
 
-1. There is no packaged entry point. The package has no `bin`; the isolated
-   runner that exists lives in `scripts/isolated-session/` on the unmerged
-   Draft PR #50.
-2. Isolation exists on macOS only, and only as scripts, not as a supported,
-   diagnosed, installable flow.
+1. The packaged entry point exists (`ae-a8n` bin, `0.1.0-alpha.2` under
+   `next`), but the macOS isolated-session runner it does not yet wrap lives
+   in `scripts/isolated-session/` on `release-0-2-0`. Draft PR #50, which
+   carried the original version of those scripts, was closed as stale; its
+   reviewed safety commits are on the release branch, and the residual
+   defences it still lacked were ported under issues #136 (isolated-session
+   runner defences) and #135 (GUI-recovery process-identity revalidation).
+2. Isolation exists on macOS only, and only as scripts, not yet as a
+   supported, diagnosed, installable flow. The packaged macOS adapter
+   (`src/platform/darwin`) enters the target session through
+   `src/driver/mac-session.ts` (`launchctl asuser` / already-inside), a
+   different mechanism from the job-file dispatch in
+   `scripts/isolated-session/`; the planned migration of the scripts into
+   `src/platform/` has not happened (see plan.md §4).
 3. On Windows there is no isolation design at all. The public API works on a
    real Windows host, but it operates the console user's own AE.
 4. Setup, diagnosis, recovery and reporting are manual and undocumented as a
@@ -119,7 +128,7 @@ flow that was verified.
 
 | Platform | Public API | Isolated backend | Evidence today |
 | --- | --- | --- | --- |
-| macOS 27 arm64, AE 2026 26.5x89 | verified on real host | exists only on Draft PR #50 | `verified on real host` for PR #50's scripts at the commits named there; **not merged** |
+| macOS 27 arm64, AE 2026 26.5x89 | verified on real host | scripts merged on `release-0-2-0`; packaged adapter exists but wraps a different session-entry mechanism | `verified on real host` for the scripts' E2E at the commits named in research.md §1; the packaged `ae-a8n test` macOS path is covered by `automated test` + `fake/mock only` |
 | Windows 11 x64, AE 2026 26.5x89 | verified on real host | **does not exist** | `verified on real host` for the public API (docs/windows-verification.md) |
 | Linux | unsupported | none | — |
 
@@ -240,17 +249,18 @@ The product is not complete until all of these are true, each with evidence:
 
 ## 10. Decisions required from the owner
 
-1. **Windows backend.** This spec selects a dedicated Windows host/VM with an
-   in-session agent (see [research.md](research.md) §4). A same-machine
-   second-session or hidden-desktop backend is not selected, because neither
-   can currently be proven non-interfering. Owner confirmation is required
-   before implementation reaches the release gate.
-2. **Windows hardware.** Real-host verification of the Windows backend needs a
-   reachable Windows 11 machine or VM. Until then, Windows work can reach
-   `implemented` and `automated test`, never `verified on real host`.
-3. **Adobe licensing.** The chosen backend runs AE under a dedicated OS account
-   on a dedicated machine. Whether that is a separate "device" under the
-   owner's Adobe terms must be confirmed by the owner, not assumed.
+1. **Windows backend — confirmed 2026-11-10.** A dedicated Windows host/VM with
+   an in-session agent is the formal backend (see [research.md](research.md)
+   §4). A same-machine second-session or hidden-desktop backend is not selected,
+   because neither can currently be proven non-interfering.
+2. **Windows hardware — available as of 2026-11-10.** A Windows 11 host is
+   reachable through `herdr` (saved machine `Windows`). Its presence does not
+   make any Windows claim `verified on real host`; that requires T092 evidence
+   recorded in `docs/windows-verification.md`.
+3. **Adobe licensing — still an owner decision.** The chosen backend runs AE
+   under a dedicated OS account on a dedicated machine. Whether that is a
+   separate "device" under the owner's Adobe terms must be confirmed by the
+   owner, not assumed.
 
 ## 11. Out of scope
 

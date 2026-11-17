@@ -141,7 +141,7 @@ Adobe公式（別OSアカウント × 同一PC）: 追加のデバイスアク�
 - `launchctl print gui/<uid>` から `asid` と `session`（Aqua / Background / …）を読む。
 - `lsappinfo list` から各アプリの `pid` / `uid` / `asid` を読む（セッションIDの同定）。
 - `runInSession` / `spawnInSession`: 自分のセッションなら直接実行、別セッションなら `launchctl asuser`（root 時のみ）。**宛先のセッションが不明でuidが違う場合は送らない**（"Nothing was sent."）。
-- `startInSession`: `launch()` が Ae を明示的に起動するための同経路。子プロセスを返すので、起動した Ae 自身の pid を記録できる（`launchctl asuser` はコマンドを in-place で exec する；ローカルで spawned child の pid がコマンドの pid と一致することを確認）。
+- `startInSession`: セッション内でコマンドを起動する経路（`launchctl asuser` はコマンドを in-place で exec する）。**現行の `launch()` はこれを使わない**: Ae は `open <bundle>` で LaunchServices 経由で起動し、pid は起動後のプロセス一覧から観測する（#105。直接 spawn した Ae は LS 未登録の間に probe の Apple Event を受けると LS が第2インスタンスを起こした）。
 - `isInsideSession`: uid と asid の**両方**が一致しない对方的セッションはForeign。
 
 `src/driver/script-invocation.ts`:
@@ -149,7 +149,7 @@ Adobe公式（別OSアカウント × 同一PC）: 追加のデバイスアク�
 - プロセス一覧を `ps -axo pid=,uid=,lstart=,comm=` で取り、**uid で絞り込む**。
 - macOS でも `verifiesDestination` を true に（セッションマーカーで「応答したインスタンス」が自分のprobeの物だと証明できる）。
 - `osascript` の DoScriptFile は**対象セッションの中で**実行する。宛先不明なら拒否。
-- `launch()` は macOS でも Ae を**明示的に起動する**（オンデマンド起動に任せない）。起動したプロセス自身の pid を `#spawnedPid` に記録する。所有権（`#owned`）は probe 成功後の `confirmLaunched()` で、**一覧の唯一のインスタンスの pid が `#spawnedPid` と一致した時だけ**立つ。一致しなければ `unknown`（`A8N-AE-004`）で、**quit しない**。
+- `launch()` は macOS でも Ae を**明示的に起動する**（オンデマンド起動に任せない）。起動は `open`（LaunchServices）経由で、`open` は pid を返さないため、起動後に現れた**この install の新規プロセスがちょうど1個**の時だけその pid を `#spawnedPid` に記録する。所有権（`#owned`）は probe 成功後の `confirmLaunched()` で、**一覧の唯一のインスタンスの pid が `#spawnedPid` と一致した時だけ**立つ。一致しなければ `unknown`（`A8N-AE-004`）で、**quit しない**。
 - `recoveryTargetPid()`: **probe が応答する前に**、この transport が起動した pid を返す。一覧に `#spawnedPid` と一致するプロセスが**ちょうど 1 個**あり、最初に見た起動時刻と一致する場合だけ返す（0個・2個以上・pid だけ一致して起動時刻が違う場合は返さない）。「起動後に現れた唯一の Ae」は、人間が直後に起動した Ae と区別できないため**証拠にしない**。**所有権そのものは従来どおり probe の証明を要求する**（quit は fail-closed のまま）。
 
 `src/driver/gui-recovery.ts`（新規）と `src/driver/recovery.ts`（新規）:
@@ -235,7 +235,7 @@ Adobe公式（別OSアカウント × 同一PC）: 追加のデバイスアク�
    - **Ae を終了してから**設定し、**その後で** Ae を起動し直す（偏好は終了時に上書きされる）。
 4. `test` ユーザーで **Adobe にサインインする**（Ae の起動モーダル `警告` を解くため）。通常ユーザーでAeを使っていない時に行う。Adobe ID・パスワード・トークンは代理が扱うことも保存することもない。
 5. **コンソール（`rebui`）へ戻す**（`test` 側は**ログアウトしない**。ログアウトするとセッションごと消える）。
-6. **許可の粒度を答える**: Ae のパネルがフォルダ単位かスクリプト単位か（フォルダを1回追加すれば足りるのか、ファイルごとに追加が要るか）。これは実装の判断（安定名の entry に固定すべきか）に直結する。
+6. **許可の粒度を答える**: Ae のパネルがフォルダ単位かスクリプト単位か（フォルダを1回追加すれば足りるのか、ファイルごとに追加が要るか）。これは実装の判断（安定名の entry に固定すべきか）に直結する。測定手順と判定表は [script-trust-measurement.md](script-trust-measurement.md)（Issue #125。`scripts/script-trust-probe.mjs` で承認の前後の偏好差分を非破壊に取る）。
 
 その後、`scripts/isolated-session/ae-e2e.mjs` を隔離セッションで走らせる:
 
@@ -394,7 +394,7 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 
 - つまり **2 つ必要**。前者は GUI での許可が要る操作（Agent からは操作語彙が無いので不可）、後者は Ae 自身の偏好ファイルで足りる（= `default` 相当）。
 - 設定した偏好は **Ae が閉じている時にだけ**書ける（Ae は終了時に偏好ファイルを上書きする）。テストユーザー（uid 502）として書き換えた。
-- 許可の粒度（フォルダ単位かスクリプト単位か）が GUI なしでは分からないため、実装は **Ae に読ませるファイルを 1 フォルダにまとめる**方針にした:
+- 許可の粒度（フォルダ単位かスクリプト単位か）は依然未解決。GUI なしでは分からず、console session の consumer 利用でも同じ問いが残る（Issue #125）。測定は `scripts/script-trust-probe.mjs`（偏好ツリーの前後差分を取る読み取り専用 probe）で行い、手順と判定表は [script-trust-measurement.md](script-trust-measurement.md) にある。実装は **Ae に読ませるファイルを 1 フォルダにまとめる**方針にした:
   - `staging/<id>.entry.jsx`（**呼び出しごとに別名**。Ae はスクリプトが*走るとき*にファイルを読むので、名前が固定だと「タイムアウトしたスクリプトが次の要求を読んで二重に実行する」）
   - `staging/a8n-host.js` と `staging/a8n-json.js`（**`.driver` が 1 回だけ**、`host/` のコピーを**`staging/` 自身に**置く。バイト同一。Ae に読ませるファイルは 1 フォルダにまとめ、フォルダ単位の許可がそのまま効く）
   - これにより、**フォルダ単位の許可なら 1 回、スクリプト単位なら 3 件**の承認で済む。

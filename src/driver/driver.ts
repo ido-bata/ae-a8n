@@ -12,9 +12,25 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { entryScriptPath, stageHostScript, writeBootstrapScript } from "./bootstrap.js";
+import type { MacSession } from "./mac-session.js";
 import type { HostRecovery } from "./recovery.js";
-import { READINESS_TIMEOUT_MS } from "./script-invocation.js";
-import type { HostOwnership, HostTransport } from "./transport.js";
+import {
+  collectSessionDiagnostics,
+  type DiagnosticsOptions,
+  type SessionDiagnostics,
+} from "./session-diagnostics.js";
+import {
+  clearLaunchProvenance,
+  recordLaunchProvenance,
+} from "./launch-provenance.js";
+import { READINESS_TIMEOUT_MS, ScriptInvocationTransport } from "./script-invocation.js";
+import type {
+  HostAttestation,
+  HostOwnership,
+  HostTransport,
+  OwnedProcess,
+  PendingLaunch,
+} from "./transport.js";
 import { ScriptNotSentError } from "./transport.js";
 
 export type StopOptions = {
@@ -52,15 +68,43 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", ".."
 
 export const DEFAULT_HOST_SCRIPT = resolve(PACKAGE_ROOT, "host", "a8n-host.js");
 
+/**
+ * What the host looked like when an operation timed out. A timeout alone
+ * cannot tell "the process died" from "the process is alive but blocked" —
+ * the driver asks the transport and the recovery outcome, and records the
+ * answer here so a caller never has to guess (and never retries blind).
+ *
+ * - `gone`: the host process is proven absent.
+ * - `unresponsive`: the host process exists but did not answer.
+ * - `modal`: a blocking window was observed during recovery.
+ * - `unknown`: neither could be determined. Never upgraded to a guess.
+ */
+export type HostCondition = "gone" | "unresponsive" | "modal" | "unknown";
+
+const HOST_CONDITION_NOTES: Record<HostCondition, string> = {
+  gone: "; the After Effects process is gone",
+  unresponsive: "; the After Effects process is still running but did not answer",
+  modal: "; a modal window may be blocking After Effects",
+  unknown: "; whether the After Effects process is still running could not be determined",
+};
+
 export class TimeoutError extends Error {
   readonly method: string;
   readonly timeoutMs: number;
+  /** What the host looked like at the deadline, when the driver could classify it. */
+  readonly hostCondition?: HostCondition;
 
-  constructor(method: string, timeoutMs: number) {
-    super(`After Effects did not answer ${method} within ${timeoutMs}ms`);
+  constructor(method: string, timeoutMs: number, hostCondition?: HostCondition) {
+    super(
+      `After Effects did not answer ${method} within ${timeoutMs}ms` +
+        (hostCondition === undefined ? "" : HOST_CONDITION_NOTES[hostCondition]),
+    );
     this.name = "TimeoutError";
     this.method = method;
     this.timeoutMs = timeoutMs;
+    if (hostCondition !== undefined) {
+      this.hostCondition = hostCondition;
+    }
   }
 }
 
@@ -86,6 +130,48 @@ export class HostQuarantinedError extends Error {
   constructor(evidence: string) {
     super(evidence);
     this.name = "HostQuarantinedError";
+  }
+}
+
+/**
+ * After Effects was started, then the launch failed before ownership was
+ * proven — the readiness probe was denied (`-1743`), timed out, or the host
+ * never became scriptable.
+ *
+ * The process is still this run's doing, but it is not this run's to quit:
+ * quitting needs the probe's proof. So the identity the transport kept is
+ * reported instead, and the outcome is indeterminate. This is deliberately
+ * not a timeout: nothing timed out at the caller's request, and re-sending
+ * the probe would make the same denied Apple Event again.
+ */
+export class HostLeftRunningError extends Error {
+  readonly code = "A8N-AE-005" as const;
+  /** The process this session started and could not prove. */
+  readonly launch: PendingLaunch;
+
+  constructor(launch: PendingLaunch, cause: unknown) {
+    const session = launch.session;
+    const where =
+      session === null
+        ? ""
+        : ` in the session of ${session.user ?? `uid ${String(session.uid)}`}` +
+          ` (uid ${String(session.uid)}${session.asid === null ? "" : `, asid ${String(session.asid)}`})`;
+    const started =
+      launch.startedAt === null
+        ? ""
+        : `, started ${new Date(launch.startedAt).toISOString()}`;
+    const aftermath = launch.presentAtLastLookup
+      ? "It is still running, and this session cannot prove it may quit it, so it was left running: " +
+        "quit it by hand before running again."
+      : "It was not found when the process list was last read, so whether it survived is " +
+        "unknown; check before running again.";
+    super(
+      `After Effects was started (pid ${String(launch.pid)}${started}, ${launch.executable}${where}) ` +
+        `but did not answer the readiness probe: ${messageOf(cause)}. ${aftermath}`,
+      { cause },
+    );
+    this.name = "HostLeftRunningError";
+    this.launch = launch;
   }
 }
 
@@ -140,6 +226,14 @@ export class AeDriver {
   readonly #recoveryGraceMs: number;
   #started = false;
   #closed = false;
+  /**
+   * A host this driver started but never proved. Kept so a second `start()`
+   * on the same driver does not send the probe again: the first one was
+   * denied or unanswered, and repeating it would only repeat that.
+   */
+  #leftRunning: { readonly launch: PendingLaunch; readonly cause: unknown } | null = null;
+  /** When the driver was built; host evidence is "during the session" from here. */
+  readonly #constructedAt = Date.now();
   /** Random per driver; what the host remembers to tell "my instance" from another. */
   readonly #sessionId = randomUUID();
 
@@ -184,6 +278,27 @@ export class AeDriver {
   }
 
   /**
+   * The owned After Effects process and GUI session this driver's transport
+   * attests, for recovery authorization (ae-devtools #55). Only the script
+   * transport can name its target; every other transport — and any state
+   * where the pid or session cannot be proven — returns null. Callers must
+   * treat null as "no attested target", never substitute a pid found by
+   * other means.
+   */
+  recoveryTarget(): { pid: number; session: MacSession } | null {
+    const transport = this.#transport;
+    if (!(transport instanceof ScriptInvocationTransport)) {
+      return null;
+    }
+    const pid = transport.recoveryTargetPid();
+    const session = transport.targetSession;
+    if (pid === null || session === null) {
+      return null;
+    }
+    return { pid, session };
+  }
+
+  /**
    * Launch the host and prove it answers before returning. Without the probe,
    * every later call fails identically and the trace cannot tell "AE never
    * started" from "AE rejected this operation".
@@ -191,6 +306,12 @@ export class AeDriver {
   async start(): Promise<{ version: string; build?: string }> {
     if (this.#started) {
       throw new Error("driver already started");
+    }
+    const left = this.#leftRunning;
+    if (left !== null) {
+      // Nothing is re-sent: the previous launch already started a process
+      // that never answered, and the same Apple Event would be denied again.
+      throw new HostLeftRunningError(left.launch, left.cause);
     }
     const began = Date.now();
     try {
@@ -221,17 +342,61 @@ export class AeDriver {
       };
       this.#started = true;
       this.#transport.confirmLaunched?.();
+      // Provenance is written only for a host this session proved it owns —
+      // owned by launch or by adoption alike. It is evidence for a later
+      // `resume`, never authority: the record is re-checked live on use.
+      // A write failure must not fail a session that is already usable.
+      const ownedProcess = this.#transport.ownedProcess?.() ?? null;
+      if (this.ownership().kind === "owned" && ownedProcess !== null) {
+        try {
+          recordLaunchProvenance(this.#paths.root, {
+            transport: this.#transport.kind,
+            host: ownedProcess,
+          });
+        } catch (error) {
+          this.#trace.record("session.provenance", "error", 0, {
+            error: { name: nameOf(error), message: messageOf(error) },
+          });
+        }
+      }
       this.#trace.record("session.launch", "ok", Date.now() - began, {
         args: { transport: this.#transport.kind },
         result: { ...info, ownership: this.ownership() },
       });
       return info;
     } catch (error) {
-      this.#trace.record("session.launch", "error", Date.now() - began, {
+      // A launch can fail after the host process appeared: the Apple Event
+      // that carries the probe is denied, or the host never becomes
+      // scriptable. The process is then this run's doing but unowned — it is
+      // never quit on the strength of provenance, and the run must not drop
+      // the one thing that names it.
+      const pending = this.#transport.pendingLaunch?.() ?? null;
+      const detail = {
         args: { transport: this.#transport.kind },
         error: { name: nameOf(error), message: messageOf(error) },
+      };
+      if (pending === null) {
+        this.#trace.record("session.launch", "error", Date.now() - began, detail);
+        throw error;
+      }
+      this.#leftRunning = { launch: pending, cause: error };
+      const leftRunning = new HostLeftRunningError(pending, error);
+      this.#trace.record("session.launch", "error", Date.now() - began, {
+        ...detail,
+        result: {
+          pendingLaunch: {
+            pid: pending.pid,
+            startedAt: pending.startedAt,
+            executable: pending.executable,
+            presentAtLastLookup: pending.presentAtLastLookup,
+            sessionUid: pending.session?.uid ?? null,
+            sessionUser: pending.session?.user ?? null,
+            sessionAsid: pending.session?.asid ?? null,
+          },
+          ownership: this.ownership(),
+        },
       });
-      throw error;
+      throw leftRunning;
     }
   }
 
@@ -241,6 +406,64 @@ export class AeDriver {
       kind: "unknown",
       evidence: `transport ${this.#transport.kind} reports no ownership`,
     };
+  }
+
+  /**
+   * What the transport can attest about where the host runs, merged over
+   * the individual optional hooks so a transport that only implements
+   * `hostPid()`/`ownedProcess()` still reports them. Every field is
+   * evidence or null/"unknown" — the capability handshake (#102) must
+   * never have to guess.
+   */
+  hostAttestation(): HostAttestation {
+    const attested = this.#transport.attestation?.() ?? {};
+    const ownedProcess: OwnedProcess | null =
+      attested.ownedProcess !== undefined
+        ? attested.ownedProcess
+        : (this.#transport.ownedProcess?.() ?? null);
+    return {
+      pid: attested.pid !== undefined ? attested.pid : (this.#transport.hostPid?.() ?? null),
+      ownedProcess,
+      platform: attested.platform ?? null,
+      executionMode: attested.executionMode ?? "unknown",
+      sessionUid: attested.sessionUid ?? null,
+      sessionAsid: attested.sessionAsid ?? null,
+      sessionUser: attested.sessionUser ?? null,
+      requiresGuiDelivery: attested.requiresGuiDelivery ?? null,
+      refusesConsoleTarget: attested.refusesConsoleTarget ?? null,
+      targetInstance: attested.targetInstance ?? null,
+    };
+  }
+
+  /**
+   * Collects host-side evidence for this session — crash reports, host logs
+   * touched while it ran, and the trace — into `<artifactsDir>/diagnostics/`
+   * and returns the report. Read-only with respect to After Effects: files
+   * are copied, never moved, and nothing leaves the machine.
+   *
+   * Safe to call at any time, including after `stop` failed: it reports what
+   * it could find and says in `notes` what it could not.
+   *
+   * `options` overrides where evidence is looked for — tests and tooling
+   * pass a fake `homeDir` or `sources` so the real user directories are
+   * never scanned.
+   */
+  diagnostics(options: DiagnosticsOptions = {}): SessionDiagnostics {
+    return collectSessionDiagnostics({
+      sessionRoot: this.#paths.root,
+      artifactsDir: this.#paths.artifacts,
+      tracePath: this.#paths.trace,
+      host: {
+        state: this.#transport.hostState?.() ?? "unknown",
+        ownership: this.ownership(),
+        pid: this.#transport.hostPid?.() ?? null,
+        transport: this.#transport.kind,
+      },
+      since: this.#constructedAt,
+      ...(options.sources !== undefined ? { sources: options.sources } : {}),
+      ...(options.platform !== undefined ? { platform: options.platform } : {}),
+      ...(options.homeDir !== undefined ? { homeDir: options.homeDir } : {}),
+    });
   }
 
   /**
@@ -260,8 +483,21 @@ export class AeDriver {
     const ownership = this.ownership();
     try {
       let result: StopResult;
+      const left = this.#leftRunning;
       if (!this.#started) {
-        result = { quit: false, ownership, reason: "never started" };
+        // A failed launch is not "never started": a process this session
+        // started may still be running, and it is named so a human can find
+        // it. Nothing is quit — ownership was never proven.
+        result =
+          left === null
+            ? { quit: false, ownership, reason: "never started" }
+            : {
+                quit: false,
+                ownership,
+                reason:
+                  `the After Effects this session started (pid ${String(left.launch.pid)}) never answered ` +
+                  "the readiness probe, so it is not this session's to quit; it was left running",
+              };
       } else if (ownership.kind !== "owned") {
         result = { quit: false, ownership, reason: `not quitting a host this session does not own (${ownership.evidence})` };
       } else {
@@ -276,6 +512,13 @@ export class AeDriver {
         );
         await this.#transport.close();
         result = { quit: true, ownership };
+        // The recorded host is gone; leaving the provenance file would only
+        // ever read as a stale record. Best-effort: the quit already happened.
+        try {
+          clearLaunchProvenance(this.#paths.root);
+        } catch {
+          // Provenance is advisory; a leftover file fails closed on resume.
+        }
       }
       this.#closed = true;
       this.#trace.record("session.close", "ok", Date.now() - began, {
@@ -300,12 +543,22 @@ export class AeDriver {
         });
         return result;
       }
-      if (!refused) {
-        this.#closed = true;
-      }
+      // The trace row lands first so the diagnostics bundle collected below
+      // contains the close failure that triggered it.
       this.#trace.record("session.close", "error", Date.now() - began, {
         error: { name: nameOf(error), message: messageOf(error) },
       });
+      if (!refused) {
+        this.#closed = true;
+        // An end that is not a clean quit is exactly when host-side evidence
+        // matters. Collection is best-effort: it writes only inside this
+        // session's artifact directory and must never mask the real error.
+        try {
+          this.diagnostics();
+        } catch {
+          // The report is a convenience; the close error is the answer.
+        }
+      }
       throw error;
     }
   }
@@ -330,9 +583,23 @@ export class AeDriver {
       method,
       params,
       timeoutMs,
-      ...(options.marker === undefined
-        ? {}
-        : { session: { id: this.#sessionId, ...(options.marker === "adopt" ? { adopt: true } : { require: true }) } }),
+      // On a transport that cannot aim a delivery at one instance, every
+      // call after the probe must prove it lands in the instance that
+      // answered it: `require` makes the host refuse before running anything
+      // when the marker is absent (T096). Before this, only `app.quit`
+      // carried the check, so an ordinary call could reach — and mutate —
+      // an After Effects this session never proved. A transport that can aim
+      // its deliveries sends no session field at all.
+      ...(options.marker !== undefined
+        ? {
+            session: {
+              id: this.#sessionId,
+              ...(options.marker === "adopt" ? { adopt: true } : { require: true }),
+            },
+          }
+        : this.#transport.verifiesDestination === true && this.#started
+          ? { session: { id: this.#sessionId, require: true } }
+          : {}),
     };
 
     try {
@@ -384,19 +651,50 @@ export class AeDriver {
       }
       return outcome.value;
     } catch (error) {
-      if (error instanceof TimeoutError && this.#recovery !== undefined) {
-        const recovered = await this.#recoverAndWait(id, method, params, timeoutMs, op);
-        if (recovered !== undefined) {
-          return recovered;
+      let failure = error;
+      if (error instanceof TimeoutError) {
+        let sawWindow = false;
+        if (this.#recovery !== undefined) {
+          const waited = await this.#recoverAndWait(id, method, params, timeoutMs, op);
+          if (waited.kind === "resolved") {
+            return waited.value;
+          }
+          sawWindow = waited.sawWindow;
         }
+        // A timeout is not a diagnosis. Before reporting it, ask what the
+        // host looked like: a dead process, a live-but-blocked one, a modal
+        // window the recovery saw, or honestly unknown.
+        failure = new TimeoutError(error.method, error.timeoutMs, this.#timeoutHostCondition(sawWindow));
       }
-      const status: TraceStatus = error instanceof TimeoutError ? "timeout" : "error";
+      const status: TraceStatus = failure instanceof TimeoutError ? "timeout" : "error";
       this.#trace.record(op, status, Date.now() - began, {
         args: { ...params },
-        error: { name: nameOf(error), message: messageOf(error) },
+        error: { name: nameOf(failure), message: messageOf(failure) },
+        ...(failure instanceof TimeoutError && failure.hostCondition !== undefined
+          ? { result: { hostCondition: failure.hostCondition } }
+          : {}),
       });
-      throw error;
+      throw failure;
     }
+  }
+
+  /**
+   * Classifies a timed-out call from what is actually known: a blocking
+   * window the recovery observed beats a process probe, and a probe that
+   * cannot attribute a process stays "unknown" rather than guessing.
+   */
+  #timeoutHostCondition(sawWindow: boolean): HostCondition {
+    if (sawWindow) {
+      return "modal";
+    }
+    const state = this.#transport.hostState?.();
+    if (state === "gone") {
+      return "gone";
+    }
+    if (state === "alive") {
+      return "unresponsive";
+    }
+    return "unknown";
   }
 
   /**
@@ -409,10 +707,12 @@ export class AeDriver {
    * the request it already sent, and only reports a failure when that result
    * does not arrive either.
    *
-   * Returns the recovered result. Returns undefined when no result arrived
-   * either (the caller then reports the original timeout), and throws the
-   * host's error when the original request finished with one — the recovery
-   * unblocked it, so its answer is the real outcome.
+   * Returns the recovered result. "Unresolved" means no result arrived
+   * either (the caller then reports the original timeout), with `sawWindow`
+   * recording whether the recovery observed a blocking window — what lets
+   * the timeout be classified "modal". It throws the host's error when the
+   * original request finished with one — the recovery unblocked it, so its
+   * answer is the real outcome.
    */
   async #recoverAndWait(
     id: string,
@@ -420,10 +720,10 @@ export class AeDriver {
     params: Record<string, unknown>,
     timeoutMs: number,
     op: string,
-  ): Promise<unknown> {
+  ): Promise<{ kind: "resolved"; value: unknown } | { kind: "unresolved"; sawWindow: boolean }> {
     const recovery = this.#recovery;
     if (recovery === undefined) {
-      return undefined;
+      return { kind: "unresolved", sawWindow: false };
     }
     let outcome: Awaited<ReturnType<HostRecovery["attempt"]>>;
     try {
@@ -432,8 +732,9 @@ export class AeDriver {
       this.#trace.record("session.recover", "error", 0, {
         error: { name: nameOf(error), message: messageOf(error) },
       });
-      return undefined;
+      return { kind: "unresolved", sawWindow: false };
     }
+    const sawWindow = outcome.window !== undefined;
     this.#trace.record("session.recover", outcome.recovered ? "ok" : "error", 0, {
       result: {
         recovered: outcome.recovered,
@@ -451,14 +752,14 @@ export class AeDriver {
       if (outcome.code !== undefined) {
         throw new HostQuarantinedError(outcome.evidence);
       }
-      return undefined;
+      return { kind: "unresolved", sawWindow };
     }
     const result = await this.#awaitResult(id, method, params, this.#recoveryGraceMs, timeoutMs);
     if (result.status === "ok") {
       this.#trace.record(op, "ok", 0, {
         result: { recovered: true, ...summariseResult(result.value) },
       });
-      return result.value;
+      return { kind: "resolved", value: result.value };
     }
     // An error the host itself sent is the answer to the request that timed
     // out: the recovery unblocked it and the operation it had already started
@@ -469,7 +770,7 @@ export class AeDriver {
       this.#trace.record(op, "error", 0, result.detail);
       throw result.error;
     }
-    return undefined;
+    return { kind: "unresolved", sawWindow };
   }
 
   async #awaitResult(

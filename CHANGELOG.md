@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.2.0-beta.1
+
+To be published under the `next` dist-tag; `latest` stays on `0.1.0-alpha.0`.
+This is a **prerelease**: the `release-0-2-0` train — the opt-in in-AE
+dispatcher transport with static consumer extensions, its lifecycle CLI,
+and the packed-consumer acceptance harness, on top of the isolated
+testing, capability handshake, GUI recovery and session-marker work merged
+since `0.1.0-alpha.2`. It is numbered `-beta.1` rather than `0.2.0` because
+the new dispatcher paths have no Windows real-host evidence; their
+real-host coverage is macOS AE 26.5.3 only. A stable `0.2.0` requires the
+cross-platform evidence gate (#75) first.
+
+### Added
+
+- **In-AE dispatcher transport** (`transport: "in-ae-dispatcher"` selection,
+  opt-in only): a human activates `activate.jsx` once per After Effects
+  process and the dispatcher answers named operations over private channel
+  files — no per-call OS automation, no silent fallback to script
+  invocation. Ownership stays `attached`/unproven, timeouts stay UNKNOWN and
+  are never resent, instance pinning refuses a different After Effects, and
+  double activation is refused (`docs/in-ae-dispatcher.md`, ADR-0003).
+- **Static extensions through the dispatcher** (#146): consumers declare
+  extension modules, `ae-a8n extension build` produces the effective host
+  script, and `AfterEffects.launch({ hostScript, authorization:
+  { extensionMethods: true } })` exposes only the methods the dispatcher
+  actually registered — verified against the heartbeat at launch and
+  re-checked before every call. Staged-vs-active mismatches refuse the
+  session; changes require reactivation (`specs/isolated-ae/contracts/extensions.md`).
+- **Dispatcher lifecycle CLI** (#147): `ae-a8n dispatcher prepare`,
+  `status`, `startup install|remove` — channel preparation, honest heartbeat
+  reporting (`blocked`/`unknown` are never passes), and per-user
+  `Scripts/Startup` registration that refuses foreign files and states that
+  AE's execution of the entry is unproven.
+- **Packed-consumer acceptance harness** (#148, #155):
+  `scripts/check-dispatcher-acceptance.js` installs the packed tarball into a
+  clean project, builds a consumer-side extension fixture through the packed
+  CLI, and runs the dispatcher scenarios — handshake, editing, PNG render,
+  extension call, authorization/pin refusals, UNKNOWN non-resend, safe
+  shutdown — in a fake lane (always) and a human-gated real lane (`--project`
+  fixture required; no heartbeat is `blocked`, never a pass). The real lane
+  stages the extension host script into a dedicated `--channel-dir` (or a
+  per-run temporary one), prints the matching `activate.jsx`, reuses a live
+  heartbeat instead of asking for a second activation, and reports a
+  machine-readable `A8N_RESULT` JSON where `blocked` exits 3 — never a pass.
+
+### Fixed
+
+- macOS could spawn two `After Effects` processes on launch and fail closed
+  with `HostNotOwnedError` (#105, fixed by #106 via LaunchServices).
+- `AfterEffects.launch` accepts `readinessTimeoutMs` (#124).
+
+### Not proven in this version
+
+- **Windows real-host evidence for the new paths is absent.** The
+  dispatcher CLI, extensions, Startup execution and acceptance harness
+  passed the packed-consumer real lane on macOS AE 26.5.3 (`26.5.3x9`,
+  2026-11-17): handshake, edit, PNG render, extension call,
+  authorization/instance-pin refusals, pinned reconnect and safe close,
+  with `Scripts/Startup` auto-activation observed. No Windows real-host
+  run exists for them.
+- Extension methods via `hostScript` / `ae.call` are verified on real host
+  only through the dispatcher path on macOS AE 26.5.3; on the default
+  script-invocation transport they remain `fake/mock only`.
+- Everything below `verified on real host` stays unproven against real AE —
+  see `docs/consumer-acceptance.md` §4 for the recording format.
+
 ## 0.1.0-alpha.2
 
 Published under the `next` dist-tag; `latest` stays on `0.1.0-alpha.0` until a
@@ -117,7 +183,7 @@ tracked in #93 and #94.
   exists to prevent. It now reaches the caller as `HostQuarantinedError` with
   `A8N-SEC-001`.
 - The Windows key-file ACL accepted a domain account that merely shared the
-  owner's name (`CONTOSO\rebui` for the local `rebui`, two different
+  owner's name (`CONTOSO\alice` for the local `alice`, two different
   principals). Only the machine's or the domain's own qualifier is accepted.
 - `ae-a8n recover` on a `--host` target ran `tasklist` on the controller and
   reported the controller's process state as the host's. Recovery now reads

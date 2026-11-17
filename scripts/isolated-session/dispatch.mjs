@@ -24,6 +24,7 @@ import {
   assertResultSession,
   assertTargetSession,
   consoleAsid,
+  describeMissingSession,
   ensureSharedDir,
   consoleUid,
   guiDomainError,
@@ -151,6 +152,31 @@ export function assertTrustedResult(path, targetUid) {
   }
 }
 
+/**
+ * Tells an agent that may still find the job not to run it.
+ *
+ * The job file stays behind when the controller's wait expires; an agent
+ * starting afterwards would otherwise execute work the caller was told did
+ * not finish. The token is published by rename for the same reason the job
+ * is: an agent must see either no token or a whole one, never a half-written
+ * file. If it cannot be written, the timeout is reported as possibly
+ * executing later rather than as a clean cancellation.
+ */
+export function cancelJob(jobs, id) {
+  const path = join(jobs, `${id}.cancel`);
+  const temporary = `${path}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
+  try {
+    writeFileSync(temporary, "", { mode: 0o644 });
+    renameSync(temporary, path);
+  } catch (error) {
+    try {
+      rmSync(temporary, { force: true });
+    } catch {
+      // Nothing more to clean up.
+    }
+    throw error;
+  }
+}
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
@@ -162,15 +188,10 @@ function main() {
   }
   const session = readTargetSession(options.uid);
   if (session === null) {
-    // Neither offstage nor launchd could describe the session. Say which, so
-    // "cannot read another user's launchd domain" is not reported as "that
-    // user is not logged in".
-    const reason = guiDomainError(options.uid);
-    throw new Error(
-      `the session of uid ${options.uid} could not be confirmed from this session` +
-        (reason === null ? "" : `: ${reason}`) +
-        ". Check `offstage session status`; nothing was run.",
-    );
+    // Neither offstage nor launchd could describe the session. Say which —
+    // "macOS refused this process another user's domain" is not "that user
+    // is not logged in" — so the caller gets the remedy that applies.
+    throw describeMissingSession(options.uid, guiDomainError(options.uid));
   }
   assertTargetSession(session, options.uid, consoleUid());
   const jobs = join(options.root, "jobs");
@@ -181,6 +202,10 @@ function main() {
   const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
   const jobPath = join(jobs, `${id}.job.json`);
   const resultPath = join(results, `${id}.result.json`);
+  // The controller's own deadline, carried in the job: an agent that picks
+  // the file up after this moment is looking at work the caller was already
+  // told did not finish, and must not start it.
+  const deadline = Date.now() + options.timeoutMs;
   // Published by rename: the agent polls this directory, and a direct write
   // can be read half-finished and turned into a parse error for a job that
   // was never run. 0644: the agent accepts only a file it can attribute —
@@ -202,6 +227,7 @@ function main() {
           command: options.command,
           ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
           timeoutMs,
+          deadline,
           session: { uid: options.uid, asid: session.asid },
         },
         null,
@@ -223,7 +249,6 @@ function main() {
       (session.asid === null ? "" : `, asid ${session.asid}`) +
       ")\n",
   );
-  const deadline = Date.now() + options.timeoutMs;
   for (;;) {
     if (existsSync(resultPath)) {
       assertTrustedResult(resultPath, options.uid);
@@ -282,7 +307,20 @@ function main() {
       return;
     }
     if (Date.now() >= deadline) {
-      throw new Error(`the job ${id} did not finish within ${options.timeoutMs}ms; no result was produced`);
+      // The job file stays where the agent can find it. Write the
+      // cancellation before reporting the timeout, so a later agent pass
+      // cannot run work the caller believes did not finish.
+      try {
+        cancelJob(jobs, id);
+      } catch (error) {
+        throw new Error(
+          `the job ${id} did not finish within ${options.timeoutMs}ms, and its cancellation could not be ` +
+            `written (${error instanceof Error ? error.message : String(error)}); it may still run later.`,
+        );
+      }
+      throw new Error(
+        `the job ${id} did not finish within ${options.timeoutMs}ms; it was cancelled and will not run.`,
+      );
     }
     execFileSync("sleep", ["0.5"]);
   }

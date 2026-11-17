@@ -15,9 +15,15 @@
  *            name differs per release (`Adobe After Effects 2026`) and the
  *            bare `Adobe After Effects` does not resolve to AE at all, which
  *            makes osascript fail to compile the script (-2741).
+ *
+ *            The host itself is started through LaunchServices (`open`),
+ *            never by exec'ing the binary: a directly spawned AE is unknown
+ *            to LaunchServices for seconds, and an Apple Event addressed by
+ *            bundle path that arrives in that gap makes LaunchServices start
+ *            a second instance (observed on AE 27.0, issue #105).
  */
 
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import type { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -28,10 +34,17 @@ import {
   MacSessionError,
   readGuiSession,
   spawnInSession,
-  startInSession,
   type MacSession,
 } from "./mac-session.js";
-import type { HostOwnership, HostTransport, InvokeOptions } from "./transport.js";
+import type {
+  HostAttestation,
+  HostOwnership,
+  HostState,
+  HostTransport,
+  InvokeOptions,
+  OwnedProcess,
+  PendingLaunch,
+} from "./transport.js";
 import { ScriptNotSentError } from "./transport.js";
 
 export type ScriptInvocationOptions = {
@@ -52,9 +65,19 @@ export type ScriptInvocationOptions = {
   readonly spawnLauncher?: SpawnLauncher;
   /**
    * Starts the macOS host explicitly and returns its pid. Mainly a test seam;
-   * defaults to starting the resolved After Effects inside the target session.
+   * defaults to asking LaunchServices (`open`) and watching for the process
+   * it starts.
    */
   readonly launchMacHost?: () => Promise<number | undefined>;
+  /**
+   * Runs `open <bundle>` for the macOS host. Mainly a test seam; defaults to
+   * running it inside the target session.
+   */
+  readonly openMacApp?: (bundle: string) => Promise<void>;
+  /** How long the process `open` started is watched for in `ps`. Mainly a test seam. */
+  readonly macLaunchObserveMs?: number;
+  /** How often that watch asks the process list. Mainly a test seam. */
+  readonly macLaunchPollMs?: number;
   /**
    * The 8.3 short form of a Windows directory, or null if it has none. Mainly a
    * test seam; defaults to asking Windows.
@@ -78,6 +101,27 @@ export type ScriptInvocationOptions = {
    * machine — the console user's, say — is neither addressed nor quit.
    */
   readonly sessionUid?: number;
+  /**
+   * Adopt a host a previous session recorded, instead of starting one.
+   *
+   * The record is checked against the live process list: the pid must still
+   * name the same process (pid *and* start time, plus the Windows creation
+   * identity), it must run this install's executable, and it must be the
+   * only instance of that install in scope. Anything less refuses the
+   * adoption and nothing is launched — resume never quietly starts a
+   * replacement host. Ownership is still only claimed after the readiness
+   * probe answers, exactly as for a launched host.
+   */
+  readonly adopt?: {
+    readonly pid: number;
+    /** Process start time in ms; null cannot prove identity and refuses. */
+    readonly startedAt: number | null;
+    /** Windows full creation time, when the record has one. */
+    readonly identity?: string | null;
+    readonly executable: string;
+    /** When the record was written, for evidence strings only. */
+    readonly recordedAt?: string;
+  };
 };
 
 /**
@@ -350,6 +394,14 @@ const START_SLACK_MS = 2_000;
 export const READINESS_TIMEOUT_MS = 180_000;
 
 /**
+ * How long `open` is given to produce a process the ownership check can
+ * name. `open` returns once LaunchServices has accepted the launch; the
+ * process itself appears in `ps` a moment later.
+ */
+export const MAC_HOST_OBSERVE_MS = 30_000;
+const MAC_HOST_OBSERVE_POLL_MS = 250;
+
+/**
  * Runs `DoScriptFile` against the application at a path, both taken from argv.
  *
  * Neither path is ever spliced into AppleScript source, so nothing needs
@@ -442,6 +494,9 @@ export class ScriptInvocationTransport implements HostTransport {
   readonly #now: () => number;
   readonly #spawnLauncher: SpawnLauncher;
   readonly #launchMacHost: () => Promise<number | undefined>;
+  readonly #openMacApp: (bundle: string) => Promise<void>;
+  readonly #macLaunchObserveMs: number;
+  readonly #macLaunchPollMs: number;
   readonly #shortPath: (directory: string) => string | null;
   readonly #mainWindowVisible: (executable: string) => boolean;
   readonly #selfPid: number;
@@ -473,6 +528,8 @@ export class ScriptInvocationTransport implements HostTransport {
   #confirmed = false;
   /** The DoScriptFile still waiting on AE, if a call gave up on it. */
   #inFlight: Promise<void> | null = null;
+  /** Set when this transport was asked to adopt a recorded host. */
+  readonly #adopt: NonNullable<ScriptInvocationOptions["adopt"]> | null;
 
   constructor(options: ScriptInvocationOptions = {}) {
     const platform = options.platform ?? process.platform;
@@ -481,11 +538,15 @@ export class ScriptInvocationTransport implements HostTransport {
     this.#processes = options.processes ?? (platform === "win32" ? windowsProcesses : psProcesses);
     this.#now = options.now ?? Date.now;
     this.#spawnLauncher = options.spawnLauncher ?? spawn;
-    this.#launchMacHost = options.launchMacHost ?? (() => this.#startMacHost());
+    this.#launchMacHost = options.launchMacHost ?? (() => this.#openMacHost());
+    this.#openMacApp = options.openMacApp ?? ((bundle) => this.#runInSession("open", [bundle]));
+    this.#macLaunchObserveMs = options.macLaunchObserveMs ?? MAC_HOST_OBSERVE_MS;
+    this.#macLaunchPollMs = options.macLaunchPollMs ?? MAC_HOST_OBSERVE_POLL_MS;
     this.#shortPath = options.shortPath ?? windowsShortPath;
     this.#mainWindowVisible = options.mainWindowVisible ?? windowsMainWindowVisible;
     this.#selfPid = options.selfPid ?? process.pid;
     this.#readyPollMs = options.readyPollMs ?? 500;
+    this.#adopt = options.adopt ?? null;
     this.#install =
       options.install ??
       resolveInstall(platform, {
@@ -518,6 +579,115 @@ export class ScriptInvocationTransport implements HostTransport {
   }
 
   /**
+   * The proven host process, for launch provenance. Only `#owned` counts:
+   * a spawned-but-unproven pid is not identity a later session can adopt.
+   */
+  ownedProcess(): OwnedProcess | null {
+    const owned = this.#owned;
+    if (owned === null) {
+      return null;
+    }
+    return {
+      pid: owned.pid,
+      startedAt: owned.startedAt,
+      ...(owned.identity === undefined ? {} : { identity: owned.identity }),
+      executable: owned.executable,
+    };
+  }
+
+  /**
+   * What this transport can attest for the capability handshake (#102).
+   *
+   * The host runs on this machine — that is what script invocation means —
+   * so the controller's platform *is* the host's. The execution mode is
+   * "isolated-user" only when the target session provably belongs to a
+   * different uid; anything else is "local".
+   */
+  attestation(): Partial<HostAttestation> {
+    const self = typeof process.getuid === "function" ? process.getuid() : null;
+    const isolatedUser = self !== null && this.#sessionUid !== self;
+    return {
+      pid: this.hostPid(),
+      ownedProcess: this.ownedProcess(),
+      platform: { os: process.platform, arch: process.arch },
+      executionMode: isolatedUser ? "isolated-user" : "local",
+      sessionUid: this.#targetSession?.uid ?? null,
+      sessionAsid: this.#targetSession?.asid ?? null,
+      sessionUser: this.#targetSession?.username ?? null,
+      // Every call runs the host script inside the GUI After Effects — an
+      // Apple Event into a login session on macOS, `-r` handed to the
+      // interactive instance on Windows — so dispatch needs that GUI
+      // session reachable; there is no headless path on this transport.
+      requiresGuiDelivery: true,
+      // Session-scoped delivery refuses rather than fall back to the
+      // console session, but only when the target is provably another
+      // user's: a "local" target may be the console session itself, so the
+      // refusal is not claimed there.
+      refusesConsoleTarget: isolatedUser,
+    };
+  }
+
+  /**
+   * Whether the host process still exists, proven the same way ownership is:
+   * pid *and* start time, so a reused pid is a different process.
+   *
+   * Only a process this transport can name gives a definite answer. An
+   * attached or unproven host has no single process to check: with no
+   * candidate of this install left in scope the host is gone; with
+   * candidates present it is "unknown", never "alive" — one of them may be
+   * a different After Effects than the one that answered.
+   */
+  hostState(): HostState {
+    if (!this.#launched) {
+      return "unknown";
+    }
+    const owned = this.#owned;
+    if (owned !== null) {
+      return this.#processState(owned);
+    }
+    const spawnedPid = this.#spawnedPid;
+    // Only when the snapshot proved nothing else was running: on Windows a
+    // launcher handed to an already-running AE exits normally, and its pid
+    // being gone says nothing about the host that answered.
+    if (spawnedPid !== undefined && this.#preexisting !== null && this.#preexisting.length === 0) {
+      // Started by this transport but not yet proven by the probe: the pid
+      // is still the best identity there is. It must have appeared after
+      // launch began, and match the start time once one was pinned.
+      let now: HostProcess[];
+      try {
+        now = this.#hostProcesses();
+      } catch {
+        return "unknown";
+      }
+      const match = now.find((p) => p.pid === spawnedPid);
+      if (match === undefined) {
+        return "gone";
+      }
+      const pinned = this.#spawnedAt;
+      if (pinned !== undefined) {
+        return Math.abs(match.startedAt - pinned) <= 1_000 ? "alive" : "gone";
+      }
+      return match.startedAt >= this.#launchBegan - START_SLACK_MS ? "alive" : "gone";
+    }
+    try {
+      return this.#hostProcesses().length === 0 ? "gone" : "unknown";
+    } catch {
+      return "unknown";
+    }
+  }
+
+  /** "alive"/"gone" for one identified process; "unknown" when the list cannot be read. */
+  #processState(known: HostProcess): HostState {
+    let now: HostProcess[];
+    try {
+      now = this.#hostProcesses();
+    } catch {
+      return "unknown";
+    }
+    return now.some((p) => sameProcess(this.#platform, p, known)) ? "alive" : "gone";
+  }
+
+  /**
    * The After Effects this transport is talking to, whether or not it has
    * answered a script yet.
    *
@@ -534,11 +704,27 @@ export class ScriptInvocationTransport implements HostTransport {
    * it cannot tell the run's After Effects from one the human started a
    * moment later. Ownership itself stays as strict as it was: quitting still
    * requires the probe's proof.
+   *
+   * Every call re-reads the process list, for both the owned and the
+   * spawned-but-unproven host: a pid is not an identity, and the process
+   * can exit and have its pid reused between two calls — the GUI fallback
+   * calls this immediately before each action it takes.
    */
   recoveryTargetPid(): number | null {
     const owned = this.#owned;
     if (owned !== null) {
-      return owned.pid;
+      // The probe proved this pid *and* start time once; prove it again
+      // now. Same process and still the only instance of this install in
+      // scope, or no target: a reused pid or a second instance is
+      // ambiguity, and ambiguity fails closed.
+      let now: HostProcess[];
+      try {
+        now = this.#hostProcesses();
+      } catch {
+        return null;
+      }
+      const same = now.filter((p) => sameProcess(this.#platform, p, owned));
+      return same.length === 1 && now.length === 1 ? owned.pid : null;
     }
     if (this.#platform !== "darwin" || this.#spawnedPid === undefined) {
       return null;
@@ -561,6 +747,55 @@ export class ScriptInvocationTransport implements HostTransport {
     // different process on every later call too.
     this.#spawnedAt = match.startedAt;
     return match.pid;
+  }
+
+  /**
+   * The process this transport started but whose ownership the probe never
+   * proved, with the start time the process list first reported for its pid.
+   *
+   * This is what a failed launch leaves a human: the pid this transport
+   * itself spawned, not "an instance that appeared" — the same restriction
+   * `recoveryTargetPid` uses, and for the same reason. If the pid now names a
+   * process that started at another time, the one this session started is
+   * gone and the pinned start time says so. A list that cannot be read keeps
+   * the pid and leaves the start time unknown rather than guessing.
+   *
+   * It never proves ownership: `ownership()` stays "unknown" until the probe
+   * answers, so nothing here may be quit.
+   */
+  pendingLaunch(): PendingLaunch | null {
+    if (!this.#launched || this.#owned !== null || this.#spawnedPid === undefined) {
+      return null;
+    }
+    let match: HostProcess | undefined;
+    try {
+      const now = this.#hostProcesses();
+      match = now.find(
+        (p) =>
+          p.pid === this.#spawnedPid &&
+          (this.#spawnedAt === undefined || Math.abs(p.startedAt - this.#spawnedAt) <= 1_000),
+      );
+    } catch {
+      match = undefined;
+    }
+    if (match !== undefined && this.#spawnedAt === undefined) {
+      this.#spawnedAt = match.startedAt;
+    }
+    const session = this.#targetSession;
+    return {
+      pid: this.#spawnedPid,
+      startedAt: this.#spawnedAt ?? null,
+      executable: this.#install.executable,
+      presentAtLastLookup: match !== undefined,
+      session:
+        this.#platform === "darwin"
+          ? {
+              uid: this.#sessionUid,
+              user: session?.username ?? null,
+              asid: session?.asid ?? null,
+            }
+          : null,
+    };
   }
 
   /** The session this transport talks into, in words a human can check. */
@@ -593,6 +828,10 @@ export class ScriptInvocationTransport implements HostTransport {
     }
     this.#launched = true;
     this.#launchBegan = this.#now();
+    if (this.#adopt !== null) {
+      this.#adoptProcess();
+      return;
+    }
     if (this.#platform === "win32") {
       // Before anything is started: whatever is running now is not ours. A
       // list that cannot be read leaves ownership unproven, never assumed.
@@ -617,7 +856,7 @@ export class ScriptInvocationTransport implements HostTransport {
         // The Apple Event gives no pid, so "an After Effects appeared after
         // the snapshot" is all the evidence there would be — and that is
         // equally true of an instance the human starts a moment later. The
-        // pid this call creates is what lets ownership be bound to it.
+        // pid this call observes is what lets ownership be bound to it.
         this.#spawnedPid = await this.#launchMacHost();
       }
       return;
@@ -665,11 +904,108 @@ export class ScriptInvocationTransport implements HostTransport {
     return this.#platform === "win32" || this.#platform === "darwin";
   }
 
+  /**
+   * Validates the recorded host an adoption names, against the live process
+   * list. Throws on anything short of proof; on success `#owned` names the
+   * process so `confirmLaunched` can re-verify it once the probe answers.
+   * Nothing is started here: a refused or stale record leaves the machine
+   * exactly as it was.
+   */
+  #adoptProcess(): void {
+    const adopt = this.#adopt;
+    if (adopt === null) {
+      return;
+    }
+    const refuse = `cannot adopt the recorded After Effects`;
+    if (adopt.executable !== this.#install.executable) {
+      throw new Error(
+        `${refuse}: the record names ${adopt.executable}, which is not this install's executable ${this.#install.executable}`,
+      );
+    }
+    if (adopt.startedAt === null) {
+      throw new Error(`${refuse}: the record has no process start time, so the pid alone cannot prove identity`);
+    }
+    let now: HostProcess[];
+    try {
+      now = this.#hostProcesses();
+    } catch (error) {
+      throw new Error(
+        `${refuse}: the process list could not be read (${error instanceof Error ? error.message : String(error)})`,
+      );
+    }
+    const recorded: HostProcess = {
+      pid: adopt.pid,
+      startedAt: adopt.startedAt,
+      executable: adopt.executable,
+      ...(adopt.identity === null || adopt.identity === undefined ? {} : { identity: adopt.identity }),
+    };
+    const match = now.find((p) => sameProcess(this.#platform, p, recorded));
+    if (match === undefined) {
+      throw new Error(`${refuse}: pid ${adopt.pid} with the recorded start time is not among the running instances`);
+    }
+    if (now.length !== 1) {
+      throw new Error(
+        `${refuse}: ${now.length} instances of this install are running, so the recorded pid cannot be told apart ` +
+          "from another After Effects",
+      );
+    }
+    this.#owned = match;
+    this.#spawnedPid = match.pid;
+    this.#spawnedAt = match.startedAt;
+    this.#preexisting = now;
+  }
+
+  /**
+   * The adopt counterpart of `confirmLaunched`: ownership is claimed only
+   * after the probe answered *and* the recorded process is still the same
+   * single instance. A record that went stale between `launch()` and the
+   * probe downgrades to unknown — the host is left running either way.
+   */
+  #confirmAdopted(): void {
+    const adopt = this.#adopt;
+    const owned = this.#owned;
+    if (adopt === null || owned === null) {
+      this.#ownershipAtLaunch = this.#unknownOwnership("adoption state was lost before the probe answered");
+      return;
+    }
+    let now: HostProcess[];
+    try {
+      now = this.#hostProcesses();
+    } catch (error) {
+      this.#ownershipAtLaunch = this.#unknownOwnership(
+        `could not re-check processes: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return;
+    }
+    const same = now.filter((p) => sameProcess(this.#platform, p, owned));
+    if (same.length === 1 && now.length === 1) {
+      this.#owned = same[0] as HostProcess;
+      this.#ownershipAtLaunch = {
+        kind: "owned",
+        evidence:
+          `adopted pid ${owned.pid}: the process recorded` +
+          (adopt.recordedAt === undefined ? "" : ` at ${adopt.recordedAt}`) +
+          " is still the only instance of this install" +
+          (this.#targetSession === null ? "" : ` in ${this.#sessionDescription()}`),
+      };
+      return;
+    }
+    this.#ownershipAtLaunch = this.#unknownOwnership(
+      same.length === 0
+        ? `the adopted pid ${owned.pid} is gone; ${now.length} other instance(s) are running`
+        : `${now.length} instances of this install are running, so the adopted pid cannot be told apart`,
+    );
+  }
+
   confirmLaunched(): void {
     if (this.#confirmed) {
       return;
     }
     this.#confirmed = true;
+    if (this.#adopt !== null) {
+      this.#confirmAdopted();
+      return;
+    }
     if ((this.#platform !== "darwin" && this.#platform !== "win32") || this.#preexisting === null) {
       this.#ownershipAtLaunch = this.#unknownOwnership(
         this.#preexisting === null
@@ -1005,58 +1341,66 @@ export class ScriptInvocationTransport implements HostTransport {
   }
 
   /**
-   * Starts the macOS After Effects explicitly and resolves once the process
-   * exists, not when it is scriptable — the readiness probe is what gates on
-   * that. Rejects when nothing could be started: continuing would let the
-   * Apple Event start an instance nobody can tie to this session.
+   * Starts the macOS After Effects through LaunchServices (`open`) and
+   * resolves with the pid of the process that appears, once it can be told
+   * apart from anything else running. Resolves `undefined` when no single
+   * new process of this install shows up in time: the launch is not proven,
+   * and ownership stays "unknown" exactly as before.
    *
-   * The child is detached and unreferenced so it neither keeps this process
-   * alive nor dies with it. It is never signalled: quitting is the host's own
-   * `app.quit`, and only when ownership has been proven.
+   * Why `open` and not the executable itself: a directly spawned AE is not
+   * in LaunchServices until seconds into its own start-up, and the
+   * readiness probe's Apple Event — addressed by bundle path — is resolved
+   * by LaunchServices. Sent into that gap it makes LaunchServices start a
+   * second instance (observed on AE 27.0: the spawned process never became
+   * the scriptable app and exited on its own; the LaunchServices instance
+   * owned the GUI children, issue #105). `open` goes through the same
+   * registry the Apple Event consults, so the probe can only reach the
+   * instance this launch created — verified on AE 27.0.0, where `open` plus
+   * an immediate probe produced exactly one process.
+   *
+   * `open` reports no pid, so the started process is identified from the
+   * process list: the single new process of this install that appeared
+   * after launch began. None, or several, candidates never produce a pid —
+   * two same-named processes is exactly the state this path exists to
+   * avoid, so it is never picked between.
    */
-  #startMacHost(): Promise<number | undefined> {
-    const executable = this.#install.executable;
-    let child: ChildProcess;
-    try {
-      const session = this.#targetSession;
-      if (session !== null) {
-        child = startInSession(session, executable, [], { cwd: join(executable, "..") });
-      } else if (typeof process.getuid === "function" && process.getuid() === this.#sessionUid) {
-        // The caller's own session, and no other user's session is in play.
-        child = spawn(executable, [], {
-          cwd: join(executable, ".."),
-          detached: true,
-          stdio: "ignore",
-        });
-      } else {
-        return Promise.reject(
-          new MacSessionError(
-            `cannot start After Effects as uid ${this.#sessionUid}: that user has no login session this ` +
-              "process can identify, so the process could not be tied to this session. Nothing was started.",
-          ),
-        );
-      }
-    } catch (error) {
-      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+  async #openMacHost(): Promise<number | undefined> {
+    const bundle = macAppBundle(this.#install.executable);
+    if (bundle === null) {
+      throw new Error(
+        `cannot start After Effects through LaunchServices: ${this.#install.executable} ` +
+          "is not inside an .app bundle",
+      );
     }
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      child.once("error", (error: Error) => {
-        if (settled) {
-          return;
+    await this.#openMacApp(bundle);
+    const deadline = this.#now() + this.#macLaunchObserveMs;
+    const knownPids = new Set((this.#preexisting ?? []).map((p) => p.pid));
+    for (;;) {
+      let now: HostProcess[] | null = null;
+      try {
+        now = this.#hostProcesses();
+      } catch {
+        now = null;
+      }
+      if (now !== null) {
+        const fresh = now.filter(
+          (p) => !knownPids.has(p.pid) && p.startedAt >= this.#launchBegan - START_SLACK_MS,
+        );
+        if (fresh.length === 1) {
+          const only = fresh[0] as HostProcess;
+          this.#spawnedAt = only.startedAt;
+          return only.pid;
         }
-        settled = true;
-        reject(new Error(`cannot start ${executable}: ${error.message}`, { cause: error }));
-      });
-      child.once("spawn", () => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        child.unref();
-        resolve(child.pid);
-      });
-    });
+        // None yet, or more than one: keep watching. A second same-bundle
+        // process is the failure this path exists to avoid, so two
+        // candidates are never picked between — the pid stays unrecorded
+        // and ownership stays "unknown".
+      }
+      if (this.#now() >= deadline) {
+        return undefined;
+      }
+      await new Promise((done) => setTimeout(done, this.#macLaunchPollMs));
+    }
   }
 
   /**

@@ -1,0 +1,14 @@
+{
+  "probe": "g0-startup",
+  "issue": 99,
+  "platform": "darwin",
+  "aeInstall": "/Applications/Adobe After Effects 2026",
+  "aeShortVersion": "26.5.3",
+  "userStartupDir": "/Users/rebui/Library/Preferences/Adobe/After Effects/26.5/Scripts/Startup",
+  "adminRequired": false,
+  "startupExecuted": null,
+  "marker": null,
+  "notes": [
+    "launch/probe error: After Effects was started (pid 82767, started 2026-11-16T06:09:05.000Z, /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100015)) but did not answer the readiness probe: After Effects did not answer app.info within 179475ms; the After Effects process is still running but did not answer. It is still running, and this session cannot prove it may quit it, so it was left running: quit it by hand before running again."
+  ]
+}

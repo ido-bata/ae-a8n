@@ -14,7 +14,13 @@ import {
   createFakeGlobals,
   type FakeComp,
 } from "./fake-ae/object-model.js";
-import type { HostOwnership, HostTransport } from "../driver/transport.js";
+import type {
+  HostAttestation,
+  HostOwnership,
+  HostState,
+  HostTransport,
+  OwnedProcess,
+} from "../driver/transport.js";
 
 export type FakeTransportOptions = {
   /**
@@ -37,6 +43,19 @@ export class FakeAfterEffectsTransport implements HostTransport {
    * host the session launched.
    */
   ownershipKind: HostOwnership["kind"] = "owned";
+  /**
+   * What `hostState()` reports. "alive" while the fake stands in for a
+   * running host; a test flips it to "gone" to play a crashed After
+   * Effects. "unknown" mimics a transport that cannot attribute a process.
+   */
+  hostStateKind: HostState = "alive";
+  /** The pid `hostPid()` reports; null means "no owned process to name". */
+  hostPidValue: number | null = null;
+  /**
+   * The process `ownedProcess()` reports, for launch provenance. Null by
+   * default: the fake names no process unless a test gives it one.
+   */
+  ownedProcessValue: OwnedProcess | null = null;
   /** The engine's `$.global`: persists across scripts, as in a real After Effects. */
   #engineGlobal: Record<string, unknown> = {};
   /**
@@ -99,6 +118,46 @@ export class FakeAfterEffectsTransport implements HostTransport {
 
   ownership(): HostOwnership {
     return { kind: this.ownershipKind, evidence: "fake transport" };
+  }
+
+  hostState(): HostState {
+    return this.hostStateKind;
+  }
+
+  hostPid(): number | null {
+    return this.hostPidValue;
+  }
+
+  ownedProcess(): OwnedProcess | null {
+    return this.ownedProcessValue;
+  }
+
+  /**
+   * Test seam: fields merged over the default attestation, so a test can
+   * play another execution mode ("isolated-user", "remote") or an
+   * unattested session without replacing the transport.
+   */
+  attestationOverrides: Partial<HostAttestation> = {};
+
+  /**
+   * The fake stands in for a host on this machine in the caller's own
+   * session: it attests "local" and the controller's platform, exactly what
+   * the script transport would report for the same shape — including the
+   * GUI-delivery requirement and the absent console refusal of "local".
+   */
+  attestation(): Partial<HostAttestation> {
+    return {
+      pid: this.hostPid(),
+      ownedProcess: this.ownedProcess(),
+      platform: { os: process.platform, arch: process.arch },
+      executionMode: "local",
+      sessionUid: null,
+      sessionAsid: null,
+      sessionUser: null,
+      requiresGuiDelivery: true,
+      refusesConsoleTarget: false,
+      ...this.attestationOverrides,
+    };
   }
 
   close(): Promise<void> {

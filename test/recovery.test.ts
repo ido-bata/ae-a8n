@@ -17,6 +17,7 @@ import { AeDriver, TimeoutError } from "../src/driver/driver.js";
 import type { GuiWindowInfo } from "../src/driver/gui-recovery.js";
 import {
   KNOWN_DIALOG_CLASSES,
+  MacHostRecovery,
   chooseRecoveryWindow,
   classifyDialog,
   type HostRecovery,
@@ -312,5 +313,53 @@ describe("which window a recovery may act on", () => {
     // if its agent-supplied text starts with the prefix.
     const windows: GuiWindowInfo[] = [measuredAlert("ae-a8n: sign in to Adobe ID")];
     expect(chooseRecoveryWindow(windows).kind).toBe("human-only");
+  });
+
+  it("names the crash-repair dialog as recognised but never pressable", () => {
+    // Observed on a real host 2026-11-15: its choices include repair method
+    // and report submission — a human's decision, not a dismissal.
+    const windows: GuiWindowInfo[] = [dialog("クラッシュ修復オプション", "クラッシュレポートを送信しますか")];
+    const choice = chooseRecoveryWindow(windows);
+    expect(choice.kind).toBe("unpressable");
+    if (choice.kind !== "unpressable") return;
+    expect(choice.dialogClass.name).toBe("ae crash-repair options");
+  });
+
+  it("names the AppDirs/Required Dir startup warning and the recovery project window", () => {
+    const warning = chooseRecoveryWindow([dialog("警告", "AppDirs <5> Required Dir = /Applications/Adobe After Effects 2026")]);
+    expect(warning.kind).toBe("unpressable");
+    if (warning.kind === "unpressable") {
+      expect(warning.dialogClass.name).toBe("ae startup directory warning");
+    }
+    const recovery = chooseRecoveryWindow([dialog("リカバリプロジェクトを生成", "After Effects Crash_33.aep")]);
+    expect(recovery.kind).toBe("unpressable");
+    if (recovery.kind === "unpressable") {
+      expect(recovery.dialogClass.name).toBe("ae crash-recovery project");
+    }
+  });
+
+  it("presses nothing when a recognised unpressable dialog sits beside a measured alert", () => {
+    const windows: GuiWindowInfo[] = [measuredAlert(), dialog("クラッシュ修復オプション")];
+    const choice = chooseRecoveryWindow(windows);
+    expect(choice.kind).toBe("unpressable");
+    if (choice.kind !== "unpressable") return;
+    expect(choice.index).toBe(2);
+  });
+});
+
+describe("the macOS host recovery's target process", () => {
+  it("reports A8N-AE-004 when no process this run started can be named", async () => {
+    // `pid()` returning null means the transport could not tie a process to
+    // this run — attached, ambiguous, or already gone. That is a refusal
+    // with a stable code, not a generic "no host found".
+    const recovery = new MacHostRecovery({
+      session: { uid: 502, username: "test", asid: 100040, kind: "Aqua" },
+      pid: () => null,
+      screenshotDir: join(root, "shots"),
+    });
+    const outcome = await recovery.attempt({ requestId: "req-1", method: "app.info", timeoutMs: 1000 });
+    expect(outcome.recovered).toBe(false);
+    expect(outcome.outcome).toBe("refused");
+    expect(outcome.code).toBe("A8N-AE-004");
   });
 });

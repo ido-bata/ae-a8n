@@ -86,6 +86,36 @@ type Classified = {
 };
 
 /**
+ * The launch identity an unknown-outcome error carries, when it has one.
+ *
+ * The error object is duck-typed on purpose: the runner is platform-neutral
+ * and classifies by code, so it must not depend on the driver's error class.
+ */
+function launchEvidenceOf(error: unknown): Readonly<Record<string, string | number | boolean | null>> | null {
+  if (typeof error !== "object" || error === null) {
+    return null;
+  }
+  const launch = (error as { readonly launch?: unknown }).launch;
+  if (typeof launch !== "object" || launch === null) {
+    return null;
+  }
+  const candidate = launch as Record<string, unknown>;
+  const pid = candidate["pid"];
+  if (typeof pid !== "number") {
+    return null;
+  }
+  const startedAt = candidate["startedAt"];
+  const executable = candidate["executable"];
+  const present = candidate["presentAtLastLookup"];
+  return {
+    pid,
+    startedAt: typeof startedAt === "number" ? new Date(startedAt).toISOString() : null,
+    executable: typeof executable === "string" ? executable : null,
+    presentAtLastLookup: typeof present === "boolean" ? present : null,
+  };
+}
+
+/**
  * An adapter exception is classified by the diagnostic code it carries, so
  * one table serves both platforms. An exception with no code is indeterminate:
  * it is never reported as a test failure, and it quarantines the target.
@@ -108,6 +138,21 @@ function classifyError(error: unknown, doing: string): Classified {
   }
   const code = codeOf(error);
   if (code !== null && code in DIAGNOSTIC_CODES) {
+    if (code === "A8N-AE-005") {
+      // The launch started After Effects and never proved it owns it. The
+      // process is named so a human can find it; the run does not quit it,
+      // and the target is quarantined so the leftover is not mistaken for a
+      // fresh, unoccupied target by the next run.
+      const check = diagnostic("A8N-AE-005", {
+        detail: message,
+        remedy:
+          "Quit the After Effects this run started by hand (it is named in the detail), then clear the " +
+          "quarantine with `ae-a8n recover` before running again.",
+        remedyKind: "human",
+        evidence: { stage: doing, ...(launchEvidenceOf(error) ?? {}) },
+      });
+      return { status: "unknown", verdict: "unknown", check, message, quarantine: true };
+    }
     const check = diagnostic(code as keyof typeof DIAGNOSTIC_CODES, {
       detail: message,
       remedy: "Run `ae-a8n doctor`; resolve the blocker before running a test again.",
@@ -275,8 +320,8 @@ export async function runTest(input: TestRunInput): Promise<TestRunResult> {
       diagnostic("A8N-JOB-002", {
         detail: lock.detail,
         remedy:
-          "Wait for the running test, or inspect and clear the lock with `ae-a8n recover` " +
-          "(not implemented in this increment).",
+          "Wait for the running test, or inspect the lock with `ae-a8n recover`; " +
+          "it releases a lock whose owner is gone and never takes over a live one.",
         remedyKind: "human",
         evidence: { path: lock.path },
       }),
@@ -299,7 +344,7 @@ export async function runTest(input: TestRunInput): Promise<TestRunResult> {
         diagnostic("A8N-JOB-002", {
           detail: prior.detail,
           remedy:
-            "Inspect the quarantined run, then clear the quarantine with `ae-a8n recover` " +
+            "Inspect the quarantined run, then clear the quarantine with `ae-a8n recover --force` " +
             "before running again.",
           remedyKind: "human",
           evidence: { path: prior.path },

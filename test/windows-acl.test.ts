@@ -186,13 +186,15 @@ describe("the channel directory's ACL", () => {
   it("accepts a channel closed to shared accounts", () => {
     const verdict = channelAclVerdict(
       entries(["BUILTIN\\Administrators", "F"], ["NT AUTHORITY\\SYSTEM", "F"], ["HOST\\rebui", "M"]),
+      ["rebui"],
+      ["HOST"],
     );
     expect(verdict).toEqual({ ok: true });
   });
 
   it("refuses a channel Users or Everyone can write to", () => {
     for (const rights of ["F", "M", "W", "WD,REA,WEA"]) {
-      const verdict = channelAclVerdict(entries(["BUILTIN\\Users", rights]));
+      const verdict = channelAclVerdict(entries(["BUILTIN\\Users", rights]), ["rebui"], ["HOST"]);
       expect(verdict.ok, `${rights} should be refused`).toBe(false);
     }
   });
@@ -204,14 +206,72 @@ describe("the channel directory's ACL", () => {
     // anything that is not a known read-only right counts as write access,
     // or a grant this module cannot name passes as read-only.
     for (const rights of ["AD", "GW", "READ_CONTROL", "RX,AD", "special access:"]) {
-      const verdict = channelAclVerdict(entries(["NT AUTHORITY\\Authenticated Users", rights]));
+      const verdict = channelAclVerdict(entries(["NT AUTHORITY\\Authenticated Users", rights]), ["rebui"], ["HOST"]);
       expect(verdict.ok, `${rights} should be refused`).toBe(false);
     }
   });
 
   it("accepts read-only access for shared accounts, in every known spelling", () => {
     for (const rights of ["RX", "R", "RC,REA,S", "GR"]) {
-      expect(channelAclVerdict(entries(["BUILTIN\\Users", rights])), rights).toEqual({ ok: true });
+      expect(channelAclVerdict(entries(["BUILTIN\\Users", rights]), ["rebui"], ["HOST"]), rights).toEqual({ ok: true });
+    }
+  });
+
+  it("refuses a writable domain group that is not on a hard-coded list (T105)", () => {
+    // `CONTOSO\Domain Users` was never in SHARED: the old check passed it
+    // silently. Under the trusted-set rule it is refused because it is not
+    // an account the controller named.
+    for (const principal of [
+      "CONTOSO\\Domain Users",
+      "CONTOSO\\Everyone",
+      "HOST\\guest",
+      "WORKGROUP\\alice",
+    ]) {
+      const verdict = channelAclVerdict(
+        entries([principal, "M"], ["HOST\\rebui", "F"], ["HOST\\agent", "M"]),
+        ["rebui", "agent"],
+        ["HOST"],
+      );
+      expect(verdict.ok, principal).toBe(false);
+      expect(verdict.ok === false ? verdict.detail : "").toContain(principal);
+    }
+  });
+
+  it("accepts exactly the trusted controller and agent accounts", () => {
+    const verdict = channelAclVerdict(
+      entries(
+        ["BUILTIN\\Administrators", "F"],
+        ["NT AUTHORITY\\SYSTEM", "F"],
+        ["HOST\\rebui", "F"],
+        ["HOST\\agent", "M"],
+        ["CONTOSO\\agent", "RX"],
+      ),
+      ["rebui", "agent"],
+      ["HOST", "CONTOSO"],
+    );
+    expect(verdict).toEqual({ ok: true });
+  });
+
+  it("does not let a same-named account under an unknown qualifier in", () => {
+    // `agent` is trusted on HOST and CONTOSO; `EVIL\agent` is a different
+    // principal and must not borrow the name.
+    const verdict = channelAclVerdict(
+      entries(["EVIL\\agent", "F"]),
+      ["agent"],
+      ["HOST", "CONTOSO"],
+    );
+    expect(verdict.ok).toBe(false);
+  });
+
+  it("refuses when the trusted account set is unknown", () => {
+    for (const trusted of [null, [], ["  "]]) {
+      const verdict = channelAclVerdict(
+        entries(["HOST\\rebui", "F"]),
+        trusted,
+        ["HOST"],
+      );
+      expect(verdict.ok).toBe(false);
+      expect(verdict.ok === false ? verdict.detail : "").toContain("trusted");
     }
   });
 });

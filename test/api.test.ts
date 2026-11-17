@@ -323,3 +323,39 @@ describe("a session that asked for the GUI fallback", () => {
     }
   });
 });
+
+describe("the readiness budget", () => {
+  class ScriptableFake extends FakeAfterEffectsTransport {
+    seen: number | undefined;
+    awaitScriptable(timeoutMs: number): Promise<boolean> {
+      this.seen = timeoutMs;
+      return Promise.resolve(true);
+    }
+  }
+
+  it("hands readinessTimeoutMs to the transport's awaitScriptable", async () => {
+    const scripted = new ScriptableFake();
+    const ae = await AfterEffects.launch({
+      sessionRoot,
+      transport: scripted,
+      readinessTimeoutMs: 300_000,
+    });
+    expect(scripted.seen).toBe(300_000);
+    await ae.close();
+  });
+
+  it("keeps the driver default when the option is absent", async () => {
+    const scripted = new ScriptableFake();
+    const ae = await AfterEffects.launch({ sessionRoot, transport: scripted });
+    expect(scripted.seen).toBe(180_000);
+    await ae.close();
+  });
+
+  it("refuses a readinessTimeoutMs that is not a positive number", async () => {
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(
+        AfterEffects.launch({ sessionRoot, transport, readinessTimeoutMs: bad }),
+      ).rejects.toThrow(/readinessTimeoutMs must be a positive number/);
+    }
+  });
+});

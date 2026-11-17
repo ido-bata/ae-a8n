@@ -113,8 +113,8 @@ export type SpawnJobExecutorOptions = {
 /** NUL and the C0 control range, plus DEL. */
 function hasControlCharacter(value: string): boolean {
   for (const character of value) {
-    const code = character.codePointAt(0);
-    if (code === undefined || code <= 0x1f || code === 0x7f) {
+    const code = character.codePointAt(0) ?? 0;
+    if (code <= 0x1f || code === 0x7f) {
       return true;
     }
   }
@@ -319,12 +319,16 @@ export class SpawnJobExecutor implements JobExecutor {
         const stdout = Buffer.concat(stdoutChunks);
         const stderr = Buffer.concat(stderrChunks);
         let artifactNote = "";
-        let artifacts: Readonly<Record<string, Uint8Array>> | undefined;
+        // The channel artifacts exist whether or not the local copy below
+        // succeeds: the controller reads them through the signed result.
+        const artifacts: Readonly<Record<string, Uint8Array>> = {
+          "stdout.log": stdout,
+          "stderr.log": stderr,
+        };
         try {
           await mkdir(this.#runDirectory, { recursive: true });
           await writeFile(join(this.#runDirectory, "stdout.log"), stdout);
           await writeFile(join(this.#runDirectory, "stderr.log"), stderr);
-          artifacts = { "stdout.log": stdout, "stderr.log": stderr };
         } catch (error) {
           // The child's outcome is still what was observed; only its output is
           // missing. Never hide that, and never leave the promise unresolved.
@@ -335,7 +339,7 @@ export class SpawnJobExecutor implements JobExecutor {
           ...(options.code === undefined ? {} : { code: options.code }),
           exitCode: options.exitCode ?? null,
           message: `${message}${artifactNote}`,
-          ...(artifacts === undefined ? {} : { artifacts }),
+          artifacts,
         });
       };
 

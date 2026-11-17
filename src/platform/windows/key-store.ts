@@ -18,8 +18,8 @@ import { promisify } from "node:util";
 import {
   keyFileAclVerdict,
   ownerQualifiers,
-  parseIcacls,
-  type AccessControlEntry,
+  parseIcaclsReport,
+  type AclRead,
 } from "./acl.js";
 
 import {
@@ -31,19 +31,26 @@ import {
 
 const run = promisify(execFile);
 
-/** Reads a path's access-control entries, or null when they cannot be read. */
-export type AclReader = (path: string) => Promise<readonly AccessControlEntry[] | null>;
+/**
+ * Reads a path's access-control entries, or the named reason there are none.
+ * A parse failure is a refusal with its reason, not a silent null: localized
+ * or truncated `icacls` output must fail closed and say why (T101).
+ */
+export type AclReader = (path: string) => Promise<AclRead>;
 
 /**
  * The OS's own ACL for a path. `icacls` needs no elevation to read an ACL, and
- * on a machine that does not have it the check fails closed: null, refused.
+ * on a machine that does not have it the check fails closed: refused.
  */
-async function readAclWithIcacls(path: string): Promise<readonly AccessControlEntry[] | null> {
+async function readAclWithIcacls(path: string): Promise<AclRead> {
   try {
     const { stdout } = await run("icacls", [path], { windowsHide: true });
-    return parseIcacls(stdout, path);
-  } catch {
-    return null;
+    return parseIcaclsReport(stdout, path);
+  } catch (error) {
+    return {
+      ok: false,
+      detail: `icacls could not be run on ${path}: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }
 
@@ -116,20 +123,20 @@ export async function loadKeyFile(
   }
   if (process.platform === "win32") {
     const readAcl = options.acl ?? readAclWithIcacls;
-    const entries = await readAcl(path);
-    if (entries === null) {
-      // No ACL read means no proof, and an unproven key is not accepted.
+    const acl = await readAcl(path);
+    if (!acl.ok) {
+      // No ACL read means no proof, and an unproven key is not accepted. The
+      // reason — icacls missing, or output this parser refuses — is carried
+      // into the refusal so a localized host is diagnosable, not just denied.
       return {
         ok: false,
         code: "A8N-PERM-005",
-        detail:
-          `the key file ${path} has no readable access control list; ` +
-          "run icacls on it to see why",
+        detail: `the key file ${path} has no readable access control list: ${acl.detail}`,
       };
     }
     const verdict = keyFileAclVerdict(
-      entries,
-      options.owner ?? currentUser(),
+      acl.entries,
+      options.owner === undefined ? currentUser() : options.owner,
       ownerQualifiers(),
     );
     if (!verdict.ok) {

@@ -16,6 +16,7 @@ import {
   signJob,
   signResult,
   verifyClaimAuth,
+  verifyResultAuth,
   type JobKey,
 } from "../src/platform/windows/auth.js";
 import {
@@ -111,6 +112,33 @@ describe("the agent", () => {
 
     const stored = decodeResult((await files.read(jobPaths(JOB_ID).result)) ?? new Uint8Array());
     expect(stored).toMatchObject({ ok: true, value: { jobId: JOB_ID, payloadSha256: sha256Hex(PAYLOAD) } });
+  });
+
+  it("binds the published artifacts to the signed result", async () => {
+    // Finding 58: stdout/stderr are consumed as fact, so the signed result
+    // must name their digests — a rewrite after publication then fails
+    // verification instead of being read as the job's answer.
+    const files = await channel();
+    await publish(files);
+    const outcome = await runJob({
+      channel: files,
+      identity: IDENTITY,
+      key: KEY,
+      executor: OK_EXECUTOR,
+      jobId: JOB_ID,
+      now: () => NOW,
+    });
+    expect(outcome.state).toBe("finished");
+
+    const stored = decodeResult((await files.read(jobPaths(JOB_ID).result)) ?? new Uint8Array());
+    expect(stored.ok).toBe(true);
+    if (!stored.ok) {
+      return;
+    }
+    expect(stored.value.artifacts).toEqual({
+      "artifacts/out.txt": sha256Hex(new TextEncoder().encode("artifact")),
+    });
+    expect(verifyResultAuth(stored.value, [KEY])).toEqual({ ok: true });
   });
 
   it("leaves a run directory with no job.json alone and runs it on a later poll", async () => {
@@ -232,7 +260,10 @@ describe("the agent", () => {
     }
   });
 
-  it("quarantines a claim that was planted without a signature", async () => {
+  it("takes over a claim that was planted without a signature", async () => {
+    // T103: an unsigned file must not block a legitimate job. The agent
+    // replaces it with its own signed claim — proven by reading the path
+    // back — and runs.
     const files = await channel();
     await publish(files);
     await files.writeAtomic(
@@ -256,12 +287,17 @@ describe("the agent", () => {
       jobId: JOB_ID,
       now: () => NOW,
     });
-    expect(ran).toBe(false);
-    expect(outcome).toMatchObject({ state: "claim-unauthenticated" });
-    expect(await files.read(jobPaths(JOB_ID).result)).toBeNull();
+    expect(ran).toBe(true);
+    expect(outcome).toMatchObject({ state: "finished" });
+    const stored = decodeClaim((await files.read(jobPaths(JOB_ID).claim)) ?? new Uint8Array());
+    expect(stored.ok).toBe(true);
+    if (stored.ok) {
+      expect(verifyClaimAuth(stored.value, [KEY])).toEqual({ ok: true });
+      expect(stored.value.agent.id).toBe(IDENTITY.id);
+    }
   });
 
-  it("quarantines a claim signed with a key it does not hold", async () => {
+  it("takes over a claim signed with a key it does not hold", async () => {
     const files = await channel();
     await publish(files);
     const foreign = signClaim(
@@ -283,9 +319,49 @@ describe("the agent", () => {
       jobId: JOB_ID,
       now: () => NOW,
     });
-    expect(outcome).toMatchObject({ state: "claim-unauthenticated" });
-    if (outcome.state === "claim-unauthenticated") {
-      expect(outcome.detail).toContain("not from a trusted issuer");
+    expect(outcome).toMatchObject({ state: "finished" });
+    const stored = decodeClaim((await files.read(jobPaths(JOB_ID).claim)) ?? new Uint8Array());
+    expect(stored.ok).toBe(true);
+    if (stored.ok) {
+      expect(verifyClaimAuth(stored.value, [KEY])).toEqual({ ok: true });
+    }
+  });
+
+  it("still honours a signed claim another agent holds", async () => {
+    // The takeover is for claims that cannot be authenticated. A claim that
+    // verifies — even one left by an agent that has since died — still
+    // blocks: releasing it is a human decision, not the poll loop's.
+    const files = await channel();
+    await publish(files);
+    const stranded = signClaim(
+      {
+        schemaVersion: JOB_SCHEMA_VERSION,
+        jobId: JOB_ID,
+        claimedAt: NOW.toISOString(),
+        agent: { ...IDENTITY, id: "agent-2" },
+      },
+      KEY,
+    );
+    await files.writeAtomic(jobPaths(JOB_ID).claim, encodeClaim(stranded));
+
+    let ran = false;
+    const outcome = await runJob({
+      channel: files,
+      identity: IDENTITY,
+      key: KEY,
+      executor: {
+        execute: () => {
+          ran = true;
+          return Promise.resolve({ status: "ok", message: "" });
+        },
+      },
+      jobId: JOB_ID,
+      now: () => NOW,
+    });
+    expect(ran).toBe(false);
+    expect(outcome).toMatchObject({ state: "claimed-by-other" });
+    if (outcome.state === "claimed-by-other") {
+      expect(outcome.claim.agent).toBe("agent-2");
     }
   });
 
@@ -318,7 +394,9 @@ describe("the agent", () => {
     }
   });
 
-  it("quarantines an oversized claim without parsing it", async () => {
+  it("takes over an oversized claim without parsing it", async () => {
+    // Too large to be a claim this version wrote, so it cannot be a trusted
+    // claim either; it is replaced like any other unauthenticated file.
     const files = await channel();
     await publish(files);
     await files.writeAtomic(jobPaths(JOB_ID).claim, new Uint8Array(17 * 1024).fill(0x20));
@@ -331,7 +409,7 @@ describe("the agent", () => {
       jobId: JOB_ID,
       now: () => NOW,
     });
-    expect(outcome).toMatchObject({ state: "claim-unauthenticated" });
+    expect(outcome).toMatchObject({ state: "finished" });
   });
 
   it("treats a claim that vanished before it could be verified as unknown", async () => {
@@ -361,6 +439,102 @@ describe("the agent", () => {
     if (outcome.state === "claim-unauthenticated") {
       expect(outcome.detail).toContain("disappeared");
     }
+  });
+
+  it("runs a job addressed to this agent, case-insensitively", async () => {
+    const files = await channel();
+    await publish(
+      files,
+      job({ target: { id: "AGENT-1", host: "win-test", user: "TESTER" } }),
+    );
+    const outcome = await runJob({
+      channel: files,
+      identity: IDENTITY,
+      key: KEY,
+      executor: OK_EXECUTOR,
+      jobId: JOB_ID,
+      now: () => NOW,
+    });
+    expect(outcome).toMatchObject({ state: "finished" });
+  });
+
+  it("steps aside from a job addressed to another agent, claiming and refusing nothing", async () => {
+    // T095: on a channel with two agents, the wrong one must not claim the
+    // job — a claim or a refusal result would end it for the real target.
+    const files = await channel();
+    await publish(
+      files,
+      job({ target: { id: "agent-2", host: "WIN-TEST", user: "tester" } }),
+    );
+    let ran = false;
+    const outcome = await runJob({
+      channel: files,
+      identity: IDENTITY,
+      key: KEY,
+      executor: {
+        execute: () => {
+          ran = true;
+          return Promise.resolve({ status: "ok", message: "" });
+        },
+      },
+      jobId: JOB_ID,
+      now: () => NOW,
+    });
+    expect(ran).toBe(false);
+    expect(outcome).toMatchObject({ state: "not-for-us" });
+    expect(await files.read(jobPaths(JOB_ID).claim)).toBeNull();
+    expect(await files.read(jobPaths(JOB_ID).result)).toBeNull();
+  });
+
+  it("still refuses a retargeted job whose signature no longer verifies", async () => {
+    const files = await channel();
+    const addressed = job({ target: { id: "agent-1", host: "WIN-TEST", user: "tester" } });
+    // Rewrite the manifest naming agent-2 but keep agent-1's signature.
+    const tampered = JSON.parse(Buffer.from(encodeJob(addressed)).toString("utf-8")) as {
+      target: { id: string };
+    };
+    tampered.target.id = "agent-2";
+    await files.writeAtomic(jobPaths(JOB_ID).payload("payload.json"), PAYLOAD);
+    await files.writeAtomic(
+      jobPaths(JOB_ID).manifest,
+      new TextEncoder().encode(JSON.stringify(tampered, null, 2)),
+    );
+    const outcome = await runJob({
+      channel: files,
+      identity: IDENTITY,
+      key: KEY,
+      executor: OK_EXECUTOR,
+      jobId: JOB_ID,
+      now: () => NOW,
+    });
+    expect(outcome).toMatchObject({ state: "refused", result: { code: "A8N-JOB-003" } });
+  });
+
+  it("refuses a job whose signed deadline has passed, though it is still young", async () => {
+    // T097: the controller's deadline is tighter than the replay window, so
+    // a job the controller already gave up on cannot be re-enabled.
+    const files = await channel();
+    await publish(
+      files,
+      job({ deadline: new Date(NOW.getTime() + 30_000).toISOString() }),
+    );
+    const outcome = await runJob({
+      channel: files,
+      identity: IDENTITY,
+      key: KEY,
+      executor: OK_EXECUTOR,
+      jobId: JOB_ID,
+      now: () => new Date(NOW.getTime() + 31_000),
+    });
+    expect(outcome).toMatchObject({
+      state: "refused",
+      result: { status: "refused", code: "A8N-JOB-001" },
+    });
+    if (outcome.state === "refused") {
+      expect(outcome.result.message).toContain("deadline");
+    }
+    // No marker was written for a job that never ran.
+    expect(await files.read(sessionMarkerPath(JOB_ID))).toBeNull();
   });
 
   it("never re-runs a job that already has a result", async () => {

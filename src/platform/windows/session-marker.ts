@@ -10,20 +10,27 @@
  * another run — or no marker at all — means the destination is unproven: the
  * path does nothing and reports `A8N-AE-002`.
  *
- * The marker is **not authenticated**. It is not signed with the channel key,
- * and `verifySessionMarker` checks names that any writer to the channel can
- * copy from the job and the presence file. It therefore proves which run
- * answered only on a channel whose write access is already limited to the two
- * accounts that use it (`channelAclVerdict` and the key file's ACL carry that
- * bound). Signing the marker is tracked as T098 in
- * `specs/isolated-ae/tasks.md`; until then its `secret` is evidence for a
- * person reading the run, not an authentication check.
+ * The marker is HMAC-signed with the channel key like every other protocol
+ * document (T098). `verifySessionMarker` checks the signature before it
+ * compares names, so a writer who can copy the run id, job id and agent
+ * identity out of the channel still cannot produce a marker either side will
+ * act on. A marker without a valid signature — including one written before
+ * signing existed — is unreadable as proof and the destination stays
+ * `unproven`.
  *
  * This is the isolated-backend half of the driver's own session marker (#43).
  * It proves the job reached this run's agent; the driver's marker proves which
  * After Effects instance a script reached when the run talks to AE directly.
  */
 
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+import {
+  JOB_AUTH_ALG,
+  SIGNATURE_PATTERN,
+  type JobAuth,
+  type JobKey,
+} from "./auth.js";
 import type { FileChannel } from "./channel.js";
 import {
   isJobId,
@@ -36,6 +43,17 @@ export const SESSION_MARKER_SCHEMA_VERSION = "1.0";
 export const SESSION_SECRET_BYTES = 32;
 
 const SECRET_PATTERN = /^[0-9a-f]{64}$/;
+const MARKER_DOMAIN = "ae-a8n session-marker v1";
+const MARKER_KEYS = new Set([
+  "schemaVersion",
+  "runId",
+  "jobId",
+  "secret",
+  "agent",
+  "createdAt",
+  "auth",
+]);
+const MARKER_AUTH_KEYS = new Set(["alg", "keyId", "signature"]);
 
 export type SessionMarker = {
   readonly schemaVersion: typeof SESSION_MARKER_SCHEMA_VERSION;
@@ -46,7 +64,12 @@ export type SessionMarker = {
   readonly secret: string;
   readonly agent: AgentIdentity;
   readonly createdAt: string;
+  /** The agent's HMAC over every field above. See `auth.ts`. */
+  readonly auth: JobAuth;
 };
+
+/** The marker before it is signed; what `createSessionMarker` returns. */
+export type UnsignedSessionMarker = Omit<SessionMarker, "auth">;
 
 /** `results/<jobId>/session-marker.json`; a job id is one path component. */
 export function sessionMarkerPath(jobId: string): string {
@@ -65,7 +88,7 @@ export type CreateSessionMarkerInput = {
 };
 
 /** The agent's side: mint a marker for the job it just verified. */
-export function createSessionMarker(input: CreateSessionMarkerInput): SessionMarker {
+export function createSessionMarker(input: CreateSessionMarkerInput): UnsignedSessionMarker {
   if (!isRunId(input.runId)) {
     throw new Error(`run id "${input.runId}" cannot be used as a path component`);
   }
@@ -84,6 +107,70 @@ export function createSessionMarker(input: CreateSessionMarkerInput): SessionMar
     agent: input.agent,
     createdAt: input.now().toISOString(),
   };
+}
+
+/** The signed subset, in a fixed order; `auth` itself is never signed. */
+export function markerSigningBytes(marker: UnsignedSessionMarker | SessionMarker): Uint8Array {
+  const agent = marker.agent;
+  return Buffer.from(
+    JSON.stringify([
+      MARKER_DOMAIN,
+      marker.schemaVersion,
+      marker.runId,
+      marker.jobId,
+      marker.secret,
+      agent.id,
+      agent.host,
+      agent.user,
+      agent.sessionId,
+      agent.version,
+      marker.createdAt,
+    ]),
+    "utf-8",
+  );
+}
+
+/** Sign a minted marker with the channel key, like a job or a result. */
+export function signSessionMarker(marker: UnsignedSessionMarker, key: JobKey): SessionMarker {
+  return {
+    ...marker,
+    auth: {
+      alg: JOB_AUTH_ALG,
+      keyId: key.keyId,
+      signature: createHmac("sha256", key.secret).update(markerSigningBytes(marker)).digest("hex"),
+    },
+  };
+}
+
+export type MarkerAuthCheck =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly detail: string };
+
+/**
+ * Verify a marker's signature against the channel keys this side holds. A
+ * marker that does not verify is not evidence of anything.
+ */
+export function verifyMarkerAuth(marker: SessionMarker, keys: readonly JobKey[]): MarkerAuthCheck {
+  if (marker.auth.alg !== JOB_AUTH_ALG) {
+    return { ok: false, detail: `unsupported signature algorithm "${String(marker.auth.alg)}"` };
+  }
+  const key = keys.find((candidate) => candidate.keyId === marker.auth.keyId);
+  if (key === undefined) {
+    return {
+      ok: false,
+      detail: `the marker is signed with key "${marker.auth.keyId}", which this side does not have`,
+    };
+  }
+  if (!SIGNATURE_PATTERN.test(marker.auth.signature)) {
+    return { ok: false, detail: "the marker signature is not a SHA-256 hex digest" };
+  }
+  const expected = createHmac("sha256", key.secret).update(markerSigningBytes(marker)).digest("hex");
+  const given = Buffer.from(marker.auth.signature, "hex");
+  const wanted = Buffer.from(expected, "hex");
+  if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) {
+    return { ok: false, detail: "the marker signature does not match the document" };
+  }
+  return { ok: true };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -124,6 +211,11 @@ export function decodeSessionMarker(bytes: Uint8Array): DecodeOutcome<SessionMar
   if (!isRecord(parsed)) {
     return { ok: false, detail: "session-marker.json is not an object" };
   }
+  for (const key of Object.keys(parsed)) {
+    if (!MARKER_KEYS.has(key)) {
+      return { ok: false, detail: `unknown session marker field "${key}"` };
+    }
+  }
   if (parsed["schemaVersion"] !== SESSION_MARKER_SCHEMA_VERSION) {
     return {
       ok: false,
@@ -150,6 +242,19 @@ export function decodeSessionMarker(bytes: Uint8Array): DecodeOutcome<SessionMar
   if (Number.isNaN(Date.parse(createdAt))) {
     return { ok: false, detail: "marker createdAt is not an ISO-8601 timestamp" };
   }
+  const auth = parsed["auth"];
+  if (!isRecord(auth)) {
+    return { ok: false, detail: "marker auth is missing" };
+  }
+  for (const key of Object.keys(auth)) {
+    if (!MARKER_AUTH_KEYS.has(key)) {
+      return { ok: false, detail: `unknown marker auth field "${key}"` };
+    }
+  }
+  const { alg, keyId, signature } = auth;
+  if (typeof alg !== "string" || typeof keyId !== "string" || typeof signature !== "string") {
+    return { ok: false, detail: "the marker auth block is not well formed" };
+  }
   return {
     ok: true,
     value: {
@@ -159,6 +264,7 @@ export function decodeSessionMarker(bytes: Uint8Array): DecodeOutcome<SessionMar
       secret,
       agent,
       createdAt,
+      auth: { alg: JOB_AUTH_ALG, keyId, signature },
     },
   };
 }
@@ -219,14 +325,24 @@ function sameAccount(left: string, right: string): boolean {
 }
 
 /**
- * The marker must name this run, this job and this agent; anything else acts
- * on nothing. This is a name check, not a signature check — see the module
- * header for what the channel's write access has to supply.
+ * The marker must be signed by the channel key, name this run, this job and
+ * this agent; anything else acts on nothing. The signature is checked first:
+ * every field it covers is copyable from the channel by any writer, so names
+ * alone prove attribution to nobody.
  */
 export function verifySessionMarker(
   marker: SessionMarker,
   expected: ExpectedDestination,
+  keys: readonly JobKey[],
 ): DestinationVerdict {
+  const authenticated = verifyMarkerAuth(marker, keys);
+  if (!authenticated.ok) {
+    return {
+      proven: false,
+      code: "A8N-AE-002",
+      detail: `the session marker is not from a trusted agent: ${authenticated.detail}`,
+    };
+  }
   if (marker.runId !== expected.runId) {
     return {
       proven: false,
@@ -269,6 +385,7 @@ export function verifySessionMarker(
 export async function proveRunDestination(
   channel: FileChannel,
   expected: ExpectedDestination,
+  keys: readonly JobKey[],
 ): Promise<DestinationVerdict> {
   const read = await readSessionMarker(channel, expected.jobId);
   if (read.state === "missing") {
@@ -285,5 +402,5 @@ export async function proveRunDestination(
       detail: `the session marker for job "${expected.jobId}" is unreadable: ${read.detail}`,
     };
   }
-  return verifySessionMarker(read.marker, expected);
+  return verifySessionMarker(read.marker, expected, keys);
 }

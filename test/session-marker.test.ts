@@ -113,16 +113,35 @@ describe("the session marker", () => {
     expect((await one.stop({ unsavedChanges: "discard" })).quit).toBe(true);
   });
 
-  it("asks only the probe to adopt and only the quit to require", async () => {
+  it("asks the probe to adopt, and every later call — quit included — to require", async () => {
+    // T096: before this, only `app.quit` carried the marker check, so an
+    // ordinary call could be delivered to — and mutate — an instance this
+    // session never proved. Now every call after the probe requires the
+    // marker; a mis-delivered one is refused before it runs.
     const t = new TwoInstances(true);
     const driver = driverOn(t);
     await driver.start();
     await driver.call("app.info");
+    await driver.call("app.info");
     await driver.stop({ unsavedChanges: "discard" });
     const sent = requestsIn();
     expect(sent.filter((r) => r.session?.adopt).map((r) => r.method)).toEqual(["app.info"]);
-    expect(sent.filter((r) => r.session?.require).map((r) => r.method)).toEqual(["app.quit"]);
-    expect(sent.filter((r) => r.method === "app.info" && r.session === undefined)).toHaveLength(1);
+    expect(sent.filter((r) => r.session?.require).map((r) => r.method).sort()).toEqual([
+      "app.info",
+      "app.info",
+      "app.quit",
+    ]);
+  });
+
+  it("refuses an ordinary call mis-delivered to another instance, and runs nothing there", async () => {
+    const t = new TwoInstances(true);
+    const driver = driverOn(t);
+    await driver.start(); // answered by A, which holds the marker
+    t.target = "b"; // the next call is mis-delivered
+    await expect(driver.call("app.info")).rejects.toThrow(/did not answer the probe/u);
+    // Nothing ran in B: the refusal happened before the method executed, so
+    // B's engine holds no marker for this session.
+    expect(t.b.engineGlobal["__a8nSessions"]).toEqual({});
   });
 
   it("keeps only strings and booleans in the engine, never an After Effects object", async () => {

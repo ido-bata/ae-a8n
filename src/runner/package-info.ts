@@ -8,6 +8,8 @@
 
 import { readFileSync } from "node:fs";
 
+import { A8N_VERSION } from "../version.js";
+
 export type PackageInfo = { readonly name: string; readonly version: string };
 
 let cached: PackageInfo | null = null;
@@ -22,10 +24,10 @@ export function packageInfo(): PackageInfo {
     ) as Partial<PackageInfo>;
     cached = {
       name: typeof parsed.name === "string" ? parsed.name : "@ido-bata/ae-a8n",
-      version: typeof parsed.version === "string" ? parsed.version : "0.0.0",
+      version: typeof parsed.version === "string" ? parsed.version : A8N_VERSION,
     };
   } catch {
-    cached = { name: "@ido-bata/ae-a8n", version: "0.0.0" };
+    cached = { name: "@ido-bata/ae-a8n", version: A8N_VERSION };
   }
   return cached;
 }

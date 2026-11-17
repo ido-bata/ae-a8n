@@ -28,6 +28,7 @@ import {
   decodeResult,
   encodeClaim,
   encodeResult,
+  isResultArtifactPath,
   jobPaths,
   sha256Hex,
   validateJob,
@@ -35,7 +36,11 @@ import {
   type Job,
   type JobResult,
 } from "./job.js";
-import { createSessionMarker, writeSessionMarker } from "./session-marker.js";
+import {
+  createSessionMarker,
+  signSessionMarker,
+  writeSessionMarker,
+} from "./session-marker.js";
 
 export type JobExecution = {
   /** `unknown` means the executor could not tell what happened; never retry it. */
@@ -54,7 +59,6 @@ export interface JobExecutor {
 }
 
 export type AgentRunOutcome =
-  | { readonly state: "no-job" }
   /**
    * The run directory exists but carries no `job.json` yet: the controller is
    * still publishing the submission. Nothing was claimed, run or refused.
@@ -76,6 +80,13 @@ export type AgentRunOutcome =
    * never treated as another agent working on it.
    */
   | { readonly state: "claim-unauthenticated"; readonly detail: string }
+  /**
+   * The signed job names a different agent as its target. Nothing was
+   * claimed, run or refused: refusing here would publish a result the real
+   * target then reads as "already finished", so a wrong agent must step
+   * aside silently and let the addressed agent take the job.
+   */
+  | { readonly state: "not-for-us" }
   | { readonly state: "already-finished"; readonly result: JobResult | null }
   | { readonly state: "refused"; readonly result: JobResult }
   | { readonly state: "finished"; readonly result: JobResult };
@@ -121,6 +132,34 @@ type ChannelRead =
   | { readonly ok: true; readonly bytes: Uint8Array | null }
   | { readonly ok: false; readonly detail: string };
 
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+  return left.length === right.length && Buffer.from(left).equals(Buffer.from(right));
+}
+
+/**
+ * The target test for T095. The comparison is case-insensitive for the same
+ * reason `sameName` is in session-marker.ts: Windows names are not case
+ * sensitive. An absent `target` is the compatibility rule — this channel's
+ * only agent runs it.
+ */
+function jobTargetsThisAgent(
+  job: Job,
+  identity: AgentIdentity,
+): boolean {
+  if (job.target === undefined) {
+    return true;
+  }
+  return (
+    sameText(job.target.id, identity.id) &&
+    sameText(job.target.host, identity.host) &&
+    sameText(job.target.user, identity.user)
+  );
+}
+
+function sameText(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase();
+}
+
 /** A read the channel refused for size is a refusal, not a crash. */
 async function readCapped(channel: FileChannel, path: string): Promise<ChannelRead> {
   try {
@@ -160,6 +199,20 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
     return { state: "not-ready" };
   }
 
+  // The target check must happen before the claim: a non-target agent that
+  // claimed the job and published a refusal would end the job for the agent
+  // it was actually addressed to. The manifest is immutable once written, so
+  // reading it here is the same document the post-claim path re-reads. Only
+  // an authenticated target is honoured — an unsigned or malformed manifest
+  // falls through to the claim path, which refuses it properly.
+  const earlyManifest = await readCapped(channel, paths.manifest);
+  if (earlyManifest.ok && earlyManifest.bytes !== null && earlyManifest.bytes.length <= MAX_JOB_BYTES) {
+    const early = decodeJob(earlyManifest.bytes);
+    if (early.ok && verifyJobAuth(early.value, [key]).ok && !jobTargetsThisAgent(early.value, identity)) {
+      return { state: "not-for-us" };
+    }
+  }
+
   const claim = signClaim(
     {
       schemaVersion: JOB_SCHEMA_VERSION,
@@ -169,32 +222,49 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
     } satisfies UnsignedClaim,
     key,
   );
-  const claimed = await channel.createExclusive(paths.claim, encodeClaim(claim));
-  if (!claimed) {
-    // Someone else got there first. Distinguish a real agent's claim from a
-    // file that merely exists: only a signature shows that an agent holding
-    // the channel secret took the job.
+  const claimBytes = encodeClaim(claim);
+  /**
+   * An existing claim only blocks this job when it verifies as a signed claim
+   * for this job (T103). Anything else — unsigned, forged, unreadable,
+   * misplaced, or a claim `O_EXCL` never really excluded (T100) — is replaced
+   * by this agent's signed claim, and the replacement is proven by reading
+   * the path back: proceeding only when the bytes there are exactly ours.
+   * A claim that still is not ours afterwards stays quarantined.
+   */
+  const retake = async (why: string): Promise<AgentRunOutcome | null> => {
+    await channel.writeAtomic(paths.claim, claimBytes);
+    const retaken = await readCapped(channel, paths.claim);
+    if (retaken.ok && retaken.bytes !== null && bytesEqual(retaken.bytes, claimBytes)) {
+      return null;
+    }
+    return {
+      state: "claim-unauthenticated",
+      detail: `the existing claim is not a trusted claim for this job and could not be replaced by a signed one: ${why}`,
+    };
+  };
+  const adjudicate = async (heldByUs: boolean): Promise<AgentRunOutcome | null> => {
+    if (heldByUs) {
+      return null;
+    }
+    // Someone else got there first — or a claim this agent cannot attribute
+    // occupies the path. Distinguish a real agent's claim from a file that
+    // merely exists: only a signature shows that an agent holding the channel
+    // secret took the job.
     const existingClaim = await readCapped(channel, paths.claim);
     if (!existingClaim.ok) {
-      return {
-        state: "claim-unauthenticated",
-        detail: `the existing claim cannot be read: ${existingClaim.detail}`,
-      };
+      return retake(`the existing claim cannot be read: ${existingClaim.detail}`);
     }
     if (existingClaim.bytes === null) {
-      return {
-        state: "claim-unauthenticated",
-        detail: "the existing claim disappeared before it could be verified; the job's state is unknown",
-      };
+      return retake("the existing claim disappeared before it could be verified; the job's state is unknown");
     }
     const decodedClaim = decodeClaim(existingClaim.bytes);
     if (!decodedClaim.ok) {
-      return {
-        state: "claim-unauthenticated",
-        detail: `the existing claim is not valid: ${decodedClaim.detail}`,
-      };
+      // Not a claim this version understands — unsigned, truncated or planted.
+      return retake(decodedClaim.detail);
     }
     if (decodedClaim.value.jobId !== jobId) {
+      // Authenticated content, wrong job: quarantine rather than overwrite,
+      // because a key holder wrote it and the safe reading is corruption.
       return {
         state: "claim-unauthenticated",
         detail: `the existing claim names job "${decodedClaim.value.jobId}", not "${jobId}"`,
@@ -202,15 +272,33 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
     }
     const claimCheck = verifyClaimAuth(decodedClaim.value, [key]);
     if (!claimCheck.ok) {
-      return {
-        state: "claim-unauthenticated",
-        detail: `the existing claim is not from a trusted issuer: ${claimCheck.detail}`,
-      };
+      return retake(`the existing claim is not from a trusted issuer: ${claimCheck.detail}`);
     }
     return {
       state: "claimed-by-other",
       claim: { agent: decodedClaim.value.agent.id, claimedAt: decodedClaim.value.claimedAt },
     };
+  };
+
+  const claimed = await channel.createExclusive(paths.claim, claimBytes);
+  if (claimed) {
+    // `O_EXCL` is assumed, not proven, on every share (T100): a share that
+    // does not honour exclusive create lets two agents both "win". Read the
+    // claim back and require it to be exactly what this agent wrote before
+    // acting on the win; anything else goes through the same adjudication as
+    // a lost race.
+    const held = await readCapped(channel, paths.claim);
+    const ours =
+      held.ok && held.bytes !== null && bytesEqual(held.bytes, claimBytes);
+    const outcome = await adjudicate(ours);
+    if (outcome !== null) {
+      return outcome;
+    }
+  } else {
+    const outcome = await adjudicate(false);
+    if (outcome !== null) {
+      return outcome;
+    }
   }
 
   // A result means some agent already ran this job. It is never re-sent,
@@ -286,6 +374,24 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
     return { state: "refused", result };
   }
 
+  // Signed is not the same as addressed to me. On a channel with more than
+  // one agent every agent verifies every signature; only the target may run.
+  if (!jobTargetsThisAgent(job, identity)) {
+    const addressed = `${job.target?.id ?? "?"} on ${job.target?.host ?? "?"}\\${job.target?.user ?? "?"}`;
+    const result = await refuse(
+      channel,
+      identity,
+      jobId,
+      null,
+      startedAt,
+      now,
+      `the job is addressed to agent "${addressed}", not this agent "${identity.id}"; ` +
+        "another agent on the channel owns it",
+      key,
+    );
+    return { state: "refused", result };
+  }
+
   const payloadRead = await readCapped(channel, paths.payload(job.payloadFile));
   if (!payloadRead.ok) {
     const result = await refuse(
@@ -347,13 +453,16 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
   // marker and must not treat the destination as proven.
   await writeSessionMarker(
     channel,
-    createSessionMarker({
-      runId: job.runId,
-      jobId,
-      agent: identity,
-      now,
-      random: options.random ?? randomBytes,
-    }),
+    signSessionMarker(
+      createSessionMarker({
+        runId: job.runId,
+        jobId,
+        agent: identity,
+        now,
+        random: options.random ?? randomBytes,
+      }),
+      key,
+    ),
   );
 
   let execution: JobExecution;
@@ -387,11 +496,35 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
     startedAt,
     finishedAt: timestamp(now),
   };
-  // Artifacts first: a result that names them never precedes them.
-  for (const [relativePath, bytes] of Object.entries(execution.artifacts ?? {})) {
-    await channel.writeAtomic(`${paths.resultDirectory}/${relativePath}`, bytes);
+  // Artifacts first: a result that names them never precedes them. Each
+  // digest is of the bytes just published, and the signature covers the map
+  // — a channel writer without the key can replace a log but cannot make
+  // the replacement match what the signed result claims.
+  let artifactDigests: Record<string, string> | undefined;
+  if (execution.artifacts !== undefined) {
+    artifactDigests = {};
+    for (const [relativePath, bytes] of Object.entries(execution.artifacts)) {
+      // The digest map is signed and decoded with the same path rules, so a
+      // name that is not inside the result directory is refused here rather
+      // than published into a result nobody can read back.
+      if (!isResultArtifactPath(relativePath)) {
+        throw new Error(
+          `the executor named an artifact "${relativePath}" outside the result directory`,
+        );
+      }
+      await channel.writeAtomic(`${paths.resultDirectory}/${relativePath}`, bytes);
+      artifactDigests[relativePath] = sha256Hex(bytes);
+    }
   }
-  const signed = await publishResult(channel, jobId, result, key);
+  const signed = await publishResult(
+    channel,
+    jobId,
+    {
+      ...result,
+      ...(artifactDigests === undefined ? {} : { artifacts: artifactDigests }),
+    },
+    key,
+  );
   return { state: "finished", result: signed };
 }
 

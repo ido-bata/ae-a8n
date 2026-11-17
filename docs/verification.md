@@ -310,7 +310,9 @@ On a machine with After Effects installed:
    On AE 2026 (26.5) this is not sufficient on its own: AE also refuses to run a
    script from a location it has not been told to trust, answering `-1708` and
    showing a modal that points at the same panel. Approve the driver's `staging/`
-   folder there as well.
+   folder there as well. Whether that approval is per-folder, per-script, or
+   coarser is still unmeasured — the read-only before/after probe and protocol
+   are in [script-trust-measurement.md](script-trust-measurement.md) (Issue #125).
 2. A `.aep` with a composition and at least one layer, and the match name of a
    plugin that is actually installed.
 

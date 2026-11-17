@@ -1,0 +1,6 @@
+# Worktrunk calls the frontend-neutral worktree lifecycle (see worktree-workflow).
+[pre-start]
+setup = "mise run worktree:setup"
+
+[pre-remove]
+teardown = "mise run worktree:teardown"

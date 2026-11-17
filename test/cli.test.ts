@@ -270,8 +270,21 @@ describe("the doctor command", () => {
     expect(envelope.checks).toEqual([]);
     expect(envelope.nextActions).toEqual([]);
     expect(test.err()).toBe("");
-    // The probe is the only adapter call doctor may make.
-    expect(adapter.calls).toEqual(["probe:local-test-user"]);
+    // The probe is the only adapter call doctor may make. An explicit
+    // --target keeps the isolated-session intent.
+    expect(adapter.calls).toEqual(["probe:local-test-user:session"]);
+  });
+
+  it("probes the local intent for a bare doctor and says so", async () => {
+    const adapter = new FakeAdapter("darwin");
+    const test = harness({ ok: true, adapter });
+    const code = await runCli(["doctor", "--json"], test.deps);
+
+    expect(code).toBe(EXIT.ok);
+    const envelope = jsonEnvelope(test.out());
+    expect(envelope.target).toEqual({ name: "local", isolation: "session" });
+    expect(envelope.notice).toContain("local mode");
+    expect(adapter.calls).toEqual(["probe:local:local"]);
   });
 
   it("reports a blocker, exits 3, and carries the full check shape", async () => {

@@ -23,10 +23,11 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { NODE_FLOOR_MAJOR, nodeMajor } from "../../doctor/index.js";
 import { diagnostic, type DiagnosticCheck } from "../../doctor/diagnostics.js";
@@ -49,6 +50,7 @@ import {
   type IsolatedSession,
   type PlatformAdapter,
   type PlatformId,
+  type ProbeIntent,
   type RecoveryFinding,
   type RunOptions,
   type SessionIdentity,
@@ -91,6 +93,45 @@ export type DarwinFacts = {
   readonly aeProcesses: readonly DarwinProcess[];
   readonly aeProcessesReadable: boolean;
   readonly aeProcessesFailure: string | null;
+  /**
+   * The selected install's "Allow Scripts To Write Files And Access Network"
+   * preference, read from that account's AE prefs. `null` when it was not
+   * evaluated: the target account is not the account doctor runs as, so its
+   * prefs cannot be read honestly. "unreadable" means the prefs file or the
+   * key could not be found — never treated as either allowed or blocked.
+   */
+  readonly aeScripting:
+    | {
+        readonly state: "allowed" | "blocked" | "unreadable";
+        readonly prefsDir: string;
+        readonly prefValue: string | null;
+      }
+    | null;
+  /**
+   * Whether the selected install carries the ExtendScript component at the
+   * locations AE is known to use it. "present" means the files exist — not
+   * that AE loads them (AE 2027 shipped `Scripting.plugin` yet ignored it,
+   * G0 evidence 2026-11-16), so function is only proven by a real launch.
+   * "absent" means none of the checked locations exist; "unproven" means the
+   * question could not be answered honestly.
+   */
+  readonly aeScriptingComponent: {
+    readonly state: "present" | "absent" | "unproven";
+    /** The known component locations that exist. */
+    readonly found: readonly string[];
+    /** Every location checked; empty when no install could be resolved. */
+    readonly checked: readonly string[];
+  };
+  /**
+   * The per-user `Scripts/Startup` folder AE executes entries from, for the
+   * selected install's version. Only the account doctor runs as can be
+   * checked honestly; another account's `~/Library` is not read, so the
+   * state is "unproven" there.
+   */
+  readonly aeStartupFolder: {
+    readonly state: "present" | "absent" | "unproven";
+    readonly path: string | null;
+  };
   /** Raw output the conclusions rest on, for a human to check. */
   readonly evidence: Readonly<Record<string, string>>;
 };
@@ -282,6 +323,10 @@ export function readDarwinFacts(
   const aeProcessesFailure = aeProcessesReadable ? null : failureOf(psResult);
 
   const installs = readInstalls(exec);
+  const selected = installs.installs.find((install) => install.selected) ?? null;
+  const aeScripting = readAeScriptingPermission(installs.installs, targetUser);
+  const aeScriptingComponent = readScriptingComponent(selected);
+  const aeStartupFolder = readStartupFolder(selected, targetUser);
 
   const evidence: Record<string, string> = {
     os: [release ?? "", arch ?? ""].join("|"),
@@ -324,8 +369,174 @@ export function readDarwinFacts(
     aeProcesses,
     aeProcessesReadable,
     aeProcessesFailure,
+    aeScripting,
+    aeScriptingComponent,
+    aeStartupFolder,
     evidence,
   };
+}
+
+/**
+ * The account's AE prefs folder for an app version (`26.5.3` → `26.5`), or
+ * null when the version string cannot be split. This is the same folder the
+ * scripting preference and the per-user `Scripts/Startup` directory live
+ * under; both were observed on AE 26.5/27.0 (G0 evidence 2026-11-16).
+ */
+function aePrefsDir(version: string): string | null {
+  const [major, minor] = version.split(".");
+  if (major === undefined || minor === undefined) {
+    return null;
+  }
+  return join(
+    homedir(),
+    "Library",
+    "Preferences",
+    "Adobe",
+    "After Effects",
+    `${major}.${minor}`,
+  );
+}
+
+/** The locations the ExtendScript component is known to occupy, per install. */
+function scriptingComponentCandidates(install: DarwinAeInstall): readonly string[] {
+  const bundle = join(install.location, `${basename(install.location)}.app`);
+  return [
+    join(install.location, "Plug-ins", "Keyframe", "Scripting.plugin"),
+    join(bundle, "Contents", "Frameworks", "extendscript.framework"),
+    join(bundle, "Contents", "Frameworks", "dvascripting.framework"),
+  ];
+}
+
+/**
+ * lstat that separates "missing" (ENOENT/ENOTDIR) from "could not look" —
+ * `existsSync` answers false for both, and a permission error must never
+ * read as an absent component.
+ */
+function pathPresence(path: string): "present" | "absent" | "unreadable" {
+  try {
+    statSync(path);
+    return "present";
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === "ENOENT" || code === "ENOTDIR" ? "absent" : "unreadable";
+  }
+}
+
+/**
+ * Read-only check for the ExtendScript component inside the selected
+ * install. File presence is the only thing a read-only probe can measure;
+ * whether AE actually loads the component is proven only by a launch, so a
+ * "present" result still feeds an unproven diagnostic.
+ */
+export function readScriptingComponent(
+  install: DarwinAeInstall | null,
+): DarwinFacts["aeScriptingComponent"] {
+  if (install === null) {
+    return { state: "unproven", found: [], checked: [] };
+  }
+  const candidates = scriptingComponentCandidates(install);
+  const found: string[] = [];
+  let unreadable = false;
+  for (const path of candidates) {
+    const presence = pathPresence(path);
+    if (presence === "present") {
+      found.push(path);
+    } else if (presence === "unreadable") {
+      unreadable = true;
+    }
+  }
+  if (unreadable) {
+    return { state: "unproven", found, checked: candidates };
+  }
+  return { state: found.length > 0 ? "present" : "absent", found, checked: candidates };
+}
+
+/**
+ * The per-user `Scripts/Startup` folder for the selected install's version,
+ * for the account doctor runs as. Another account's prefs cannot be read
+ * honestly, so the state stays "unproven" — the same rule
+ * `readAeScriptingPermission` follows.
+ */
+export function readStartupFolder(
+  install: DarwinAeInstall | null,
+  targetUser: string | null,
+): DarwinFacts["aeStartupFolder"] {
+  if (install === null || install.version === null || targetUser !== currentUsername()) {
+    return { state: "unproven", path: null };
+  }
+  const prefsDir = aePrefsDir(install.version);
+  if (prefsDir === null) {
+    return { state: "unproven", path: null };
+  }
+  const dir = join(prefsDir, "Scripts", "Startup");
+  const presence = pathPresence(dir);
+  if (presence === "present") {
+    try {
+      return { state: statSync(dir).isDirectory() ? "present" : "unproven", path: dir };
+    } catch {
+      return { state: "unproven", path: dir };
+    }
+  }
+  return { state: presence === "absent" ? "absent" : "unproven", path: dir };
+}
+
+/**
+ * `Pref_SCRIPTING_FILE_NETWORK_SECURITY` for the selected install, from the
+ * target account's own AE prefs. Readable only when the target account is
+ * the account this process runs as — another account's `~/Library` cannot
+ * be read honestly, so the result is `null` there rather than a guess.
+ *
+ * AE keys its prefs folder by `major.minor` of the app version
+ * (`26.5.3` → `26.5`). The pref is `"1"` when scripts may write files and
+ * use the network, `"0"` when they may not (verified on AE 26.5, G0
+ * evidence 2026-11-16). A missing file or key is "unreadable", not a
+ * verdict.
+ */
+export function readAeScriptingPermission(
+  installs: readonly DarwinAeInstall[],
+  targetUser: string | null,
+): DarwinFacts["aeScripting"] {
+  if (targetUser === null || targetUser !== currentUsername()) {
+    return null;
+  }
+  const selected = installs.find((install) => install.selected) ?? null;
+  if (selected === null || selected.version === null) {
+    return null;
+  }
+  const prefsDir = aePrefsDir(selected.version);
+  if (prefsDir === null) {
+    return null;
+  }
+  const unreadable = { state: "unreadable" as const, prefsDir, prefValue: null };
+  let entries: string[];
+  try {
+    entries = readdirSync(prefsDir);
+  } catch {
+    return unreadable;
+  }
+  const prefix = `Adobe After Effects ${selected.version.split(".").slice(0, 2).join(".")} `;
+  for (const name of entries) {
+    if (!name.startsWith(prefix) || !name.endsWith(".txt")) {
+      continue;
+    }
+    let text: string;
+    try {
+      text = readFileSync(join(prefsDir, name), "utf-8");
+    } catch {
+      continue;
+    }
+    const match = /Pref_SCRIPTING_FILE_NETWORK_SECURITY" = "([^"]+)"/.exec(text);
+    if (match === null) {
+      continue;
+    }
+    const value = match[1] ?? "";
+    return {
+      state: value === "1" ? "allowed" : value === "0" ? "blocked" : "unreadable",
+      prefsDir,
+      prefValue: value,
+    };
+  }
+  return unreadable;
 }
 
 /** The capabilities this backend can honestly claim today. */
@@ -342,6 +553,9 @@ export function darwinCapabilities(): Capabilities {
     // wire it yet (#59). Claiming it here would tell a user a recovery works.
     guiRecovery: false,
     sessionIdentity: "uid-asid",
+    // This adapter starts no After Effects and its close() quits nothing, so
+    // no attached instance can ever be quit through it (#129).
+    quitsOnlyOwned: true,
   };
 }
 
@@ -355,7 +569,10 @@ function describeProcesses(processes: readonly DarwinProcess[]): string {
  * Turn the facts into diagnostics. Pure: the same facts always produce the
  * same checks, and nothing here can change the machine.
  */
-export function probeDarwin(facts: DarwinFacts): DarwinProbeResult {
+export function probeDarwin(
+  facts: DarwinFacts,
+  intent: ProbeIntent = "session",
+): DarwinProbeResult {
   const checks: DiagnosticCheck[] = [];
 
   if (facts.release === null || facts.arch === null) {
@@ -452,7 +669,13 @@ export function probeDarwin(facts: DarwinFacts): DarwinProbeResult {
     );
   }
 
-  if (facts.targetUser === null || facts.targetUid === null) {
+  // Session-separation checks describe the isolated-session path only. A
+  // local probe (`AfterEffects.launch` in the caller's own session) targets
+  // exactly the session these checks would refuse, so they are not emitted
+  // for it; `doctor --user`/`--host` and `test`/`setup` keep them.
+  const sessionIntent = intent === "session";
+
+  if (sessionIntent && (facts.targetUser === null || facts.targetUid === null)) {
     checks.push(
       diagnostic("A8N-SESSION-001", {
         detail:
@@ -472,7 +695,7 @@ export function probeDarwin(facts: DarwinFacts): DarwinProbeResult {
     );
   }
 
-  if (facts.targetUid !== null) {
+  if (sessionIntent && facts.targetUid !== null) {
     if (facts.guiSession === null) {
       checks.push(
         diagnostic("A8N-SESSION-002", {
@@ -524,7 +747,7 @@ export function probeDarwin(facts: DarwinFacts): DarwinProbeResult {
     }
   }
 
-  if (facts.consoleUid === null) {
+  if (sessionIntent && facts.consoleUid === null) {
     checks.push(
       diagnostic("A8N-SESSION-003", {
         detail:
@@ -536,7 +759,7 @@ export function probeDarwin(facts: DarwinFacts): DarwinProbeResult {
         evidence: { consoleUid: null, targetUid: facts.targetUid },
       }),
     );
-  } else if (facts.targetUid !== null && facts.targetUid === facts.consoleUid) {
+  } else if (sessionIntent && facts.targetUid !== null && facts.targetUid === facts.consoleUid) {
     checks.push(
       diagnostic("A8N-SESSION-003", {
         detail:
@@ -550,6 +773,152 @@ export function probeDarwin(facts: DarwinFacts): DarwinProbeResult {
     );
   }
 
+  if (facts.aeScripting?.state === "blocked") {
+    checks.push(
+      diagnostic("A8N-PERM-003", {
+        detail:
+          `After Effects script file/network access is off for ${selected?.location ?? "the selected install"} ` +
+          `(Pref_SCRIPTING_FILE_NETWORK_SECURITY = "${facts.aeScripting.prefValue ?? "?"}" in ` +
+          `${facts.aeScripting.prefsDir}); every script-driven call, including the readiness probe, will time out`,
+        remedy:
+          "In After Effects for this account: Settings > Scripting & Expressions, enable " +
+          '"Allow Scripts to Write Files and Access Network", then re-run doctor. ' +
+          "Doctor reports the state; it never changes AE preferences itself.",
+        remedyKind: "human",
+        evidence: {
+          prefsDir: facts.aeScripting.prefsDir,
+          prefValue: facts.aeScripting.prefValue,
+        },
+      }),
+    );
+  }
+
+  // The remaining script-invocation prerequisites apply to both intents:
+  // the isolated path and `AfterEffects.launch` run the same kind of script
+  // through the same AE gates. Each is reported as measured or "unproven" —
+  // never guessed.
+  const installKnown = selected !== null && selected.version !== null;
+
+  if (installKnown && (facts.aeScripting === null || facts.aeScripting.state === "unreadable")) {
+    checks.push(
+      diagnostic("A8N-PERM-007", {
+        detail:
+          facts.aeScripting === null
+            ? "the script file/network preference could not be evaluated for this account " +
+              "(another account's prefs are not readable, or no install version resolved); " +
+              "whether scripts may write files and use the network is unproven"
+            : `the script file/network preference could not be read ` +
+              `(${facts.aeScripting.prefsDir}); whether scripts may write files and ` +
+              "use the network is unproven — it is not treated as either allowed or blocked",
+        remedy:
+          "Enable \"Allow Scripts to Write Files and Access Network\" in After Effects " +
+          "(Settings > Scripting & Expressions) for the account that runs AE, then re-run doctor.",
+        remedyKind: "human",
+        evidence: {
+          state: facts.aeScripting === null ? "not-evaluated" : facts.aeScripting.state,
+          prefsDir: facts.aeScripting?.prefsDir ?? null,
+        },
+      }),
+    );
+  }
+
+  if (installKnown) {
+    // Script-trust approval (AE 26.5+ refuses DoScriptFile from locations a
+    // human has not approved, with -1708 and a modal). Where the approval
+    // is recorded and at what granularity is still being measured (#125),
+    // so the honest state is "unproven" — the evidence fields are shaped to
+    // carry a measured verdict when the tooling lands.
+    checks.push(
+      diagnostic("A8N-PERM-008", {
+        detail:
+          `whether After Effects ${selected.version} will run scripts from this package's ` +
+          "session folder without a per-location approval cannot be verified without " +
+          "launching AE; on AE 26.5+ an unapproved script is refused (-1708) with a modal. " +
+          "The approval granularity (folder vs script) is unproven (#125).",
+        remedy:
+          "On the first launch, approve the session's staging folder in After Effects " +
+          "(Settings > Scripting & Expressions) when AE prompts. Until the approval " +
+          "granularity is measured, a new session directory may need its own approval; " +
+          "keep one sessionRoot per project to minimise prompts.",
+        remedyKind: "human",
+        evidence: {
+          state: "unproven",
+          approvalGranularity: "unproven",
+          aeVersion: selected.version ?? null,
+        },
+      }),
+    );
+  }
+
+  // The component check needs only a resolved install, not a readable
+  // version: an absent component is a blocker either way.
+  if (selected !== null) {
+    const component = facts.aeScriptingComponent;
+    if (component.state === "absent") {
+      checks.push(
+        diagnostic("A8N-AE-006", {
+          detail:
+            `none of the known ExtendScript component locations exist under ${selected.location} ` +
+            `(${component.checked.join("; ")}); After Effects cannot run scripts without it ` +
+            "(observed on AE 2027, docs/evidence/g0-startup-2026-11-16)",
+          remedy:
+            "Repair or reinstall After Effects through Creative Cloud so the scripting " +
+            "component is present, then re-run doctor.",
+          remedyKind: "human",
+          evidence: { install: selected.location, checked: component.checked.join("; ") },
+        }),
+      );
+    } else {
+      // "present" and "unproven" share the warning: neither proves the
+      // component loads, and the remedy is the same real-launch check.
+      checks.push(
+        diagnostic("A8N-AE-007", {
+          detail:
+            component.state === "present"
+              ? `ExtendScript component files exist under ${selected.location}, but presence ` +
+                "does not prove After Effects loads them (AE 2027 shipped the plugin file " +
+                "yet ignored it); only a real launch proves the component works"
+              : `the ExtendScript component locations under ${selected.location} could not ` +
+                "be checked, so whether the scripting component is usable is unproven",
+          remedy:
+            "Launch After Effects once and run a trivial script; if AE reports the " +
+            "scripting plugin is not installed, repair the install through Creative Cloud.",
+          remedyKind: "human",
+          evidence: {
+            state: component.state,
+            found: component.found.join("; "),
+          },
+        }),
+      );
+    }
+
+    if (installKnown) {
+      const startup = facts.aeStartupFolder;
+      checks.push(
+        diagnostic("A8N-AE-008", {
+          detail:
+            `per-user Scripts/Startup folder for AE ${selected.version}: ` +
+            (startup.state === "present"
+              ? `present at ${startup.path}`
+              : startup.state === "absent"
+                ? `absent at ${startup.path}; whether AE creates it on demand is unverified`
+                : "unproven") +
+            ". Startup-folder execution is proven on macOS AE 26.5 " +
+            "(docs/evidence/g0-startup-2026-11-16) and unproven on Windows and other versions.",
+          remedy:
+            "No action for AfterEffects.launch — the folder matters only for the in-AE " +
+            "dispatcher transport (#127).",
+          remedyKind: "none",
+          evidence: {
+            state: startup.state,
+            path: startup.path,
+            aeVersion: selected.version ?? null,
+          },
+        }),
+      );
+    }
+  }
+
   if (!facts.aeProcessesReadable) {
     checks.push(
       diagnostic("A8N-AE-001", {
@@ -560,6 +929,21 @@ export function probeDarwin(facts: DarwinFacts): DarwinProbeResult {
           "Quit After Effects yourself if it is running, then re-run doctor. Doctor never starts or stops After Effects.",
         remedyKind: "human",
         evidence: { processes: facts.evidence["aeProcesses"] ?? "unreadable" },
+      }),
+    );
+  } else if (facts.aeProcesses.length > 0 && intent === "local") {
+    // Local mode attaches to a running After Effects on purpose; it is not
+    // the "another AE on the target" collision the isolated path refuses.
+    checks.push(
+      diagnostic("A8N-AE-009", {
+        detail:
+          `After Effects is already running: ${describeProcesses(facts.aeProcesses)}; ` +
+          "a local launch attaches to it and reports ownership \"attached\"",
+        remedy:
+          "Nothing to do — AfterEffects.launch reuses the running instance and " +
+          "close() will not quit it. Quit AE yourself first only if you want a fresh instance.",
+        remedyKind: "none",
+        evidence: { processes: facts.evidence["aeProcesses"] ?? "" },
       }),
     );
   } else if (facts.aeProcesses.length > 0) {
@@ -807,11 +1191,11 @@ export class DarwinAdapter implements PlatformAdapter {
     return Promise.resolve(darwinCapabilities());
   }
 
-  probe(target: TargetSpec): Promise<DarwinProbeResult> {
+  probe(target: TargetSpec, intent: ProbeIntent = "session"): Promise<DarwinProbeResult> {
     // The probe is synchronous and read-only; it cannot start AE or open a
     // session. Wrapping the call keeps a failure a rejection, as the contract
     // promises, instead of a synchronous throw.
-    return Promise.resolve().then(() => probeDarwin(this.#readFacts(target.user)));
+    return Promise.resolve().then(() => probeDarwin(this.#readFacts(target.user), intent));
   }
 
   plan(target: TargetSpec): Promise<readonly SetupStep[]> {
@@ -936,14 +1320,24 @@ export class DarwinAdapter implements PlatformAdapter {
         automatable: false,
       });
 
+      const scripting = facts.aeScripting;
       steps.push({
         id: "macos.ae-scripting",
-        state: "needs-human",
+        state: scripting?.state === "allowed" ? "done" : "needs-human",
         reason:
-          "After Effects only runs scripts that write files when its own scripting preference allows it",
+          scripting?.state === "allowed"
+            ? `script file/network access is already allowed (${scripting.prefsDir})`
+            : scripting?.state === "blocked"
+              ? `script file/network access is off for the selected install (${scripting.prefsDir}); ` +
+                "every script-driven call will time out until it is enabled"
+              : "After Effects only runs scripts that write files when its own scripting preference allows it",
         action:
-          "In After Effects for the target account: Settings > Scripting & Expressions, enable " +
-          '"Allow Scripts to Write Files and Access Network".',
+          scripting?.state === "allowed"
+            ? null
+            : "In After Effects for the target account: Settings > Scripting & Expressions, enable " +
+              '"Allow Scripts to Write Files and Access Network". If scripts still do not run, ' +
+              "the AE scripting component itself may be missing (observed on AE 2027) — reinstall or " +
+              "repair After Effects through Creative Cloud.",
         automatable: false,
       });
 
@@ -969,7 +1363,7 @@ export class DarwinAdapter implements PlatformAdapter {
           stateFile: this.#setupStateFile,
           outcomes: steps.map((step) => ({
             id: step.id,
-            state: step.state === "planned" ? "planned" : step.state,
+            state: step.state,
             detail: "dry run: nothing was changed",
           })),
         };

@@ -132,3 +132,30 @@ option and the build command.
   distinct error.
 - The extension contract version is `1`. A generated file records it; a host
   script built for a different major version is refused at launch.
+
+## 8. Dispatcher transport (#146)
+
+The same generated file is the effective host script under
+`transport: "in-ae-dispatcher"`. `launch({ hostScript })` stages the bytes
+into the dispatcher channel; the human-activated `activate.jsx` evals them,
+and the registration prelude fixes `__a8n.extensions` for the dispatcher's
+whole life.
+
+- The dispatcher heartbeat (`state.json`) reports the method names it
+  actually registered plus a `registration` fingerprint (sha256 over the
+  declared name/source pairs, recorded in the generated file's header).
+- `launch()` compares the staged manifest in `channel.json` with that
+  heartbeat and refuses on any difference: method set or fingerprint. A
+  running dispatcher never adopts changed extensions implicitly; the
+  remedy is reactivation (a fresh After Effects process, since a second
+  dispatcher cannot start inside a running one).
+- `ae.extensionMethods()`, `ae.call` and `ae.capabilities()` expose the
+  heartbeat's registered set — what is provably inside After Effects — not
+  the staged declaration alone.
+- The sha256/header/registration checks are identity evidence for
+  staged-vs-active comparison. They are not proof that After Effects
+  approved or executed the code, and they never substitute for the
+  `authorization.extensionMethods` grant on an attached session.
+- A heartbeat written before this contract (no extension fields) cannot
+  prove an extension set: sessions staging extensions are refused, plain
+  sessions still connect.

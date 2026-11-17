@@ -351,6 +351,56 @@ describe("who owns the After Effects process", () => {
     expect(t.ownership().kind).toBe("owned");
   });
 
+  it("re-verifies the owned process on every recoveryTargetPid call", async () => {
+    // Ownership was proven once, at confirmLaunched. The pid handed to the
+    // GUI fallback is re-proven on every call: while pid 42 is still the
+    // same single instance it is returned, and once the pid names a
+    // different process (reused pid) nothing is handed out.
+    const t = transportSeeing([], [ae(42)], [ae(42)], [ae(42)], [ae(42, T0 + 90_000)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership().kind).toBe("owned");
+    expect(t.recoveryTargetPid()).toBe(42);
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("hands the GUI fallback nothing once a second instance is running", async () => {
+    // Two instances of this install in scope: the owned pid can no longer
+    // be told apart, so the fallback gets no target even though ownership
+    // itself was proven earlier.
+    const t = transportSeeing([], [ae(42)], [ae(42)], [ae(42), ae(43)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership().kind).toBe("owned");
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("hands the GUI fallback nothing when the process list cannot be re-read", async () => {
+    let calls = 0;
+    const t = new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      now: () => T0,
+      processes: () => {
+        calls += 1;
+        if (calls === 1) {
+          return [];
+        }
+        if (calls === 2) {
+          return [ae(42)];
+        }
+        throw new Error("ps failed");
+      },
+      launchMacHost: () => Promise.resolve(42),
+    });
+    await t.launch();
+    t.confirmLaunched();
+    // The process is still recorded as owned, but it cannot be re-proven:
+    // the fallback gets no pid rather than an unverified one.
+    expect(t.hostPid()).toBe(42);
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
   it("is unsure when the only host started before launch began", async () => {
     // Someone else started it between the snapshot and the probe.
     const t = transportSeeing([], [ae(42, T0 - 30_000)]);
@@ -474,6 +524,192 @@ describe("finding the host before it has answered", () => {
     expect(t.recoveryTargetPid()).toBe(42);
     // ...but nothing is owned yet, so nothing may be quit.
     expect(t.ownership().kind).toBe("unknown");
+  });
+});
+
+describe("launching through LaunchServices (issue #105)", () => {
+  // AE 27.0: a directly spawned After Effects is unknown to LaunchServices
+  // for seconds, and the readiness probe's Apple Event — addressed by bundle
+  // path — made LaunchServices start a second instance in that gap. The
+  // host is now started with `open`, and the pid is learned from the process
+  // list. Two same-named processes must still mean "unknown", never a guess.
+  const executable =
+    "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects";
+  const bundle = "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app";
+  const install = { executable, versionName: "Adobe After Effects 2027.app", renderExecutable: null };
+  const T0 = Date.parse("2026-11-15T00:00:00Z");
+  type P = { pid: number; startedAt: number; executable: string };
+  const ae = (pid: number, startedAt = T0 + 1_000): P => ({ pid, startedAt, executable });
+
+  /**
+   * A transport whose `open` records the bundle it was given and whose
+   * process list plays back `lists`. `now` advances on every read so the
+   * observe deadline is always reached.
+   */
+  function launchTransport(
+    lists: P[][],
+    options: { open?: (bundle: string) => Promise<void> } = {},
+  ) {
+    let i = 0;
+    let clock = T0;
+    const opened: string[] = [];
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      now: () => (clock += 50),
+      processes: () => lists[Math.min(i++, lists.length - 1)] as P[],
+      openMacApp:
+        options.open ??
+        ((path: string) => {
+          opened.push(path);
+          return Promise.resolve();
+        }),
+      macLaunchObserveMs: 2_000,
+      macLaunchPollMs: 1,
+    });
+    return { transport, opened };
+  }
+
+  it("asks LaunchServices for the bundle, then owns the single new process", async () => {
+    const { transport, opened } = launchTransport([[], [ae(42)], [ae(42)], [ae(42)]]);
+    await transport.launch();
+    expect(opened).toEqual([bundle]);
+    transport.confirmLaunched();
+    expect(transport.ownership()).toMatchObject({ kind: "owned" });
+    expect(transport.hostPid()).toBe(42);
+  });
+
+  it("claims nothing when two same-named processes appear — the #105 state", async () => {
+    const { transport } = launchTransport([[], [ae(42), ae(43)], [ae(42), ae(43)]]);
+    await transport.launch();
+    transport.confirmLaunched();
+    expect(transport.ownership()).toMatchObject({ kind: "unknown", code: "A8N-AE-004" });
+    expect(transport.hostPid()).toBeNull();
+  });
+
+  it("claims nothing when no new process appears in time", async () => {
+    const { transport } = launchTransport([[], []]);
+    await transport.launch();
+    transport.confirmLaunched();
+    expect(transport.ownership().kind).toBe("unknown");
+  });
+
+  it("does not pick between candidates while the list is still empty", async () => {
+    // The process appears only on a later poll; the pid is still learned.
+    const { transport } = launchTransport([[], [], [ae(42)], [ae(42)]]);
+    await transport.launch();
+    transport.confirmLaunched();
+    expect(transport.ownership().kind).toBe("owned");
+    expect(transport.hostPid()).toBe(42);
+  });
+
+  it("surfaces an open failure instead of falling back to a bare spawn", async () => {
+    const { transport } = launchTransport([[], []], {
+      open: () => Promise.reject(new Error("LaunchServices refused")),
+    });
+    await expect(transport.launch()).rejects.toThrow("LaunchServices refused");
+  });
+
+  it("refuses an executable that is not inside an .app bundle", async () => {
+    const bare = { ...install, executable: "/usr/local/bin/AfterFX" };
+    let clock = T0;
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install: bare,
+      now: () => (clock += 50),
+      processes: () => [] as P[],
+      openMacApp: () => Promise.resolve(),
+      macLaunchPollMs: 1,
+    });
+    await expect(transport.launch()).rejects.toThrow(/not inside an \.app bundle/);
+  });
+});
+
+describe("the host a failed launch left behind", () => {
+  // The readiness probe was denied (Apple Events -1743) after AE was started.
+  // The process is still running and cannot be quit — ownership was never
+  // proven — but the run must be able to say which process it left.
+  const executable = "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects";
+  const install = { executable, versionName: "Adobe After Effects 2026.app", renderExecutable: null };
+  const T0 = Date.parse("2026-10-15T00:00:00Z");
+  type P = { pid: number; startedAt: number; executable: string };
+  const ae = (pid: number, startedAt = T0 + 1_000, exe = executable): P => ({ pid, startedAt, executable: exe });
+
+  function transportLaunched(launchedPid: number | null, ...lists: Array<P[] | "throw">) {
+    let i = 0;
+    return new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      now: () => T0,
+      processes: () => {
+        const entry = lists[Math.min(i++, lists.length - 1)];
+        if (entry === "throw") {
+          throw new Error("ps failed: Operation not permitted");
+        }
+        return entry as P[];
+      },
+      launchMacHost: () => Promise.resolve(launchedPid === null ? undefined : launchedPid),
+    });
+  }
+
+  it("reports the process it started, with the start time the process list gave it", async () => {
+    const t = transportLaunched(42, [], [ae(42)]);
+    await t.launch();
+    expect(t.pendingLaunch()).toMatchObject({
+      pid: 42,
+      startedAt: T0 + 1_000,
+      executable,
+      presentAtLastLookup: true,
+    });
+    // The session is named as well, so a human knows where to look.
+    expect(t.pendingLaunch()?.session?.uid).toBe(
+      typeof process.getuid === "function" ? process.getuid() : -1,
+    );
+  });
+
+  it("keeps the pid but no guessed start time when the process list cannot be read", async () => {
+    const t = transportLaunched(42, [], "throw");
+    await t.launch();
+    expect(t.pendingLaunch()).toMatchObject({
+      pid: 42,
+      startedAt: null,
+      presentAtLastLookup: false,
+    });
+  });
+
+  it("reports the pinned start time, and no match, once the pid names a different process", async () => {
+    const t = transportLaunched(42, [], [ae(42)], [ae(42, T0 + 90_000)]);
+    await t.launch();
+    expect(t.pendingLaunch()?.startedAt).toBe(T0 + 1_000);
+
+    // pid 42 now belongs to a process that started much later: the AE this
+    // session started is gone, and the pin is what says so.
+    expect(t.pendingLaunch()).toMatchObject({
+      pid: 42,
+      startedAt: T0 + 1_000,
+      presentAtLastLookup: false,
+    });
+  });
+
+  it("reports nothing once the probe has proven ownership", async () => {
+    const t = transportLaunched(42, [], [ae(42)], [ae(42)]);
+    await t.launch();
+    t.confirmLaunched();
+    expect(t.ownership().kind).toBe("owned");
+    expect(t.pendingLaunch()).toBeNull();
+  });
+
+  it("reports nothing for a host that was already running", async () => {
+    const t = transportLaunched(42, [ae(7, T0 - 60_000)]);
+    await t.launch();
+    // No process was started by this session, so there is none to report.
+    expect(t.pendingLaunch()).toBeNull();
+  });
+
+  it("reports nothing when the launch recorded no pid", async () => {
+    const t = transportLaunched(null, [], [ae(42)]);
+    await t.launch();
+    expect(t.pendingLaunch()).toBeNull();
   });
 });
 

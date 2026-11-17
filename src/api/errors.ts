@@ -7,24 +7,50 @@
  */
 
 import { HostError, ProtocolError } from "../protocol/envelope.js";
-import { HostQuarantinedError, HostUnavailableError, TimeoutError } from "../driver/driver.js";
+import {
+  HostLeftRunningError,
+  HostQuarantinedError,
+  HostUnavailableError,
+  TimeoutError,
+} from "../driver/driver.js";
+import type { HostCondition } from "../driver/driver.js";
 import { ScriptNotSentError } from "../driver/transport.js";
 import type { PropertyKind } from "./types.js";
 
-export { HostQuarantinedError, HostUnavailableError, ProtocolError, ScriptNotSentError, TimeoutError };
+export {
+  HostLeftRunningError,
+  HostQuarantinedError,
+  HostUnavailableError,
+  ProtocolError,
+  ScriptNotSentError,
+  TimeoutError,
+};
 
 export class AfterEffectsError extends Error {
   /** Operation that failed, as it appears in the trace. */
   readonly op: string;
   /** The diagnostic code, when the failure has one the caller may act on. */
   readonly code?: string;
+  /**
+   * What the host looked like when a call timed out — `gone`,
+   * `unresponsive`, `modal` or `unknown`. Present only on timeout failures;
+   * the `TimeoutError` that produced it stays available as `cause`.
+   */
+  readonly hostCondition?: HostCondition;
 
-  constructor(message: string, op: string, options?: { cause?: unknown; code?: string }) {
+  constructor(
+    message: string,
+    op: string,
+    options?: { cause?: unknown; code?: string; hostCondition?: HostCondition },
+  ) {
     super(message, options);
     this.name = "AfterEffectsError";
     this.op = op;
     if (options?.code !== undefined) {
       this.code = options.code;
+    }
+    if (options?.hostCondition !== undefined) {
+      this.hostCondition = options.hostCondition;
     }
   }
 }
@@ -153,7 +179,10 @@ export function contextualise(op: string, error: unknown): never {
     );
   }
   if (error instanceof TimeoutError) {
-    throw new AfterEffectsError(error.message, op, { cause: error });
+    throw new AfterEffectsError(error.message, op, {
+      cause: error,
+      ...(error.hostCondition !== undefined ? { hostCondition: error.hostCondition } : {}),
+    });
   }
   if (error instanceof ScriptNotSentError) {
     // The call never reached the host: it did not fail there, and nothing ran.
@@ -162,6 +191,12 @@ export function contextualise(op: string, error: unknown): never {
       op,
       { cause: error },
     );
+  }
+  if (error instanceof HostLeftRunningError) {
+    // The process this session started is still out there and is not this
+    // session's to quit. The code and the identity travel so a caller (and
+    // the run report) can tell this from a timeout it may be tempted to retry.
+    throw new AfterEffectsError(error.message, op, { cause: error, code: error.code });
   }
   if (error instanceof HostQuarantinedError) {
     // A licence, sign-in or permission window: the operation is blocked on a

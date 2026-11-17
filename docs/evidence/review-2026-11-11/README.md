@@ -91,6 +91,9 @@ to `4746ff3`.
 | 65 | A remote run's channel is settled once — by an injected channel, or by the first resolution that assigns one — and a later resolution may not replace it. Before, the send-time liveness check re-read the host configuration and could move the job, the manifest and the release to a new channel root while the run lock stayed in the old one, which nothing checks again. Test: `windows-remote-comms.test.ts` "keeps a run in the channel its configuration named when the file is rewritten" (fails without the guard) |
 | 66 | Every throw after the run lock is taken releases it: the liveness check, the publish, the manifest and the local artifacts all sit inside one `try`, and the catch releases before rethrowing. The deliberate `unknown` outcome is the single exception — the job may still be executing, and `close()` releases that lock after the caller decides. A failed release never replaces the original error. Test: `windows-runner.test.ts` "releases the run's lock when the run throws before it has an outcome" |
 | 72 | The runner closes the session it opened, in a `finally`, after the lock is released. The outcome is already decided at that point, so neither a refusing close (on Windows, a session marker that is not this run's) nor a throwing one changes it; the close and its reason are recorded as `session.closed` and appended to the run's trace when the directory was kept. Tests: `runner-test.test.ts` "closes the session after the command, and keeps the result in the trace", "keeps a refusing close out of the run's verdict", "does not let a close that throws change the run" |
+| 57 (T106) | `openComms` no longer gates the channel check on the controller's `process.platform`: an injected ACL reader is called on every platform, Windows keeps its `icacls` verdict, and POSIX falls back to `stat` + the new `channelModeVerdict` (`channel-mode.ts`), which refuses a channel root writable by group or others — `1777` included, since anyone can still create entries in it — and refuses outright when mode or ownership cannot be read (`A8N-PERM-006`). No "probably fine" state. The Windows side of the same property was hardened in parallel by #93/T105 (PR #141: trusted controller/agent account set, locale-robust `icacls`); this branch adds the POSIX half and the every-platform injected-reader fix. Tests: `windows-remote-comms.test.ts`, `windows-channel-mode.test.ts` |
+| 58 (T107) | `JobResult` carries an `artifacts` map (relative path → SHA-256) that is inside the signed bytes, the agent publishes digests computed from the bytes it writes, and the reader verifies artifact bytes against the signed digests before decoding (`result-artifacts.ts`); a rewritten, undeclared or missing artifact is refused. A result that predates the field stays readable for one release and reports `unproven`, which the run manifest records as `artifactProof`. Tests: `windows-job.test.ts`, `windows-result-artifacts.test.ts`, `windows-agent.test.ts`, `windows-runner.test.ts` |
+| 64 (T108) | The run manifest is signed with the channel key (`auth` field, same HMAC construction as the sibling documents) and `readRunManifest` takes a keyring: with one, an unsigned, wrongly signed or tampered manifest is refused; without one it decodes for shape only and stays unproven. `artifactProof` was added alongside so artifact verification state survives into the manifest. Tests: `windows-manifest.test.ts`, `windows-runner.test.ts` |
 
 ## Low findings fixed on this branch
 
@@ -107,18 +110,119 @@ it is picked up.
 | # | Where | Why deferred |
 | --- | --- | --- |
 | 37, 40 | — | **by design** (unreadable result is not an answer; recovery is synchronous) |
-| 57 | POSIX channel ACL | **T106** — needs a POSIX ownership/mode design, not a Windows translation |
-| 58 | unsigned probe artifacts | **T107** — changes the signed result schema |
-| 64 | unsigned manifest | **T108** — changes the manifest schema, or binds it to the signed result |
 | 67 | session marker signing | **tracked as T098** (#93) |
 
-## Low findings
+## Low findings fixed on this branch
 
-The 98 low findings are recorded verbatim in [`FINDINGS.md`](FINDINGS.md) and
-were not dispositioned individually on this branch. None is a release blocker
-by the reviewer's own severity; they are follow-up material. The deferred
-mediums, grouped as tickets, are tracked in #94; the per-finding code check
-behind each verdict is in [`TRIAGE.md`](TRIAGE.md).
+| # | Fix |
+| --- | --- |
+| 88 | `--timeout` in both helpers refuses a non-numeric or non-positive value instead of turning the poll deadline into `NaN`, which waits forever |
+| 113 | `A8N-SESSION-005`/`006` are declared in the diagnostics registry in the contract's numeric order |
+| 132 | The dry-run outcome map no longer carries a dead `state === "planned" ? "planned" : state` conditional |
+| 135 | The misspelled `builtin\adminstrators` allowlist entry (which could never match `icacls` output) is removed |
+| 140 | The never-produced `"no-job"` member is removed from `AgentRunOutcome` |
+| 141 | Executor artifact names are refused unless `isResultArtifactPath` accepts them, so `../../claims/<id>.json` cannot escape the job's result directory (covered by the T107 artifact-path rules and `windows-job.test.ts`) |
+| 143 | `ChannelCommandRunner` defaults its id entropy to `randomBytes` instead of four zero bytes, matching `submitJob` |
+| 144 | `decodeUtf8`'s dead `exitCode === null ? "" : ""` branch is collapsed and the now-unused parameter dropped |
+| 145 | The dead `describeChannel`/`sha256Hex` re-export surface is removed from `comms.ts` |
+| 146 | The unreachable `code === undefined` arm in the executor's control-character scan is removed |
+| 147 | Executor artifacts are returned even when the local `agent-runs` copy fails, so the channel result still carries stdout/stderr (the failure stays visible in `artifactNote`) |
+| 150 | An explicit `owner: null` now reaches `keyFileAclVerdict` as "owner unknown" (the stricter refusal) instead of being swallowed by `??` into the current-user comparison |
+| 151, 152 | `isRunId` drops guards the pattern already makes unreachable, and the `busy` state's comment no longer claims an unreadable timestamp is busy (it is `stale`) |
+| 153 | `decodeRunManifest` refuses unknown fields instead of silently dropping them, matching every sibling decoder |
+| 163 | `packageInfo()` falls back to `A8N_VERSION` (the release-checked constant `--version` prints) instead of a plausible-looking `"0.0.0"` |
+| 168, 169 | The stale "(not implemented in this increment)" remedy text is gone; the quarantine remedy names `recover --force` and the lock remedy describes what `recover` actually does |
+
+## Low findings deferred or dispositioned otherwise
+
+All 98 lows are dispositioned. The 18 fixed above (88 was fixed earlier on the
+review branch; 151/152 and 168/169 share rows) are listed in the table; the
+remaining 80 are recorded here with a one-line reason each — two of them
+(159, 160) turned out to be fixed by #93's landing (PR #141), the rest are
+deferred follow-up material for later number-only branches.
+
+| # | Disposition |
+| --- | --- |
+| 73 | deferred — CI hardening (`persist-credentials: false`); workflow-only change, no local test surface |
+| 74 | deferred — pin `core.autocrlf` in the Windows CI job; workflow-only change |
+| 75 | deferred — `setup-node` npm cache in CI jobs; workflow-only change |
+| 76 | deferred — same `core.autocrlf` pin for the publish-gate Windows job |
+| 77 | deferred — eslint `files` glob vs lint-scope mismatch; needs a decision on whether `scripts/*.js` joins the lint set |
+| 78 | deferred — drop CJS-only globals from the `.mjs` eslint block; trivial but bundled with the 77 decision |
+| 79 | deferred — `package-lock.json` version fields lag `package.json`; regenerate on the next dependency-touching change |
+| 80 | deferred — document that git-URL installs ship without `dist/` (only `prepack` runs); docs decision |
+| 81 | deferred — wrap the `--help` probe in `check-packed-package.js` through `fail()`; release-script polish |
+| 82 | deferred — `ae-e2e.mjs` argv validation (missing values, unknown flags); dev-session tooling |
+| 83 | deferred — `ae-e2e.mjs` unreadable-console fail-open; dev-session tooling, fail-closed fix needs a fixture |
+| 84 | deferred — `ae-e2e.mjs` top-level setup outside `try` skips `finish()`; dev-session tooling |
+| 85 | deferred — `ae-e2e.mjs` `"skipped"` close status always fails the report; dev-session tooling |
+| 86 | deferred — `analyze-focus.mjs` `gapped(N)` contradicts the not-monitored line; witness tooling |
+| 87 | deferred — `analyze-focus.mjs` key-total label overstates human attribution; witness tooling |
+| 89 | deferred — `dispatch.mjs` should reuse `resultFileIsTrusted` instead of three inline copies of the trust rule |
+| 90 | deferred — `dispatch.mjs` timeout leaves the job file for a slow agent to run; best-effort withdraw narrows but cannot close the race |
+| 91 | deferred — replace `sleep 0.5` spawn polling with a timer promise in the session helpers |
+| 92 | deferred — `run-in-isolated-session.mjs` JSON quoting is not sh quoting for `$`/backticks; use `shellQuote` |
+| 93 | deferred — launcher output files can be group-writable under umask 002 and then fail the trust check; add `umask 022` |
+| 94 | deferred — terminal launcher defaults `onconsole=0` when `/dev/console` is unreadable; fail-open self-report |
+| 95 | deferred — `session open` spawn is unbounded by `--timeout`; pass a timeout through |
+| 96 | deferred — dead `status === 69` branch in `run-in-isolated-session.mjs`; dispatch never exits 69 |
+| 97 | deferred — nested ternary substrate dispatch; replace with a handler map that also refuses unknown substrates |
+| 98 | deferred — nested ternary exit-code mapping in `session-agent.mjs`; extract `exitCodeOf` |
+| 99 | deferred — `session-agent.mjs` top-level `await main()` lacks the refused-message wrapper its siblings have |
+| 100 | deferred — orphaned JSDoc block in `session-rules.mjs`; documentation fix |
+| 101 | deferred — `sharedDirIsUsableForOthers` mask accepts modes that cannot actually be used; tighten to `0o1703` |
+| 102 | deferred — `probe-windows.mjs` has no structured error path outside the documented 0/3 contract |
+| 103 | deferred — `HostNotOwnedError.declared` aliases the live extension-methods array; copy or freeze it |
+| 104 | deferred — `session.recover` on non-macOS produces a misleading "no login session" message; refuse with a platform message |
+| 105 | deferred — `LaunchOptions.session` has no runtime validation (`null` crashes, non-boolean `recover` silently disables the fallback) |
+| 106 | deferred — `hostScript` read failures all report "not found"; include the underlying reason |
+| 107 | deferred — `extension.call` `params` is forwarded unchecked; validate non-array object |
+| 108 | deferred — `extensionMethods()` returns the live internal array; return a copy |
+| 109 | deferred — `agent` flag parser misattributes a flag in value position; report `<flag> needs a value` |
+| 110 | deferred — `--help`/`--version` compute but ignore `json`; honour the flag or drop the field |
+| 111 | deferred — `extension` subcommand parser accepts unknown/duplicate flags; share the strict argv loop |
+| 112 | deferred — `agent`/`extension` dispatch bypasses injected writers and casts `exitCode`; move `dependencies(input)` up |
+| 114 | deferred — `nodeMajor` regex misses a bare major and is duplicated in the darwin adapter; export one shared helper |
+| 115 | deferred — `session.recover` trace records hardcoded `0` ms durations; record real elapsed time |
+| 116 | deferred — `|` in a window title can shift parsed fields in `gui-recovery.ts`; sanitise W/B fields like static texts |
+| 117 | deferred — unguarded `buttons of w` enumeration can discard a whole window listing on error |
+| 118 | deferred — dead `blockingWindows()` entry point; delete or route the recovery policy through it |
+| 119 | deferred — dead `screenshotLooksReal` test seam; assert it in recovery tests or remove it |
+| 120 | deferred — `execFileSync` calls in `mac-session.ts` have no timeout; bound them like `listAppInstances` |
+| 121 | deferred — nested ternary stderr decoding in `mac-session.ts`; extract a helper |
+| 122 | deferred — dead `listAppInstances()` wrapper; remove or wire the session binding it documents |
+| 123 | deferred — `timeoutMs` option on the session spawn is never enforced; wire it or drop it |
+| 124 | deferred — triplicated session-refusal message in `mac-session.ts`; extract a shared helper |
+| 125 | deferred — a throw during the GUI-recovery press escapes `attempt()` instead of a `refused` outcome with evidence |
+| 126 | deferred — dead `sessionId` field on `HostProcess`; remove or populate it from the session binding |
+| 127 | deferred — `uid === undefined` reads as "this session's process" in the injected-process seam; tightening it breaks the seam's fixtures, so it needs a fixture-aware change, not a one-liner |
+| 128 | deferred — the `automatable`/`--yes` consent gate is documented but not implemented; needs a design decision (check `yes` in `apply` or drop the promise) |
+| 129 | deferred — `close()` has no production caller, so the designed Windows lock release never runs; wire it into `runTest` or move the release to the throw site |
+| 130 | deferred — every darwin run leaves `ae-a8n-darwin-run-*` in tmpdir; reap it or write into the run directory |
+| 131 | deferred — nested ternaries in `darwin/adapter.ts` plan reasons; extract named helpers |
+| 133 | deferred — `chooseAction` labels non-pressable measured classes "belongs to a human"; give them their own wording |
+| 134 | deferred — `DialogClass.button ?? "OK"` can turn a `presses: true` class with no button into an OK press; skip the window instead (needs a skip path) |
+| 136 | deferred — #93 (T101) reworked `acl.ts` but `quoteForPowerShell`/`icaclsCommand` remain unused exports |
+| 137 | deferred — agent flag contract duplicated between `agent-detach.ts` and `agent-main.ts`; export one shared set |
+| 138 | deferred — `--log` swallows a missing/flag value in `agent-detach.ts`; report a usage error |
+| 139 | deferred — `messageOf` duplicated four times across the windows modules; extract a shared helper |
+| 142 | deferred — `writerOf` in `auth.ts` is still dead after #93's auth rework; remove it |
+| 148 | deferred — #93 (T095) landed without screening env *values* for control characters (keys and argv/cwd are screened) |
+| 149 | deferred — #93 (T095) landed; `payloadFile` still accepts `.`, device names and trailing dot/space |
+| 154 | deferred — #93 (T102) landed; `presencePath` still interpolates the agent id into a path unvalidated |
+| 155 | deferred — #93 (T102) landed; `decodePresence` still discards the received `alg` instead of refusing a mismatch at decode |
+| 156 | deferred — `tasklist`/`parseState` English literals are localised on non-English Windows; needs shape-based recognition like `parseIcacls` |
+| 157 | deferred — nested ternary state-to-text in `recovery.ts`; lookup table |
+| 158 | deferred — nested ternaries in `runner.ts` `plan()` reasons; style refactor |
+| 159 | **fixed by #93** (PR #141) — the marker builder now checks `isJobId` explicitly instead of relying on a discarded `sessionMarkerPath` call |
+| 160 | **fixed by #93** (PR #141) — `decodeSessionMarker` refuses unknown fields via `MARKER_KEYS`, matching its siblings |
+| 161 | deferred — `exitCodeOf` maps `ERR_CHILD_PROCESS_STDIO_MAXBUFFER` to "could not start"; distinguish start failures from run failures |
+| 162 | deferred — `RUN_TRACE_SCHEMA` has no reader; stamp it into `trace.jsonl` or drop the constant |
+| 164 | deferred — plain `recover` never inspects the run a stale lock names; fall back to `lock.record.runId` for cleared stale locks only |
+| 165 | deferred — refused `recover` findings still exit 0; fold them into `status: "unknown"` |
+| 166 | deferred — a failed lock write leaves an empty lock that refuses every later run; remove it best-effort before rethrowing |
+| 167 | deferred — passing runs write then delete the full artifact set; decide `keep` first (perf only) |
+| 170 | deferred — `onAlert` hook in the fake host has no consumer; wire it through the fake transport or drop it |
 
 ## What this does not prove
 
@@ -135,6 +239,7 @@ behind each verdict is in [`TRIAGE.md`](TRIAGE.md).
   but not a refused kill.
 - T095, T097, T098, T099 and T105 change, or will change, the job/marker
   schema; they need a fresh T092 run before the version carrying them may be
-  called `verified on real host`. T107 and T108 (deferred here) change the
-  result and manifest schema and carry the same requirement; T106's POSIX
+  called `verified on real host`. T106–T108 (findings 57, 58, 64, fixed on the
+  #94 branch) likewise change the channel check, the signed result schema and
+  the manifest schema, so they carry the same requirement; T106's POSIX mode
   check has not been measured on the SMB mount the product uses.
