@@ -63,7 +63,8 @@ freeze SHA は package 内容を確定した commit を指す。本記録自体�
   受入 harness（PR #149–#152）。
 - #155 RC 監査修正: real lane が consumer extension を stage した**同一
   channel・同一 dispatcher instance** に対して人間 activation と consumer
-  操作を行うよう `--channel-dir` / `--prepare-only` を追加し、結果を
+  操作を行うよう `--channel-dir` / `--prepare-only` / `--install-dir`
+  （対象 AE install の固定）を追加し、結果を
   機械判定可能な `A8N_RESULT` JSON（`blocked` は exit 3）に整えた。
   version を `0.2.0-beta.1` へ再分類し、`check-release.js` が `next` への
   stage と `latest` 昇格の区別（prerelease 必須）を検証する。
@@ -101,12 +102,16 @@ shasum -a 1 ido-bata-ae-a8n-0.2.0-beta.1.tgz   # → 記録値と一致
 #    stage し、activate.jsx を生成。人間の activation はまだ）
 node scripts/check-dispatcher-acceptance.js \
   --prepare-only \
-  --channel-dir /absolute/path/dedicated-channel
+  --channel-dir /absolute/path/dedicated-channel \
+  --install-dir "/Applications/Adobe After Effects 2026"
 # → 表示される activate.jsx のパスを控える
 #   （/absolute/path/dedicated-channel/activate.jsx）
 
-# 3. AE を起動し、File > Scripts > Run Script File でその activate.jsx を
-#    実行（script 書き込み許可のダイアログが出たら人間が承認）。
+# 3. 対象 install（ここでは AE 2026）の AE を起動し、
+#    File > Scripts > Run Script File でその activate.jsx を実行
+#    （script 書き込み許可のダイアログが出たら人間が承認）。
+#    別 version の AE（2027 等）で activate してはいけない — lane が
+#    launch するのは --install-dir の install だけである。
 #    activate.jsx は AE プロセスごとに 1 回だけ。heartbeat がある
 #    channel で再実行しない。複数 AE を同時に使う場合は AE ごとに別
 #    channel-dir。
@@ -118,7 +123,8 @@ node dist/cli.js dispatcher status --channel-dir /absolute/path/dedicated-channe
 #    人間の activation 待ちは A8N_ACCEPTANCE_WAIT_MS で調整可・既定10分）
 node scripts/check-dispatcher-acceptance.js \
   --project /absolute/path/fixture.aep \
-  --channel-dir /absolute/path/dedicated-channel
+  --channel-dir /absolute/path/dedicated-channel \
+  --install-dir "/Applications/Adobe After Effects 2026"
 ```
 
 channel と activation の関係: 手順 2 が stage した packaged host script

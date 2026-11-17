@@ -121,7 +121,10 @@ describe("scripts/check-dispatcher-acceptance.js (#148)", () => {
     for (const needle of [
       '"--channel-dir"',
       '"--prepare-only"',
+      '"--install-dir"',
       "CHANNEL_DIR ??",
+      "INSTALL_DIR",
+      "installDir: INSTALL_DIR",
       "PREPARE_ONLY",
       "already answering on this channel",
       "do not run activate.jsx again",
@@ -162,11 +165,25 @@ describe("the documented real-lane procedure matches the harness (#155)", () => 
     // flags it shows are exactly the ones check-dispatcher-acceptance.js
     // implements. This is what keeps the written procedure and the real
     // lane from drifting apart again.
-    const invocations = rcDoc.match(/node scripts\/check-dispatcher-acceptance\.js[^\n]*/g) ?? [];
+    // Join `\`-continued lines so flags on continuation lines are checked too.
+    const docLines = rcDoc.split("\n");
+    const invocations: string[] = [];
+    for (let i = 0; i < docLines.length; i += 1) {
+      const line = docLines[i];
+      if (line === undefined || !line.includes("node scripts/check-dispatcher-acceptance.js")) {
+        continue;
+      }
+      let command = line;
+      while (command.trimEnd().endsWith("\\") && i + 1 < docLines.length) {
+        i += 1;
+        command += "\n" + docLines[i];
+      }
+      invocations.push(command);
+    }
     expect(invocations.length).toBeGreaterThan(0);
-    const allowed = new Set(["--project", "--channel-dir", "--prepare-only"]);
-    for (const line of invocations) {
-      const tokens = line.split(/\s+/).slice(1);
+    const allowed = new Set(["--project", "--channel-dir", "--install-dir", "--prepare-only"]);
+    for (const command of invocations) {
+      const tokens = command.split(/\s+/).slice(2);
       for (let i = 0; i < tokens.length; i += 1) {
         const token = tokens[i];
         if (token === undefined || !token.startsWith("--")) continue;

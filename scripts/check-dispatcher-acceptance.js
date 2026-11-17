@@ -57,10 +57,13 @@
  *
  * Usage:
  *   node scripts/check-dispatcher-acceptance.js [--project <abs .aep>]
- *         [--channel-dir <abs dir>] [--prepare-only]
+ *         [--channel-dir <abs dir>] [--install-dir <abs dir>] [--prepare-only]
  *
  * `--project` is required for the real lane: editing and rendering need an
  * explicit disposable fixture project, never whatever happens to be open.
+ * `--install-dir` pins which After Effects install the lane launches and
+ * owns; with several versions installed the default picks the newest, so
+ * pass it explicitly and run activate.jsx inside that same install.
  * `A8N_ACCEPTANCE_SKIP_REAL=1` skips the real lane entirely;
  * `A8N_ACCEPTANCE_WAIT_MS` bounds the human-activation wait (default 10 min).
  * Neither can manufacture a pass.
@@ -84,6 +87,7 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 let projectPath = null;
 let channelDir = null;
+let installDir = null;
 let prepareOnly = false;
 for (let i = 0; i < args.length; i += 1) {
   if (args[i] === "--project") {
@@ -92,11 +96,14 @@ for (let i = 0; i < args.length; i += 1) {
   } else if (args[i] === "--channel-dir") {
     channelDir = args[i + 1];
     i += 1;
+  } else if (args[i] === "--install-dir") {
+    installDir = args[i + 1];
+    i += 1;
   } else if (args[i] === "--prepare-only") {
     prepareOnly = true;
   } else {
     console.error(
-      `::error::unknown argument ${args[i]}; usage: node scripts/check-dispatcher-acceptance.js [--project <path>] [--channel-dir <dir>] [--prepare-only]`,
+      `::error::unknown argument ${args[i]}; usage: node scripts/check-dispatcher-acceptance.js [--project <path>] [--channel-dir <dir>] [--install-dir <dir>] [--prepare-only]`,
     );
     process.exit(1);
   }
@@ -107,6 +114,10 @@ if (projectPath !== null && !isAbsolute(projectPath)) {
 }
 if (channelDir !== null && !isAbsolute(channelDir)) {
   console.error("::error::--channel-dir must be an absolute path");
+  process.exit(1);
+}
+if (installDir !== null && !isAbsolute(installDir)) {
+  console.error("::error::--install-dir must be an absolute path");
   process.exit(1);
 }
 
@@ -209,6 +220,7 @@ import {
 const HOST_SCRIPT = ${JSON.stringify(hostScriptPath)};
 const PROJECT = ${JSON.stringify(projectPath)};
 const CHANNEL_DIR = ${JSON.stringify(channelDir)};
+const INSTALL_DIR = ${JSON.stringify(installDir)};
 const PREPARE_ONLY = ${JSON.stringify(prepareOnly)};
 const WAIT_MS = Number(process.env.A8N_ACCEPTANCE_WAIT_MS ?? 600000);
 
@@ -440,6 +452,13 @@ function activationInstructions(transport, channelDir) {
   console.log("  File > Scripts > Run Script File");
   console.log("  " + transport.activateScriptPath);
   console.log("channel: " + channelDir);
+  if (INSTALL_DIR !== null) {
+    console.log(
+      "target install: " + INSTALL_DIR +
+        " — run activate.jsx inside this After Effects only; the lane " +
+        "launches and owns exactly this install.",
+    );
+  }
   console.log(
     "rules: run activate.jsx once per After Effects process — never twice on " +
       "the same AE, and never on a second AE while this channel is in use; " +
@@ -498,6 +517,7 @@ async function realLane() {
     transport,
     sessionRoot,
     authorization: { extensionMethods: true },
+    ...(INSTALL_DIR === null ? {} : { installDir: INSTALL_DIR }),
   });
   // The lane verdict is computed inside try and can still be overridden by
   // the close check in finally; A8N_RESULT is emitted exactly once, after.
