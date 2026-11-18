@@ -15,6 +15,12 @@ const sync = (await import(pathToFileURL(scriptPath).href)) as {
     targetVersions: readonly string[],
     requested: string | undefined,
   ) => Decision;
+  planDistTagSync: (
+    sourceTags: Record<string, string>,
+    targetTags: Record<string, string>,
+    presentVersions: ReadonlySet<string>,
+  ) => { add: { tag: string; version: string }[]; remove: string[] };
+  publishTagFor: (version: string, sourceTags: Record<string, string>) => string;
 };
 
 const workflow = readFileSync(
@@ -61,6 +67,62 @@ describe("selectSyncVersions", () => {
 
   it("skips a requested version already mirrored", () => {
     expect(sync.selectSyncVersions(source, ["0.2.0"], "0.2.0").action).toBe("skip");
+  });
+});
+
+describe("planDistTagSync", () => {
+  const present = new Set(["0.1.0-alpha.0", "0.2.0"]);
+
+  it("adds the tags npmjs assigns and removes mirror-only tags", () => {
+    const plan = sync.planDistTagSync(
+      { latest: "0.1.0-alpha.0", next: "0.2.0" },
+      { latest: "0.2.0", next: "0.2.0-beta.1" },
+      present,
+    );
+    expect(plan.add).toEqual([
+      { tag: "latest", version: "0.1.0-alpha.0" },
+      { tag: "next", version: "0.2.0" },
+    ]);
+    expect(plan.remove).toEqual([]);
+  });
+
+  it("is a no-op when the mirror already matches npmjs", () => {
+    const plan = sync.planDistTagSync(
+      { latest: "0.1.0-alpha.0", next: "0.2.0" },
+      { latest: "0.1.0-alpha.0", next: "0.2.0" },
+      present,
+    );
+    expect(plan).toEqual({ add: [], remove: [] });
+  });
+
+  it("removes a tag that exists only on GitHub Packages", () => {
+    const plan = sync.planDistTagSync(
+      { latest: "0.2.0" },
+      { latest: "0.2.0", beta: "0.2.0-beta.1" },
+      present,
+    );
+    expect(plan.remove).toEqual(["beta"]);
+  });
+
+  it("ignores an npmjs tag whose version the mirror does not carry", () => {
+    const plan = sync.planDistTagSync({ latest: "9.9.9" }, { latest: "0.2.0" }, present);
+    expect(plan.add).toEqual([]);
+    expect(plan.remove).toEqual(["latest"]);
+  });
+});
+
+describe("publishTagFor", () => {
+  it("prefers latest when npmjs tags the version latest", () => {
+    expect(sync.publishTagFor("0.2.0", { latest: "0.2.0", next: "0.2.0" })).toBe("latest");
+  });
+
+  it("uses the npmjs tag for prereleases", () => {
+    expect(sync.publishTagFor("0.1.0-alpha.0", { latest: "0.1.0-alpha.0", next: "0.2.0" })).toBe("latest");
+    expect(sync.publishTagFor("0.2.0-beta.1", { latest: "0.1.0-alpha.0", next: "0.2.0" })).toBe("next");
+  });
+
+  it("falls back to next for an untagged version", () => {
+    expect(sync.publishTagFor("0.0.0-stage", { latest: "0.1.0-alpha.0" })).toBe("next");
   });
 });
 
