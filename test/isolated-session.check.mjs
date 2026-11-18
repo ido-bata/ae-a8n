@@ -211,6 +211,8 @@ test("a job file is run only when it is attributable to the controller", () => {
   assert.equal(jobFileIsTrusted(file({ uid: 502 }), 501), false);
   assert.equal(jobFileIsTrusted(file({ mode: 0o100666 }), 501), false);
   assert.equal(jobFileIsTrusted(file({ mode: 0o100664 }), 501), false);
+  // 0777 is the case a umask bug would hide: every write bit is open.
+  assert.equal(jobFileIsTrusted(file({ mode: 0o100777 }), 501), false);
   // A symlink's own stat is not a regular file.
   assert.equal(jobFileIsTrusted(file({ isFile: () => false }), 501), false);
 });
