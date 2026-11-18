@@ -681,3 +681,40 @@ them is called `verified on real host`.
    `target` (runs untargeted jobs — the compatibility rule) and cannot read
    signed markers (destination stays `unproven`). Mixed-version channels are
    safe but degrade proof; they are not verified on a real host.
+
+## 2026-11-18: packaged 0.3.0 local real-host E2E (herdr → dedicated Windows host)
+
+Reached through `herdr --machine Windows` (saved SSH machine `device-windows`)
+into a new workspace/pane on the interactive desktop session. Commands for
+file transfer used direct `ssh device-windows`; the AE runs themselves ran in
+the herdr pane, i.e. the user's interactive session — not a service session.
+
+| | |
+| --- | --- |
+| Source SHA | `8d7c7f0f0573a09b72000ac16e16eae1792278fe` (`release-0-3-0` HEAD) |
+| Package | `@ido-bata/ae-a8n@0.3.0` tarball, SHA-256 `efa0a6a5fcbf754820f8bdd7d4cbc0b74715696939100da4925e7d30407b48dc` |
+| Host | Windows 11 (build 10.0.29708.1003), user `rebui`, interactive session via herdr pane `wK:p1` |
+| Node / npm | v26.13.1 / 11.20.0 (native Windows) |
+| AE installs | `D:\4_apps\adobe\Adobe After Effects 2026` = 26.5.3, `...\Adobe After Effects 2027` = 27.0 (`AfterFX.exe` ProductVersion); also AE 2025 dir and `C:\Program Files\Adobe` stubs — resolution pinned by `installDir` |
+| AE before run | no `AfterFX` process running; nothing of the user's was touched |
+
+Two consecutive runs of `launch → version → project → createComp →
+addTextLayer → renderFrame(0) → close({unsavedChanges:"discard"})` against
+AE 2027 (`installDir` pinned), same tarball, clean consumer at
+`C:\Users\rebui\ae-a8n-verify\consumer`:
+
+| Run | AE pid | launch | render PNG | `app.quit` → close | Residual |
+| --- | --- | --- | --- | --- | --- |
+| win1 | 47744 | ok, owned, 76.9 s cold start | `e2e-win1\artifacts\a8n e2e win1.00000.png` (3671 B) | quit ok → process gone in 6.8 s | none (`Get-Process AfterFX` empty) |
+| win2 | 47272 | ok, owned | `e2e-win2\artifacts\a8n e2e win2.00000.png` (3671 B) | quit ok → gone in 13.4 s | none |
+
+Traces: `C:\Users\rebui\ae-a8n-verify\e2e-win{1,2}\trace.jsonl`
+(session.probe ok 8.6 s; session.launch ownership "pid … is still the only
+instance"; all ops ok; session.close `{"quit":true,"ownership":"owned"}`).
+
+Level: **verified on real host** for the Windows *local* path — launch,
+script delivery via `AfterFX.exe -r`, comp/layer/render, owned quit. This is
+the developer's signed-in desktop, not a dedicated host: GUI non-interference
+under concurrent user input was not measured here, and neither were the
+isolated-session rows of #74 (T092). Those remain `UNVERIFIED`; `latest`
+promotion stays blocked on them.
