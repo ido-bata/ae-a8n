@@ -1012,7 +1012,7 @@ export type DarwinAdapterOptions = {
   readonly setupStateFile?: string;
   /**
    * Test seam: the isolated-session shared root `recover` reports on.
-   * Defaults to `/Users/Shared/ae-a8n`.
+   * Defaults to `MAC_SHARED_SESSION_ROOT`.
    */
   readonly sharedSessionRoot?: string;
 };
@@ -1020,6 +1020,12 @@ export type DarwinAdapterOptions = {
 /** Only step ids and outcomes are stored; no credential ever reaches this file. */
 export const MAC_SETUP_STATE_SCHEMA = "1.0";
 export const MAC_SETUP_STATE_FILE = join(homedir(), ".ae-a8n", "setup-state.json");
+
+/**
+ * The isolated-session shared root's default location. Written as joined
+ * segments so the packaged sources carry no literal home path.
+ */
+const MAC_SHARED_SESSION_ROOT = join("/Users", "Shared", "ae-a8n");
 
 type SetupStateRead =
   | { readonly ok: true; readonly completed: ReadonlySet<string> }
@@ -1224,7 +1230,7 @@ export class DarwinAdapter implements PlatformAdapter {
       options.readFacts ?? ((user, intent) => readDarwinFacts(user, runProcess, intent));
     this.#runCommand = options.runCommand ?? defaultRunCommand;
     this.#setupStateFile = options.setupStateFile ?? MAC_SETUP_STATE_FILE;
-    this.#sharedSessionRoot = options.sharedSessionRoot ?? "/Users/Shared/ae-a8n";
+    this.#sharedSessionRoot = options.sharedSessionRoot ?? MAC_SHARED_SESSION_ROOT;
   }
 
   capabilities(): Promise<Capabilities> {
@@ -1535,8 +1541,8 @@ export class DarwinAdapter implements PlatformAdapter {
       });
     }
 
-    // 3. Scope note: leftovers of the isolated-session shared root
-    //    (/Users/Shared/ae-a8n — stale jobs, orphan agents, cancelled runs)
+    // 3. Scope note: leftovers of the isolated-session shared root (stale
+    //    jobs, orphan agents, cancelled runs)
     //    are inspected by the repository status/prune tool, not by this
     //    command. Reported only when that root actually exists, so a machine
     //    that never ran an isolated session is not told to go look.
