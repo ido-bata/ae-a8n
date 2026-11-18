@@ -44,6 +44,35 @@ also refuses if a required check did not run, from GitHub Actions, on the
 latest pull request. It matches rulesets by name and target, so a second run
 changes nothing. Other rulesets are left alone.
 
+## Actions event policy (pull_request_target, required before 2026-12-02)
+
+GitHub blocks `pull_request_target` by default in public repositories
+starting 2026-12-02 (evaluate mode until then). This repository has **no**
+Actions event policies (`gh api repos/ido-bata/ae-a8n/actions/policies`
+returns none), so `release-gate.yml` would stop running at enforcement.
+
+Owner action required — create a repository-scoped policy that allows the
+event for exactly this workflow file, nothing broader:
+
+```bash
+gh api repos/ido-bata/ae-a8n/actions/policies --method POST --input - <<'JSON'
+{
+  "name": "allow-release-gate-pull-request-target",
+  "enforcement": "active",
+  "conditions": { "workflow_path": { "include": [".github/workflows/release-gate.yml"], "exclude": [] } },
+  "rules": [
+    { "type": "restrict_action_events",
+      "parameters": { "allowed_events": ["pull_request_target"] } }
+  ]
+}
+JSON
+```
+
+Verify with `gh api repos/ido-bata/ae-a8n/actions/policies` and confirm
+via Policy insights that only `release-gate.yml` runs are affected.
+Do not widen `workflow_path` or add other events; every other workflow
+keeps the default protections.
+
 ## Release-only integration gate
 
 `main` accepts only the current release train's PR. The canonical train is
