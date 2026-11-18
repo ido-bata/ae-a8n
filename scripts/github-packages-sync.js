@@ -187,7 +187,15 @@ async function main() {
         console.log(`would publish ${name}@${version} to ${GITHUB_PACKAGES_REGISTRY} (sha1 ${shasum})`);
         continue;
       }
-      npm(["publish", file, "--registry", GITHUB_PACKAGES_REGISTRY], { stdio: "inherit" });
+      // npm refuses a prerelease without an explicit tag; mirror it under the
+      // same dist-tag convention npmjs uses (publishConfig.tag, "next"). A
+      // stable version keeps npm's default (latest).
+      const publishArgs = ["publish", file, "--registry", GITHUB_PACKAGES_REGISTRY];
+      if (version.includes("-")) {
+        const tag = manifest.publishConfig?.tag ?? "next";
+        publishArgs.push("--tag", String(tag));
+      }
+      npm(publishArgs, { stdio: "inherit" });
       console.log(`published ${name}@${version} to ${GITHUB_PACKAGES_REGISTRY} (sha1 ${shasum})`);
     }
   } finally {
