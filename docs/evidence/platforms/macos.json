@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "platform": "macos",
+  "commit": "e3326782ca150f59092c7670877813fe5381dd18",
+  "tarballSha256": "f04768d18f90b1189f1a05e5cda6e764a73f553b988126bb00d28c369358e87c",
+  "recordedAt": "2026-11-18",
+  "verdict": "pass",
+  "evidence": "docs/evidence/windows-2026-11-18/../ (macOS runs: packaged 0.3.0 local E2E 4/4 PASS on AE 2027 27.0x78, session traces under /tmp/a8n-e2e-{run1,run2,rc1,rc2}; scoped guarantee per owner decision — isolated backend rows remain UNVERIFIED in #57/#62/#74)"
+}

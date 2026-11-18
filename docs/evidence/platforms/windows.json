@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "platform": "windows",
+  "commit": "e3326782ca150f59092c7670877813fe5381dd18",
+  "tarballSha256": "f04768d18f90b1189f1a05e5cda6e764a73f553b988126bb00d28c369358e87c",
+  "recordedAt": "2026-11-18",
+  "verdict": "pass",
+  "evidence": "docs/evidence/windows-2026-11-18/ (packaged 0.3.0 local E2E 2/2 PASS on AE 2027 27.0 via herdr device-windows; scoped guarantee per owner decision — isolated T092 rows remain UNVERIFIED in #74)"
+}
