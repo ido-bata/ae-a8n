@@ -65,6 +65,11 @@ import {
   aeScriptingPermission,
   currentUsername,
 } from "./scripting-permission.js";
+import {
+  deferredTccProbe,
+  runTccProbe,
+  type TccProbeResult,
+} from "./tcc.js";
 
 /** The package's Node floor; the neutral doctor owns the constant. */
 export { NODE_FLOOR_MAJOR };
@@ -137,6 +142,14 @@ export type DarwinFacts = {
     readonly state: "present" | "absent" | "unproven";
     readonly path: string | null;
   };
+  /**
+   * The Screen Recording and Accessibility grant state for the session the
+   * probe can honestly measure. Only the `local` intent runs the preflight
+   * probe (it answers for the responsible process hosting ae-a8n); every
+   * other intent defers to an in-session job (#57 T021) and stays
+   * `unproven` — never guessed, never PASS.
+   */
+  readonly tccPermissions: TccProbeResult;
   /** Raw output the conclusions rest on, for a human to check. */
   readonly evidence: Readonly<Record<string, string>>;
 };
@@ -275,6 +288,7 @@ function readInstalls(exec: DarwinExec): {
 export function readDarwinFacts(
   user: string | null,
   exec: DarwinExec = runProcess,
+  intent: ProbeIntent = "session",
 ): DarwinFacts {
   const release = textOrNull(exec("sw_vers", ["-productVersion"]));
   const arch = textOrNull(exec("uname", ["-m"]));
@@ -324,6 +338,16 @@ export function readDarwinFacts(
   const aeScripting = readAeScriptingPermission(installs.installs, targetUser);
   const aeScriptingComponent = readScriptingComponent(selected);
   const aeStartupFolder = readStartupFolder(selected, targetUser);
+  // TCC grants belong to the session they were made in. Only the local
+  // intent's session is the one this process runs in, so only it may run
+  // the preflight probe; the isolated target's grants need an in-session
+  // job and stay deferred (#57 T021/T025).
+  const tccPermissions =
+    intent === "local"
+      ? runTccProbe(exec)
+      : deferredTccProbe(
+          "the target account's TCC grants can only be probed inside its own session",
+        );
 
   const evidence: Record<string, string> = {
     os: [release ?? "", arch ?? ""].join("|"),
@@ -348,6 +372,10 @@ export function readDarwinFacts(
       ? aeProcesses.map((entry) => `${entry.pid}|${entry.uid}|${entry.name}`).join("; ") ||
         "none"
       : (aeProcessesFailure ?? "unreadable"),
+    tccPermissions:
+      `screen=${tccPermissions.screenRecording.state};` +
+      `ax=${tccPermissions.accessibility.state};` +
+      `via=${tccPermissions.mechanism}`,
   };
 
   return {
@@ -369,6 +397,7 @@ export function readDarwinFacts(
     aeScripting,
     aeScriptingComponent,
     aeStartupFolder,
+    tccPermissions,
     evidence,
   };
 }
@@ -724,6 +753,74 @@ export function probeDarwin(
     );
   }
 
+  // TCC grants (permissions.md §1, rows Screen Recording / Accessibility).
+  // A measured denial is a blocker; a state that could not be measured is a
+  // warning — never a pass, and a deferred probe is reported as unproven
+  // rather than silently skipped.
+  const tcc = facts.tccPermissions;
+  const tccRows = [
+    {
+      probe: tcc.screenRecording,
+      code: "A8N-PERM-001" as const,
+      name: "Screen Recording",
+      consequence:
+        "window titles and screenshots will be unavailable to the GUI checks",
+      setting: "Screen Recording",
+    },
+    {
+      probe: tcc.accessibility,
+      code: "A8N-PERM-002" as const,
+      name: "Accessibility",
+      consequence: "AX reads used by GUI recovery will fail",
+      setting: "Accessibility",
+    },
+  ];
+  const tccUnproven: string[] = [];
+  for (const row of tccRows) {
+    if (row.probe.state === "denied") {
+      checks.push(
+        diagnostic(row.code, {
+          detail:
+            `${row.name} is not granted to the responsible process hosting ae-a8n ` +
+            `(measured by ${tcc.mechanism}); ${row.consequence}`,
+          remedy:
+            `System Settings > Privacy & Security > ${row.setting}: enable it for the ` +
+            "terminal or app that runs ae-a8n, then re-run doctor. Doctor reports the " +
+            "state; it never changes TCC itself.",
+          remedyKind: "human",
+          evidence: {
+            permission: row.name,
+            state: row.probe.state,
+            mechanism: tcc.mechanism,
+          },
+        }),
+      );
+    } else if (row.probe.state === "unproven") {
+      tccUnproven.push(`${row.name} (${row.probe.detail ?? "unproven"})`);
+    }
+  }
+  if (tccUnproven.length > 0) {
+    checks.push(
+      diagnostic("A8N-PERM-009", {
+        detail:
+          `the TCC grant state could not be determined for: ${tccUnproven.join("; ")}` +
+          ` (mechanism: ${tcc.mechanism}). An unmeasured permission is reported, never passed.`,
+        remedy:
+          tcc.mechanism === "deferred"
+            ? "These grants belong to the target session; the guided setup probes them " +
+              "inside that session (#57). Until then the state stays unproven."
+            : "Re-run doctor. If it persists, install the Command Line Tools so the " +
+              "preflight probe can run; doctor never guesses a grant.",
+        remedyKind: "human",
+        evidence: {
+          screenRecording: tcc.screenRecording.state,
+          accessibility: tcc.accessibility.state,
+          mechanism: tcc.mechanism,
+        },
+      }),
+    );
+  }
+
   // The remaining script-invocation prerequisites apply to both intents:
   // the isolated path and `AfterEffects.launch` run the same kind of script
   // through the same AE gates. Each is reported as measured or "unproven" —
@@ -903,8 +1000,12 @@ export type DarwinRunCommand = (
 ) => Promise<CommandOutcome>;
 
 export type DarwinAdapterOptions = {
-  /** Test seam: replaces the read-only probe. Never called with side effects. */
-  readonly readFacts?: (user: string | null) => DarwinFacts;
+  /**
+   * Test seam: replaces the read-only probe. Never called with side effects.
+   * `intent` is the probe intent so facts that are only honest for one
+   * session (the TCC preflight probe) are not measured for another.
+   */
+  readonly readFacts?: (user: string | null, intent: ProbeIntent) => DarwinFacts;
   /** Test seam: replaces the in-session command runner. */
   readonly runCommand?: DarwinRunCommand;
   /** Test seam: where setup records completed step ids. Never holds secrets. */
@@ -1108,12 +1209,13 @@ export class DarwinAdapter implements PlatformAdapter {
   readonly platform: PlatformId = "darwin";
   readonly id = "macos-session-agent";
 
-  readonly #readFacts: (user: string | null) => DarwinFacts;
+  readonly #readFacts: (user: string | null, intent: ProbeIntent) => DarwinFacts;
   readonly #runCommand: DarwinRunCommand;
   readonly #setupStateFile: string;
 
   constructor(options: DarwinAdapterOptions = {}) {
-    this.#readFacts = options.readFacts ?? ((user) => readDarwinFacts(user));
+    this.#readFacts =
+      options.readFacts ?? ((user, intent) => readDarwinFacts(user, runProcess, intent));
     this.#runCommand = options.runCommand ?? defaultRunCommand;
     this.#setupStateFile = options.setupStateFile ?? MAC_SETUP_STATE_FILE;
   }
@@ -1126,12 +1228,14 @@ export class DarwinAdapter implements PlatformAdapter {
     // The probe is synchronous and read-only; it cannot start AE or open a
     // session. Wrapping the call keeps a failure a rejection, as the contract
     // promises, instead of a synchronous throw.
-    return Promise.resolve().then(() => probeDarwin(this.#readFacts(target.user), intent));
+    return Promise.resolve().then(() =>
+      probeDarwin(this.#readFacts(target.user, intent), intent),
+    );
   }
 
   plan(target: TargetSpec): Promise<readonly SetupStep[]> {
     return Promise.resolve().then(() => {
-      const facts = this.#readFacts(target.user);
+      const facts = this.#readFacts(target.user, "session");
       const user = target.user;
       const accountKnown =
         user !== null && facts.targetUser === user && facts.targetUid !== null;
@@ -1352,7 +1456,7 @@ export class DarwinAdapter implements PlatformAdapter {
   open(target: TargetSpec): Promise<IsolatedSession> {
     return Promise.resolve().then(() => {
       const refresh = (): ResolvedSession =>
-        resolveDarwinSession(this.#readFacts(target.user));
+        resolveDarwinSession(this.#readFacts(target.user, "session"));
       return new DarwinSession(target, refresh(), this.#runCommand, refresh);
     });
   }

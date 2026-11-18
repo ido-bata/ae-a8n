@@ -90,6 +90,11 @@ function darwinFacts(overrides: Partial<DarwinFacts> = {}): DarwinFacts {
       state: "present",
       path: "/Users/ae-test/Library/Preferences/Adobe/After Effects/26.5/Scripts/Startup",
     },
+    tccPermissions: {
+      screenRecording: { state: "granted", detail: null },
+      accessibility: { state: "granted", detail: null },
+      mechanism: "preflight",
+    },
     evidence: EVIDENCE,
     ...overrides,
   };
@@ -294,6 +299,55 @@ describe("the macOS probe is honest about what it read", () => {
       approvalGranularity: "unproven",
     });
     expect(check?.detail).toContain("unproven");
+  });
+
+  it("reports a measured TCC denial as a blocker, per permission", () => {
+    const denied = {
+      screenRecording: { state: "denied" as const, detail: null },
+      accessibility: { state: "granted" as const, detail: null },
+      mechanism: "preflight" as const,
+    };
+    const screen = checkFor(darwinFacts({ tccPermissions: denied }), "A8N-PERM-001");
+    expect(screen).toMatchObject({ severity: "blocker" });
+    expect(screen?.detail).toContain("Screen Recording");
+    expect(screen?.evidence).toMatchObject({ mechanism: "preflight" });
+    expect(checkFor(darwinFacts({ tccPermissions: denied }), "A8N-PERM-002")).toBeUndefined();
+
+    const ax = checkFor(
+      darwinFacts({
+        tccPermissions: {
+          screenRecording: { state: "granted", detail: null },
+          accessibility: { state: "denied", detail: null },
+          mechanism: "preflight",
+        },
+      }),
+      "A8N-PERM-002",
+    );
+    expect(ax).toMatchObject({ severity: "blocker" });
+    expect(ax?.detail).toContain("Accessibility");
+  });
+
+  it("reports an unmeasured TCC state as a warning, never a pass or a blocker", () => {
+    const unproven = {
+      screenRecording: {
+        state: "unproven" as const,
+        detail: "the target account's TCC grants can only be probed inside its own session",
+      },
+      accessibility: {
+        state: "unproven" as const,
+        detail: "the target account's TCC grants can only be probed inside its own session",
+      },
+      mechanism: "deferred" as const,
+    };
+    const result = probe(darwinFacts({ tccPermissions: unproven }));
+    const check = result.checks.find((entry) => entry.code === "A8N-PERM-009");
+    expect(check).toMatchObject({ severity: "warning" });
+    expect(check?.detail).toContain("Screen Recording");
+    expect(check?.detail).toContain("Accessibility");
+    expect(check?.evidence).toMatchObject({ mechanism: "deferred" });
+    expect(result.checks.map((entry) => entry.code)).not.toContain("A8N-PERM-001");
+    expect(result.checks.map((entry) => entry.code)).not.toContain("A8N-PERM-002");
+    expect(aggregateDiagnosticStatus(result.checks)).toBe("ok");
   });
 
   it("reports a missing scripting component as a blocker", () => {
@@ -540,6 +594,63 @@ describe("the macOS fact reader", () => {
     expect(facts.aeProcesses).toEqual([]);
     expect(facts.aeProcessesFailure).toContain("Operation not permitted");
     expect(probe(facts).checks.map((entry) => entry.code)).toContain("A8N-AE-001");
+  });
+
+  it("runs the TCC preflight probe only for the local intent", () => {
+    const commands: string[] = [];
+    const exec: DarwinExec = (program, args) => {
+      commands.push([program, ...args].join(" "));
+      if (program.includes("python3")) {
+        return { status: 0, stdout: "screen=1\nax=0\n", stderr: "" };
+      }
+      switch (program) {
+        case "sw_vers":
+          return { status: 0, stdout: "26.1\n", stderr: "" };
+        case "uname":
+          return { status: 0, stdout: "arm64\n", stderr: "" };
+        case "id":
+          return { status: 0, stdout: "502\n", stderr: "" };
+        case "ps":
+          return { status: 0, stdout: "", stderr: "" };
+        default:
+          return { status: 127, stdout: "", stderr: "not found" };
+      }
+    };
+
+    const local = readDarwinFacts(null, exec, "local");
+    expect(local.tccPermissions.mechanism).toBe("preflight");
+    expect(local.tccPermissions.screenRecording.state).toBe("granted");
+    expect(local.tccPermissions.accessibility.state).toBe("denied");
+    expect(commands.some((command) => command.includes("python3"))).toBe(true);
+
+    commands.length = 0;
+    const session = readDarwinFacts(null, exec, "session");
+    expect(session.tccPermissions.mechanism).toBe("deferred");
+    expect(session.tccPermissions.screenRecording.state).toBe("unproven");
+    expect(session.tccPermissions.accessibility.state).toBe("unproven");
+    expect(commands.some((command) => command.includes("python3"))).toBe(false);
+  });
+
+  it("leaves TCC unproven when the probe cannot run or answer", () => {
+    const exec: DarwinExec = (program) => {
+      if (program.includes("python3")) {
+        return { status: 1, stdout: "", stderr: "no such interpreter" };
+      }
+      return { status: 127, stdout: "", stderr: "not found" };
+    };
+    const facts = readDarwinFacts(null, exec, "local");
+    expect(facts.tccPermissions.mechanism).toBe("unavailable");
+    expect(facts.tccPermissions.screenRecording.state).toBe("unproven");
+    expect(facts.tccPermissions.accessibility.state).toBe("unproven");
+    expect(facts.tccPermissions.screenRecording.detail).toContain("no such interpreter");
+
+    const silent: DarwinExec = (program) =>
+      program.includes("python3")
+        ? { status: 0, stdout: "", stderr: "" }
+        : { status: 127, stdout: "", stderr: "not found" };
+    const unanswered = readDarwinFacts(null, silent, "local");
+    expect(unanswered.tccPermissions.mechanism).toBe("preflight");
+    expect(unanswered.tccPermissions.screenRecording.state).toBe("unproven");
   });
 });
 
