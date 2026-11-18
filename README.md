@@ -23,6 +23,26 @@ await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to th
 > and the scope without Windows real-host evidence is listed under "What
 > is not proven" below.
 
+## First run in about five minutes
+
+1. `npm install @ido-bata/ae-a8n@next`
+2. `npx @ido-bata/ae-a8n doctor` — read-only; it names every blocker with a
+   remedy and exits `3` while any remain. On macOS the usual ones are
+   After Effects' **Settings → Scripting & Expressions → Allow Scripts to
+   Write Files and Access Network**, and — on AE 26.5+ — approving the
+   driver's script folder when AE shows its modal.
+3. Run the snippet at the top of this file, or
+   `node --experimental-strip-types node_modules/@ido-bata/ae-a8n/examples/smoke.ts`
+   from your project — launch, handshake, project listing, close.
+
+What you are consenting to: the package starts After Effects only when it
+is not already running, quits it **only** when this session provably owns
+it, never discards unsaved work unless you pass
+`{ unsavedChanges: "discard" }`, and never retries a timed-out call. The
+guided multi-user flow (`doctor --user`, `test`, `recover`) is in
+[docs/quickstart.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/quickstart.md);
+`ae-a8n setup` is not implemented yet.
+
 ## Status
 
 | | |
@@ -65,7 +85,7 @@ npm install @ido-bata/ae-a8n@next
 Requirements on the machine that runs After Effects:
 
 - After Effects installed in the default location (`/Applications/Adobe After Effects <version>/` on macOS), or pass `installDir`.
-- **Settings → Scripting & Expressions → Allow Scripts to Write Files and Access Network** enabled. Without it the first call times out instead of failing fast.
+- **Settings → Scripting & Expressions → Allow Scripts to Write Files and Access Network** enabled. Without it the host can open a result file but never write it; `doctor` reports it as `A8N-PERM-003`, and `launch` refuses up front when the preference is provably off.
 - On **After Effects 2026 (26.5)** the host also needs AE's approval to run scripts from the driver's folder: AE refuses the first `DoScriptFile` with `-1708` and shows a modal that points at its Scripting & Expressions panel. Approve the session's `staging/` folder there (the folder holds the entry script and the staged host script). The approval's granularity — per folder, per script, or coarser — is still unmeasured; a read-only probe and protocol for measuring it on a real Mac are in [docs/script-trust-measurement.md](docs/script-trust-measurement.md).
 
 The full first-run sequence — install, `doctor`, the human permission
