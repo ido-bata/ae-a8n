@@ -12,6 +12,7 @@ import {
   chmodSync,
   copyFileSync,
   existsSync,
+  linkSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -25,7 +26,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { assertTrustedResult, cancelJob, parseArgs } from "../scripts/isolated-session/dispatch.mjs";
+import { assertResultMatchesJob, assertTrustedResult, cancelJob, parseArgs } from "../scripts/isolated-session/dispatch.mjs";
 import {
   classifyAutomation,
   parseTccLines,
@@ -899,5 +900,26 @@ test("prune keeps a job that could still run and a fresh publish temporary", () 
     assert.equal(existsSync(tmpPath), true);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a hardlinked result that names another job is refused", () => {
+  const dir = mkdtempSync(join(tmpdir(), "a8n-hardlink-"));
+  try {
+    const uid = typeof process.getuid === "function" ? process.getuid() : 0;
+    // A stale result from an earlier job, hardlinked to this job's path: it
+    // passes every file check (regular file, owner, mode) and still lies.
+    const stale = join(dir, "stale.result.json");
+    writeFileSync(stale, JSON.stringify({ id: "earlier-job", ok: true }), { mode: 0o644 });
+    const planted = join(dir, "this-job.result.json");
+    linkSync(stale, planted);
+    assert.doesNotThrow(() => assertTrustedResult(planted, uid));
+    const result = JSON.parse(readFileSync(planted, "utf-8"));
+    assert.throws(() => assertResultMatchesJob(result, "this-job"), /not .*trusted/);
+    assert.doesNotThrow(() => assertResultMatchesJob({ id: "this-job" }, "this-job"));
+    assert.throws(() => assertResultMatchesJob({}, "this-job"), /not .*trusted/);
+    assert.throws(() => assertResultMatchesJob(null, "this-job"), /not .*trusted/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
