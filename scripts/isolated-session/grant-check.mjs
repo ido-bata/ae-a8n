@@ -200,6 +200,10 @@ export function grantCheck({
   requestAx = requestAxAndAutomation,
   readSessionFn = readSession,
   aePrefsFn = () => summarizeAePrefs(readAePrefsEntries()),
+  // Called with each routing line *before* the dialog it describes can
+  // appear — the contract requires the operator to know which desktop a
+  // pending prompt lands on before the wait starts (permissions.md §3).
+  onRouting = () => {},
 } = {}) {
   const session = readSessionFn();
   const startedAt = now();
@@ -217,6 +221,9 @@ export function grantCheck({
     waitedMs: 0,
   };
 
+  // The routing line goes out before any request can raise a dialog.
+  onRouting(report.routing);
+
   let states = measureFn();
   const deadline = startedAt + waitMs;
   const axAutomationRequested = { value: false };
@@ -229,6 +236,10 @@ export function grantCheck({
     for (const target of missing) {
       if (target.request === "screen-recording") {
         if (!report.requests.some((r) => r.permission === target.id)) {
+          onRouting(
+            `grant-check: raising ${target.title}; the dialog appears on ` +
+              `${session.username}'s desktop — ${target.dialog}`,
+          );
           const outcome = requestScreen();
           report.requests.push({
             permission: target.id,
@@ -239,8 +250,20 @@ export function grantCheck({
         }
       } else if (target.request === "ax-grant" && !axAutomationRequested.value) {
         // One helper run raises both the Accessibility and the Automation
-        // dialogs; it is invoked once, after the routing line is printed.
+        // dialogs; it is invoked once — after both routing lines are out.
         axAutomationRequested.value = true;
+        for (const id of ["accessibility", "automationSystemEvents"]) {
+          // Name only what is actually missing: an already-granted
+          // permission's dialog will not appear again.
+          const pending = missing.find((t) => t.id === id);
+          if (pending === undefined) {
+            continue;
+          }
+          onRouting(
+            `grant-check: raising ${pending.title}; the dialog appears on ` +
+              `${session.username}'s desktop — ${pending.dialog}`,
+          );
+        }
         const outcome = requestAx();
         for (const id of ["accessibility", "automationSystemEvents"]) {
           report.requests.push({
@@ -280,8 +303,10 @@ function main() {
     return;
   }
   const options = parseArgs(process.argv.slice(2));
-  const report = grantCheck({ waitMs: options.waitMs });
-  process.stderr.write(`${report.routing}\n`);
+  const report = grantCheck({
+    waitMs: options.waitMs,
+    onRouting: (line) => process.stderr.write(`${line}\n`),
+  });
   for (const request of report.requests) {
     process.stderr.write(
       `grant-check: requested ${request.permission}${request.requested ? "" : ` (not raised: ${request.detail})`}; ` +
