@@ -153,6 +153,23 @@ export function assertTrustedResult(path, targetUid) {
 }
 
 /**
+ * The result must name the job it answers.
+ *
+ * The path is not the identity: a local process can hardlink a stale result
+ * (from an earlier run, or another job) to this id's path, and it would pass
+ * the file, owner and mode checks while describing a different job. The
+ * agent already binds its own payload this way; the controller re-checks it
+ * because the file is the only thing it has.
+ */
+export function assertResultMatchesJob(result, id) {
+  if (result?.id !== id) {
+    throw new Error(
+      `the result says id ${String(result?.id)}, not ${id}; it is not trusted.`,
+    );
+  }
+}
+
+/**
  * Tells an agent that may still find the job not to run it.
  *
  * The job file stays behind when the controller's wait expires; an agent
@@ -257,11 +274,7 @@ function main() {
       // result (from an earlier run, or another job) to this id's path, and it
       // would pass the file, owner and mode checks while describing a
       // different job. The agent already binds its own payload this way.
-      if (result?.id !== id) {
-        throw new Error(
-          `the result ${resultPath} says id ${String(result?.id)}, not ${id}; it is not trusted.`,
-        );
-      }
+      assertResultMatchesJob(result, id);
       rmSync(jobPath, { force: true });
       assertResultSession(result, options.uid);
       // The console may have moved while the job ran (a fast user switch is
