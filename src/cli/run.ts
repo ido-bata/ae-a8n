@@ -19,6 +19,7 @@ import type {
   ProbeIntent,
   TargetSpec,
 } from "../platform/contract.js";
+import { errorMessage } from "../errors.js";
 import type { CommsOptions } from "../platform/windows/comms.js";
 import {
   selectAdapter,
@@ -290,7 +291,7 @@ async function setup(
   try {
     selection = deps.select({ target, remote: remoteFrom(options) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     const envelope = buildEnvelope({
       command: "setup",
       status: "failed",
@@ -355,7 +356,7 @@ async function setup(
     emit(envelope, options.json, deps);
     return exitCode;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     const envelope = buildEnvelope({
       command: "setup",
       status: "failed",
@@ -384,7 +385,7 @@ async function doctor(
   try {
     selection = deps.select({ target, remote: remoteFrom(options) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     const envelope = buildEnvelope({
       command: "doctor",
       status: "unknown",
@@ -454,7 +455,7 @@ async function doctor(
     emit(envelope, options.json, deps, options.verbose);
     return exitCode;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     const envelope = buildEnvelope({
       command: "doctor",
       status: "unknown",
@@ -510,7 +511,7 @@ async function test(
   try {
     selection = deps.select({ target, remote: remoteFrom(options) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     emit(
       buildEnvelope({
         command: "test",
@@ -564,7 +565,7 @@ async function test(
       commit: deps.env["A8N_COMMIT"] ?? null,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     emit(
       buildEnvelope({
         command: "test",
@@ -634,7 +635,7 @@ async function recover(
   try {
     selection = deps.select({ target, remote: remoteFrom(options) });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     emit(
       buildEnvelope({
         command: "recover",
@@ -668,7 +669,7 @@ async function recover(
       now: deps.now,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     emit(
       buildEnvelope({
         command: "recover",
@@ -775,7 +776,7 @@ function report(
       runId: options.runId,
       directory: null,
       reason: `the run state could not be read: ${
-        error instanceof Error ? error.message : String(error)
+        errorMessage(error)
       }`,
     };
   }

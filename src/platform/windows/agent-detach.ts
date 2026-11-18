@@ -27,6 +27,7 @@ import { spawn } from "node:child_process";
 import { closeSync, mkdirSync, openSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { errorMessage } from "../../errors.js";
 
 export const HIDDEN_FLAG = "--hidden";
 export const LOG_FLAG = "--log";
@@ -138,10 +139,6 @@ function checkArguments(args: readonly string[]): string | null {
   return null;
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /**
  * Starts the hidden agent and answers this process's exit code.
  *
@@ -187,7 +184,7 @@ export async function detachAgent(argv: readonly string[], deps: DetachDeps = {}
     );
     fd = openLog(logPath);
   } catch (error) {
-    writeErr(`ae-a8n agent: the log ${logPath} could not be opened: ${messageOf(error)}\n`);
+    writeErr(`ae-a8n agent: the log ${logPath} could not be opened: ${errorMessage(error)}\n`);
     return 1;
   }
 
@@ -205,7 +202,7 @@ export async function detachAgent(argv: readonly string[], deps: DetachDeps = {}
     });
   } catch (error) {
     closeLog(fd);
-    writeErr(`ae-a8n agent: the hidden agent could not be started: ${messageOf(error)}\n`);
+    writeErr(`ae-a8n agent: the hidden agent could not be started: ${errorMessage(error)}\n`);
     return 1;
   }
   // A start is only proven by the `spawn` event, which arrives on the next
@@ -216,13 +213,13 @@ export async function detachAgent(argv: readonly string[], deps: DetachDeps = {}
     // An error after a successful spawn must still be reported, not dropped.
     child.once("error", (error: Error) => {
       if (settled) {
-        writeErr(`ae-a8n agent: the hidden agent failed: ${messageOf(error)}\n`);
+        writeErr(`ae-a8n agent: the hidden agent failed: ${errorMessage(error)}\n`);
         return;
       }
       settled = true;
       closeLog(fd);
       writeErr(
-        `ae-a8n agent: the hidden agent could not be started: ${messageOf(error)}; nothing was started\n`,
+        `ae-a8n agent: the hidden agent could not be started: ${errorMessage(error)}; nothing was started\n`,
       );
       resolve(1);
     });

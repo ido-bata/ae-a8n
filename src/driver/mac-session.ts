@@ -21,6 +21,7 @@
  */
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { errorMessage } from "../errors.js";
 
 /** The kind of login session a uid has. */
 export type MacSessionKind = "Aqua" | "Background" | "StandardIO" | "none";
@@ -165,7 +166,7 @@ export function readGuiSessionFailure(uid: number): string | null {
         : stderr instanceof Buffer
           ? stderr.toString("utf-8")
           : "";
-    return text.trim().length > 0 ? text.trim() : error instanceof Error ? error.message : String(error);
+    return text.trim().length > 0 ? text.trim() : errorMessage(error);
   }
 }
 

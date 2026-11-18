@@ -19,6 +19,7 @@ import type { PlatformAdapter, RecoveryFinding, TargetSpec } from "../platform/c
 import type { RunReport } from "./artifacts.js";
 import { RUN_ID_PATTERN } from "./run-id.js";
 import { readQuarantine, stateLayout, targetKey, type StateLayout } from "./state.js";
+import { errorMessage } from "../errors.js";
 
 export type RecoveryAction = "reported" | "cleared" | "refused" | "recorded";
 
@@ -128,7 +129,7 @@ function removeFile(path: string): string | null {
     rmSync(path);
     return null;
   } catch (error) {
-    return error instanceof Error ? error.message : String(error);
+    return errorMessage(error);
   }
 }
 
@@ -169,7 +170,7 @@ function recordUnknown(
     if ((error as NodeJS.ErrnoException).code === "EEXIST") {
       return { state: "exists" };
     }
-    return { state: "failed", detail: error instanceof Error ? error.message : String(error) };
+    return { state: "failed", detail: errorMessage(error) };
   }
 }
 
@@ -376,7 +377,7 @@ export async function recoverRun(input: RecoverInput): Promise<RecoverResult> {
         code: "A8N-JOB-002",
         action: "reported",
         detail: `the platform could not inspect ${runDirectory}: ${
-          error instanceof Error ? error.message : String(error)
+          errorMessage(error)
         }`,
       });
       cannotDecide = true;

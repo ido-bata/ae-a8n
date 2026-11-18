@@ -6,10 +6,11 @@
  */
 
 import { main } from "./cli/main.js";
+import { errorMessage } from "./errors.js";
 
 void main(process.argv.slice(2)).catch((error: unknown) => {
   process.stderr.write(
-    `ae-a8n: ${error instanceof Error ? error.message : String(error)}\n`,
+    `ae-a8n: ${errorMessage(error)}\n`,
   );
   process.exitCode = 1;
 });

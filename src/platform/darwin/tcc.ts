@@ -28,6 +28,7 @@
  */
 
 import { WINDOW_CENSUS_PYTHON } from "./window-census.js";
+import { errorMessage } from "../../errors.js";
 
 /** The interpreter the probe needs; the census's CLT python3, never the stub. */
 export const TCC_PROBE_PYTHON = WINDOW_CENSUS_PYTHON;
@@ -151,10 +152,10 @@ export function runTccProbe(exec: TccExec): TccProbeResult {
   } catch (error) {
     return {
       screenRecording: unproven(
-        `the TCC probe could not run: ${error instanceof Error ? error.message : String(error)}`,
+        `the TCC probe could not run: ${errorMessage(error)}`,
       ),
       accessibility: unproven(
-        `the TCC probe could not run: ${error instanceof Error ? error.message : String(error)}`,
+        `the TCC probe could not run: ${errorMessage(error)}`,
       ),
       mechanism: "unavailable",
     };

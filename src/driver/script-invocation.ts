@@ -36,6 +36,7 @@ import {
   spawnInSession,
   type MacSession,
 } from "./mac-session.js";
+import { errorMessage } from "../errors.js";
 import type {
   HostAttestation,
   HostOwnership,
@@ -887,7 +888,7 @@ export class ScriptInvocationTransport implements HostTransport {
       now = this.#hostProcesses();
     } catch (error) {
       throw new Error(
-        `${refuse}: the process list could not be read (${error instanceof Error ? error.message : String(error)})`,
+        `${refuse}: the process list could not be read (${errorMessage(error)})`,
       );
     }
     const recorded: HostProcess = {
@@ -930,7 +931,7 @@ export class ScriptInvocationTransport implements HostTransport {
       now = this.#hostProcesses();
     } catch (error) {
       this.#ownershipAtLaunch = this.#unknownOwnership(
-        `could not re-check processes: ${error instanceof Error ? error.message : String(error)}`,
+        `could not re-check processes: ${errorMessage(error)}`,
       );
       return;
     }
@@ -983,7 +984,7 @@ export class ScriptInvocationTransport implements HostTransport {
       now = this.#hostProcesses();
     } catch (error) {
       this.#ownershipAtLaunch = this.#unknownOwnership(
-        `could not list processes: ${error instanceof Error ? error.message : String(error)}`,
+        `could not list processes: ${errorMessage(error)}`,
       );
       return;
     }
@@ -1089,7 +1090,7 @@ export class ScriptInvocationTransport implements HostTransport {
       now = this.#hostProcesses();
     } catch (error) {
       return this.#unknownOwnership(
-        `could not re-check processes: ${error instanceof Error ? error.message : String(error)}`,
+        `could not re-check processes: ${errorMessage(error)}`,
       );
     }
     // Windows creation times are 100 ns kernel values, identical on every read

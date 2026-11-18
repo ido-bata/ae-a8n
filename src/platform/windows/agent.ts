@@ -18,6 +18,7 @@ import {
   type UnsignedClaim,
   type UnsignedJobResult,
 } from "./auth.js";
+import { errorMessage } from "../../errors.js";
 import { ChannelFileTooLargeError, type FileChannel } from "./channel.js";
 import {
   JOB_SCHEMA_VERSION,
@@ -476,7 +477,7 @@ export async function runJob(options: AgentRunOptions): Promise<AgentRunOutcome>
     execution = {
       status: "unknown",
       message: `the executor threw, so the outcome is unknown: ${
-        error instanceof Error ? error.message : String(error)
+        errorMessage(error)
       }`,
     };
   }

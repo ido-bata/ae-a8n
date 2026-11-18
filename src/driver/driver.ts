@@ -19,6 +19,7 @@ import {
   type DiagnosticsOptions,
   type SessionDiagnostics,
 } from "./session-diagnostics.js";
+import { errorMessage } from "../errors.js";
 import {
   clearLaunchProvenance,
   recordLaunchProvenance,
@@ -179,7 +180,7 @@ export class HostLeftRunningError extends Error {
         "unknown; check before running again.";
     super(
       `After Effects was started (pid ${String(launch.pid)}${started}, ${launch.executable}${where}) ` +
-        `but did not answer the readiness probe: ${messageOf(cause)}. ${aftermath}`,
+        `but did not answer the readiness probe: ${errorMessage(cause)}. ${aftermath}`,
       { cause },
     );
     this.name = "HostLeftRunningError";
@@ -391,7 +392,7 @@ export class AeDriver {
           });
         } catch (error) {
           this.#trace.record("session.provenance", "error", 0, {
-            error: { name: nameOf(error), message: messageOf(error) },
+            error: { name: nameOf(error), message: errorMessage(error) },
           });
         }
       }
@@ -409,7 +410,7 @@ export class AeDriver {
       const pending = this.#transport.pendingLaunch?.() ?? null;
       const detail = {
         args: { transport: this.#transport.kind },
-        error: { name: nameOf(error), message: messageOf(error) },
+        error: { name: nameOf(error), message: errorMessage(error) },
       };
       if (pending === null) {
         this.#trace.record("session.launch", "error", Date.now() - began, detail);
@@ -582,7 +583,7 @@ export class AeDriver {
       // The trace row lands first so the diagnostics bundle collected below
       // contains the close failure that triggered it.
       this.#trace.record("session.close", "error", Date.now() - began, {
-        error: { name: nameOf(error), message: messageOf(error) },
+        error: { name: nameOf(error), message: errorMessage(error) },
       });
       if (!refused) {
         this.#closed = true;
@@ -733,7 +734,7 @@ export class AeDriver {
               error: recoveryError,
               detail: {
                 ...(outcomeDetail ?? { args: { ...params } }),
-                error: { name: nameOf(recoveryError), message: messageOf(recoveryError) },
+                error: { name: nameOf(recoveryError), message: errorMessage(recoveryError) },
               },
             };
           }
@@ -760,7 +761,7 @@ export class AeDriver {
         error: failure,
         detail: {
           ...(outcomeDetail ?? { args: { ...params } }),
-          error: { name: nameOf(failure), message: messageOf(failure) },
+          error: { name: nameOf(failure), message: errorMessage(failure) },
           ...(failure instanceof TimeoutError && failure.hostCondition !== undefined
             ? { result: { hostCondition: failure.hostCondition } }
             : {}),
@@ -820,7 +821,7 @@ export class AeDriver {
       outcome = await recovery.attempt({ requestId: id, method, timeoutMs });
     } catch (error) {
       this.#trace.record("session.recover", "error", 0, {
-        error: { name: nameOf(error), message: messageOf(error) },
+        error: { name: nameOf(error), message: errorMessage(error) },
       });
       return { kind: "unresolved", sawWindow: false };
     }
@@ -943,10 +944,6 @@ export class AeDriver {
 
 function nameOf(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function summariseResult(value: unknown): Record<string, unknown> {

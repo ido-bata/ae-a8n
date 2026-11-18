@@ -36,6 +36,7 @@ import {
   type StepOutcome,
   type TargetSpec,
 } from "../contract.js";
+import { errorMessage } from "../../errors.js";
 import { windowsCapabilities } from "./capabilities.js";
 import { DirectoryChannel, type FileChannel } from "./channel.js";
 import {
@@ -362,7 +363,7 @@ export class WindowsSession implements IsolatedSession {
           proven: false,
           code: "A8N-AE-002",
           detail: `the session marker could not be checked: ${
-            error instanceof Error ? error.message : String(error)
+            errorMessage(error)
           }`,
         };
       }
@@ -689,7 +690,7 @@ export class WindowsAdapter implements PlatformAdapter {
         outcomes.push({
           id: step.id,
           state: "failed",
-          detail: `the channel root could not be used: ${error instanceof Error ? error.message : String(error)}`,
+          detail: `the channel root could not be used: ${errorMessage(error)}`,
         });
       }
     }
@@ -753,7 +754,7 @@ export class WindowsAdapter implements PlatformAdapter {
     } catch (error) {
       result = {
         stdout: "",
-        stderr: error instanceof Error ? error.message : String(error),
+        stderr: errorMessage(error),
         exitCode: 127,
       };
     }
