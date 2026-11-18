@@ -84,8 +84,19 @@ function npmView(args, registry) {
 }
 
 function versionsOn(registry, name) {
-  const versions = npmView([name, "versions"], registry);
-  return Array.isArray(versions) ? versions.map(String) : [];
+  try {
+    const versions = npmView([name, "versions"], registry);
+    return Array.isArray(versions) ? versions.map(String) : [];
+  } catch (error) {
+    // A registry that has never seen the package answers 404, which for the
+    // mirror means "empty", not "cannot ask". Any other failure still aborts
+    // the run: a mirror that cannot check is not allowed to guess.
+    const text = `${error?.stderr ?? ""} ${error?.message ?? ""}`;
+    if (registry === GITHUB_PACKAGES_REGISTRY && /E404|404 Not Found/.test(text)) {
+      return [];
+    }
+    throw error;
+  }
 }
 
 function distInfo(name, version) {
