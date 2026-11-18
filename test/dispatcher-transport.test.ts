@@ -1159,3 +1159,115 @@ describe("static extensions through the dispatcher (#146)", () => {
     await expect(transport.launch()).rejects.toThrow(/no fresh|heartbeat/i);
   });
 });
+
+describe("result envelope and pump edge cases (#227)", () => {
+  function stagedCall(session: string, method = "app.info"): { entry: string; id: string } {
+    const paths = createSessionPaths(session);
+    const id = nextRequestId();
+    const request: RequestEnvelope = { v: 1, id, method, params: {}, timeoutMs: 5_000 };
+    writeRequest(paths, request);
+    const entry = join(session, "staging", `${id}.entry.jsx`);
+    writeBootstrapScript({
+      entryPath: entry,
+      hostScriptPath: join(session, "host.js"),
+      requestPath: join(paths.inbox, `${id}.request.json`),
+      resultPath: join(paths.outbox, `${id}.result.json`),
+      id,
+    });
+    return { entry, id };
+  }
+
+  it("refuses a result envelope with an unknown protocol version", async () => {
+    const dir = channelDir();
+    const session = sessionRoot();
+    const transport = makeTransport(dir);
+    await transport.prepare();
+    const { entry, id } = stagedCall(session);
+    await transport.invoke(entry);
+
+    // Correct id, wrong envelope version: not this protocol's result.
+    writeFileSync(
+      join(dir, "outbox", `${id}.result.json`),
+      JSON.stringify({ v: 2, id, ok: true, durationMs: 1, result: { smuggled: true } }),
+    );
+    await sleep(120);
+    expect(existsSync(join(session, "outbox", `${id}.result.json`))).toBe(false);
+    // The file stays as evidence; the pump does not consume what it cannot read.
+    expect(existsSync(join(dir, "outbox", `${id}.result.json`))).toBe(true);
+    await transport.close();
+  });
+
+  it("skips a malformed result file and keeps waiting for a valid one", async () => {
+    const dir = channelDir();
+    const session = sessionRoot();
+    const transport = makeTransport(dir);
+    await transport.prepare();
+    const { entry, id } = stagedCall(session);
+    await transport.invoke(entry);
+
+    writeFileSync(join(dir, "outbox", `${id}.result.json`), "{not json");
+    await sleep(120);
+    expect(existsSync(join(session, "outbox", `${id}.result.json`))).toBe(false);
+
+    // A later, well-formed result for the same request is still delivered.
+    writeFileSync(
+      join(dir, "outbox", `${id}.result.json`),
+      JSON.stringify({ v: 1, id, ok: true, durationMs: 2, result: { late: "but valid" } }),
+    );
+    await waitFor(
+      () => existsSync(join(session, "outbox", `${id}.result.json`)),
+      "result after malformed file",
+    );
+    await transport.close();
+  });
+
+  it("drops a result that arrives after the late-result window", async () => {
+    const dir = channelDir();
+    const session = sessionRoot();
+    const transport = makeTransport(dir, { lateResultMs: 60 });
+    await transport.prepare();
+    const { entry, id } = stagedCall(session);
+    await transport.invoke(entry);
+
+    // Let the pending entry expire, then deliver a correct result: it must
+    // not be bridged — the caller already saw UNKNOWN.
+    await sleep(200);
+    writeFileSync(
+      join(dir, "outbox", `${id}.result.json`),
+      JSON.stringify({ v: 1, id, ok: true, durationMs: 1, result: { too: "late" } }),
+    );
+    await sleep(120);
+    expect(existsSync(join(session, "outbox", `${id}.result.json`))).toBe(false);
+    await transport.close();
+  });
+
+  it.skipIf(process.platform === "win32")("keeps the channel result and retries when publishing to the session fails", async () => {
+    const dir = channelDir();
+    const session = sessionRoot();
+    const transport = makeTransport(dir);
+    await transport.prepare();
+    const { entry, id } = stagedCall(session);
+    await transport.invoke(entry);
+
+    const outbox = join(session, "outbox");
+    chmodSync(outbox, 0o500);
+    try {
+      writeFileSync(
+        join(dir, "outbox", `${id}.result.json`),
+        JSON.stringify({ v: 1, id, ok: true, durationMs: 1, result: { retry: true } }),
+      );
+      await sleep(150);
+      // Publish failed: nothing in the session outbox, and the channel
+      // result is kept (not consumed, not deleted) for the next pump.
+      expect(existsSync(join(outbox, `${id}.result.json`))).toBe(false);
+      expect(existsSync(join(dir, "outbox", `${id}.result.json`))).toBe(true);
+    } finally {
+      chmodSync(outbox, 0o700);
+    }
+    await waitFor(
+      () => existsSync(join(outbox, `${id}.result.json`)),
+      "result bridged after permissions restored",
+    );
+    await transport.close();
+  });
+});
