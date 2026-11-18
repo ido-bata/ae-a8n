@@ -10,8 +10,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -59,12 +58,13 @@ function records(overrides: Record<string, unknown> = {}) {
   return { macos: record("macos"), windows: record("windows"), ...overrides };
 }
 
-function evaluate(input: Parameters<typeof gate.evaluateEvidenceGate>[0]) {
+function evaluate(input: Partial<Parameters<typeof gate.evaluateEvidenceGate>[0]>) {
   return gate.evaluateEvidenceGate({
     distTag: "latest",
     candidateCommit: COMMIT,
     tarballSha256: TARBALL,
     declarations: DECLARED,
+    records: {},
     ...input,
   });
 }
@@ -230,11 +230,8 @@ describe("cli", () => {
   it("exits non-zero and names the reason when evidence is missing", () => {
     const dir = mkdtempSync(join(tmpdir(), "evidence-cli-"));
     try {
-      mkdirSync(join(dir, "empty"));
       const tarball = join(dir, "pkg.tgz");
       writeFileSync(tarball, "tarball bytes");
-      const sha256 = createHash("sha256").update("tarball bytes").digest("hex");
-      void sha256;
       let failed = false;
       try {
         execFileSync("node", [
