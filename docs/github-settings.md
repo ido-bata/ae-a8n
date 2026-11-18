@@ -97,9 +97,22 @@ but the correct sequence when opening the next train is: create
 
 Bootstrap note: `pull_request_target` only runs workflows that exist on
 `main`, so `release-gate` is not a required check until the first release
-PR carrying it merges. Afterwards, add `"release-gate"` back to
-`REQUIRED_CHECKS` in `scripts/github-rulesets.js` and re-run
-`node scripts/github-rulesets.js --apply`.
+PR carrying it merges. The post-merge activation sequence is:
+
+1. Merge the release PR (explicit human authorization).
+2. In a ticket PR, add `"release-gate"` to `REQUIRED_CHECKS` in
+   `scripts/github-rulesets.js`, merge it into the *next* train, and run
+   `node scripts/github-rulesets.js --apply` — the ruleset update only
+   takes effect for PRs opened after it applies, so verify on a fresh PR
+   that the `release-gate` check run is attached to the PR's head commit
+   (`gh pr checks <n>`), not merely that the workflow file exists.
+3. Counterexample verification on throwaway PRs to `main`: arbitrary
+   branch, spoofed `release-*` name, stale `RELEASE_TRAIN`, and a PR
+   whose head edits `release-gate.yml` — each must fail `release-gate`.
+4. If activation fails (check never reported, wrong commit, ruleset
+   rejected), the recovery is: fix the workflow or ruleset on `main` via
+   a release PR, re-run `--apply`, and re-verify — never bypass the
+   required check and never merge `main` directly to "unstick" it.
 
 The required checks name the CI jobs, not the workflow. If a job in
 `.github/workflows/ci.yml` is renamed, change `REQUIRED_CHECKS` in the same
