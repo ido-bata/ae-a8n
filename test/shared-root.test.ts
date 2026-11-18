@@ -4,6 +4,11 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+// The shared root and its trust rules are macOS-only: they rest on POSIX
+// uids and mode bits that Windows does not have, and the darwin adapter is
+// the only caller. Same precedent as scripts/run-isolated-session-checks.mjs.
+const darwinOnly = describe.skipIf(process.platform === "win32");
+
 import {
   inspectSharedRoot,
   SHARED_TMP_STALE_MS,
@@ -41,7 +46,7 @@ function jobState(root: string, trustedUid: number | null = process.getuid?.() ?
   return report.jobs.map((job) => ({ name: job.name, state: job.state }));
 }
 
-describe("inspectSharedRoot", () => {
+darwinOnly("inspectSharedRoot", () => {
   it("reports a missing root as not present", () => {
     const report = inspectSharedRoot(join(tmpdir(), "ae-a8n-no-such-root-xyz"));
     expect(report.present).toBe(false);
