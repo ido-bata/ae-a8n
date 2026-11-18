@@ -125,6 +125,7 @@ Initial set:
 | `A8N-PERM-006` | blocker | The channel directory is writable by another account (nothing sent) |
 | `A8N-PERM-007` | warning | AE script file/network preference state could not be determined |
 | `A8N-PERM-008` | warning | AE script approval (trust) state is unproven |
+| `A8N-PERM-009` | warning | TCC permission state could not be determined |
 | `A8N-AE-001` | blocker | Another AE is running on the target (run refused; `local` intent reports `A8N-AE-009` instead) |
 | `A8N-AE-002` | blocker | The AE is not owned by this run (lifecycle refused) |
 | `A8N-AE-003` | blocker | The script destination could not be proven (nothing sent) |

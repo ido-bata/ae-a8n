@@ -24,6 +24,12 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { assertTrustedResult, cancelJob, parseArgs } from "../scripts/isolated-session/dispatch.mjs";
+import {
+  classifyAutomation,
+  parseTccLines,
+  permissionProbe,
+  summarizeAePrefs,
+} from "../scripts/isolated-session/permission-probe.mjs";
 
 import {
   assertJobRunnable,
@@ -598,4 +604,75 @@ test("ax-grant-all.command applies the same checks", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("the permission probe parses the preflight lines", () => {
+  assert.deepEqual(parseTccLines("screen=1\nax=0\n"), { screen: 1, ax: 0 });
+  assert.deepEqual(parseTccLines("screen=-1\nax=1\n"), { screen: -1, ax: 1 });
+  assert.deepEqual(parseTccLines(""), { screen: null, ax: null });
+  assert.deepEqual(parseTccLines("screen=\nax=yes\n"), { screen: null, ax: null });
+});
+
+test("the automation probe passes only on a numeric answer", () => {
+  assert.equal(classifyAutomation({ status: 0, stdout: "12\n", stderr: "" }).state, "granted");
+  assert.equal(
+    classifyAutomation({ status: 1, stdout: "", stderr: "execution error: ... (-1743)" }).state,
+    "denied",
+  );
+  // A timeout or any other failure is unproven, never denied-by-guess.
+  assert.equal(classifyAutomation({ status: 1, stdout: "", stderr: "timed out", killed: true }).state, "unproven");
+  assert.equal(classifyAutomation({ status: 1, stdout: "", stderr: "some other error" }).state, "unproven");
+});
+
+test("the AE prefs summary never turns missing data into a verdict", () => {
+  assert.equal(summarizeAePrefs([]).state, "unproven");
+  assert.equal(summarizeAePrefs([{ versionDir: "26.5", value: "1" }]).state, "granted");
+  assert.equal(
+    summarizeAePrefs([
+      { versionDir: "26.5", value: "1" },
+      { versionDir: "27.0", value: "1" },
+    ]).state,
+    "granted",
+  );
+  assert.equal(
+    summarizeAePrefs([
+      { versionDir: "26.5", value: "1" },
+      { versionDir: "27.0", value: "0" },
+    ]).state,
+    "denied",
+  );
+  assert.equal(summarizeAePrefs([{ versionDir: "26.5", value: "?" }]).state, "unproven");
+  // A readable "1" must not hide an unreadable version or an unknown value.
+  assert.equal(
+    summarizeAePrefs([
+      { versionDir: "26.5", value: "1" },
+      { versionDir: "27.0", value: null },
+    ]).state,
+    "unproven",
+  );
+  assert.equal(
+    summarizeAePrefs([
+      { versionDir: "26.5", value: "1" },
+      { versionDir: "27.0", value: "?" },
+    ]).state,
+    "unproven",
+  );
+});
+
+test("the permission probe reports every permission and its session", () => {
+  const report = permissionProbe({
+    session: { uid: 502, username: "ae-test", asid: 100040, kind: "Aqua", onConsole: false },
+    tcc: {
+      screenRecording: { state: "granted", detail: null },
+      accessibility: { state: "denied", detail: null },
+    },
+    automation: { state: "unproven", detail: "the probe did not produce a verdict" },
+    aePrefs: { state: "granted", detail: null, versions: { "26.5": "1" } },
+  });
+  assert.equal(report.probe, "ae-a8n-permission-probe/1");
+  assert.equal(report.session.uid, 502);
+  assert.equal(report.permissions.screenRecording.state, "granted");
+  assert.equal(report.permissions.accessibility.state, "denied");
+  assert.equal(report.permissions.automationSystemEvents.state, "unproven");
+  assert.equal(report.permissions.aeScriptFileNetwork.state, "granted");
 });

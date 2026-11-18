@@ -62,6 +62,10 @@ export const DIAGNOSTIC_CODES = {
     severity: "warning",
     title: "After Effects script approval (trust) state is unproven",
   },
+  "A8N-PERM-009": {
+    severity: "warning",
+    title: "TCC permission state could not be determined",
+  },
   "A8N-AE-001": { severity: "blocker", title: "Another After Effects is running on the target" },
   "A8N-AE-002": { severity: "blocker", title: "The After Effects is not owned by this run" },
   "A8N-AE-003": { severity: "blocker", title: "The script destination could not be proven" },
