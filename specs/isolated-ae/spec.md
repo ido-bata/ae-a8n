@@ -207,8 +207,9 @@ Rules:
 
 ## 7. Product surface
 
-See [contracts/cli.md](contracts/cli.md) and
-[contracts/extensions.md](contracts/extensions.md).
+See [contracts/cli.md](contracts/cli.md),
+[contracts/extensions.md](contracts/extensions.md) and
+[contracts/permissions.md](contracts/permissions.md).
 
 Package:
 
