@@ -1,0 +1,60 @@
+{
+  "date": "2026-11-18",
+  "issue": "https://github.com/ido-bata/ae-a8n/issues/74",
+  "source": {
+    "repository": "ido-bata/ae-a8n",
+    "sha": "8d7c7f0f0573a09b72000ac16e16eae1792278fe",
+    "branch": "release-0-3-0",
+    "note": "packaged bytes verified identical at later docs-only HEADs; see PR #214"
+  },
+  "package": {
+    "name": "@ido-bata/ae-a8n",
+    "version": "0.3.0",
+    "tarball": "ido-bata-ae-a8n-0.3.0.tgz",
+    "sha256": "efa0a6a5fcbf754820f8bdd7d4cbc0b74715696939100da4925e7d30407b48dc",
+    "npmShasum": "c22a12d6b7ea3b2216cb469b3d2d1700a6906066",
+    "integrity": "sha512-itKnMAXx8dXp+YCTUI2iRs8P05ewzPy7M4YxyFU3Y07qbF6RQTXqCyVZxQI2y/URAWmgLelqAdVwaVjsdU6UPQ=="
+  },
+  "host": {
+    "access": "herdr --machine Windows (saved SSH machine device-windows) + direct ssh for file transfer",
+    "os": "Windows 11, build 10.0.29708.1003",
+    "arch": "x64",
+    "user": "rebui (interactive desktop session, herdr workspace wK pane wK:p1)",
+    "node": "v26.13.1 (pane) / v24.19.0 (ssh session)",
+    "aeInstalls": [
+      { "path": "D:\\4_apps\\adobe\\Adobe After Effects 2026", "afterFxVersion": "26.5.3" },
+      { "path": "D:\\4_apps\\adobe\\Adobe After Effects 2027", "afterFxVersion": "27.0" }
+    ],
+    "aeRunningBefore": "none",
+    "aeRunningAfter": "none from these runs; an unrelated user-started AE 2027 (pid 46276, started 21:45 JST) was observed afterwards and was not touched"
+  },
+  "runs": [
+    {
+      "id": "win1",
+      "aePid": 47744,
+      "aeVersion": "27.0x78",
+      "ownership": "owned",
+      "sessionRoot": "C:\\Users\\rebui\\ae-a8n-verify\\e2e-win1",
+      "trace": "e2e-win1-trace.jsonl",
+      "renderPng": { "remotePath": "C:\\Users\\rebui\\ae-a8n-verify\\e2e-win1\\artifacts\\a8n e2e win1.00000.png", "bytes": 3671, "sha256": "d7c8299245ce4da135f417fd01f93550d070cb2d2c85868516c1135ab9b904c5" },
+      "result": "PASS"
+    },
+    {
+      "id": "win2",
+      "aePid": 47272,
+      "aeVersion": "27.0x78",
+      "ownership": "owned",
+      "sessionRoot": "C:\\Users\\rebui\\ae-a8n-verify\\e2e-win2",
+      "trace": "e2e-win2-trace.jsonl",
+      "renderPng": { "remotePath": "C:\\Users\\rebui\\ae-a8n-verify\\e2e-win2\\artifacts\\a8n e2e win2.00000.png", "bytes": 3671, "sha256": "d7c8299245ce4da135f417fd01f93550d070cb2d2c85868516c1135ab9b904c5" },
+      "result": "PASS"
+    }
+  ],
+  "doctor": "doctor.json (status ok, 4 checks; script-trust and scripting-component honestly unproven)",
+  "levels": {
+    "windowsLocalE2E": "verified on real host",
+    "windowsIsolatedE2E": "UNVERIFIED (no dedicated user session / VM / dedicated host available; current host is the developer's signed-in desktop)",
+    "nonInterferenceMeasurement": "UNVERIFIED",
+    "t092RemainingRows": "UNVERIFIED"
+  }
+}

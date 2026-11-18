@@ -1,0 +1,93 @@
+{
+  "schemaVersion": "1.0",
+  "command": "doctor",
+  "status": "ok",
+  "exitCode": 0,
+  "startedAt": "2026-11-18T13:07:45.036Z",
+  "finishedAt": "2026-11-18T13:07:45.737Z",
+  "platform": {
+    "os": "win32",
+    "release": "10.0.29708",
+    "arch": "x64",
+    "backend": "windows-remote-host"
+  },
+  "package": {
+    "name": "@ido-bata/ae-a8n",
+    "version": "0.3.0",
+    "commit": null
+  },
+  "target": {
+    "name": "local",
+    "isolation": "session"
+  },
+  "checks": [
+    {
+      "code": "A8N-PERM-008",
+      "severity": "warning",
+      "title": "After Effects script approval (trust) state is unproven",
+      "detail": "whether After Effects will run scripts from this package's session folder without a per-location approval cannot be verified without launching AE; on AE 26.5+ an unapproved script is refused (-1708) with a modal. The approval granularity (folder vs script) is unproven (#125).",
+      "remedy": "On the first launch, approve the session's staging folder in After Effects (Edit > Preferences > Scripting & Expressions) when AE prompts. Until the approval granularity is measured, a new session directory may need its own approval; keep one sessionRoot per project to minimise prompts.",
+      "remedyKind": "human",
+      "evidence": {
+        "state": "unproven",
+        "approvalGranularity": "unproven"
+      }
+    },
+    {
+      "code": "A8N-AE-007",
+      "severity": "warning",
+      "title": "After Effects scripting component is unproven",
+      "detail": "the ExtendScript component's install locations are not verified for the Windows install layout, so whether the scripting component is usable is unproven",
+      "remedy": "Launch After Effects once and run a trivial script; if AE reports the Scripting plugin is not installed, repair the install through Creative Cloud.",
+      "remedyKind": "human",
+      "evidence": {
+        "state": "unproven",
+        "platform": "win32"
+      }
+    },
+    {
+      "code": "A8N-AE-008",
+      "severity": "info",
+      "title": "Per-user Scripts/Startup folder state",
+      "detail": "the per-user Scripts/Startup folder (%APPDATA%\\Adobe\\After Effects\\<ver>\\Scripts\\Startup) is documented but its execution is unproven on Windows; G0 evidence covers macOS only",
+      "remedy": "No action for AfterEffects.launch — the folder matters only for the in-AE dispatcher transport (#127).",
+      "remedyKind": "none",
+      "evidence": {
+        "state": "unproven",
+        "platform": "win32"
+      }
+    },
+    {
+      "code": "A8N-AE-009",
+      "severity": "info",
+      "title": "After Effects is already running",
+      "detail": "After Effects is already running: pid 49200 (session 1); a local launch attaches to it and reports ownership \"attached\"",
+      "remedy": "Nothing to do — AfterEffects.launch reuses the running instance and close() will not quit it. Quit AE yourself first only if you want a fresh instance.",
+      "remedyKind": "none",
+      "evidence": {
+        "processes": "\"AfterFX.exe\",\"49200\",\"Console\",\"1\",\"1,066,280 K\""
+      }
+    }
+  ],
+  "nextActions": [
+    {
+      "kind": "human",
+      "code": "A8N-PERM-008",
+      "action": "On the first launch, approve the session's staging folder in After Effects (Edit > Preferences > Scripting & Expressions) when AE prompts. Until the approval granularity is measured, a new session directory may need its own approval; keep one sessionRoot per project to minimise prompts."
+    },
+    {
+      "kind": "human",
+      "code": "A8N-AE-007",
+      "action": "Launch After Effects once and run a trivial script; if AE reports the Scripting plugin is not installed, repair the install through Creative Cloud."
+    }
+  ],
+  "notice": "local mode: doctor checks the script-invocation path for your own session; a running After Effects is attached to, not refused, and close() will not quit it.",
+  "capabilities": {
+    "nonInterference": "unproven",
+    "provesOwnership": false,
+    "provesDestination": true,
+    "guiRecovery": false,
+    "sessionIdentity": "host-and-user",
+    "quitsOnlyOwned": true
+  }
+}
