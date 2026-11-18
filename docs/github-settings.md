@@ -69,14 +69,20 @@ merging:
 
 ```bash
 node scripts/release-merge-preflight.js <release-pr-number>
-gh pr merge <release-pr-number> --merge
+gh pr merge <release-pr-number> --merge --match-head-commit <sha>
 ```
 
 The script re-fetches the PR base/head, the `RELEASE_TRAIN` variable,
 the train tip, `ahead_by`, and the latest required-check runs **on the
-current head SHA**, and exits non-zero on any mismatch. Merge only on
-exit 0, and only with explicit human authorization — the script checks
-the integration path, not approval.
+current head SHA** — counting only check runs reported by the
+`github-actions` app — and exits non-zero on any mismatch or API
+failure. On success it prints the exact merge command with
+`--match-head-commit`, so the SHA it validated is the SHA that merges;
+any head update after preflight invalidates the merge. The decision
+logic is `evaluatePreflight`, unit-tested against counterexamples in
+`test/release-merge-preflight.test.ts`. Merge only on exit 0, and only
+with explicit human authorization — the script checks the integration
+path, not approval.
 
 The gate does not decide release *approval* — that remains the explicit
 human authorization at merge time. It only proves the integration path.
