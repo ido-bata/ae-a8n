@@ -58,8 +58,11 @@ is stated under "Not proven" rather than encoded in the version number.
 ### Not proven in this version
 
 - Windows real-host evidence for the dispatcher path, extension calls and
-  `ae.call` remains absent; `ownership()` is always `unknown` on
-  Windows and the package will not quit After Effects there.
+  `ae.call` remains absent. On the *script-invocation* transport, Windows
+  local E2E passed on packaged 0.3.0 (AE 2027 / 27.0, 2026-11-18, two
+  consecutive runs: owned launch, comp/layer/render, owned quit). On the
+  isolated backend `ownership()` stays `unknown` and the package will not
+  quit After Effects it did not start — that limitation is unchanged.
 - The isolated-session end-to-end run on a real helper account has not
   completed; the new fixture exists but its real-session PASS is pending
   (#57 T026, #62 T076).
