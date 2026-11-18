@@ -72,6 +72,16 @@ Apple Event のエラー番号の意味と「権限問題ではない」切り�
 
 ## 4.5. 権限プローブ（helper user セッション内で実行）
 
+> **repo harness と packaged CLI の境界**: この節と §4.6 の
+> `scripts/isolated-session/*.mjs` は **この repository の開発・検証用
+> harness** であり、npm package には同梱されない。packaged consumer が
+> 使うのは `ae-a8n doctor` / `setup` / `test` / `recover` だけで、
+> それらの出力は repo パスや source checkout を要求しない。
+> packaged 側の対応物は: grant の再測定 = 対象 session 内での
+> `ae-a8n doctor`、shared root の残り物の検査 = `doctor` / `recover`
+> の read-only 報告（packaged に prune は無い — 削除契約が未定義のため。
+> `specs/isolated-ae/contracts/cli.md` §6 参照）。
+
 TCC grant は responsible process（テストコマンドを動かす app bundle、
 通常は helper user の Terminal.app）に紐づく。だからプローブは
 **helper user のセッション内で、テストと同じ実行経路で**実行する。
