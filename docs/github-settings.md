@@ -53,11 +53,23 @@ branch-name pattern — a spoofed `release-*` head fails the gate.
 `.github/workflows/release-gate.yml` runs on `pull_request_target`, so the
 workflow definition always comes from `main` and a PR cannot weaken it by
 editing workflow files in its head. It never checks out head code; it only
-compares PR metadata (same-repo, head ref == `RELEASE_TRAIN`, head SHA ==
-branch tip) passed through environment variables.
+compares PR metadata and repository state passed through environment
+variables: same-repo head, `head.ref == RELEASE_TRAIN` (read via the
+`vars` context — no extra token permission needed), `head.sha ==` the
+train branch tip, and `main...train` `ahead_by > 0` so a fully merged
+(stale) train stops authorizing integrations. An unset, empty or
+non-branch-name `RELEASE_TRAIN` fails closed.
 
 The gate does not decide release *approval* — that remains the explicit
 human authorization at merge time. It only proves the integration path.
+
+Train lifecycle: after a release PR merges, `RELEASE_TRAIN` still names
+the merged train until it is re-pointed. The `ahead_by = 0` check makes
+the stale value harmless — it rejects rather than silently accepting —
+but the correct sequence when opening the next train is: create
+`release-x-y-z` from `main` HEAD → `gh variable set RELEASE_TRAIN
+--body release-x-y-z` → update the train references in `AGENTS.md` /
+`CLAUDE.md` → open the Draft release PR.
 
 Bootstrap note: `pull_request_target` only runs workflows that exist on
 `main`, so `release-gate` is not a required check until the first release

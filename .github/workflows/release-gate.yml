@@ -7,8 +7,8 @@ name: release-gate
 # definition always comes from `main`, so a pull request cannot weaken or
 # remove the check by editing workflow files in its own head. It never
 # checks out or executes code from the pull request — it only reads PR
-# metadata and repository variables, both of which are outside the head's
-# control.
+# metadata, repository variables and branch refs, none of which the head
+# controls.
 #
 # What this gate does NOT decide: whether the release is *approved*. That
 # stays a human authorization at merge time (github-delivery Skill). This
@@ -35,6 +35,9 @@ jobs:
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # vars context needs no API call or extra token permission; an
+          # unset or empty variable arrives as an empty string.
+          RELEASE_TRAIN: ${{ vars.RELEASE_TRAIN }}
         run: |
           set -euo pipefail
 
@@ -48,9 +51,9 @@ jobs:
           # The canonical train is whatever RELEASE_TRAIN currently names —
           # not any branch that happens to match a pattern. A spoofed
           # `release-evil` fails here because it is not the recorded train.
-          train="$(gh api "repos/$BASE_REPO/actions/variables/RELEASE_TRAIN" --jq .value)"
-          if [ -z "$train" ]; then
-            echo "::error::repository variable RELEASE_TRAIN is not set; the current release train is unknown, so no PR may integrate into main"
+          train="$RELEASE_TRAIN"
+          if ! [[ "$train" =~ ^[A-Za-z0-9._/-]+$ ]] || [ -z "$train" ]; then
+            echo "::error::repository variable RELEASE_TRAIN is unset or not a valid branch name ('$train'); the current release train is unknown, so no PR may integrate into main"
             exit 1
           fi
           if [ "$HEAD_REF" != "$train" ]; then
@@ -66,4 +69,15 @@ jobs:
             exit 1
           fi
 
-          echo "release-gate: $train @ $HEAD_SHA is the canonical release train for main"
+          # Stale-train guard: if the recorded train has already been fully
+          # merged into main (nothing ahead), it is no longer an active
+          # release train and must not authorize further main integrations.
+          # This forces RELEASE_TRAIN to be re-pointed at the next train
+          # after a release merge instead of silently accepting the old one.
+          ahead="$(gh api "repos/$BASE_REPO/compare/main...$train" --jq .ahead_by)"
+          if [ "$ahead" = "0" ]; then
+            echo "::error::$train is already fully merged into main (ahead_by=0); RELEASE_TRAIN is stale — point it at the next release train before opening release PRs"
+            exit 1
+          fi
+
+          echo "release-gate: $train @ $HEAD_SHA is the canonical release train for main (ahead_by=$ahead)"
