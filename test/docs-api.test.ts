@@ -14,7 +14,7 @@ import * as api from "../src/index.js";
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf-8");
 const DOCS = ["README.md", "skills/after-effects-automation/SKILL.md"];
-const SOURCE = ["src/api/index.ts", "src/api/errors.ts", "src/driver/install-path.ts"].map(read).join("\n");
+const SOURCE = ["src/api/index.ts", "src/api/entities.ts", "src/api/errors.ts", "src/driver/install-path.ts"].map(read).join("\n");
 
 /** Calls on things that are not ours: Node, the console, arrays. */
 const NOT_OURS = new Set(["log", "error", "exit", "slice", "map", "push", "join", "toString", "digest", "update", "createHash"]);
