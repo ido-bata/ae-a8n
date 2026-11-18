@@ -1,0 +1,85 @@
+name: github-packages
+
+# Mirrors versions already published on npmjs.com to GitHub Packages
+# (npm.pkg.github.com) so the repository's Packages tab lists them.
+# npmjs.com stays the canonical registry: this workflow never publishes a
+# version npmjs does not have, never republishes one GitHub Packages already
+# has, and only ever sends the exact tarball bytes npmjs serves (sha1-checked
+# against dist.shasum). See #117 and docs/releasing.md.
+#
+# It runs on manual dispatch only — after a version is actually published on
+# npmjs (staged approval included), dispatch this workflow to sync it. It is
+# idempotent: re-running skips everything already mirrored.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Sync only this version (default: every npmjs version missing on GitHub Packages)"
+        required: false
+        type: string
+
+permissions: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # GITHUB_TOKEN publishes to npm.pkg.github.com for this repository's
+      # scope; no long-lived token is stored anywhere.
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install toolchain
+        uses: jdx/mise-action@v2
+        with:
+          version: 2026.9.12
+          install: true
+
+      - name: Authenticate to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}" >> "$HOME/.npmrc"
+
+      - name: Sync published versions
+        env:
+          SYNC_VERSION: ${{ inputs.version }}
+        run: |
+          args=()
+          if [ -n "$SYNC_VERSION" ]; then
+            args+=(--version "$SYNC_VERSION")
+          fi
+          mise exec -- node scripts/github-packages-sync.js "${args[@]}"
+
+      - name: Verify the mirror
+        env:
+          SYNC_VERSION: ${{ inputs.version }}
+        run: |
+          # The sync is only done when GitHub Packages answers for the same
+          # version set npmjs has. One representative check per direction:
+          # the requested version, or the newest npmjs version.
+          name="$(mise exec -- node -p "require('./package.json').name")"
+          if [ -n "$SYNC_VERSION" ]; then
+            check="$SYNC_VERSION"
+          else
+            check="$(mise exec -- npm view "$name" versions --json | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).at(-1)))')"
+          fi
+          mise exec -- npm view "${name}@${check}" version dist.shasum \
+            --registry=https://npm.pkg.github.com --json
+          echo "GitHub Packages now serves ${name}@${check}"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## GitHub Packages mirror"
+            echo
+            echo "Synced from npmjs.com by \`scripts/github-packages-sync.js\`."
+            echo "npmjs.com remains the canonical registry; see docs/releasing.md."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -278,6 +278,34 @@ gate documents: anyone holding npm publish credentials can still run
 the determined one; the server-side fix is the same owner decision listed
 under "What stops an accidental or double publish".
 
+## GitHub Packages mirror (#117)
+
+Every version published on npmjs.com can also be mirrored to GitHub Packages
+(`npm.pkg.github.com`) so the repository's Packages tab lists the releases.
+npmjs.com stays the canonical registry — the mirror only carries bytes that
+came from it.
+
+After a version is actually published on npmjs (staged approval included),
+run the `github-packages` workflow by hand (Actions → github-packages → Run
+workflow). It is dispatch-only on purpose: it never fires on a tag push, and
+`scripts/github-packages-sync.js` refuses to publish anything npmjs does not
+already serve. The script:
+
+- lists npmjs versions and GitHub Packages versions and publishes only the
+  difference (or just `--version <v>` when one is named);
+- downloads each version's `dist.tarball` straight from the npmjs registry
+  and refuses it unless its sha1 equals the registry's `dist.shasum`, so the
+  mirrored bytes are provably the published bytes;
+- skips versions GitHub Packages already has, so re-running is safe;
+- aborts when either registry cannot be asked — a mirror that cannot check
+  never guesses.
+
+Auth is the workflow's `GITHUB_TOKEN` (`packages: write`); no long-lived
+token is stored. The package links to this repository through the
+`repository` field in `package.json`, which is what puts it under the
+Packages tab. Verification of the live mirror (registry answers + Packages
+tab entry) is recorded on #117 separately from this implementation.
+
 ## Not here yet
 
 - Provenance: npm does not generate it for private repositories
