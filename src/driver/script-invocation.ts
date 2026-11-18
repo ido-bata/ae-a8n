@@ -1261,10 +1261,10 @@ export class ScriptInvocationTransport implements HostTransport {
    * showing when `app.quit` did not take effect. ExtendScript `app.quit()`
    * returns while After Effects is still shutting down, and a modal dialog
    * (a save prompt, a missing-font notice, a sync nag) can hold the quit
-   * open indefinitely — observed on AE 27.0.0 (issue #231). Naming the
-   * windows the owned process still owns turns the timeout from a bare
-   * "did not exit" into an actionable report. A census that cannot run
-   * contributes nothing; it never changes the outcome.
+   * open indefinitely — observed on AE 27.0.0 (issue #231). The report
+   * names the windows the owned process still owns; that is an observation
+   * of what remains on screen, not proof of what blocked the quit. A census
+   * that cannot run contributes nothing; it never changes the outcome.
    */
   #quitBlockerDetail(owned: OwnedProcess): string {
     if (this.#platform !== "darwin") {
