@@ -37,6 +37,11 @@ import { pathToFileURL } from "node:url";
 export const GITHUB_ACTIONS_APP_ID = 15368;
 
 /** The CI jobs main requires: ci.yml's Linux job and both Windows jobs. */
+// `release-gate` joins REQUIRED_CHECKS only after the workflow exists on
+// main: pull_request_target runs the base branch's workflows, so requiring
+// it earlier would deadlock every release PR (the check could never run).
+// Bootstrap: release-0-3-0 -> main lands the workflow, then run
+// `node scripts/github-rulesets.js --apply` with it listed again.
 export const REQUIRED_CHECKS = ["check", "release-tooling-windows", "windows"];
 
 /**

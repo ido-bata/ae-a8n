@@ -16,20 +16,6 @@ jobs:
     permissions:
       contents: read
     steps:
-      # main accepts only release PRs (release-* -> main). A ticket PR must
-      # target the current release branch; `check` is a required status
-      # check on main, so failing here mechanically refuses the integration.
-      - name: Refuse non-release integration into main
-        if: github.event_name == 'pull_request' && github.base_ref == 'main'
-        run: |
-          case "${{ github.head_ref }}" in
-            release-*) ;;
-            *)
-              echo "::error::PRs into main must come from a release-* branch. Target the current release branch instead (see AGENTS.md)."
-              exit 1
-              ;;
-          esac
-
       - uses: actions/checkout@v5
 
       - name: Install toolchain
