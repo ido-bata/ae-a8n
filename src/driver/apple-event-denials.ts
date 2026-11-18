@@ -35,7 +35,7 @@ const DENIALS: ReadonlyArray<{
     code: -1743,
     meaning: "Automation consent is missing, or the sender has no responsible-process bundle",
     nextAction:
-      "run the sender as a child of the responsible app (Terminal.app) in the target " +
+      "run the sender as a child of the responsible terminal application in the target " +
       "session and grant Automation there; if it persists with no prompt the earlier " +
       "denial is remembered — reset that one service and re-prompt",
   },

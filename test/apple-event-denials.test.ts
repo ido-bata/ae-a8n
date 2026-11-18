@@ -8,7 +8,7 @@ describe("classifyAppleEventError", () => {
       'execution error: Not authorized to send Apple events to After Effects. (-1743)',
     );
     expect(denial?.code).toBe(-1743);
-    expect(denial?.nextAction).toContain("Terminal.app");
+    expect(denial?.nextAction).toContain("responsible terminal application");
   });
 
   it("maps -1708 to the script-folder approval action", () => {
