@@ -807,8 +807,12 @@ export function probeDarwin(
           ` (mechanism: ${tcc.mechanism}). An unmeasured permission is reported, never passed.`,
         remedy:
           tcc.mechanism === "deferred"
-            ? "These grants belong to the target session; the guided setup probes them " +
-              "inside that session (#57). Until then the state stays unproven."
+            ? "These grants belong to the responsible process inside the target " +
+              "session and cannot be measured from here. Run `ae-a8n doctor` inside " +
+              "that session — its local probe measures the process that would run the " +
+              "tests — or the guided grant/check loop " +
+              "scripts/isolated-session/grant-check.mjs in this repository. Until then " +
+              "the state stays unproven."
             : "Re-run doctor. If it persists, install the Command Line Tools so the " +
               "preflight probe can run; doctor never guesses a grant.",
         remedyKind: "human",
