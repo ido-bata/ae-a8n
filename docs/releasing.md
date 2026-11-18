@@ -252,6 +252,32 @@ Rules (`scripts/evidence-gate.js`, tested in `test/release-gate.test.ts`):
   separately refuses a tarball whose sha1 differs from the one the gate
   and registry saw.
 
+### The managed promotion command
+
+`latest` is moved only through `scripts/promote-dist-tag.js`, which runs
+the gate itself — a promotion attempted through the documented procedure
+cannot skip it:
+
+```bash
+node scripts/promote-dist-tag.js --version <version> --commit <full sha> --dry-run
+node scripts/promote-dist-tag.js --version <version> --commit <full sha>
+```
+
+Before the gate runs, the script re-proves the candidate three ways:
+`v<version>` resolves to `--commit`, the version's npm manifest carries
+`gitHead` equal to `--commit`, and the hashed tarball is the one
+`npm pack <pkg>@<version>` downloads from the registry — not a locally
+rebuilt file. Only on `allow` does it run
+`npm dist-tag add <pkg>@<version> latest` (your npm credentials, your
+2FA — the authorization boundary is unchanged). `test/promote-dist-tag.test.ts`
+pins that a deny never reaches the dist-tag call.
+
+What this does **not** protect against is the same residual the publish
+gate documents: anyone holding npm publish credentials can still run
+`npm dist-tag` by hand. The script removes the *accidental* bypass, not
+the determined one; the server-side fix is the same owner decision listed
+under "What stops an accidental or double publish".
+
 ## Not here yet
 
 - Provenance: npm does not generate it for private repositories
