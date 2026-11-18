@@ -252,6 +252,7 @@ After Effects turned out to do and changes with it.
 - [`examples/inspect.ts`](examples/inspect.ts) — install, ownership, listing; changes nothing.
 - [`examples/smoke.ts`](examples/smoke.ts) — the minimal real-host smoke: launch → version → handshake → project → close; read-only, skips cleanly without After Effects.
 - [`examples/render-compare.ts`](examples/render-compare.ts) — apply, set, render before/after, count changed pixels.
+- [`examples/extension-consumer.ts`](examples/extension-consumer.ts) — a consumer-side static extension: `ae-a8n extension build` a host script, launch with it, call the method through `ae.call`; skips cleanly without After Effects.
 - [`skills/after-effects-automation/SKILL.md`](skills/after-effects-automation/SKILL.md) — instructions for AI coding agents: how to use this package against a real After Effects without damaging anyone's work, and how to investigate failures. Both directories ship in the package; installing the package does not register the skill with any agent — copy it where your agent loads skills from.
 
 ## Development
