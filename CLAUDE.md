@@ -34,7 +34,7 @@ The series is `ae-a8n → ae-test → ae-farm`. Do not introduce a dependency th
 
 ## Delivery
 
-- `main` = released state. `release-0-1-0` は #92 で `main` に merge 済み。現在の release train は `release-0-2-0` で、ticket PR の base はそれ。release branch がない期間だけ ticket PR の base は `main`。
+- `main` = released state. `release-0-1-0` は #92、`release-0-2-0` は #133 で `main` に merge 済み。現在の release train は `release-0-3-0`（#210 で開設）で、ticket PR の base はそれ。release PR が `main` に merge されたら、次の ticket 作業を始める前に次期 `release-*` branch を `main` HEAD から開設してこの記述を更新する。
 - 1 top-level Issue = 1 number-only branch = 1 ticket PR.
 - Independent ticket PR targets the release branch when one is active, otherwise `main`; same-release hard dependencies use stacked PRs.
 - Publish the branch and open a **Draft PR** immediately after the first meaningful commit.
