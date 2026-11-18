@@ -30,6 +30,7 @@
  * from the acceptance evidence, and this gate only enforces that the
  * record exists, is current and says what it claims.
  */
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -59,6 +60,18 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  */
 
 /**
+ * `YYYY-MM-DD` that is also a real calendar date. `Date.parse` alone
+ * normalizes impossible dates (2026-02-30 becomes March 2), so the parsed
+ * value must round-trip to the same string.
+ *
+ * @param {string} value
+ */
+function isCalendarDate(value) {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+/**
  * Structural problems with one record, as named reasons. An empty array
  * means the record is well-formed; currency and verdict are judged by
  * `evaluateEvidenceGate`, not here.
@@ -85,7 +98,7 @@ export function recordProblems(record, platform) {
   if (typeof r.tarballSha256 !== "string" || !SHA256.test(r.tarballSha256)) {
     problems.push(`invalid-evidence:${platform}:tarballSha256`);
   }
-  if (typeof r.recordedAt !== "string" || !ISO_DATE.test(r.recordedAt) || Number.isNaN(Date.parse(r.recordedAt))) {
+  if (typeof r.recordedAt !== "string" || !ISO_DATE.test(r.recordedAt) || !isCalendarDate(r.recordedAt)) {
     problems.push(`invalid-evidence:${platform}:recordedAt`);
   }
   if (!VERDICTS.includes(/** @type {string} */ (r.verdict))) {
@@ -102,7 +115,16 @@ export function recordProblems(record, platform) {
  * @param {string} text
  */
 export function declaresWindowsUnverified(text) {
-  return /windows/i.test(text) && /(unverified|not verified|missing|absent|no .*run|未検証|未確認)/i.test(text);
+  if (!/windows/i.test(text)) return false;
+  // A negated absence ("evidence is not missing") is not a declaration.
+  if (/(not|never|no longer)\s+(missing|absent|unverified|unproven)/i.test(text)) return false;
+  // The gap must be stated about evidence/verification/acceptance — an
+  // unrelated "missing" (fonts, files) does not declare the evidence gap.
+  return (
+    /(evidence|verification|acceptance)[^.\n]{0,80}\b(missing|absent|unverified|unproven)\b/i.test(text) ||
+    /\bno\s+[^.\n]{0,40}?(real[- ]host\s+)?(run|evidence|verification)\b/i.test(text) ||
+    /未検証|未確認/.test(text)
+  );
 }
 
 /**
@@ -222,6 +244,20 @@ if (isMain) {
   const tarballSha256 = problems.length === 0
     ? createHash("sha256").update(readFileSync(tarball)).digest("hex")
     : "";
+
+  // The declarations must come from the candidate being promoted, not
+  // from whatever the checkout happens to be: HEAD must equal --commit.
+  try {
+    const head = execFileSync("git", ["-C", packageRoot, "rev-parse", "HEAD"], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (head !== candidateCommit) {
+      problems.push(`candidate-checkout-mismatch:${head.slice(0, 12)}`);
+    }
+  } catch {
+    problems.push("candidate-commit-unverifiable");
+  }
 
   /** @type {{ description: string, readme: string }} */
   const declarations = { description: "", readme: "" };

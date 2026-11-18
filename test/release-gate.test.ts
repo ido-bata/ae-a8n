@@ -178,6 +178,13 @@ describe("recordProblems", () => {
     expect(problems).toContain("invalid-evidence:macos:recordedAt");
     expect(problems).toContain("invalid-evidence:macos:verdict");
   });
+
+  it("rejects impossible calendar dates that Date.parse would normalize", () => {
+    expect(gate.recordProblems(record("macos", { recordedAt: "2026-02-30" }), "macos")).toContain(
+      "invalid-evidence:macos:recordedAt",
+    );
+    expect(gate.recordProblems(record("macos", { recordedAt: "2024-02-29" }), "macos")).toEqual([]);
+  });
 });
 
 describe("declaresWindowsUnverified", () => {
@@ -188,6 +195,15 @@ describe("declaresWindowsUnverified", () => {
 
   it("does not match a description that never mentions Windows", () => {
     expect(gate.declaresWindowsUnverified(UNDECLARED.description)).toBe(false);
+  });
+
+  it("does not match an unrelated missing thing or a negated absence", () => {
+    expect(
+      gate.declaresWindowsUnverified("Windows is supported; missing fonts are reported."),
+    ).toBe(false);
+    expect(
+      gate.declaresWindowsUnverified("Windows real-host evidence is not missing."),
+    ).toBe(false);
   });
 });
 

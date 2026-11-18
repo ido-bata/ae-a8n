@@ -237,6 +237,10 @@ Rules (`scripts/evidence-gate.js`, tested in `test/release-gate.test.ts`):
 - `latest`: every platform record must be present, well-formed, bound to
   the candidate commit and tarball, and `verdict: "pass"`. Anything less
   denies.
+- The declarations are read from the checkout, so the CLI refuses when
+  `git rev-parse HEAD` there differs from `--commit`: the README and
+  package description that excuse an `unverified` Windows record must be
+  the candidate's own words, not a later checkout's.
 - `next`: the same currency and integrity requirements hold, but Windows
   may be `verdict: "unverified"` — and only while the package description
   **and** README still declare that Windows real-host evidence is
