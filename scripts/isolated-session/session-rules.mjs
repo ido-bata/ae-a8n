@@ -570,6 +570,205 @@ export function jobFileIsTrusted(info, trustedUid) {
 export const resultFileIsTrusted = jobFileIsTrusted;
 
 /**
+ * How old a temporary publish file must be before `prune` may remove it.
+ *
+ * The agent and the controller publish by writing `<name>.<pid>.<rand>.tmp`
+ * and renaming it into place. The window between the write and the rename is
+ * milliseconds; a file older than this is a leftover of an interrupted
+ * publish, not one in flight.
+ */
+export const STALE_TMP_AGE_MS = 60_000;
+
+/**
+ * What one entry of the shared jobs directory is.
+ *
+ * The names are the ones the controller and the agent actually write:
+ * `<id>.job.json`, its publish temporary `<id>.job.json.<pid>.<rand>.tmp`,
+ * the cancellation `<id>.cancel` and its temporary. Anything else is not
+ * this tool's artifact and is reported, never classified.
+ */
+export function jobEntryKind(name) {
+  if (name.endsWith(".job.json")) {
+    return "job";
+  }
+  if (/\.job\.json\.\d+\.[0-9a-f]{8}\.tmp$/.test(name)) {
+    return "job-tmp";
+  }
+  if (name.endsWith(".cancel")) {
+    return "cancel";
+  }
+  if (/\.cancel\.\d+\.[0-9a-f]{8}\.tmp$/.test(name)) {
+    return "cancel-tmp";
+  }
+  // The terminal substrate's launcher and its command file. They stay behind
+  // after the run; they are reported, never classified as jobs.
+  if (name.endsWith(".command")) {
+    return "command";
+  }
+  if (name.endsWith(".cmd")) {
+    return "cmd";
+  }
+  return null;
+}
+
+/**
+ * What one entry of the shared results directory is. Same naming rule as
+ * `jobEntryKind`, plus the terminal substrate's `<id>.done`/`.out`/`.err`
+ * triplet and the agent's startup banner `agent.json`.
+ */
+export function resultEntryKind(name) {
+  if (name === "agent.json") {
+    return "agent-banner";
+  }
+  if (name.endsWith(".result.json")) {
+    return "result";
+  }
+  if (/\.result\.json\.\d+\.[0-9a-f]{8}\.tmp$/.test(name)) {
+    return "result-tmp";
+  }
+  if (name.endsWith(".done")) {
+    return "done";
+  }
+  if (name.endsWith(".out")) {
+    return "stdout";
+  }
+  if (name.endsWith(".err")) {
+    return "stderr";
+  }
+  return null;
+}
+
+/** What one entry of the shared logs directory is. */
+export function logEntryKind(name) {
+  return name.endsWith(".log") ? "log" : null;
+}
+
+/**
+ * What state a job file is in, from the controller's side.
+ *
+ * `trusted` is the `jobFileIsTrusted` verdict; `job` is the parsed payload
+ * or null when it could not be read as JSON; `hasResult`/`hasCancel` say
+ * whether the matching result/cancellation exists. `now` is milliseconds.
+ *
+ * The states are chosen so that "can never run" is provable, never guessed:
+ *
+ *   - `unknown`: the account allowed to publish job files could not be
+ *     determined, so trust cannot be evaluated at all.
+ *   - `untrusted`: the file fails the ownership/mode/symlink rule. Reported,
+ *     never acted on — it may not even be this tool's file.
+ *   - `malformed`: trusted, but not a JSON object with the fields a job
+ *     needs. The agent answers it with an error result, so it is work in
+ *     flight until a result appears.
+ *   - `finished`: a result exists; the controller has not collected the pair
+ *     yet (dispatch removes both when it does).
+ *   - `cancelled`: a cancellation token exists; `assertJobRunnable` refuses
+ *     the job forever.
+ *   - `stale`: the deadline in the job has passed (or is absent — a job
+ *     without a deadline is refused by `assertJobRunnable` too), so no agent
+ *     pass can ever run it.
+ *   - `pending`: none of the above; an agent may still pick it up.
+ */
+export function classifyJobArtifact({ trusted, job, hasResult, hasCancel, now }) {
+  if (trusted === null || trusted === undefined) {
+    return { state: "unknown", reason: "the account allowed to publish jobs is not known" };
+  }
+  if (trusted !== true) {
+    return { state: "untrusted", reason: "the file is not attributable to the controlling account" };
+  }
+  if (job === null || typeof job !== "object" || Array.isArray(job)) {
+    return { state: "malformed", reason: "the job file is not a JSON object" };
+  }
+  if (hasResult === true) {
+    return { state: "finished", reason: "a result exists and has not been collected" };
+  }
+  if (hasCancel === true) {
+    return { state: "cancelled", reason: "the controller cancelled this job" };
+  }
+  const deadline = job.deadline;
+  if (!Number.isFinite(deadline)) {
+    return {
+      state: "stale",
+      reason: "the job carries no usable deadline, so no agent may ever run it",
+      deadline: null,
+    };
+  }
+  if (!Number.isFinite(now) || now >= deadline) {
+    return {
+      state: "stale",
+      reason: `the job's deadline (${deadline}) has passed; it can never run`,
+      deadline,
+    };
+  }
+  return { state: "pending", reason: "waiting for the session agent", deadline };
+}
+
+/**
+ * The agent's startup banner (`results/agent.json`), parsed, or null.
+ *
+ * It is written once when the agent starts — there is no heartbeat — so a
+ * parseable banner proves the agent *started*, never that it is still alive.
+ * Liveness is a separate question answered by the process list.
+ */
+export function parseAgentBanner(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+  const session = parsed.session;
+  return {
+    startedAt: typeof parsed.startedAt === "string" ? parsed.startedAt : null,
+    session:
+      session !== null && typeof session === "object"
+        ? {
+            uid: Number.isInteger(session.uid) ? session.uid : null,
+            username: typeof session.username === "string" ? session.username : null,
+            asid: Number.isInteger(session.asid) ? session.asid : null,
+            kind: typeof session.kind === "string" ? session.kind : null,
+          }
+        : null,
+    consoleUid: Number.isInteger(parsed.consoleUid) ? parsed.consoleUid : null,
+    trustedUid: Number.isInteger(parsed.trustedUid) ? parsed.trustedUid : null,
+    isolated: parsed.isolated === true,
+  };
+}
+
+/**
+ * The session-agent processes in a `ps -axo pid=,uid=,args=` listing.
+ *
+ * An agent is "orphaned" when its process exists but the shared state says
+ * it should not (for example, running in the console session), or when jobs
+ * wait with no agent alive to take them. The listing is matched on the
+ * script name; the pid and uid are what the checks need.
+ */
+export function parseSessionAgentProcesses(psOutput) {
+  const agents = [];
+  for (const line of String(psOutput).split("\n")) {
+    const match = /^\s*(\d+)\s+(\d+)\s+(.+?)\s*$/.exec(line);
+    if (match === null) {
+      continue;
+    }
+    if (!/session-agent\.mjs/.test(match[3])) {
+      continue;
+    }
+    agents.push({ pid: Number(match[1]), uid: Number(match[2]), args: match[3] });
+  }
+  return agents;
+}
+
+/**
+ * Whether a shared-directory temporary file is old enough to be a leftover.
+ * A fresh `.tmp` may be mid-publish; removing it would break the rename.
+ */
+export function isStaleTemporary(mtimeMs, now, minAgeMs = STALE_TMP_AGE_MS) {
+  return Number.isFinite(mtimeMs) && Number.isFinite(now) && now - mtimeMs >= minAgeMs;
+}
+
+/**
  * One shell argument, quoted for `sh`.
  *
  * The command that runs in the other session is written into a file that a

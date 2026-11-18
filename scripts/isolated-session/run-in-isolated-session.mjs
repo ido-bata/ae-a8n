@@ -37,8 +37,9 @@
  *   - a result that does not name the requested session.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,15 +49,23 @@ import {
   assertReportIsolation,
   assertResultSession,
   assertTargetSession,
+  classifyJobArtifact,
   consoleAsid,
   consoleUid,
   describeMissingSession,
   ensureSharedDir,
   guiDomainError,
+  isStaleTemporary,
+  jobEntryKind,
+  jobFileIsTrusted,
+  logEntryKind,
+  parseAgentBanner,
   parseAeProcesses,
+  parseSessionAgentProcesses,
   parseTerminalResult,
   readGuiSession,
   readOffstageStatus,
+  resultEntryKind,
   resultFileIsTrusted,
   sessionFromOffstageStatus,
   shellCommandLine,
@@ -385,6 +394,505 @@ function readReport(path, targetUid) {
   return report;
 }
 
+/* ------------------------------------------------------------------ */
+/* status / prune — T038                                              */
+/*                                                                    */
+/* `status` reports what the shared root, the session and the process */
+/* list say about in-flight and leftover work. `prune` removes only   */
+/* what this account owns and what provably can never run again. It   */
+/* never kills a process, never deletes a result or a job that could  */
+/* still produce one, and never retries anything.                     */
+/* ------------------------------------------------------------------ */
+
+function parseInspectArgs(argv) {
+  const options = {
+    user: undefined,
+    root: "/Users/Shared/ae-a8n",
+    json: false,
+    dryRun: false,
+  };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--user") {
+      options.user = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (arg === "--root") {
+      options.root = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (arg === "--json") {
+      options.json = true;
+      continue;
+    }
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+    throw new Error(`unexpected argument: ${arg}`);
+  }
+  return options;
+}
+
+function listEntries(dir) {
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return null;
+  }
+  const entries = [];
+  for (const name of names) {
+    let info;
+    try {
+      info = lstatSync(join(dir, name));
+    } catch {
+      continue;
+    }
+    entries.push({ name, info });
+  }
+  return entries;
+}
+
+function readJson(path) {
+  try {
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+/** The id a shared artifact belongs to, or null for a name that has none. */
+function artifactId(name) {
+  const match = /^(.*)\.(?:job\.json|result\.json|cancel|done|out|err)(?:\.\d+\.[0-9a-f]{8}\.tmp)?$/.exec(name);
+  return match === null ? null : match[1];
+}
+
+/**
+ * Scans the shared root's jobs/, results/ and logs/ directories.
+ *
+ * `targetUid` is the account jobs are expected to run as (results are
+ * trusted only from it); `trustedUid` is the account allowed to publish job
+ * files (the controller — the banner's `trustedUid` when an agent recorded
+ * one, else the console uid, which is what the agent defaults to).
+ * Everything is reported, nothing is acted on here.
+ */
+export function inspectSharedRoot(root, { targetUid, trustedUid, now = Date.now() }) {
+  const jobsDir = join(root, "jobs");
+  const resultsDir = join(root, "results");
+  const logsDir = join(root, "logs");
+  const inspection = {
+    jobsDir,
+    resultsDir,
+    logsDir,
+    jobs: [],
+    results: [],
+    logs: [],
+    banner: null,
+    findings: [],
+  };
+  const jobEntries = listEntries(jobsDir) ?? [];
+  const resultEntries = listEntries(resultsDir) ?? [];
+  const logEntries = listEntries(logsDir) ?? [];
+  const resultNames = new Set(resultEntries.map((entry) => entry.name));
+  const jobNames = new Set(jobEntries.map((entry) => entry.name));
+
+  const jobStates = new Map();
+  const pendingCancels = [];
+  for (const { name, info } of jobEntries) {
+    const kind = jobEntryKind(name);
+    if (kind === "job") {
+      const id = artifactId(name);
+      const trusted = Number.isInteger(trustedUid) ? jobFileIsTrusted(info, trustedUid) : null;
+      const job = trusted === true && info.isFile() ? readJson(join(jobsDir, name)) : null;
+      const classified = classifyJobArtifact({
+        trusted,
+        job,
+        hasResult: id !== null && resultNames.has(`${id}.result.json`),
+        hasCancel: id !== null && jobNames.has(`${id}.cancel`),
+        now,
+      });
+      jobStates.set(id ?? name, classified.state);
+      inspection.jobs.push({
+        id,
+        name,
+        kind,
+        state: classified.state,
+        reason: classified.reason,
+        trusted,
+        ownedBySelf: info.uid === process.getuid(),
+        mtimeMs: info.mtimeMs,
+      });
+      continue;
+    }
+    if (kind === "job-tmp" || kind === "cancel-tmp") {
+      inspection.jobs.push({
+        id: artifactId(name),
+        name,
+        kind,
+        stale: isStaleTemporary(info.mtimeMs, now),
+        ownedBySelf: info.uid === process.getuid(),
+        mtimeMs: info.mtimeMs,
+      });
+      continue;
+    }
+    if (kind === "cancel") {
+      // Second pass below: readdir order puts `<id>.cancel` before
+      // `<id>.job.json`, so the job's state is not known yet.
+      pendingCancels.push({ name, info });
+      continue;
+    }
+    inspection.jobs.push({ name, kind: kind ?? "other", ownedBySelf: info.uid === process.getuid(), mtimeMs: info.mtimeMs });
+  }
+  for (const { name, info } of pendingCancels) {
+    const id = artifactId(name);
+    inspection.jobs.push({
+      id,
+      name,
+      kind: "cancel",
+      jobState: id === null ? null : (jobStates.get(id) ?? "absent"),
+      ownedBySelf: info.uid === process.getuid(),
+      mtimeMs: info.mtimeMs,
+    });
+  }
+
+  for (const { name, info } of resultEntries) {
+    const kind = resultEntryKind(name);
+    if (kind === "agent-banner") {
+      inspection.banner = parseAgentBanner(info.isFile() ? readFileSync(join(resultsDir, name), "utf-8") : "");
+      continue;
+    }
+    if (kind === "result") {
+      const id = artifactId(name);
+      inspection.results.push({
+        id,
+        name,
+        kind,
+        trusted: targetUid === undefined ? null : resultFileIsTrusted(info, targetUid),
+        orphan: id === null || !jobNames.has(`${id}.job.json`),
+        ownedBySelf: info.uid === process.getuid(),
+        mtimeMs: info.mtimeMs,
+      });
+      continue;
+    }
+    if (kind === "result-tmp") {
+      inspection.results.push({
+        id: artifactId(name),
+        name,
+        kind,
+        stale: isStaleTemporary(info.mtimeMs, now),
+        ownedBySelf: info.uid === process.getuid(),
+        mtimeMs: info.mtimeMs,
+      });
+      continue;
+    }
+    inspection.results.push({ name, kind: kind ?? "other", ownedBySelf: info.uid === process.getuid(), mtimeMs: info.mtimeMs });
+  }
+
+  for (const { name, info } of logEntries) {
+    const kind = logEntryKind(name);
+    inspection.logs.push({ name, kind: kind ?? "other", ownedBySelf: info.uid === process.getuid(), mtimeMs: info.mtimeMs });
+  }
+  return inspection;
+}
+
+/**
+ * What `prune` may remove, decided entry by entry.
+ *
+ * The rule is ownership plus a terminal state: only files this account owns,
+ * and only files that provably cannot produce or consume work again —
+ * interrupted publish temporaries, jobs whose deadline passed or that were
+ * cancelled, their cancellation tokens once the job is gone, and stale
+ * result temporaries. A pending, malformed, finished or untrusted artifact
+ * is kept and reported; a result, a log or the agent banner is never
+ * removed.
+ */
+export function planPrune(inspection) {
+  const removals = [];
+  const kept = [];
+  for (const dir of ["jobs", "results"]) {
+    const base = dir === "jobs" ? inspection.jobsDir : inspection.resultsDir;
+    for (const entry of inspection[dir]) {
+      const path = join(base, entry.name);
+      const decide = (remove, reason) => {
+        if (entry.ownedBySelf !== true) {
+          kept.push({ path, reason: "owned by another account; not this tool's to remove" });
+        } else if (remove) {
+          removals.push({ path, reason });
+        } else {
+          kept.push({ path, reason });
+        }
+      };
+      if (dir === "jobs") {
+        if (entry.kind === "job-tmp" || entry.kind === "cancel-tmp") {
+          decide(entry.stale === true, entry.stale === true ? "interrupted publish temporary" : "publish may still be in flight");
+        } else if (entry.kind === "job") {
+          const terminal = entry.state === "stale" || entry.state === "cancelled";
+          decide(terminal, terminal ? `job is ${entry.state} and can never run` : `job is ${entry.state}`);
+        } else if (entry.kind === "cancel") {
+          const state = entry.jobState;
+          const orphan = state === "absent" || state === "stale" || state === "cancelled" || state === "finished";
+          decide(orphan, orphan ? "cancellation token without a runnable job" : "job may still honour the cancellation");
+        } else {
+          kept.push({ path, reason: "not a prunable artifact" });
+        }
+      } else {
+        if (entry.kind === "result-tmp") {
+          decide(entry.stale === true, entry.stale === true ? "interrupted publish temporary" : "publish may still be in flight");
+        } else {
+          kept.push({ path, reason: "results are evidence; never removed by prune" });
+        }
+      }
+    }
+  }
+  for (const entry of inspection.logs) {
+    kept.push({ path: join(inspection.logsDir, entry.name), reason: "logs are evidence; never removed by prune" });
+  }
+  return { removals, kept };
+}
+
+/**
+ * The whole status report: shared-root artifacts, the target session, the
+ * processes that matter, and the findings an operator acts on.
+ *
+ * Nothing here throws for a missing piece — status is also the tool you run
+ * when things are already wrong, so every section degrades to "unknown"
+ * instead of refusing.
+ */
+export function collectStatus(options) {
+  const now = Date.now();
+  const report = {
+    generatedAt: new Date(now).toISOString(),
+    root: resolve(options.root),
+    findings: [],
+  };
+  const finding = (code, message, path) => {
+    report.findings.push(path === undefined ? { code, message } : { code, message, path });
+  };
+
+  let targetUid;
+  let user;
+  if (options.user !== undefined) {
+    user = options.user;
+    targetUid = uidOfUser(user);
+  }
+  const consoleUidValue = consoleUid();
+  report.console = { uid: consoleUidValue, asid: consoleAsid(consoleUidValue) };
+  if (targetUid !== undefined) {
+    report.target = { user, uid: targetUid };
+    let session = null;
+    let sessionSource = null;
+    try {
+      const offstageStatus = readOffstageStatus(user);
+      session = resolveTargetSession(user, targetUid, offstageStatus);
+      sessionSource = sessionFromOffstageStatus(offstageStatus) !== null ? "offstage" : "launchd";
+    } catch {
+      session = null;
+    }
+    report.session = { session, source: sessionSource };
+    if (session === null) {
+      finding("target-session-unknown", `${user} (uid ${targetUid}) has no readable graphical session`);
+    } else if (session.uid !== targetUid) {
+      finding("target-session-mismatch", `the session belongs to uid ${session.uid}, not ${targetUid}`);
+    } else if (session.kind !== "Aqua") {
+      finding("target-session-not-aqua", `the session is ${session.kind}, not graphical`);
+    } else if (consoleUidValue === targetUid) {
+      finding("target-owns-console", `${user} owns the console session; nothing may run there`);
+    }
+  }
+
+  // The trusted uid job files are accepted from: the agent's banner records
+  // it; without a banner the agent's own default (the console uid) applies.
+  let trustedUid = consoleUidValue >= 0 ? consoleUidValue : undefined;
+  let psComm = "";
+  let psArgs = "";
+  try {
+    psComm = commandOutput("ps", ["-axo", "pid=,uid=,comm="]);
+  } catch {
+    finding("ps-unavailable", "the process list could not be read; agent and After Effects state is unknown");
+  }
+  try {
+    psArgs = commandOutput("ps", ["-axo", "pid=,uid=,args="]);
+  } catch {
+    // The args listing is best-effort; the comm listing already covers AE.
+  }
+  const aeProcesses = psComm.length === 0 ? [] : parseAeProcesses(psComm);
+  const agents = psArgs.length === 0 ? [] : parseSessionAgentProcesses(psArgs);
+  report.afterEffects = aeProcesses;
+  report.sessionAgents = agents;
+  if (aeProcesses.length > 0) {
+    finding(
+      "ae-already-running",
+      `After Effects is running (pids ${aeProcesses.map((p) => p.pid).join(", ")}); Adobe allows one OS user at a time`,
+    );
+  }
+  if (agents.length > 0 && targetUid !== undefined && consoleUidValue >= 0) {
+    const foreign = agents.filter((agent) => agent.uid !== targetUid);
+    if (foreign.length > 0) {
+      finding(
+        "agent-uid-mismatch",
+        `session-agent processes run as uid ${[...new Set(foreign.map((a) => a.uid))].join(", ")}, not the target uid ${targetUid}`,
+      );
+    }
+  }
+
+  let inspection = inspectSharedRoot(report.root, { targetUid, trustedUid, now });
+  report.jobsDir = inspection.jobsDir;
+  report.resultsDir = inspection.resultsDir;
+  report.logsDir = inspection.logsDir;
+  report.jobs = inspection.jobs;
+  report.results = inspection.results;
+  report.logs = inspection.logs;
+  report.agentBanner = inspection.banner;
+  if (inspection.banner !== null && Number.isInteger(inspection.banner.trustedUid)) {
+    trustedUid = inspection.banner.trustedUid;
+  }
+  // Re-classify jobs with the banner's trusted uid when it differs: the first
+  // pass used the console default, which is only a guess.
+  if (trustedUid !== consoleUidValue) {
+    inspection = inspectSharedRoot(report.root, { targetUid, trustedUid, now });
+    report.jobs = inspection.jobs;
+    report.results = inspection.results;
+    report.agentBanner = inspection.banner;
+  }
+
+  for (const entry of report.jobs) {
+    if (entry.kind === "job" && entry.state === "stale") {
+      finding("job-stale", `${entry.id}: ${entry.reason}`, join(inspection.jobsDir, entry.name));
+    } else if (entry.kind === "job" && entry.state === "untrusted") {
+      finding("job-untrusted", `${entry.id}: ${entry.reason}`, join(inspection.jobsDir, entry.name));
+    } else if (entry.kind === "job" && entry.state === "pending" && agents.length === 0) {
+      finding("job-pending-no-agent", `${entry.id} is waiting but no session agent is running`, join(inspection.jobsDir, entry.name));
+    }
+  }
+  for (const entry of report.results) {
+    if (entry.kind === "result" && entry.orphan === true) {
+      finding("result-orphaned", `${entry.id}: a result exists but its job file does not`, join(inspection.resultsDir, entry.name));
+    } else if (entry.kind === "result" && entry.trusted === false) {
+      finding("result-untrusted", `${entry.id}: the result is not attributable to the target account`, join(inspection.resultsDir, entry.name));
+    }
+  }
+  // The guided setup's own state file: an interrupted setup leaves it
+  // behind, and "which steps were already done" is what a resume needs.
+  // Reported, never modified.
+  const setupPath = join(homedir(), ".ae-a8n", "setup-state.json");
+  const setup = { path: setupPath, state: "missing", completed: [] };
+  if (existsSync(setupPath)) {
+    const parsed = readJson(setupPath);
+    if (parsed !== null && Array.isArray(parsed["completed"])) {
+      setup.state = "ok";
+      setup.completed = parsed["completed"].filter((id) => typeof id === "string");
+    } else {
+      setup.state = "unreadable";
+    }
+  }
+  report.setupState = setup;
+
+  if (report.agentBanner !== null && report.agentBanner.session !== null && consoleAsid(consoleUidValue) !== null) {
+    const bannerAsid = report.agentBanner.session.asid;
+    const consoleAsidValue = consoleAsid(consoleUidValue);
+    if (Number.isInteger(bannerAsid) && Number.isInteger(consoleAsidValue) && bannerAsid === consoleAsidValue) {
+      finding("agent-in-console-session", "the session agent's banner names the console session; it is not isolated");
+    }
+  }
+  return { report, inspection };
+}
+
+function printStatus(report) {
+  const lines = [];
+  lines.push(`root: ${report.root}`);
+  if (report.target !== undefined) {
+    lines.push(`target: ${report.target.user} (uid ${report.target.uid})`);
+  }
+  lines.push(`console: uid ${report.console.uid}, asid ${report.console.asid}`);
+  if (report.session !== undefined) {
+    const session = report.session.session;
+    lines.push(
+      session === null
+        ? "session: none readable"
+        : `session: uid ${session.uid}, asid ${session.asid}, kind ${session.kind} (via ${report.session.source})`,
+    );
+  }
+  lines.push(`after effects: ${report.afterEffects.length === 0 ? "not running" : report.afterEffects.map((p) => `pid ${p.pid}`).join(", ")}`);
+  lines.push(`session agents: ${report.sessionAgents.length === 0 ? "none" : report.sessionAgents.map((a) => `pid ${a.pid} (uid ${a.uid})`).join(", ")}`);
+  const count = (entries, state) => entries.filter((e) => e.state === state || e.kind === state).length;
+  lines.push(
+    `jobs: ${report.jobs.length} (${["pending", "stale", "cancelled", "finished", "malformed", "untrusted", "unknown"].map((s) => `${s} ${count(report.jobs, s)}`).join(", ")})`,
+  );
+  lines.push(`results: ${report.results.length}, logs: ${report.logs.length}`);
+  if (report.setupState !== undefined) {
+    lines.push(
+      `setup state: ${report.setupState.state}` +
+        (report.setupState.completed.length > 0 ? ` (${report.setupState.completed.length} step(s) done)` : ""),
+    );
+  }
+  if (report.agentBanner !== null) {
+    const b = report.agentBanner;
+    lines.push(
+      `agent banner: started ${b.startedAt ?? "unknown"}, session uid ${b.session?.uid ?? "?"}, trusted uid ${b.trustedUid ?? "?"}`,
+    );
+  }
+  if (report.findings.length > 0) {
+    lines.push("findings:");
+    for (const f of report.findings) {
+      lines.push(`  - ${f.code}: ${f.message}`);
+    }
+  } else {
+    lines.push("findings: none");
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function runInspect(command, argv) {
+  const options = parseInspectArgs(argv);
+  const { report, inspection } = collectStatus(options);
+  let prune = null;
+  if (command === "prune") {
+    const plan = planPrune(inspection);
+    const removed = [];
+    const failed = [];
+    if (!options.dryRun) {
+      for (const { path } of plan.removals) {
+        try {
+          rmSync(path);
+          removed.push(path);
+        } catch (error) {
+          failed.push({ path, error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+    } else {
+      for (const { path } of plan.removals) {
+        removed.push(path);
+      }
+    }
+    prune = { dryRun: options.dryRun, removed, failed, kept: plan.kept };
+    report.prune = prune;
+  }
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else {
+    process.stdout.write(printStatus(report));
+    if (prune !== null) {
+      process.stdout.write(
+        prune.dryRun
+          ? `prune (dry run): ${prune.removed.length} file(s) would be removed\n`
+          : `prune: ${prune.removed.length} file(s) removed, ${prune.failed.length} failed\n`,
+      );
+      for (const path of prune.removed) {
+        process.stdout.write(`  - ${path}\n`);
+      }
+      for (const { path, error } of prune.failed) {
+        process.stdout.write(`  ! ${path}: ${error}\n`);
+      }
+    }
+  }
+  if (prune !== null && prune.failed.length > 0) {
+    process.exitCode = 1;
+  }
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   if (!["terminal", "offstage", "native"].includes(options.substrate)) {
@@ -444,8 +952,13 @@ function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === SELF) {
+  const command = process.argv[2];
   try {
-    main();
+    if (command === "status" || command === "prune") {
+      runInspect(command, process.argv.slice(3));
+    } else {
+      main();
+    }
   } catch (error) {
     process.stderr.write(`ae-a8n refused: ${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;

@@ -13,9 +13,11 @@ import {
   copyFileSync,
   existsSync,
   mkdtempSync,
+  mkdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -31,6 +33,8 @@ import {
   summarizeAePrefs,
 } from "../scripts/isolated-session/permission-probe.mjs";
 
+import { inspectSharedRoot, planPrune } from "../scripts/isolated-session/run-in-isolated-session.mjs";
+
 import {
   assertJobRunnable,
   assertJobSession,
@@ -39,16 +43,24 @@ import {
   assertReportIsolation,
   assertResultSession,
   assertTargetSession,
+  classifyJobArtifact,
   describeMissingSession,
+  isStaleTemporary,
+  jobEntryKind,
   jobFileIsTrusted,
+  logEntryKind,
+  parseAgentBanner,
   parseAeProcesses,
+  parseSessionAgentProcesses,
   parseTerminalResult,
+  resultEntryKind,
   sessionFromOffstageStatus,
   sessionIsolation,
   sharedDirIsUsable,
   sharedDirIsUsableForOthers,
   shellCommandLine,
   shellQuote,
+  STALE_TMP_AGE_MS,
   targetSessionFrom,
 } from "../scripts/isolated-session/session-rules.mjs";
 
@@ -675,4 +687,217 @@ test("the permission probe reports every permission and its session", () => {
   assert.equal(report.permissions.accessibility.state, "denied");
   assert.equal(report.permissions.automationSystemEvents.state, "unproven");
   assert.equal(report.permissions.aeScriptFileNetwork.state, "granted");
+});
+
+test("job artifacts are classified by whether they can still run", () => {
+  const now = 1_000_000;
+  const base = { hasResult: false, hasCancel: false, now };
+  assert.equal(classifyJobArtifact({ ...base, trusted: null, job: {} }).state, "unknown");
+  assert.equal(classifyJobArtifact({ ...base, trusted: false, job: {} }).state, "untrusted");
+  assert.equal(classifyJobArtifact({ ...base, trusted: true, job: null }).state, "malformed");
+  assert.equal(classifyJobArtifact({ ...base, trusted: true, job: [], }).state, "malformed");
+  assert.equal(
+    classifyJobArtifact({ ...base, trusted: true, job: { deadline: now + 1 }, hasResult: true }).state,
+    "finished",
+  );
+  assert.equal(
+    classifyJobArtifact({ ...base, trusted: true, job: { deadline: now + 1 }, hasCancel: true }).state,
+    "cancelled",
+  );
+  assert.equal(
+    classifyJobArtifact({ ...base, trusted: true, job: { deadline: now - 1 } }).state,
+    "stale",
+  );
+  assert.equal(
+    classifyJobArtifact({ ...base, trusted: true, job: {} }).state,
+    "stale",
+  );
+  const pending = classifyJobArtifact({ ...base, trusted: true, job: { deadline: now + 60_000 } });
+  assert.equal(pending.state, "pending");
+  assert.equal(pending.deadline, now + 60_000);
+});
+
+test("shared-directory entry kinds match the names the tools write", () => {
+  assert.equal(jobEntryKind("1.job.json"), "job");
+  assert.equal(jobEntryKind("1.job.json.123.abcd1234.tmp"), "job-tmp");
+  assert.equal(jobEntryKind("1.cancel"), "cancel");
+  assert.equal(jobEntryKind("1.cancel.123.abcd1234.tmp"), "cancel-tmp");
+  assert.equal(jobEntryKind("1.command"), "command");
+  assert.equal(jobEntryKind("1.cmd"), "cmd");
+  assert.equal(jobEntryKind("random.txt"), null);
+  assert.equal(resultEntryKind("agent.json"), "agent-banner");
+  assert.equal(resultEntryKind("1.result.json"), "result");
+  assert.equal(resultEntryKind("1.result.json.123.abcd1234.tmp"), "result-tmp");
+  assert.equal(resultEntryKind("1.done"), "done");
+  assert.equal(resultEntryKind("1.out"), "stdout");
+  assert.equal(resultEntryKind("1.err"), "stderr");
+  assert.equal(resultEntryKind("notes.txt"), null);
+  assert.equal(logEntryKind("1.log"), "log");
+  assert.equal(logEntryKind("1.job.json"), null);
+});
+
+test("the agent banner is parsed or refused, never half-believed", () => {
+  assert.equal(parseAgentBanner("not json"), null);
+  assert.equal(parseAgentBanner("[1,2]"), null);
+  assert.equal(parseAgentBanner('"str"'), null);
+  const banner = parseAgentBanner(
+    JSON.stringify({
+      startedAt: "2026-01-01T00:00:00Z",
+      session: { uid: 502, username: "test", asid: 109, kind: "Aqua" },
+      consoleUid: 501,
+      trustedUid: 501,
+      isolated: true,
+    }),
+  );
+  assert.equal(banner.session.uid, 502);
+  assert.equal(banner.trustedUid, 501);
+  assert.equal(banner.isolated, true);
+  // Missing or mistyped fields degrade to null, not to a guess.
+  const sparse = parseAgentBanner("{}");
+  assert.equal(sparse.startedAt, null);
+  assert.equal(sparse.session, null);
+  assert.equal(sparse.trustedUid, null);
+});
+
+test("session-agent processes are found by script name only", () => {
+  const ps = [
+    "  501     1 /usr/bin/login",
+    "  777   502 /opt/homebrew/bin/node /repo/scripts/isolated-session/session-agent.mjs --root /tmp/x",
+    "  778   501 /usr/bin/grep session-agent",
+    "not a process line",
+  ].join("\n");
+  const agents = parseSessionAgentProcesses(ps);
+  assert.equal(agents.length, 1);
+  assert.equal(agents[0].pid, 777);
+  assert.equal(agents[0].uid, 502);
+});
+
+test("a publish temporary is stale only after the publish window", () => {
+  const now = 10 * STALE_TMP_AGE_MS;
+  assert.equal(isStaleTemporary(now - STALE_TMP_AGE_MS - 1, now), true);
+  assert.equal(isStaleTemporary(now - STALE_TMP_AGE_MS + 1, now), false);
+  assert.equal(isStaleTemporary(Number.NaN, now), false);
+});
+
+test("status inspection classifies artifacts and prune removes only terminal self-owned files", () => {
+  const root = mkdtempSync(join(tmpdir(), "ae-a8n-status-"));
+  try {
+    const jobs = join(root, "jobs");
+    const results = join(root, "results");
+    const logs = join(root, "logs");
+    mkdirSync(jobs);
+    mkdirSync(results);
+    mkdirSync(logs);
+    const selfUid = typeof process.getuid === "function" ? process.getuid() : 0;
+    const now = Date.now();
+    const past = new Date(now - 120_000);
+
+    const write = (dir, name, content, mtime) => {
+      const path = join(dir, name);
+      writeFileSync(path, content, { mode: 0o644 });
+      if (mtime !== undefined) {
+        utimesSync(path, mtime, mtime);
+      }
+      return path;
+    };
+
+    // A job whose deadline passed: can never run.
+    write(jobs, "1-stale.job.json", JSON.stringify({ id: "1-stale", deadline: now - 1 }));
+    // A job still inside its deadline: an agent may run it.
+    write(jobs, "2-pending.job.json", JSON.stringify({ id: "2-pending", deadline: now + 60_000 }));
+    // A cancelled job and its token.
+    write(jobs, "3-cancelled.job.json", JSON.stringify({ id: "3-cancelled", deadline: now + 60_000 }));
+    write(jobs, "3-cancelled.cancel", "");
+    // A token whose job is gone.
+    write(jobs, "4-orphan.cancel", "");
+    // A token whose job is still pending: must be kept.
+    write(jobs, "2-pending.cancel", "");
+    // Interrupted publish temporaries, one stale and one fresh.
+    write(jobs, "5-tmp.job.json.1.abcd1234.tmp", "{}", past);
+    write(jobs, "6-tmp.job.json.2.abcd1234.tmp", "{}");
+    // A result whose job was collected: evidence, never removed.
+    write(results, "7-done.result.json", JSON.stringify({ id: "7-done", ok: true }));
+    // A stale result temporary.
+    write(results, "8-tmp.result.json.3.abcd1234.tmp", "{}", past);
+    // The agent banner.
+    write(results, "agent.json", JSON.stringify({ startedAt: new Date(now).toISOString(), trustedUid: selfUid }));
+    write(logs, "2-pending.log", "log\n");
+    // An unrecognized entry: reported, never touched.
+    write(jobs, "notes.txt", "hello");
+
+    const inspection = inspectSharedRoot(root, { targetUid: selfUid, trustedUid: selfUid, now });
+    const byName = new Map(inspection.jobs.map((entry) => [entry.name, entry]));
+    assert.equal(byName.get("1-stale.job.json").state, "stale");
+    // The pending job has a cancellation token, so it is cancelled, not pending.
+    assert.equal(byName.get("2-pending.job.json").state, "cancelled");
+    assert.equal(byName.get("3-cancelled.job.json").state, "cancelled");
+    assert.equal(byName.get("3-cancelled.cancel").jobState, "cancelled");
+    assert.equal(byName.get("4-orphan.cancel").jobState, "absent");
+    assert.equal(byName.get("2-pending.cancel").jobState, "cancelled");
+    assert.equal(byName.get("5-tmp.job.json.1.abcd1234.tmp").stale, true);
+    assert.equal(byName.get("6-tmp.job.json.2.abcd1234.tmp").stale, false);
+    assert.equal(inspection.results.find((e) => e.name === "7-done.result.json").orphan, true);
+    assert.equal(inspection.banner.trustedUid, selfUid);
+    assert.equal(inspection.logs.length, 1);
+
+    const plan = planPrune(inspection);
+    const removed = new Set(plan.removals.map((entry) => entry.path));
+    // Removed: the stale job, the cancelled job, its token, the orphan token,
+    // the pending job's token (its job is cancelled too), the stale tmps.
+    assert.ok(removed.has(join(jobs, "1-stale.job.json")));
+    assert.ok(removed.has(join(jobs, "2-pending.job.json")));
+    assert.ok(removed.has(join(jobs, "2-pending.cancel")));
+    assert.ok(removed.has(join(jobs, "3-cancelled.job.json")));
+    assert.ok(removed.has(join(jobs, "3-cancelled.cancel")));
+    assert.ok(removed.has(join(jobs, "4-orphan.cancel")));
+    assert.ok(removed.has(join(jobs, "5-tmp.job.json.1.abcd1234.tmp")));
+    assert.ok(removed.has(join(results, "8-tmp.result.json.3.abcd1234.tmp")));
+    // Kept: the fresh tmp, the result, the banner, the log, the unknown file.
+    const kept = new Set(plan.kept.map((entry) => entry.path));
+    assert.ok(kept.has(join(jobs, "6-tmp.job.json.2.abcd1234.tmp")));
+    assert.ok(kept.has(join(results, "7-done.result.json")));
+    // The banner is not a results entry at all, so prune never sees it.
+    assert.equal(plan.removals.some((entry) => entry.path.endsWith("agent.json")), false);
+    assert.ok(kept.has(join(logs, "2-pending.log")));
+    assert.ok(kept.has(join(jobs, "notes.txt")));
+
+    // Apply the plan: exactly the planned files disappear.
+    for (const { path } of plan.removals) {
+      rmSync(path);
+    }
+    assert.equal(existsSync(join(jobs, "1-stale.job.json")), false);
+    assert.equal(existsSync(join(jobs, "2-pending.job.json")), false);
+    assert.equal(existsSync(join(jobs, "6-tmp.job.json.2.abcd1234.tmp")), true);
+    assert.equal(existsSync(join(results, "7-done.result.json")), true);
+    assert.equal(existsSync(join(results, "agent.json")), true);
+    assert.equal(existsSync(join(logs, "2-pending.log")), true);
+    assert.equal(existsSync(join(jobs, "notes.txt")), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("prune keeps a job that could still run and a fresh publish temporary", () => {
+  const root = mkdtempSync(join(tmpdir(), "ae-a8n-status-"));
+  try {
+    const jobs = join(root, "jobs");
+    const results = join(root, "results");
+    mkdirSync(jobs);
+    mkdirSync(results);
+    const selfUid = typeof process.getuid === "function" ? process.getuid() : 0;
+    const now = Date.now();
+    const jobPath = join(jobs, "9-live.job.json");
+    writeFileSync(jobPath, JSON.stringify({ id: "9-live", deadline: now + 60_000 }), { mode: 0o644 });
+    const tmpPath = join(jobs, "9-live.job.json.9.abcd1234.tmp");
+    writeFileSync(tmpPath, "{}", { mode: 0o644 });
+
+    const inspection = inspectSharedRoot(root, { targetUid: selfUid, trustedUid: selfUid, now });
+    assert.equal(inspection.jobs.find((e) => e.name === "9-live.job.json").state, "pending");
+    const plan = planPrune(inspection);
+    assert.equal(plan.removals.length, 0);
+    assert.equal(existsSync(jobPath), true);
+    assert.equal(existsSync(tmpPath), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

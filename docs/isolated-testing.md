@@ -99,6 +99,42 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 再実行する。`unproven` が残る場合は interpreter 不在等の環境要因を疑う
 （Command Line Tools の python3 が必要）。
 
+## 4.6. 残った状態の検査と掃除（status / prune）
+
+中断した run や死んだ agent が共有ディレクトリ（既定
+`/Users/Shared/ae-a8n`）に残したものは、run を起こさずに検査できる。
+
+```bash
+node scripts/isolated-session/run-in-isolated-session.mjs status \
+  --user ae-test [--root /Users/Shared/ae-a8n] [--json]
+node scripts/isolated-session/run-in-isolated-session.mjs prune \
+  --user ae-test [--dry-run]
+```
+
+`status` が報告するもの:
+
+- 対象セッション（uid / asid / kind）と console の持ち主。不明は
+  「未ログイン」ではなく「ここからは確認できない」として出る。
+- 実行中の After Effects と session-agent プロセス。agent の banner
+  （`results/agent.json`）は起動の証拠であり、生存の証明ではない —
+  生死はプロセス一覧側で判断する。
+- jobs/ の各エントリの状態: `pending`（agent がまだ取れる）、
+  `stale`（deadline 経過または deadline 無しで二度と実行されない）、
+  `cancelled`、`finished`（result あり・未回収）、`malformed`、
+  `untrusted`（所有・mode が信用できない）、`unknown`（job を発行して
+  よい account が不明）。
+- findings: `job-stale`、`job-pending-no-agent`、`result-orphaned`、
+  `ae-already-running` など、操作者が対処すべき項目。
+
+`prune` が消せるのは「この account が所有し、かつ二度と仕事を生まない
+か消費しない」ものだけ: 中断した publish の `.tmp`、stale/cancelled
+な job とその cancel token、job を失った cancel token、stale な
+result `.tmp`。実行中かもしれない fresh な `.tmp`、pending/malformed/
+finished/untrusted な job、result・log・banner は**絶対に消さない**。
+プロセスの kill、ユーザーデータの削除、timeout job の再送もしない。
+`--dry-run` で対象だけ確認できる。他人が所有するファイルは報告だけで
+触らない。
+
 ## 5. resume の考え方
 
 - `setup` は冪等。人間の操作を挟んで止まっても、同じコマンドを再実行
