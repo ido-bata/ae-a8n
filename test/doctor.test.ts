@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir, userInfo } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -1156,12 +1157,24 @@ describe("doctor on a Windows host, through the same CLI", () => {
 describe("the in-session and packaged TCC probes cannot drift apart", () => {
   it("run the identical preflight script", async () => {
     const { TCC_PROBE_SCRIPT: packaged } = await import("../src/platform/darwin/tcc.js");
-    const { TCC_PROBE_SCRIPT: inSession } = await import(
-      "../scripts/isolated-session/permission-probe.mjs"
+    // The .mjs harness ships no type declarations, so its script is read as
+    // source text and its String.raw block extracted — the same bytes the
+    // module would export.
+    const source = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        "..",
+        "scripts",
+        "isolated-session",
+        "permission-probe.mjs",
+      ),
+      "utf-8",
     );
+    const match = /TCC_PROBE_SCRIPT = String\.raw`([\s\S]*?)`/.exec(source);
+    expect(match).not.toBeNull();
     // The two measure the same grants for the same responsible process;
     // a change to one without the other would silently measure different
     // things under the same name.
-    expect(inSession).toBe(packaged);
+    expect(match?.[1]).toBe(packaged);
   });
 });
