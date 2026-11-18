@@ -1034,3 +1034,49 @@ test("grant-check reports what stays ungranted at the deadline", () => {
   assert.equal(report.requests.filter((r) => r.permission === "accessibility").length, 1);
   assert.equal(report.requests.filter((r) => r.permission === "automationSystemEvents").length, 1);
 });
+
+test("grant-check emits routing before any request can raise a dialog", () => {
+  const denied = { state: "denied", detail: null };
+  const granted = { state: "granted", detail: null };
+  const states = {
+    screenRecording: denied,
+    accessibility: denied,
+    automationSystemEvents: granted,
+  };
+  const order = [];
+  grantCheck({
+    waitMs: 60_000,
+    now: (() => {
+      let t = 0;
+      return () => (t += 3_000);
+    })(),
+    sleep: () => {},
+    measureFn: () => states,
+    requestScreen: () => {
+      order.push("request:screenRecording");
+      return { requested: true, detail: null };
+    },
+    requestAx: () => {
+      order.push("request:ax-grant");
+      return { requested: true, detail: null };
+    },
+    readSessionFn: () => ({ uid: 502, username: "ae-test", asid: 1, kind: "Aqua", onConsole: false }),
+    aePrefsFn: () => ({ state: "granted", detail: null, versions: {} }),
+    onRouting: (line) => order.push(`routing:${line}`),
+  });
+  // Each permission's routing line precedes the request that could raise
+  // its dialog — the session line comes first of all.
+  assert.ok(order[0].includes("ae-test's desktop"));
+  const before = (requestMarker, text) => {
+    const at = order.findIndex((entry) => entry === requestMarker);
+    assert.ok(at > 0, `missing ${requestMarker}`);
+    assert.ok(
+      order.slice(0, at).some((entry) => entry.includes(text)),
+      `no routing for ${text} before ${requestMarker}: ${JSON.stringify(order)}`,
+    );
+  };
+  before("request:screenRecording", "raising Screen Recording");
+  before("request:ax-grant", "raising Accessibility");
+  // Automation was already granted, so its dialog is never announced.
+  assert.ok(!order.some((entry) => entry.includes("raising Automation")));
+});
