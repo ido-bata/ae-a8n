@@ -16,16 +16,17 @@ const frame = await (await project.comp("Main")).renderFrame(0); // { path, widt
 await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to throw away
 ```
 
-> **Early release (`0.x`).** `0.3.0` is staged for the `next`
-> dist-tag; `latest` stays on `0.1.0-alpha.0` until a `latest` promotion is
-> approved. If `npm view @ido-bata/ae-a8n@next version` does not show this
-> version, it has not been published yet. The API may change before 1.0.0,
-> and the scope without Windows real-host evidence is listed under "What
-> is not proven" below.
+> **Early release (`0.x`), scoped guarantee.** `0.3.0` is published as
+> `latest` under an owner-approved limited guarantee: the local
+> script-invocation automation path is verified on real hosts (macOS AE
+> 26.5/27 and Windows AE 2027, packaged-consumer E2E 2026-11-18), while
+> the opt-in in-AE dispatcher and the isolated backend remain
+> experimental with the unverified scope listed under "What is not
+> proven" below. The API may change before 1.0.0.
 
 ## First run in about five minutes
 
-1. `npm install @ido-bata/ae-a8n@next`
+1. `npm install @ido-bata/ae-a8n`
 2. `npx @ido-bata/ae-a8n doctor` — read-only; it names every blocker with a
    remedy and exits `3` while any remain. On macOS the usual ones are
    After Effects' **Settings → Scripting & Expressions → Allow Scripts to
@@ -80,7 +81,7 @@ than it is:
 ## Install
 
 ```bash
-npm install @ido-bata/ae-a8n@next
+npm install @ido-bata/ae-a8n
 ```
 
 Requirements on the machine that runs After Effects:
