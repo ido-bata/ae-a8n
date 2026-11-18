@@ -67,7 +67,7 @@ print("ax=%d" % trusted(ass, "AXIsProcessTrusted"))
 const AUTOMATION_APPLESCRIPT =
   'tell application "System Events" to count processes';
 
-function run(bin, args, timeoutMs = 15_000) {
+export function run(bin, args, timeoutMs = 15_000) {
   try {
     const stdout = execFileSync(bin, args, {
       encoding: "utf-8",
@@ -195,7 +195,7 @@ export function summarizeAePrefs(entries) {
 }
 
 /** Read the pref out of every AE version prefs dir under the home folder. */
-function readAePrefsEntries() {
+export function readAePrefsEntries() {
   const root = join(homedir(), "Library", "Preferences", "Adobe", "After Effects");
   const entries = [];
   let versionDirs;
@@ -243,7 +243,7 @@ function readAePrefsEntries() {
   return entries;
 }
 
-function readSession() {
+export function readSession() {
   const uid = process.getuid();
   let username = "unknown";
   let asid = null;
@@ -277,7 +277,7 @@ function readSession() {
   return { uid, username, asid, kind, onConsole };
 }
 
-function probeTcc() {
+export function probeTcc() {
   const result = run(PROBE_PYTHON, ["-c", TCC_PROBE_SCRIPT]);
   if (result.status !== 0) {
     const detail =
@@ -296,7 +296,7 @@ function probeTcc() {
   };
 }
 
-function probeAutomation() {
+export function probeAutomation() {
   const result = run("/usr/bin/osascript", ["-e", AUTOMATION_APPLESCRIPT], 20_000);
   return classifyAutomation(result);
 }

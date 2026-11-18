@@ -807,8 +807,12 @@ export function probeDarwin(
           ` (mechanism: ${tcc.mechanism}). An unmeasured permission is reported, never passed.`,
         remedy:
           tcc.mechanism === "deferred"
-            ? "These grants belong to the target session; the guided setup probes them " +
-              "inside that session (#57). Until then the state stays unproven."
+            ? "These grants belong to the responsible process inside the target " +
+              "session and cannot be measured from here. Run `ae-a8n doctor` inside " +
+              "that session — its local probe measures the process that would run the " +
+              "tests — or the guided grant/check loop " +
+              "scripts/isolated-session/grant-check.mjs in this repository. Until then " +
+              "the state stays unproven."
             : "Re-run doctor. If it persists, install the Command Line Tools so the " +
               "preflight probe can run; doctor never guesses a grant.",
         remedyKind: "human",
@@ -1342,18 +1346,49 @@ export class DarwinAdapter implements PlatformAdapter {
         automatable: false,
       });
 
-      steps.push({
-        id: "macos.permissions",
-        state: "needs-human",
-        reason:
-          "Screen Recording and Accessibility must be granted in the target session; setup cannot " +
-          "grant them and never writes TCC.db",
-        action:
-          "In the target session, open System Settings > Privacy & Security and allow Screen Recording " +
-          "and Accessibility for the runner (the terminal or Node process that runs ae-a8n). Approve the " +
-          "Automation prompt on the first run.",
-        automatable: false,
-      });
+      // T021/T022: each grantable permission is its own step so the report can
+      // say exactly which one is still missing. The grant belongs to the
+      // responsible process *inside the target session*, so setup cannot
+      // perform it — it can only route the human to the right desktop and
+      // name the check that re-measures afterwards. The guided loop raises
+      // the OS's own dialogs, waits, and reports granted/denied/unproven; it
+      // never presses a dialog, writes TCC.db, or stores a credential.
+      const targetAccount = facts.targetUser ?? "the target account";
+      const grantAction = (what: string) =>
+        `Run the guided grant/check loop inside ${targetAccount}'s session ` +
+        "(dialogs appear on that account's desktop — reach it with macOS fast " +
+        "user switching, do not log out): " +
+        `node scripts/isolated-session/run-in-isolated-session.mjs --user ${targetAccount} ` +
+        "--substrate terminal -- node scripts/isolated-session/grant-check.mjs. " +
+        `It requests ${what} through the OS, waits for the grant, and re-probes; ` +
+        "with the packaged CLI, run `ae-a8n doctor` inside that session to re-measure.";
+      for (const permission of [
+        {
+          id: "macos.screen-recording",
+          name: "Screen Recording",
+          what: "Screen Recording (System Settings opens on the target desktop)",
+        },
+        {
+          id: "macos.accessibility",
+          name: "Accessibility",
+          what: 'Accessibility (the "wants to control this computer" dialog)',
+        },
+        {
+          id: "macos.automation-system-events",
+          name: "Automation → System Events",
+          what: 'Automation → System Events (the "wants to control System Events" consent)',
+        },
+      ]) {
+        steps.push({
+          id: permission.id,
+          state: "needs-human",
+          reason:
+            `${permission.name} must be granted to the responsible process inside the ` +
+            "target session; setup cannot grant it and never writes TCC.db",
+          action: grantAction(permission.what),
+          automatable: false,
+        });
+      }
 
       const scripting = facts.aeScripting;
       steps.push({
