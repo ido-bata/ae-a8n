@@ -173,14 +173,16 @@ export function summarizeAePrefs(entries) {
   }
   if (sawBlocked) {
     return {
-      state: "blocked",
+      state: "denied",
       detail: "Pref_SCRIPTING_FILE_NETWORK_SECURITY is \"0\" for at least one AE version",
       versions,
     };
   }
-  if (sawAllowed) {
+  // A positive state needs every measured version at "1": a readable "1"
+  // must not hide an unreadable version or an unrecognized value.
+  if (sawAllowed && entries.every((entry) => entry.value === "1")) {
     return {
-      state: "allowed",
+      state: "granted",
       detail: "Pref_SCRIPTING_FILE_NETWORK_SECURITY is \"1\" for every AE version found",
       versions,
     };
@@ -211,9 +213,13 @@ function readAePrefsEntries() {
     try {
       files = readdirSync(prefsDir);
     } catch {
+      // An unreadable version dir is unproven evidence, not absent evidence:
+      // a readable sibling must not be able to carry the summary to granted.
+      entries.push({ versionDir: dir.name, value: null });
       continue;
     }
     const prefix = `Adobe After Effects ${dir.name} `;
+    let found = false;
     for (const name of files) {
       if (!name.startsWith(prefix) || !name.endsWith(".txt")) {
         continue;
@@ -227,7 +233,11 @@ function readAePrefsEntries() {
       const match = /Pref_SCRIPTING_FILE_NETWORK_SECURITY" = "([^"]+)"/.exec(text);
       if (match !== null) {
         entries.push({ versionDir: dir.name, value: match[1] });
+        found = true;
       }
+    }
+    if (!found) {
+      entries.push({ versionDir: dir.name, value: null });
     }
   }
   return entries;
@@ -315,8 +325,16 @@ function main() {
     process.exitCode = 2;
     return;
   }
+  const session = readSession();
+  // The Automation probe can raise a consent dialog inside the target
+  // session and prints nothing until it returns; name the session it will
+  // appear in before the wait starts (contract §3 prompt routing).
+  process.stderr.write(
+    `permission-probe: session uid=${session.uid} user=${session.username} ` +
+      `asid=${session.asid ?? "unknown"} kind=${session.kind}\n`,
+  );
   const result = permissionProbe({
-    session: readSession(),
+    session,
     tcc: probeTcc(),
     automation: probeAutomation(),
     aePrefs: summarizeAePrefs(readAePrefsEntries()),

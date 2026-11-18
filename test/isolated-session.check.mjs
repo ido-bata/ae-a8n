@@ -626,15 +626,37 @@ test("the automation probe passes only on a numeric answer", () => {
 
 test("the AE prefs summary never turns missing data into a verdict", () => {
   assert.equal(summarizeAePrefs([]).state, "unproven");
-  assert.equal(summarizeAePrefs([{ versionDir: "26.5", value: "1" }]).state, "allowed");
+  assert.equal(summarizeAePrefs([{ versionDir: "26.5", value: "1" }]).state, "granted");
+  assert.equal(
+    summarizeAePrefs([
+      { versionDir: "26.5", value: "1" },
+      { versionDir: "27.0", value: "1" },
+    ]).state,
+    "granted",
+  );
   assert.equal(
     summarizeAePrefs([
       { versionDir: "26.5", value: "1" },
       { versionDir: "27.0", value: "0" },
     ]).state,
-    "blocked",
+    "denied",
   );
   assert.equal(summarizeAePrefs([{ versionDir: "26.5", value: "?" }]).state, "unproven");
+  // A readable "1" must not hide an unreadable version or an unknown value.
+  assert.equal(
+    summarizeAePrefs([
+      { versionDir: "26.5", value: "1" },
+      { versionDir: "27.0", value: null },
+    ]).state,
+    "unproven",
+  );
+  assert.equal(
+    summarizeAePrefs([
+      { versionDir: "26.5", value: "1" },
+      { versionDir: "27.0", value: "?" },
+    ]).state,
+    "unproven",
+  );
 });
 
 test("the permission probe reports every permission and its session", () => {
@@ -645,12 +667,12 @@ test("the permission probe reports every permission and its session", () => {
       accessibility: { state: "denied", detail: null },
     },
     automation: { state: "unproven", detail: "the probe did not produce a verdict" },
-    aePrefs: { state: "allowed", detail: null, versions: { "26.5": "1" } },
+    aePrefs: { state: "granted", detail: null, versions: { "26.5": "1" } },
   });
   assert.equal(report.probe, "ae-a8n-permission-probe/1");
   assert.equal(report.session.uid, 502);
   assert.equal(report.permissions.screenRecording.state, "granted");
   assert.equal(report.permissions.accessibility.state, "denied");
   assert.equal(report.permissions.automationSystemEvents.state, "unproven");
-  assert.equal(report.permissions.aeScriptFileNetwork.state, "allowed");
+  assert.equal(report.permissions.aeScriptFileNetwork.state, "granted");
 });
