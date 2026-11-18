@@ -1176,6 +1176,6 @@ describe("the in-session and packaged TCC probes cannot drift apart", () => {
     // a change to one without the other would silently measure different
     // things under the same name. Line endings are normalised: a Windows
     // checkout writes CRLF where the packaged source keeps LF.
-    expect(match?.[1].replace(/\r\n/g, "\n")).toBe(packaged);
+    expect(match?.[1]?.replace(/\r\n/g, "\n")).toBe(packaged);
   });
 });
