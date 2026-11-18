@@ -308,6 +308,7 @@ describe("MacGuiRecovery lease gating", () => {
       session: foreignSession,
       pid: 4242,
       allowConsoleSession: true,
+      readTargetSession: () => foreignSession,
       lease,
     });
   }
@@ -375,6 +376,7 @@ describe("MacGuiRecovery lease gating", () => {
       session: foreignSession,
       pid: 4242,
       allowConsoleSession: true,
+      readTargetSession: () => foreignSession,
       lease,
       runSession: () => ({ status: 1, stdout: "", stderr: "press failed", timedOut: false }),
     });
@@ -392,6 +394,7 @@ describe("MacGuiRecovery lease gating", () => {
       session: foreignSession,
       pid: 4242,
       allowConsoleSession: true,
+      readTargetSession: () => foreignSession,
       lease,
       runSession: () => {
         throw new MacSessionError("cannot enter the session");

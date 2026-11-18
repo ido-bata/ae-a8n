@@ -42,6 +42,7 @@ import {
 import {
   consoleSessionUid,
   MacSessionError,
+  readGuiSession,
   runInSession,
   type MacSession,
   type SessionCommandResult,
@@ -470,6 +471,21 @@ export type GuiRecoveryOptions = {
    * same attempt.
    */
   readonly verifyProcess?: ((pid: number) => boolean) | undefined;
+  /**
+   * Re-reads the target's login session immediately before each GUI
+   * action. Mainly a test seam; defaults to `readGuiSession(session.uid)`.
+   * The session proven at construction can end or change — a new asid
+   * after re-login, or the console session after a fast user switch — and
+   * `runInSession` alone cannot see that on the root path, which delivers
+   * by uid. A changed or unprovable session refuses the action; issue #59
+   * T035.
+   */
+  readonly readTargetSession?: (() => MacSession | null) | undefined;
+  /**
+   * Reads the console session's owner uid (-1 when unreadable). Mainly a
+   * test seam; defaults to `consoleSessionUid`.
+   */
+  readonly consoleUid?: (() => number) | undefined;
 };
 
 export class GuiRecoveryError extends Error {
@@ -519,6 +535,9 @@ export class MacGuiRecovery {
   readonly #lease: GuiLeaseController;
   readonly #runSession: typeof runInSession;
   readonly #verifyProcess: ((pid: number) => boolean) | undefined;
+  readonly #readTargetSession: () => MacSession | null;
+  readonly #consoleUid: () => number;
+  readonly #allowConsoleSession: boolean;
 
   constructor(options: GuiRecoveryOptions) {
     if (options.session.kind !== "Aqua") {
@@ -560,6 +579,10 @@ export class MacGuiRecovery {
       });
     this.#runSession = options.runSession ?? runInSession;
     this.#verifyProcess = options.verifyProcess;
+    this.#readTargetSession =
+      options.readTargetSession ?? (() => readGuiSession(options.session.uid));
+    this.#consoleUid = options.consoleUid ?? consoleSessionUid;
+    this.#allowConsoleSession = options.allowConsoleSession === true;
   }
 
   /**
@@ -716,6 +739,7 @@ export class MacGuiRecovery {
     // refusal must not be swallowed by the census's degrade-to-unavailable
     // handling below, so it runs outside that try.
     this.#assertSameProcess();
+    this.#assertSessionProof();
     let census: WindowCensus;
     try {
       census = this.#census !== undefined ? this.#census() : { available: false, reason: "no census configured" };
@@ -746,6 +770,7 @@ export class MacGuiRecovery {
     }
     mkdirSync(dirname(path), { recursive: true });
     this.#assertSameProcess();
+    this.#assertSessionProof();
     const result = runInSession(this.#session, "/usr/sbin/screencapture", ["-x", "-o", path], {
       timeoutMs: 30_000,
     });
@@ -879,6 +904,7 @@ export class MacGuiRecovery {
     // The pid in `args` is only meaningful while it still names the
     // process this run started.
     this.#assertSameProcess();
+    this.#assertSessionProof();
     const result = this.#runSession(
       this.#session,
       "/usr/bin/osascript",
@@ -924,6 +950,54 @@ export class MacGuiRecovery {
         { code: "A8N-AE-004" },
       );
     }
+  }
+
+  /**
+   * Re-proves the target session immediately before each GUI action.
+   *
+   * `options.session` was proven once, at construction. Since then the
+   * user may have logged out and back in (a new asid), the session may
+   * have ended, or a fast user switch may have made it the console
+   * session. `runInSession` re-checks only *this* process's session and,
+   * on the root path, delivers by uid alone — so without this check a
+   * stale proof would keep acting on whatever session the uid now owns,
+   * possibly the screen the human is looking at. Any difference from the
+   * proven identity — including an unreadable console owner — refuses
+   * before anything is sent. A `MacSessionError` is the refusal
+   * `#mutate` already classifies as "the session was never entered":
+   * provably nothing was pressed or clicked.
+   */
+  #assertSessionProof(): void {
+    const proven = this.#session;
+    const current = this.#readTargetSession();
+    const consoleUid = this.#consoleUid();
+    // The console check guards the cross-user path only, and only when the
+    // constructor did not explicitly allow the console session: a recovery
+    // inside the caller's own session — where the target legitimately is
+    // the console session — must keep working.
+    const selfUid = typeof process.getuid === "function" ? process.getuid() : -1;
+    const needsConsoleProof = proven.uid !== selfUid && !this.#allowConsoleSession;
+    const unchanged =
+      current !== null &&
+      current.uid === proven.uid &&
+      current.asid !== null &&
+      current.asid === proven.asid &&
+      current.kind === proven.kind &&
+      (!needsConsoleProof || (consoleUid >= 0 && consoleUid !== proven.uid));
+    if (unchanged) {
+      return;
+    }
+    const now =
+      current === null
+        ? "no login session"
+        : `asid ${current.asid ?? "unknown"}, kind ${current.kind}` +
+          (needsConsoleProof && consoleUid === proven.uid ? ", and it is the console session" : "");
+    throw new MacSessionError(
+      `the login session this recovery proved (uid ${proven.uid}, asid ${proven.asid ?? "unknown"}, ` +
+        `kind ${proven.kind}) no longer holds — it now reads as ${now}` +
+        `${needsConsoleProof && consoleUid < 0 ? "; the console owner could not be read" : ""}. ` +
+        "No GUI action was taken.",
+    );
   }
 }
 

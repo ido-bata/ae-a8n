@@ -180,6 +180,7 @@ describe("guiStateReport", () => {
 
   it("turns a session-entry failure into unavailable, not an empty report", () => {
     const report = guiStateReport(TARGET, undefined, {
+      readTargetSession: () => SESSION,
       runSession: () => {
         throw new MacSessionError("cannot enter the session");
       },
@@ -224,6 +225,7 @@ describe("observeGuiAppState", () => {
   it("propagates a session-entry failure for the caller to report", () => {
     expect(() =>
       observeGuiAppState(TARGET, {
+        readTargetSession: () => SESSION,
         runSession: () => {
           throw new MacSessionError("denied");
         },
