@@ -44,7 +44,12 @@ import type {
   OwnedProcess,
   PendingLaunch,
 } from "./transport.js";
-import { ScriptNotSentError } from "./transport.js";
+import { ScriptNotSentError, ScriptingPermissionError } from "./transport.js";
+import {
+  aeScriptingPermission,
+  currentUsername,
+  type AeScriptingPermission,
+} from "../platform/darwin/scripting-permission.js";
 import {
   MAX_DIAGNOSTIC_CHARS,
   psProcesses,
@@ -121,6 +126,15 @@ export type ScriptInvocationOptions = {
    */
   readonly sessionUid?: number;
   /**
+   * The macOS install's scripting file/network permission, evaluated for
+   * the account that will run After Effects. Mainly a test seam; defaults
+   * to reading that account's AE prefs (`scripting-permission.ts`). Only a
+   * proven "blocked" refuses the launch — "unreadable" or null proceeds,
+   * the same rule the doctor probe follows: an unevaluated fact is never
+   * treated as either allowed or blocked.
+   */
+  readonly macScriptingPermission?: () => AeScriptingPermission | null;
+  /**
    * Adopt a host a previous session recorded, instead of starting one.
    *
    * The record is checked against the live process list: the pid must still
@@ -142,6 +156,32 @@ export type ScriptInvocationOptions = {
     readonly recordedAt?: string;
   };
 };
+
+/**
+ * The macOS bundle's `CFBundleShortVersionString` (`27.0x78`), or null when
+ * it cannot be read. The AE prefs folder is keyed by `major.minor` of this
+ * (`27.0`), so it is what the scripting-permission check needs.
+ */
+function macBundleVersion(bundle: string): string | null {
+  try {
+    const out = execFileSync(
+      "plutil",
+      [
+        "-extract",
+        "CFBundleShortVersionString",
+        "raw",
+        "-o",
+        "-",
+        join(bundle, "Contents", "Info.plist"),
+      ],
+      { encoding: "utf-8", timeout: 10_000, stdio: ["ignore", "pipe", "ignore"] },
+    );
+    const version = out.trim();
+    return version.length > 0 ? version : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Whether a visible top-level `AE_CApplication*` window belongs to a process
@@ -390,6 +430,7 @@ export class ScriptInvocationTransport implements HostTransport {
   #inFlight: Promise<void> | null = null;
   /** Set when this transport was asked to adopt a recorded host. */
   readonly #adopt: NonNullable<ScriptInvocationOptions["adopt"]> | null;
+  readonly #macScriptingPermission: () => AeScriptingPermission | null;
 
   constructor(options: ScriptInvocationOptions = {}) {
     const platform = options.platform ?? process.platform;
@@ -407,6 +448,8 @@ export class ScriptInvocationTransport implements HostTransport {
     this.#selfPid = options.selfPid ?? process.pid;
     this.#readyPollMs = options.readyPollMs ?? 500;
     this.#adopt = options.adopt ?? null;
+    this.#macScriptingPermission =
+      options.macScriptingPermission ?? (() => this.#defaultMacScriptingPermission());
     this.#install =
       options.install ??
       resolveInstall(platform, {
@@ -672,6 +715,26 @@ export class ScriptInvocationTransport implements HostTransport {
   }
 
   /**
+   * The selected install's scripting file/network permission, or null when
+   * it cannot be evaluated honestly: the After Effects runs in another
+   * account's session (its prefs are not readable), the executable is not
+   * inside a bundle, the bundle version cannot be read, or the prefs file
+   * or key is absent. Null is "unproven", never "allowed" — the launch
+   * check only refuses on a proven "blocked".
+   */
+  #defaultMacScriptingPermission(): AeScriptingPermission | null {
+    const self = typeof process.getuid === "function" ? process.getuid() : null;
+    if (self === null || this.#sessionUid !== self) {
+      return null;
+    }
+    const bundle = macAppBundle(this.#install.executable);
+    if (bundle === null) {
+      return null;
+    }
+    return aeScriptingPermission(macBundleVersion(bundle), currentUsername());
+  }
+
+  /**
    * Starts After Effects only if it is not already running.
    *
    * Launching is deliberately not awaited to completion: AE takes tens of
@@ -685,6 +748,22 @@ export class ScriptInvocationTransport implements HostTransport {
       // must not re-decide ownership: the AE this transport started would by
       // then count as "already running".
       return;
+    }
+    if (this.#platform === "darwin") {
+      // Before anything is started or addressed: with script file writes
+      // disabled the host can open a result file but never fill it, so the
+      // readiness probe could only ever time out (issue #188). A proven
+      // "blocked" fails here with the remedy; anything unevaluated proceeds.
+      const permission = this.#macScriptingPermission();
+      if (permission?.state === "blocked") {
+        throw new ScriptingPermissionError(
+          `After Effects script file/network access is disabled for this account ` +
+            `(Pref_SCRIPTING_FILE_NETWORK_SECURITY = "${permission.prefValue ?? "?"}" in ${permission.prefsDir}). ` +
+            "The bridge writes requests and results as files, so every call would time out. " +
+            'Enable "Allow Scripts to Write Files and Access Network" in After Effects ' +
+            "(Settings > Scripting & Expressions) for the account that runs it, then retry.",
+        );
+      }
     }
     this.#launched = true;
     this.#launchBegan = this.#now();

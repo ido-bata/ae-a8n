@@ -36,6 +36,7 @@ doctor が blocker を出した
 | `-1743` がプロンプト無しで続く | Automation 拒否が記憶済み、または responsible process が bundle 無し | 実行主体が Terminal.app の子か | `tccutil reset AppleEvents <bundle-id>` を対象ユーザー側で → 再プロンプト |
 | `-1712` timeout | AE のモーダル/サインイン/Welcome | 対象ユーザーの画面 | 人間がモーダルを解消。**権限問題ではない・自動再送しない** |
 | `-1708` | AE スクリプト信頼の未承認 | AE 設定 → スクリプトとエクスプレッション | driver の読むフォルダを許可 |
+| `was never parseable` / readiness probe timeout、結果ファイルが 0 byte | AE の「スクリプトによるファイルの読み書きとネットワークアクセス」が off（`Pref_SCRIPTING_FILE_NETWORK_SECURITY="0"`。AE 26.5/27.0 で確認、#188） | `doctor` の A8N-PERM-003、または対象ユーザーの AE 設定 → スクリプトと式 | 対象ユーザーの AE で同設定を許可。`AfterEffects.launch` は blocked が証明できれば AE 起動前に `ScriptingPermissionError` で止まる。結果ファイルが 0 byte のまま deadline に達した場合も同じ設定を疑う |
 | OS アップデート後に全部拒否 | TCC grant の無効化・AE バージョン変更 | doctor 全項目 | permissions.md のマトリクスに沿って再許可。版差は verification.md |
 | ユーザーが logout した | GUI セッション消失 | `A8N-SESSION-002` | 再ログイン。実行中 job は stale になるのでやり直し |
 | AE のモーダルで test が hang | 対象 session の modal | `ae-a8n recover` / doctor | 人間が対象画面で解消。timeout script は再送されない（UNKNOWN） |

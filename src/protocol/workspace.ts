@@ -94,7 +94,12 @@ export function writeRequest(paths: SessionPaths, request: RequestEnvelope): str
  */
 export type ResultProbe =
   | { readonly state: "absent" }
-  | { readonly state: "unreadable"; readonly reason: string }
+  | {
+      readonly state: "unreadable";
+      readonly reason: string;
+      /** File size in bytes; 0 means the host opened the file but wrote nothing. */
+      readonly bytes: number;
+    }
   | { readonly state: "read"; readonly envelope: unknown };
 
 /**
@@ -114,7 +119,11 @@ export function probeResult(paths: SessionPaths, id: string): ResultProbe {
   try {
     return { state: "read", envelope: JSON.parse(raw) };
   } catch (error) {
-    return { state: "unreadable", reason: (error as Error).message };
+    return {
+      state: "unreadable",
+      reason: (error as Error).message,
+      bytes: Buffer.byteLength(raw, "utf-8"),
+    };
   }
 }
 

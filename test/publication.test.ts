@@ -165,7 +165,15 @@ describe("reading a result that is not yet whole", () => {
 
     const target = join(paths.outbox, "partial.result.json");
     writeFileSync(target, '{"v":1,"id":"partial","ok":tr', "utf-8");
-    expect(probeResult(paths, "partial").state).toBe("unreadable");
+    const partial = probeResult(paths, "partial");
+    expect(partial.state).toBe("unreadable");
+    expect(partial.state === "unreadable" && partial.bytes).toBeGreaterThan(0);
+
+    // The AE 27 signature (issue #188): opened but never written.
+    writeFileSync(join(paths.outbox, "empty.result.json"), "", "utf-8");
+    const empty = probeResult(paths, "empty");
+    expect(empty.state).toBe("unreadable");
+    expect(empty.state === "unreadable" && empty.bytes).toBe(0);
 
     writeFileSync(target, '{"v":1,"id":"partial","ok":true,"durationMs":1,"result":null}', "utf-8");
     expect(probeResult(paths, "partial").state).toBe("read");
@@ -198,7 +206,11 @@ describe("when a result never becomes readable", () => {
    * "timed out" would send a reader looking at the host when the problem is on
    * the wire.
    */
-  function corruptingTransport(inner: FakeAfterEffectsTransport, outbox: string): HostTransport {
+  function corruptingTransport(
+    inner: FakeAfterEffectsTransport,
+    outbox: string,
+    contents = "{ truncated",
+  ): HostTransport {
     return {
       kind: "corrupting",
       available: () => inner.available(),
@@ -212,7 +224,7 @@ describe("when a result never becomes readable", () => {
             .sort();
           const last = newest.at(-1);
           if (last !== undefined) {
-            writeFileSync(last, "{ truncated", "utf-8");
+            writeFileSync(last, contents, "utf-8");
           }
         });
       },
@@ -242,5 +254,38 @@ describe("when a result never becomes readable", () => {
     const trace = (await import("node:fs")).readFileSync(join(sessionRoot, "trace.jsonl"), "utf-8");
     expect(trace).toContain("ProtocolError");
     expect(trace).toContain("was never parseable");
+  });
+
+  it("does not guess the scripting permission for a partial file", async () => {
+    // A truncated write is a publication problem, not the empty-file
+    // signature of disabled script writes — the hint must stay off it.
+    const outbox = createSessionPaths(sessionRoot).outbox;
+    const d = makeDriver({
+      transport: corruptingTransport(transport, outbox),
+      readinessTimeoutMs: 300,
+    });
+    const error = await d.start().then(
+      () => null,
+      (caught: unknown) => caught as Error,
+    );
+    expect(error?.message).toMatch(/was never parseable/);
+    expect(error?.message).not.toContain("Allow Scripts to Write Files");
+  });
+
+  it("points at the scripting permission when the file stayed empty", async () => {
+    // The AE 27 signature (issue #188): the host opened the result file but
+    // script file writes were disabled, so not one byte ever landed. An
+    // empty file must not read as a bare parse failure.
+    const outbox = createSessionPaths(sessionRoot).outbox;
+    const d = makeDriver({
+      transport: corruptingTransport(transport, outbox, ""),
+      readinessTimeoutMs: 300,
+    });
+    const error = await d.start().then(
+      () => null,
+      (caught: unknown) => caught as Error,
+    );
+    expect(error?.message).toMatch(/was never parseable/);
+    expect(error?.message).toContain("Allow Scripts to Write Files and Access Network");
   });
 });
