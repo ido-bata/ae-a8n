@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 
@@ -737,6 +737,9 @@ describe("the Darwin adapter's non-probe methods do not lie", () => {
         // so the scripting step stays a human step.
         readFacts: () => darwinFacts({ aeScripting: null }),
         setupStateFile: stateFile,
+        // A path that does not exist keeps the shared-root finding out of
+        // this test regardless of what the host machine has under /Users/Shared.
+        sharedSessionRoot: join(root, "shared"),
       });
       const steps = await adapter.plan(TARGET);
       const byId = new Map(steps.map((step) => [step.id, step]));
@@ -786,12 +789,31 @@ describe("the Darwin adapter's non-probe methods do not lie", () => {
           .sort(),
       ).toEqual(["macos.ae-scripting", "macos.permissions", "macos.signin"]);
 
-      const findings = await adapter.recover("/tmp/a8n-run");
+      const findings = await adapter.recover("/tmp/a8n-run-does-not-exist");
       expect(findings).toHaveLength(1);
       expect(findings[0]?.code).toBe("A8N-JOB-002");
-      // Recovery on macOS is not implemented (#59); the finding must say so
-      // rather than read as a clean sweep.
-      expect(findings[0]?.detail).toContain("cannot yet inspect");
+      // Recovery reports what it can see and acts on nothing: an
+      // unlistable run directory is reported, never guessed at.
+      expect(findings[0]?.detail).toContain("could not be listed");
+
+      // A real directory with a leftover entry and a running After Effects
+      // is reported with both facts — and nothing is removed or signalled.
+      const runDir = join(root, "run");
+      mkdirSync(runDir, { recursive: true });
+      writeFileSync(join(runDir, "stray.tmp"), "x");
+      const withAe = new DarwinAdapter({
+        readFacts: () =>
+          darwinFacts({
+            aeScripting: null,
+            aeProcesses: [{ pid: 4321, uid: 502, name: "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects" }],
+          }),
+        setupStateFile: stateFile,
+        sharedSessionRoot: join(root, "shared"),
+      });
+      const seen = await withAe.recover(runDir);
+      expect(seen.some((f) => f.detail.includes("stray.tmp"))).toBe(true);
+      expect(seen.some((f) => f.detail.includes("pid 4321 uid 502"))).toBe(true);
+      expect(existsSync(join(runDir, "stray.tmp"))).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

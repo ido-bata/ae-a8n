@@ -1010,6 +1010,11 @@ export type DarwinAdapterOptions = {
   readonly runCommand?: DarwinRunCommand;
   /** Test seam: where setup records completed step ids. Never holds secrets. */
   readonly setupStateFile?: string;
+  /**
+   * Test seam: the isolated-session shared root `recover` reports on.
+   * Defaults to `/Users/Shared/ae-a8n`.
+   */
+  readonly sharedSessionRoot?: string;
 };
 
 /** Only step ids and outcomes are stored; no credential ever reaches this file. */
@@ -1212,12 +1217,14 @@ export class DarwinAdapter implements PlatformAdapter {
   readonly #readFacts: (user: string | null, intent: ProbeIntent) => DarwinFacts;
   readonly #runCommand: DarwinRunCommand;
   readonly #setupStateFile: string;
+  readonly #sharedSessionRoot: string;
 
   constructor(options: DarwinAdapterOptions = {}) {
     this.#readFacts =
       options.readFacts ?? ((user, intent) => readDarwinFacts(user, runProcess, intent));
     this.#runCommand = options.runCommand ?? defaultRunCommand;
     this.#setupStateFile = options.setupStateFile ?? MAC_SETUP_STATE_FILE;
+    this.#sharedSessionRoot = options.sharedSessionRoot ?? "/Users/Shared/ae-a8n";
   }
 
   capabilities(): Promise<Capabilities> {
@@ -1462,14 +1469,100 @@ export class DarwinAdapter implements PlatformAdapter {
   }
 
   recover(runDir: string): Promise<readonly RecoveryFinding[]> {
-    return Promise.resolve([
-      {
+    // Everything below is synchronous and read-only; wrapping it keeps a
+    // failure a rejection, as the contract promises.
+    return Promise.resolve().then(() => {
+    const findings: RecoveryFinding[] = [];
+
+    // 1. The run directory, listed read-only. `recover-run` already handles
+    //    report.json; anything else at the top level is a leftover this tool
+    //    did not write, and it is reported — never deleted.
+    const knownEntries = new Set([
+      "manifest.json",
+      "report.json",
+      "trace.jsonl",
+      "artifacts",
+    ]);
+    try {
+      const leftovers = readdirSync(runDir, { withFileTypes: true })
+        .map((entry) => entry.name)
+        .filter((name) => !knownEntries.has(name));
+      if (leftovers.length > 0) {
+        findings.push({
+          code: "A8N-JOB-002",
+          action: "reported",
+          detail:
+            `the run directory ${runDir} holds entries this tool did not write: ` +
+            leftovers.join(", "),
+          remedy: "Inspect them yourself; recovery reports leftovers and never deletes them.",
+        });
+      }
+    } catch (error) {
+      findings.push({
+        code: "A8N-JOB-002",
+        action: "reported",
+        detail: `the run directory could not be listed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      });
+    }
+
+    // 2. What the platform can see: After Effects processes are reported
+    //    with their uid. Recovery never quits one — an unowned AE is the
+    //    human's call (T037).
+    const facts = this.#readFacts(null, "session");
+    if (!facts.aeProcessesReadable) {
+      findings.push({
+        code: "A8N-JOB-002",
+        action: "reported",
+        detail: `the process list could not be read (${
+          facts.aeProcessesFailure ?? "unknown"
+        }); whether an After Effects from the run is still alive is unproven`,
+      });
+    } else if (facts.aeProcesses.length > 0) {
+      const list = facts.aeProcesses
+        .map((entry) => `pid ${entry.pid} uid ${entry.uid}`)
+        .join(", ");
+      findings.push({
         code: "A8N-JOB-002",
         action: "reported",
         detail:
-          `the macOS adapter cannot yet inspect a run for recovery (issue #59: ` +
-          `T037/T039); nothing in ${runDir} was acted on and no lock was cleared`,
-      },
-    ]);
+          `${facts.aeProcesses.length} After Effects process(es) are running (${list}); ` +
+          "recovery never quits an unowned After Effects",
+        remedy:
+          "If the recovered run is finished, quit After Effects yourself; " +
+          "the next run refuses while one is alive.",
+      });
+    }
+
+    // 3. Scope note: leftovers of the isolated-session shared root
+    //    (/Users/Shared/ae-a8n — stale jobs, orphan agents, cancelled runs)
+    //    are inspected by the repository status/prune tool, not by this
+    //    command. Reported only when that root actually exists, so a machine
+    //    that never ran an isolated session is not told to go look.
+    if (existsSync(this.#sharedSessionRoot)) {
+      findings.push({
+        code: "A8N-JOB-002",
+        action: "reported",
+        detail:
+          `the isolated-session shared root ${this.#sharedSessionRoot} exists; its stale jobs, ` +
+          "orphan agents and interrupted runs are inspected by " +
+          "scripts/isolated-session/run-in-isolated-session.mjs status|prune, which this " +
+          "command does not drive",
+        remedy:
+          "Run `node scripts/isolated-session/run-in-isolated-session.mjs status --user <account>` " +
+          "to inspect it; `prune --dry-run` shows what may be removed.",
+      });
+    }
+
+    if (findings.length === 0) {
+      findings.push({
+        code: "A8N-JOB-002",
+        action: "reported",
+        detail: `nothing platform-specific was found for ${runDir}`,
+      });
+    }
+    return findings;
+    });
   }
 }
