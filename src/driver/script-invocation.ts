@@ -31,6 +31,7 @@ import { join, win32 } from "node:path";
 import { macAppBundle, resolveInstall, type AfterEffectsInstall } from "./install-path.js";
 import {
   MacSessionError,
+  consoleSessionUid,
   readGuiSession,
   spawnInSession,
   type MacSession,
@@ -125,6 +126,19 @@ export type ScriptInvocationOptions = {
    * machine — the console user's, say — is neither addressed nor quit.
    */
   readonly sessionUid?: number;
+  /**
+   * Re-reads the target's login session immediately before a command is
+   * sent. Mainly a test seam; defaults to `readGuiSession(sessionUid)`.
+   * The session proven at construction can end or change (logout/login
+   * gives a new asid; a fast user switch can make it the console session),
+   * and a stale proof must never deliver an Apple Event — issue #59 T035.
+   */
+  readonly readTargetSession?: () => MacSession | null;
+  /**
+   * Reads the console session's owner uid (-1 when unreadable). Mainly a
+   * test seam; defaults to `consoleSessionUid`.
+   */
+  readonly consoleUid?: () => number;
   /**
    * The macOS install's scripting file/network permission, evaluated for
    * the account that will run After Effects. Mainly a test seam; defaults
@@ -414,6 +428,8 @@ export class ScriptInvocationTransport implements HostTransport {
   readonly #targetSession: MacSession | null;
   /** The uid whose processes this transport may address. */
   readonly #sessionUid: number;
+  readonly #readTargetSession: () => MacSession | null;
+  readonly #consoleUid: () => number;
   /** Host processes already running when launch() began. */
   #preexisting: readonly HostProcess[] | null = null;
   #launchBegan = 0;
@@ -458,8 +474,10 @@ export class ScriptInvocationTransport implements HostTransport {
       });
     this.#sessionUid =
       options.sessionUid ?? (typeof process.getuid === "function" ? process.getuid() : -1);
-    this.#targetSession =
-      platform === "darwin" ? readGuiSession(this.#sessionUid) : null;
+    this.#readTargetSession =
+      options.readTargetSession ?? (() => readGuiSession(this.#sessionUid));
+    this.#consoleUid = options.consoleUid ?? consoleSessionUid;
+    this.#targetSession = platform === "darwin" ? this.#readTargetSession() : null;
   }
 
   get install(): AfterEffectsInstall {
@@ -1367,6 +1385,7 @@ export class ScriptInvocationTransport implements HostTransport {
       // The caller's own session, and no other user's session is in play.
       return this.#run("/", command, args);
     }
+    this.#assertSessionProof(session);
     return new Promise((resolve, reject) => {
       try {
         spawnInSession(session, command, args, {
@@ -1384,6 +1403,51 @@ export class ScriptInvocationTransport implements HostTransport {
         reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
+  }
+
+  /**
+   * Re-proves the target session immediately before a command is sent.
+   *
+   * `#targetSession` was read once, at construction. Since then the user
+   * may have logged out and back in (a new asid), the session may have
+   * ended, or a fast user switch may have made it the console session —
+   * the screen the human is looking at. `spawnInSession` re-checks only
+   * *this* process's session and, on the root path, delivers by uid
+   * alone, so without this check a stale proof would keep sending Apple
+   * Events to whatever session the uid now owns. Any difference from the
+   * proven identity — including an unreadable console owner, which cannot
+   * show the target is not the console — refuses before anything is sent.
+   */
+  #assertSessionProof(proven: MacSession): void {
+    const current = this.#readTargetSession();
+    const consoleUid = this.#consoleUid();
+    // The console check guards the cross-user path only: when this process
+    // runs as the target's own user the Apple Event stays inside that
+    // user's session whatever the console owner is — the normal local case,
+    // where the target *is* the console session.
+    const selfUid = typeof process.getuid === "function" ? process.getuid() : -1;
+    const crossUser = proven.uid !== selfUid;
+    const unchanged =
+      current !== null &&
+      current.uid === proven.uid &&
+      current.asid !== null &&
+      current.asid === proven.asid &&
+      current.kind === proven.kind &&
+      (!crossUser || (consoleUid >= 0 && consoleUid !== proven.uid));
+    if (unchanged) {
+      return;
+    }
+    const now =
+      current === null
+        ? "no login session"
+        : `asid ${current.asid ?? "unknown"}, kind ${current.kind}` +
+          (crossUser && consoleUid === proven.uid ? ", and it is the console session" : "");
+    throw new MacSessionError(
+      `the login session this transport proved (uid ${proven.uid}, asid ${proven.asid ?? "unknown"}, ` +
+        `kind ${proven.kind}) no longer holds — it now reads as ${now}` +
+        `${crossUser && consoleUid < 0 ? "; the console owner could not be read" : ""}. ` +
+        "Nothing was sent; re-prove the target session and retry.",
+    );
   }
 
   /** Runs a process and resolves when it exits. A non-zero exit is an error. */

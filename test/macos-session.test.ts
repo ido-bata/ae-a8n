@@ -301,6 +301,7 @@ describe("the GUI recovery", () => {
       session: { uid: 502, username: "test", asid: 100040, kind: "Aqua" },
       pid: 4242,
       allowConsoleSession: true,
+      readTargetSession: () => ({ uid: 502, username: "test", asid: 100040, kind: "Aqua" }),
       verifyProcess: () => false,
       census: () => ({ available: false, reason: "no census in test" }),
       lease: {
@@ -329,6 +330,7 @@ describe("the GUI recovery", () => {
       session: { uid: 502, username: "test", asid: 100040, kind: "Aqua" },
       pid: 4242,
       allowConsoleSession: true,
+      readTargetSession: () => ({ uid: 502, username: "test", asid: 100040, kind: "Aqua" }),
       verifyProcess: () => {
         throw new Error("ps failed");
       },
@@ -354,6 +356,7 @@ describe("the GUI recovery", () => {
       session: { uid: 502, username: "test", asid: 100040, kind: "Aqua" },
       pid: 4242,
       allowConsoleSession: true,
+      readTargetSession: () => ({ uid: 502, username: "test", asid: 100040, kind: "Aqua" }),
       verifyProcess: () => sameProcess,
       census: () => ({ available: false, reason: "no census in test" }),
       lease: {
@@ -382,6 +385,72 @@ describe("the GUI recovery", () => {
     expect(sessionCommands).toBe(1);
     expect(audits).toContainEqual({ kind: "mutate", outcome: "not-performed" });
     expect(audits).not.toContainEqual({ kind: "mutate", outcome: "unknown" });
+  });
+
+  it("refuses every GUI action when the proven session changed since construction", () => {
+    // The session was proven once, at construction. A re-login gives the
+    // user a new asid; `runInSession` alone cannot see that on the root
+    // path, which delivers by uid. Every action must refuse before a
+    // single session command runs (issue #59 T035).
+    const FOREIGN_UID = 4_000_000_000;
+    const proven = { uid: FOREIGN_UID, username: "ae-test", asid: 100040, kind: "Aqua" as const };
+    let sessionCommands = 0;
+    const gui = new MacGuiRecovery({
+      session: proven,
+      pid: 4242,
+      consoleUid: () => 1,
+      readTargetSession: () => ({ ...proven, asid: 100099 }),
+      census: () => ({ available: false, reason: "no census in test" }),
+      lease: {
+        acquire: () => ({ path: "/fake/lease", release: () => {} }),
+        audit: () => {},
+      },
+      runSession: () => {
+        sessionCommands += 1;
+        return { status: 0, stdout: "", stderr: "", timedOut: false };
+      },
+    });
+    for (const act of [
+      () => gui.listWindows(),
+      () => gui.capture(join(tmpdir(), "a8n-not-this-session.png")),
+      () => gui.pressButton(1, "OK"),
+      () => gui.clickAt(10, 10),
+      () => gui.pressButtonIn(1, "OK"),
+    ]) {
+      expect(act).toThrow(/no longer holds/);
+    }
+    expect(sessionCommands).toBe(0);
+  });
+
+  it("refuses when the proven session ended or became the console session", () => {
+    const FOREIGN_UID = 4_000_000_000;
+    const proven = { uid: FOREIGN_UID, username: "ae-test", asid: 100040, kind: "Aqua" as const };
+    const mk = (read: () => typeof proven | null, console: () => number) =>
+      new MacGuiRecovery({
+        session: proven,
+        pid: 4242,
+        consoleUid: console,
+        readTargetSession: read,
+        census: () => ({ available: false, reason: "no census in test" }),
+        lease: {
+          acquire: () => ({ path: "/fake/lease", release: () => {} }),
+          audit: () => {},
+        },
+        runSession: () => ({ status: 0, stdout: "", stderr: "", timedOut: false }),
+      });
+    // The session is gone entirely.
+    expect(() => mk(() => null, () => 1).listWindows()).toThrow(/no login session/);
+    // A fast user switch made the target the console session *after* the
+    // recovery was constructed: the per-action re-proof must catch it.
+    let console = 1;
+    const flipped = mk(() => proven, () => console);
+    console = FOREIGN_UID;
+    expect(() => flipped.listWindows()).toThrow(/console session/);
+    // The console owner cannot be read at action time, so "not the console"
+    // cannot be shown.
+    let reads = 0;
+    const blind = mk(() => proven, () => (reads++ === 0 ? 1 : -1));
+    expect(() => blind.listWindows()).toThrow(/console owner could not be read/);
   });
 });
 

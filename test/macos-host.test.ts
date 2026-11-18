@@ -837,3 +837,76 @@ describe("the process listing", () => {
     expect(rows).toHaveLength(0);
   });
 });
+
+describe("session re-proof before an Apple Event (issue #59)", () => {
+  const install = {
+    executable:
+      "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects",
+    versionName: "Adobe After Effects 2026.app",
+    renderExecutable: null,
+  };
+  // A uid no real account owns: the proof checks never reach process
+  // listing or session entry, so nothing real is touched.
+  const FOREIGN = { uid: 4_000_000_000, username: "ae-test", asid: 777, kind: "Aqua" as const };
+
+  function foreignTransport(
+    reads: ReadonlyArray<typeof FOREIGN | null>,
+    console: () => number,
+  ) {
+    let index = 0;
+    return new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      sessionUid: FOREIGN.uid,
+      readTargetSession: () => reads[Math.min(index++, reads.length - 1)] ?? null,
+      consoleUid: console,
+    });
+  }
+
+  it("refuses when the target's asid changed since the session was proven", async () => {
+    const t = foreignTransport([FOREIGN, { ...FOREIGN, asid: 778 }], () => 1);
+    await expect(t.invoke(join(root, "entry.jsx"))).rejects.toThrow(/no longer holds/);
+  });
+
+  it("refuses when the target's session ended", async () => {
+    const t = foreignTransport([FOREIGN, null], () => 1);
+    await expect(t.invoke(join(root, "entry.jsx"))).rejects.toThrow(/no login session/);
+  });
+
+  it("refuses when the target became the console session", async () => {
+    let console = 1;
+    const t = foreignTransport([FOREIGN, FOREIGN], () => console);
+    // First read (construction) sees a non-console owner; by invoke time a
+    // fast user switch has made the target the console session.
+    console = FOREIGN.uid;
+    await expect(t.invoke(join(root, "entry.jsx"))).rejects.toThrow(/console session/);
+  });
+
+  it("refuses when the console owner cannot be read for a cross-user target", async () => {
+    const t = foreignTransport([FOREIGN, FOREIGN], () => -1);
+    await expect(t.invoke(join(root, "entry.jsx"))).rejects.toThrow(/console owner could not be read/);
+  });
+
+  it.runIf(process.platform === "darwin")(
+    "still sends for the caller's own unchanged session",
+    async () => {
+      // The positive control: an unchanged proof must reach osascript. The
+      // bundle does not exist, so the send fails with osascript's own error —
+      // ScriptInvocationError, not the session refusal.
+      const { currentSession } = await import("../src/driver/mac-session.js");
+      const t = new ScriptInvocationTransport({
+        platform: "darwin",
+        install,
+        readTargetSession: () => currentSession(),
+      });
+      const outcome = await t.invoke(join(root, "entry.jsx")).then(
+        () => "sent" as const,
+        (caught: unknown) => caught as Error,
+      );
+      // Whatever osascript answered — the bundle does not exist — the send
+      // must have got past the session proof: never a MacSessionError.
+      expect(outcome === "sent" || outcome.name !== "MacSessionError").toBe(true);
+    },
+    30_000,
+  );
+});

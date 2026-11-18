@@ -51,7 +51,8 @@ export type GuiObservationTarget = {
 /** Seams forwarded to `MacGuiRecovery`; mainly for tests. */
 export type GuiObservationSeams = Pick<
   GuiRecoveryOptions,
-  "census" | "censusRun" | "stateRoot" | "ownerId" | "lease" | "runSession"
+  "census" | "censusRun" | "stateRoot" | "ownerId" | "lease" | "runSession" |
+  "readTargetSession" | "consoleUid"
 >;
 
 /**
