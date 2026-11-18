@@ -70,6 +70,35 @@ switching（Ctrl+→ / メニューバー）で helper user に切り替えて�
 Apple Event のエラー番号の意味と「権限問題ではない」切り分けは
 [permissions.md](../specs/isolated-ae/contracts/permissions.md) §4。
 
+## 4.5. 権限プローブ（helper user セッション内で実行）
+
+TCC grant は responsible process（テストコマンドを動かす app bundle、
+通常は helper user の Terminal.app）に紐づく。だからプローブは
+**helper user のセッション内で、テストと同じ実行経路で**実行する。
+controller 側で実行しても別人の grant を測るだけで意味がない。
+
+```bash
+node scripts/isolated-session/run-in-isolated-session.mjs \
+  --user ae-test --substrate terminal -- \
+  node scripts/isolated-session/permission-probe.mjs
+```
+
+出力は JSON 1件。`permissions.*.state` は `granted | denied | unproven`
+の3値で、**測れなかったものは決して PASS にならない**。
+
+- `screenRecording` / `accessibility`: preflight API のみ。prompt は出ない。
+- `automationSystemEvents`: `System Events` への Apple Event を1本送る。
+  未許可なら **helper user の画面に同意 dialog が出る** — それは grant
+  経路が動いている証拠であり、denied が続く場合は permissions.md §4 の
+  `-1743` 対応（該当 service/app だけ `tccutil reset`）へ。
+- `aeScriptFileNetwork`: helper user の AE prefs
+  `Pref_SCRIPTING_FILE_NETWORK_SECURITY` を version ごとに読む。
+
+プローブのあとに consent を得る順序は grant → probe → resume:
+人間が helper user の画面で許可し、通常のターミナルに戻ってプローブを
+再実行する。`unproven` が残る場合は interpreter 不在等の環境要因を疑う
+（Command Line Tools の python3 が必要）。
+
 ## 5. resume の考え方
 
 - `setup` は冪等。人間の操作を挟んで止まっても、同じコマンドを再実行

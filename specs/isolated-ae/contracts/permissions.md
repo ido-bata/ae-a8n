@@ -79,3 +79,14 @@ ASID before `setup`/`test` proceeds (T025). A check that cannot complete
 reports `unknown` or `blocker` — never `PASS`. Real-host acceptance of
 this loop (T026) is recorded separately from fake-host tests; fake
 coverage of the denial/retry paths does not close the real-host gate.
+
+Probe implementations today:
+
+- packaged `doctor` local intent: `src/platform/darwin/tcc.ts` runs the
+  Screen Recording / Accessibility preflight APIs for the caller's own
+  responsible process; the isolated intent reports `unproven` until an
+  in-session job exists.
+- repo-level isolated runner: `scripts/isolated-session/permission-probe.mjs`
+  runs the same preflight APIs plus the Automation and AE-preference
+  probes inside the target session, reached through
+  `run-in-isolated-session.mjs` (terminal/offstage/native substrates).
