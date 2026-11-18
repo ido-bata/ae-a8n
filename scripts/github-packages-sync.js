@@ -143,6 +143,28 @@ function versionsOn(registry, name) {
   }
 }
 
+/**
+ * Which of the npmjs versions GitHub Packages already carries. The mirror
+ * asks per version because `npm view <pkg> versions` answers empty on
+ * npm.pkg.github.com even for a package that exists — an empty list there
+ * would look like "nothing mirrored" and cause republish attempts (E409).
+ * A 404 means absent; any other failure aborts the run.
+ */
+function mirroredVersions(name, candidates) {
+  const present = [];
+  for (const version of candidates) {
+    try {
+      const out = npm(["view", `${name}@${version}`, "version", "--json", "--registry", GITHUB_PACKAGES_REGISTRY]);
+      if (out.trim() !== "") present.push(version);
+    } catch (error) {
+      const text = `${error?.stderr ?? ""} ${error?.message ?? ""}`;
+      if (/E404|404 Not Found/.test(text)) continue;
+      throw error;
+    }
+  }
+  return present;
+}
+
 /** dist-tags as { tag: version }; an unseen package has none. */
 function distTagsOn(registry, name) {
   try {
@@ -227,7 +249,7 @@ async function main() {
   let targetTags;
   try {
     sourceVersions = versionsOn(undefined, name);
-    targetVersions = versionsOn(GITHUB_PACKAGES_REGISTRY, name);
+    targetVersions = mirroredVersions(name, sourceVersions);
     sourceTags = distTagsOn(undefined, name);
     targetTags = distTagsOn(GITHUB_PACKAGES_REGISTRY, name);
   } catch (error) {
