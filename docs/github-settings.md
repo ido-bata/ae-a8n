@@ -44,6 +44,105 @@ also refuses if a required check did not run, from GitHub Actions, on the
 latest pull request. It matches rulesets by name and target, so a second run
 changes nothing. Other rulesets are left alone.
 
+## Actions event policy (pull_request_target, required before 2026-12-02)
+
+GitHub blocks `pull_request_target` by default in public repositories
+starting 2026-12-02 (evaluate mode until then). This repository has **no**
+Actions event policies (`gh api repos/ido-bata/ae-a8n/actions/policies`
+returns none), so `release-gate.yml` would stop running at enforcement.
+
+Owner action required — create a repository-scoped policy that allows the
+event for exactly this workflow file, nothing broader:
+
+```bash
+gh api repos/ido-bata/ae-a8n/actions/policies --method POST --input - <<'JSON'
+{
+  "name": "allow-release-gate-pull-request-target",
+  "enforcement": "active",
+  "conditions": { "workflow_path": { "include": [".github/workflows/release-gate.yml"], "exclude": [] } },
+  "rules": [
+    { "type": "restrict_action_events",
+      "parameters": { "allowed_events": ["pull_request_target"] } }
+  ]
+}
+JSON
+```
+
+Verify with `gh api repos/ido-bata/ae-a8n/actions/policies` and confirm
+via Policy insights that only `release-gate.yml` runs are affected.
+Do not widen `workflow_path` or add other events; every other workflow
+keeps the default protections.
+
+## Release-only integration gate
+
+`main` accepts only the current release train's PR. The canonical train is
+the repository variable `RELEASE_TRAIN` (currently `release-0-3-0`), not a
+branch-name pattern — a spoofed `release-*` head fails the gate.
+
+`.github/workflows/release-gate.yml` runs on `pull_request_target`, so the
+workflow definition always comes from `main` and a PR cannot weaken it by
+editing workflow files in its head. It never checks out head code; it only
+compares PR metadata and repository state passed through environment
+variables: same-repo head, `head.ref == RELEASE_TRAIN` (read via the
+`vars` context — no extra token permission needed), `head.sha ==` the
+train branch tip, and `main...train` `ahead_by > 0` so a fully merged
+(stale) train stops authorizing integrations. An unset, empty or
+non-branch-name `RELEASE_TRAIN` fails closed.
+
+### Merge-time preflight
+
+The gate proves the path when its check runs; it cannot re-run when
+`RELEASE_TRAIN` changes or when a stale check result outlives a branch
+update. The merge executor therefore revalidates immediately before
+merging:
+
+```bash
+node scripts/release-merge-preflight.js <release-pr-number>
+gh pr merge <release-pr-number> --merge --match-head-commit <sha>
+```
+
+The script re-fetches the PR base/head, the `RELEASE_TRAIN` variable,
+the train tip, `ahead_by`, and the latest required-check runs **on the
+current head SHA** — counting only check runs reported by the
+`github-actions` app — and exits non-zero on any mismatch or API
+failure. On success it prints the exact merge command with
+`--match-head-commit`, so the SHA it validated is the SHA that merges;
+any head update after preflight invalidates the merge. The decision
+logic is `evaluatePreflight`, unit-tested against counterexamples in
+`test/release-merge-preflight.test.ts`. Merge only on exit 0, and only
+with explicit human authorization — the script checks the integration
+path, not approval.
+
+The gate does not decide release *approval* — that remains the explicit
+human authorization at merge time. It only proves the integration path.
+
+Train lifecycle: after a release PR merges, `RELEASE_TRAIN` still names
+the merged train until it is re-pointed. The `ahead_by = 0` check makes
+the stale value harmless — it rejects rather than silently accepting —
+but the correct sequence when opening the next train is: create
+`release-x-y-z` from `main` HEAD → `gh variable set RELEASE_TRAIN
+--body release-x-y-z` → update the train references in `AGENTS.md` /
+`CLAUDE.md` → open the Draft release PR.
+
+Bootstrap note: `pull_request_target` only runs workflows that exist on
+`main`, so `release-gate` is not a required check until the first release
+PR carrying it merges. The post-merge activation sequence is:
+
+1. Merge the release PR (explicit human authorization).
+2. In a ticket PR, add `"release-gate"` to `REQUIRED_CHECKS` in
+   `scripts/github-rulesets.js`, merge it into the *next* train, and run
+   `node scripts/github-rulesets.js --apply` — the ruleset update only
+   takes effect for PRs opened after it applies, so verify on a fresh PR
+   that the `release-gate` check run is attached to the PR's head commit
+   (`gh pr checks <n>`), not merely that the workflow file exists.
+3. Counterexample verification on throwaway PRs to `main`: arbitrary
+   branch, spoofed `release-*` name, stale `RELEASE_TRAIN`, and a PR
+   whose head edits `release-gate.yml` — each must fail `release-gate`.
+4. If activation fails (check never reported, wrong commit, ruleset
+   rejected), the recovery is: fix the workflow or ruleset on `main` via
+   a release PR, re-run `--apply`, and re-verify — never bypass the
+   required check and never merge `main` directly to "unstick" it.
+
 The required checks name the CI jobs, not the workflow. If a job in
 `.github/workflows/ci.yml` is renamed, change `REQUIRED_CHECKS` in the same
 pull request, then re-run the script after merging. Until then, main waits

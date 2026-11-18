@@ -25,6 +25,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { errorMessage } from "../../errors.js";
 
 /** Real Python 3 shipped with the Xcode Command Line Tools — never the
  *  /usr/bin/python3 stub, which can raise an installer dialog when the CLT
@@ -178,7 +179,7 @@ export function windowServerCensus(
   } catch (error) {
     return {
       available: false,
-      reason: `window census could not run (${python}): ${error instanceof Error ? error.message : String(error)}`,
+      reason: `window census could not run (${python}): ${errorMessage(error)}`,
     };
   }
   try {
@@ -186,7 +187,7 @@ export function windowServerCensus(
   } catch (error) {
     return {
       available: false,
-      reason: `window census output was not parseable: ${error instanceof Error ? error.message : String(error)}`,
+      reason: `window census output was not parseable: ${errorMessage(error)}`,
     };
   }
 }

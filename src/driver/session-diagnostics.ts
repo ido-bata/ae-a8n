@@ -46,6 +46,7 @@ import {
   writeFileSync,
   type Stats,
 } from "node:fs";
+import { errorMessage } from "../errors.js";
 import { homedir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
 
@@ -248,10 +249,6 @@ function openRegularNoFollow(path: string): number {
     throw new Error(`${path} is not a regular file`);
   }
   return fd;
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /** lstat that reports "missing" as null instead of throwing. */
@@ -523,7 +520,7 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
     try {
       names = readdirSync(dir);
     } catch (error) {
-      notes.push(`crash-report directory ${dir} could not be read: ${messageOf(error)}`);
+      notes.push(`crash-report directory ${dir} could not be read: ${errorMessage(error)}`);
       continue;
     }
     // Collect first, newest first, so the byte budget goes to the reports
@@ -575,7 +572,7 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
           modifiedAt: item.stat.mtime.toISOString(),
         });
       } catch (error) {
-        notes.push(`crash report ${item.sourcePath} could not be collected: ${messageOf(error)}`);
+        notes.push(`crash report ${item.sourcePath} could not be collected: ${errorMessage(error)}`);
       }
     }
     if (take <= 0) {
@@ -667,7 +664,7 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
         attribution: "app",
       });
     } catch (error) {
-      notes.push(`log ${candidate.path} could not be collected: ${messageOf(error)}`);
+      notes.push(`log ${candidate.path} could not be collected: ${errorMessage(error)}`);
     }
   }
   if (candidates.length > sources.maxLogFiles) {
@@ -740,7 +737,7 @@ export function collectSessionDiagnostics(options: CollectOptions): SessionDiagn
           truncated,
         };
       } catch (error) {
-        notes.push(`session trace could not be collected: ${messageOf(error)}`);
+        notes.push(`session trace could not be collected: ${errorMessage(error)}`);
       }
     }
   }

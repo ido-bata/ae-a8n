@@ -362,6 +362,50 @@ describe("closing a session", () => {
     await expect(transport.close()).rejects.toThrow(/did not exit within 300 ms/);
   });
 
+  it("names the windows still blocking a quit that did not take effect", async () => {
+    let polls = 0;
+    const lists = [[], [ae(42)]];
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      exitTimeoutMs: 300,
+      now: () => T0,
+      processes: () => lists[Math.min(polls++, lists.length - 1)] as ReturnType<typeof ae>[],
+      launchMacHost: () => Promise.resolve(42),
+      windowCensus: () => ({
+        available: true,
+        windows: [
+          { pid: 42, owner: "After Effects", layer: 0, onScreen: true, name: "Missing Fonts", bounds: null },
+          { pid: 42, owner: "After Effects", layer: 0, onScreen: true, name: "Missing Fonts", bounds: null },
+          { pid: 42, owner: "After Effects", layer: 0, onScreen: true, name: "", bounds: null },
+          { pid: 7, owner: "Other", layer: 0, onScreen: true, name: "Not ours", bounds: null },
+        ],
+      }),
+    });
+    await transport.launch();
+    transport.confirmLaunched();
+    await expect(transport.close()).rejects.toThrow(/still owns window\(s\): "Missing Fonts"/);
+  });
+
+  it("keeps the plain timeout message when the census is unavailable", async () => {
+    let polls = 0;
+    const lists = [[], [ae(42)]];
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      exitTimeoutMs: 300,
+      now: () => T0,
+      processes: () => lists[Math.min(polls++, lists.length - 1)] as ReturnType<typeof ae>[],
+      launchMacHost: () => Promise.resolve(42),
+      windowCensus: () => ({ available: false, reason: "no interpreter" }),
+    });
+    await transport.launch();
+    transport.confirmLaunched();
+    await expect(transport.close()).rejects.toThrow(
+      /^After Effects did not exit within 300 ms of app\.quit; it was left running$/,
+    );
+  });
+
   it("does not wait for, or consult, processes on Windows when it owns none", async () => {
     const transport = new ScriptInvocationTransport({
       platform: "win32",

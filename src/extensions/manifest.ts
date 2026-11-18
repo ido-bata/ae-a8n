@@ -15,6 +15,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { errorMessage } from "../errors.js";
 
 export const EXTENSION_CONTRACT_VERSION = 1;
 
@@ -110,7 +111,7 @@ export function validateExtension(
     try {
       options.parseEs3(`(${source});`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
       return {
         ok: false,
         detail: `the method "${name}" is not ES3: ${message.split("\n")[0] ?? message}`,

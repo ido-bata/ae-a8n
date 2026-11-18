@@ -33,9 +33,16 @@ import {
   MacSessionError,
   consoleSessionUid,
   readGuiSession,
+  runInSession,
   spawnInSession,
   type MacSession,
 } from "./mac-session.js";
+import {
+  execFileCensusRunner,
+  windowServerCensus,
+  type WindowCensus,
+} from "../platform/darwin/window-census.js";
+import { errorMessage } from "../errors.js";
 import type {
   HostAttestation,
   HostOwnership,
@@ -82,6 +89,12 @@ export type ScriptInvocationOptions = {
   readonly platform?: NodeJS.Platform;
   /** How long `close` waits for AE to exit after `app.quit`. */
   readonly exitTimeoutMs?: number;
+  /**
+   * The WindowServer census `close` consults when `app.quit` does not take
+   * effect, to name the windows still blocking the quit. Mainly a test seam;
+   * defaults to running the census inside the target session.
+   */
+  readonly windowCensus?: () => WindowCensus;
   /** Running processes. Mainly a test seam. */
   readonly processes?: () => readonly HostProcess[];
   /** The clock ownership is judged against. Mainly a test seam. */
@@ -447,11 +460,13 @@ export class ScriptInvocationTransport implements HostTransport {
   /** Set when this transport was asked to adopt a recorded host. */
   readonly #adopt: NonNullable<ScriptInvocationOptions["adopt"]> | null;
   readonly #macScriptingPermission: () => AeScriptingPermission | null;
+  readonly #windowCensus: (() => WindowCensus) | undefined;
 
   constructor(options: ScriptInvocationOptions = {}) {
     const platform = options.platform ?? process.platform;
     this.#platform = platform;
     this.#exitTimeoutMs = options.exitTimeoutMs ?? EXIT_TIMEOUT_MS;
+    this.#windowCensus = options.windowCensus;
     this.#processes = options.processes ?? (platform === "win32" ? windowsProcesses : psProcesses);
     this.#now = options.now ?? Date.now;
     this.#spawnLauncher = options.spawnLauncher ?? spawn;
@@ -887,7 +902,7 @@ export class ScriptInvocationTransport implements HostTransport {
       now = this.#hostProcesses();
     } catch (error) {
       throw new Error(
-        `${refuse}: the process list could not be read (${error instanceof Error ? error.message : String(error)})`,
+        `${refuse}: the process list could not be read (${errorMessage(error)})`,
       );
     }
     const recorded: HostProcess = {
@@ -930,7 +945,7 @@ export class ScriptInvocationTransport implements HostTransport {
       now = this.#hostProcesses();
     } catch (error) {
       this.#ownershipAtLaunch = this.#unknownOwnership(
-        `could not re-check processes: ${error instanceof Error ? error.message : String(error)}`,
+        `could not re-check processes: ${errorMessage(error)}`,
       );
       return;
     }
@@ -983,7 +998,7 @@ export class ScriptInvocationTransport implements HostTransport {
       now = this.#hostProcesses();
     } catch (error) {
       this.#ownershipAtLaunch = this.#unknownOwnership(
-        `could not list processes: ${error instanceof Error ? error.message : String(error)}`,
+        `could not list processes: ${errorMessage(error)}`,
       );
       return;
     }
@@ -1089,7 +1104,7 @@ export class ScriptInvocationTransport implements HostTransport {
       now = this.#hostProcesses();
     } catch (error) {
       return this.#unknownOwnership(
-        `could not re-check processes: ${error instanceof Error ? error.message : String(error)}`,
+        `could not re-check processes: ${errorMessage(error)}`,
       );
     }
     // Windows creation times are 100 ns kernel values, identical on every read
@@ -1233,11 +1248,66 @@ export class ScriptInvocationTransport implements HostTransport {
     while (owned !== null && this.#hostProcesses().some((p) => sameProcess(this.#platform, p, owned))) {
       if (Date.now() >= deadline) {
         throw new Error(
-          `After Effects did not exit within ${this.#exitTimeoutMs} ms of app.quit; it was left running`,
+          `After Effects did not exit within ${this.#exitTimeoutMs} ms of app.quit; it was left running` +
+            this.#quitBlockerDetail(owned),
         );
       }
       await new Promise((resolve) => setTimeout(resolve, EXIT_POLL_MS));
     }
+  }
+
+  /**
+   * Best-effort read-only observation of what the still-running host is
+   * showing when `app.quit` did not take effect. ExtendScript `app.quit()`
+   * returns while After Effects is still shutting down, and a modal dialog
+   * (a save prompt, a missing-font notice, a sync nag) can hold the quit
+   * open indefinitely — observed on AE 27.0.0 (issue #231). The report
+   * names the windows the owned process still owns; that is an observation
+   * of what remains on screen, not proof of what blocked the quit. A census
+   * that cannot run contributes nothing; it never changes the outcome.
+   */
+  #quitBlockerDetail(owned: OwnedProcess): string {
+    if (this.#platform !== "darwin") {
+      return "";
+    }
+    try {
+      const census = this.#windowCensus?.() ?? windowServerCensus(this.#quitCensusRunner());
+      if (!census.available) {
+        return "";
+      }
+      const titles = [
+        ...new Set(
+          census.windows
+            .filter((w) => w.pid === owned.pid && w.name.trim() !== "")
+            .map((w) => w.name.trim()),
+        ),
+      ].slice(0, 5);
+      if (titles.length === 0) {
+        return "";
+      }
+      return `; the process still owns window(s): ${titles.map((t) => JSON.stringify(t)).join(", ")}`;
+    } catch {
+      return "";
+    }
+  }
+
+  /**
+   * Runs the census where the host's windows live: inside the target login
+   * session when it is known, locally otherwise — the read-only fallback for
+   * a transport that could not identify a session.
+   */
+  #quitCensusRunner(): (program: string, args: readonly string[]) => string {
+    const session = this.#targetSession ?? this.#readTargetSession();
+    if (session === null) {
+      return execFileCensusRunner();
+    }
+    return (program, args) => {
+      const result = runInSession(session, program, [...args], { timeoutMs: 30_000 });
+      if (result.status !== 0) {
+        throw new Error(result.stderr.trim() || `exit status ${result.status}`);
+      }
+      return result.stdout;
+    };
   }
 
   /**

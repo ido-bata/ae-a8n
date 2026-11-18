@@ -13,6 +13,7 @@ import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 
 import { A8N_VERSION } from "../version.js";
+import { errorMessage } from "../errors.js";
 
 export const LAUNCH_PROVENANCE_SCHEMA = "a8n.launch-provenance/v1";
 
@@ -93,7 +94,7 @@ export function readLaunchProvenance(sessionRoot: string): LaunchProvenance | nu
     parsed = JSON.parse(readFileSync(path, "utf-8"));
   } catch (error) {
     throw new Error(
-      `launch provenance at ${path} is not readable JSON: ${error instanceof Error ? error.message : String(error)}`,
+      `launch provenance at ${path} is not readable JSON: ${errorMessage(error)}`,
     );
   }
   const p = parsed as Partial<LaunchProvenance> | null;

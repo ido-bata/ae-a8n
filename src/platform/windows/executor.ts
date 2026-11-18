@@ -19,6 +19,7 @@ import {
   type Job,
   type JobPayload,
 } from "./job.js";
+import { errorMessage } from "../../errors.js";
 
 export const DEFAULT_MAX_OUTPUT_BYTES = 1024 * 1024;
 export const DEFAULT_EXECUTOR_TIMEOUT_MS = 180_000;
@@ -426,5 +427,5 @@ export class SpawnJobExecutor implements JobExecutor {
 }
 
 function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return errorMessage(error);
 }

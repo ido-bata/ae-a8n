@@ -20,6 +20,7 @@ import {
   validateExtension,
   type HostExtension,
 } from "../extensions/manifest.js";
+import { errorMessage } from "../errors.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -69,7 +70,7 @@ export async function loadExtensionModule(path: string): Promise<HostExtension |
         "point --extension at a compiled .mjs/.js module, or run Node 24"
       );
     }
-    return `${path} could not be imported: ${error instanceof Error ? error.message : String(error)}`;
+    return `${path} could not be imported: ${errorMessage(error)}`;
   }
   const exported = module_ as { default?: unknown; extension?: unknown };
   const candidate = exported.default ?? exported.extension;
@@ -107,7 +108,7 @@ export async function buildExtensionHost(
   try {
     acorn.parse(built.source, { ecmaVersion: 3 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     return { ok: false, detail: `the generated host script is not ES3: ${message.split("\n")[0] ?? message}` };
   }
   const declared = readExtensionHeader(built.source);

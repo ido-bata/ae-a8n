@@ -24,16 +24,12 @@ a record is sufficient remains the human release judgement.
 
 ## What stops an accidental or double publish
 
-The repository is private and the organisation is on GitHub Free. On that
-plan environments cannot be configured for private repositories at all
-([managing environments][gh-manage]); required reviewers and wait timers need
-a public repository on every plan below Enterprise ([environments][gh-env]);
-and branch protection and rulesets answer this repository's API with 403
-"Upgrade to GitHub Pro or make this repository public". A workflow that names
-an environment that does not exist creates it, "with no protection rules"
-([managing environments][gh-manage]), so an `environment: npm` line would
-look like a gate without being one. The workflow therefore names no
-environment, and the conditions live in
+The repository is public and rulesets are enforced (`main-branch-protection`,
+`release-tag-protection`; applied and verified via
+`scripts/github-rulesets.js`). The publish workflow still names no
+`environment:` — an `npm` environment with required reviewers is now
+*available* on a public repository, but configuring it is an owner
+decision, not a prerequisite for correctness: the conditions live in
 [`scripts/publish-gate.js`](../scripts/publish-gate.js), tested in
 `test/publish-gate.test.ts`:
 
@@ -54,16 +50,15 @@ the exact version, pushing the tag, and approving the staged version with
 **What this does not protect against.** The gate runs inside the workflow.
 Someone with write access can edit the workflow on a branch, tag that, and
 the npm trusted publisher (which checks the repository and the workflow file
-name, not the ref) would accept it. GitHub Free has no server-side control
-for this in a private repository. Today the organisation has one member. The
-server-side options, all decisions for the owner rather than for this
-workflow:
-
-- GitHub Team: an `npm` environment limited to `v*` tags, a tag ruleset
-  saying who may create `v*` tags, and the npm trusted publisher bound to
-  environment `npm`.
-- GitHub Enterprise Cloud: the above plus required reviewers.
-- Making the repository public: all of the above on any plan, and provenance.
+name, not the ref) would accept it. Now that the repository is public, the
+server-side options are all *available* — an `npm` environment with required
+reviewers, a tag ruleset restricting who may create `v*` tags (creation is
+currently unrestricted; only update/deletion/force-push are blocked), and
+the npm trusted publisher bound to that environment — but none is
+configured yet. These remain owner decisions; until an environment gate
+exists, the residual risk is a same-repo write-access branch edit plus tag
+push, which is why `NPM_PUBLISH_VERSION` still requires a deliberate
+variable change and npm still requires 2FA approval.
 
 ## The tarball is reproducible
 
@@ -308,10 +303,11 @@ tab entry) is recorded on #117 separately from this implementation.
 
 ## Not here yet
 
-- Provenance: npm does not generate it for private repositories
-  ([GitHub changelog][gh-prov]). It goes with making the repository public.
-- `repository` and `homepage` point to the private repository, so the links
-  on npmjs.com will be 404 for everyone outside the organisation.
+- Provenance: the repository is now public, so npm provenance *can* be
+  generated — but the publish workflow does not yet request it, and whether
+  to enable it is part of the owner decisions above.
+- `repository` and `homepage` now point at a public repository, so the
+  links on npmjs.com resolve.
 - Real `docs/evidence/platforms/` records: they are produced per candidate
   by the acceptance runs; until they exist the gate denies, which is the
   intended fail-closed state.

@@ -31,6 +31,7 @@ import {
   type JobAuth,
   type JobKey,
 } from "./auth.js";
+import { errorMessage } from "../../errors.js";
 import type { FileChannel } from "./channel.js";
 import {
   isJobId,
@@ -295,7 +296,7 @@ export async function readSessionMarker(
   } catch (error) {
     return {
       state: "unreadable",
-      detail: error instanceof Error ? error.message : String(error),
+      detail: errorMessage(error),
     };
   }
   if (bytes === null) {

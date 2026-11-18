@@ -34,9 +34,9 @@ The series is `ae-a8n → ae-test → ae-farm`. Do not introduce a dependency th
 
 ## Delivery
 
-- `main` = released state. `release-0-1-0` は #92 で `main` に merge 済み。現在の release train は `release-0-2-0` で、ticket PR の base はそれ。release branch がない期間だけ ticket PR の base は `main`。
+- `main` = released state. `release-0-1-0` は #92、`release-0-2-0` は #133 で `main` に merge 済み。現在の release train は `release-0-3-0`（#210 で開設）で、ticket PR の base はそれ。release PR が `main` に merge されたら、次の ticket 作業を始める前に次期 `release-*` branch を `main` HEAD から開設し、`RELEASE_TRAIN` repository variable を新しい train 名に更新してこの記述を更新する（手順は docs/github-settings.md）。
 - 1 top-level Issue = 1 number-only branch = 1 ticket PR.
-- Independent ticket PR targets the release branch when one is active, otherwise `main`; same-release hard dependencies use stacked PRs.
+- Independent ticket PRs always target the current release branch; `main` accepts only `release-* -> main` release PRs (enforced by the `release-gate` check). Same-release hard dependencies use stacked PRs.
 - Publish the branch and open a **Draft PR** immediately after the first meaningful commit.
 - PR landing is **merge commit only** (squash/rebase disabled at the repository level).
 - **Landing authority follows the delivery boundary.** A ticket PR (`base` が current `release-*`、`main` 以外) は readiness/quality gate 通過後に追加の人間承認なしで自律 landing する。`release-* -> main` の release PR だけが explicit human authorization を必要とし、readiness は承認ではない。詳細は `github-delivery` Skill と `organization/profiles/release-driven-solo.md`。

@@ -16,16 +16,17 @@ const frame = await (await project.comp("Main")).renderFrame(0); // { path, widt
 await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to throw away
 ```
 
-> **Early release (`0.x`).** `0.2.0` is published under the `next`
-> dist-tag; `latest` stays on `0.1.0-alpha.0` until a `latest` promotion is
-> approved. If `npm view @ido-bata/ae-a8n@next version` does not show this
-> version, it has not been published yet. The API may change before 1.0.0,
-> and the scope without Windows real-host evidence is listed under "What
-> is not proven" below.
+> **Early release (`0.x`), scoped guarantee.** `0.3.0` is published as
+> `latest` under an owner-approved limited guarantee: the local
+> script-invocation automation path is verified on real hosts (macOS AE
+> 26.5/27 and Windows AE 2027, packaged-consumer E2E 2026-11-18), while
+> the opt-in in-AE dispatcher and the isolated backend remain
+> experimental with the unverified scope listed under "What is not
+> proven" below. The API may change before 1.0.0.
 
 ## First run in about five minutes
 
-1. `npm install @ido-bata/ae-a8n@next`
+1. `npm install @ido-bata/ae-a8n`
 2. `npx @ido-bata/ae-a8n doctor` — read-only; it names every blocker with a
    remedy and exits `3` while any remain. On macOS the usual ones are
    After Effects' **Settings → Scripting & Expressions → Allow Scripts to
@@ -47,14 +48,14 @@ guided multi-user flow (`doctor --user`, `test`, `recover`) is in
 
 | | |
 | --- | --- |
-| macOS | Verified against After Effects 2026 (26.5x89, Japanese UI) on macOS 27, arm64: launch, project/comp/layer lookup, effects by match name, parameter write/read, one-frame PNG render, typed failures, timeouts, session ownership; 20 consecutive fresh-session runs |
-| Windows | Verified against After Effects 2026 (26.5x89, English UI) on Windows 11 x64: cold launch, install discovery, process ownership and quit-only-what-this-session-started, menu commands, `hostEnvironment`, scene building, Undo/Redo, and Ae_Restro's 33-check E2E through this API (3 runs). The isolated backend also ran end to end on that host on 2026-11-11: a signed job over the channel, an in-session agent, AE started, comp and text layer built, frame 0 rendered, and the started process quit — twice. See [docs/windows-verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/windows-verification.md) and [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md). ARM64 and non-English UIs not run |
+| macOS | Verified against After Effects 2026 (26.5x89, Japanese UI) on macOS 27, arm64: launch, project/comp/layer lookup, effects by match name, parameter write/read, one-frame PNG render, typed failures, timeouts, session ownership; 20 consecutive fresh-session runs. Packaged 0.3.0 additionally passed the local E2E (launch → comp → text layer → render → owned quit) on AE 2027 (27.0x78), four consecutive runs on 2026-11-18 |
+| Windows | Verified against After Effects 2026 (26.5x89, English UI) on Windows 11 x64: cold launch, install discovery, process ownership and quit-only-what-this-session-started, menu commands, `hostEnvironment`, scene building, Undo/Redo, and Ae_Restro's 33-check E2E through this API (3 runs). The isolated backend also ran end to end on that host on 2026-11-11: a signed job over the channel, an in-session agent, AE started, comp and text layer built, frame 0 rendered, and the started process quit — twice. Packaged 0.3.0 passed the local E2E on AE 2027 (27.0) twice on 2026-11-18 (owned launch, render, owned quit; see [docs/evidence/windows-2026-11-18](https://github.com/ido-bata/ae-a8n/blob/main/docs/evidence/windows-2026-11-18/)). See [docs/windows-verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/windows-verification.md) and [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md). ARM64 and non-English UIs not run |
 | In-AE dispatcher (opt-in) | macOS AE 26.5.3 (`26.5.3x9`): the packed-consumer real lane passed on 2026-11-17 — handshake, comp/layer edit, PNG render, static extension call, authorization and instance-pin refusals, pinned reconnect, attached safe close — and `Scripts/Startup` auto-activation was observed. No Windows real-host run exists |
 | Node | 22 or later (developed on 24) |
 
 What has been checked, and how, is in [docs/verification.md](https://github.com/ido-bata/ae-a8n/blob/main/docs/verification.md).
 
-What is **not** proven in `0.2.0`, so a green run is not read as more
+What is **not** proven in `0.3.0`, so a green run is not read as more
 than it is:
 
 - **Windows real-host evidence for the dispatcher paths is absent.** The
@@ -62,8 +63,9 @@ than it is:
   `ae-a8n dispatcher`, `ae-a8n extension build` through the dispatcher),
   its lifecycle CLI, Startup execution and the acceptance harness have
   real-host evidence on macOS AE 26.5.3 only; no Windows real-host run
-  exists for them. The Windows-verified claims above cover the
-  script-invocation path measured on earlier tarballs, not this candidate.
+  exists for them. The Windows script-invocation claims above were
+  measured on packaged 0.3.0 itself (2026-11-18); the dispatcher rows
+  remain macOS-only.
 - Extension methods via `hostScript` / `ae.call` on the default
   script-invocation transport remain `fake/mock only` on real After
   Effects; they are verified on real host only through the dispatcher
@@ -79,7 +81,7 @@ than it is:
 ## Install
 
 ```bash
-npm install @ido-bata/ae-a8n@next
+npm install @ido-bata/ae-a8n
 ```
 
 Requirements on the machine that runs After Effects:

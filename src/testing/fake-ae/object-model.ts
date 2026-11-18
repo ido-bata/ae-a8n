@@ -16,6 +16,7 @@ import { dirname } from "node:path";
 
 import { CloseOptions, FakeFile, FakeFolder, type HostGlobals } from "./es3-runtime.js";
 import { encodePng } from "./png.js";
+import { errorMessage } from "../../errors.js";
 
 /** AE raises host errors with a numeric `errorNumber`. Mirrored for fidelity. */
 function aeError(errorNumber: number, message: string): Error {
@@ -651,7 +652,7 @@ export class FakePendingFrame {
         this._run();
       } catch (caught) {
         this._hasException = true;
-        this._exception = caught instanceof Error ? caught.message : String(caught);
+        this._exception = errorMessage(caught);
       }
     }
     if (this._hasException) {
