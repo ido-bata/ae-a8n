@@ -88,6 +88,18 @@ const HOST_CONDITION_NOTES: Record<HostCondition, string> = {
   unknown: "; whether the After Effects process is still running could not be determined",
 };
 
+/**
+ * Appended when the unreadable result file is empty. An empty file means the
+ * host opened it but not one byte was ever written — the signature of
+ * After Effects refusing script file writes
+ * (`Pref_SCRIPTING_FILE_NETWORK_SECURITY = "0"`, issue #188). It is a hint,
+ * not a verdict: a host that died mid-write leaves the same file.
+ */
+const EMPTY_RESULT_HINT =
+  " The file is empty: the host opened it but wrote nothing, which is what " +
+  "After Effects produces when script file/network access is disabled " +
+  '(Settings > Scripting & Expressions > "Allow Scripts to Write Files and Access Network").';
+
 export class TimeoutError extends Error {
   readonly method: string;
   readonly timeoutMs: number;
@@ -870,6 +882,7 @@ export class AeDriver {
     // Kept so a deadline reached with an unparseable file reports the real
     // cause instead of a bare timeout.
     let lastUnreadable: string | undefined;
+    let lastUnreadableBytes: number | undefined;
 
     for (;;) {
       const probe = probeResult(this.#paths, id);
@@ -879,6 +892,7 @@ export class AeDriver {
         // by rename, and falls back to a direct write when the rename fails;
         // only that fallback can be observed half-written. Keep polling.
         lastUnreadable = probe.reason;
+        lastUnreadableBytes = probe.bytes;
       } else if (probe.state === "read") {
         const parsed = parseResultEnvelope(probe.envelope);
         if (parsed.ok) {
@@ -906,7 +920,8 @@ export class AeDriver {
           lastUnreadable === undefined
             ? null
             : new ProtocolError(
-                `result file for ${method} (${id}) was never parseable: ${lastUnreadable}`,
+                `result file for ${method} (${id}) was never parseable: ${lastUnreadable}` +
+                  (lastUnreadableBytes === 0 ? EMPTY_RESULT_HINT : ""),
               );
         return {
           status: "error",

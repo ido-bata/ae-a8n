@@ -10,6 +10,7 @@
  *   - `app.build` is undefined, so `app.info` reported the string "undefined".
  */
 
+import { EventEmitter } from "node:events";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -229,6 +230,99 @@ describe("app.info", () => {
     const result = await info(transport);
     expect(result).toEqual({ version: "26.0.0" });
     expect(result).not.toHaveProperty("build");
+  });
+});
+
+describe("scripting file/network permission (issue #188)", () => {
+  const install = {
+    executable:
+      "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects",
+    versionName: "Adobe After Effects 2026.app",
+    renderExecutable: null,
+  };
+  const T0 = Date.parse("2026-10-15T00:00:00Z");
+  const blocked = {
+    state: "blocked" as const,
+    prefsDir: "/Users/someone/Library/Preferences/Adobe/After Effects/26.5",
+    prefValue: "0",
+  };
+
+  it("refuses before starting AE when script writes are provably disabled", async () => {
+    let started = false;
+    const t = new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      now: () => T0,
+      processes: () => [],
+      launchMacHost: () => {
+        started = true;
+        return Promise.resolve(42);
+      },
+      macScriptingPermission: () => blocked,
+    });
+    const error = await t.launch().then(
+      () => null,
+      (caught: unknown) => caught as Error,
+    );
+    expect(error?.name).toBe("ScriptingPermissionError");
+    expect(error?.message).toContain("Scripting & Expressions");
+    expect(error?.message).toContain(blocked.prefsDir);
+    // Nothing was started: the refusal lands before launch side effects.
+    expect(started).toBe(false);
+    // A retry re-evaluates rather than latching the failed launch.
+    await expect(t.launch()).rejects.toThrow(/ScriptingPermissionError|Scripting & Expressions/);
+    expect(started).toBe(false);
+  });
+
+  it("refuses an adoption too: a running host still cannot write results", async () => {
+    const t = new ScriptInvocationTransport({
+      platform: "darwin",
+      install,
+      now: () => T0,
+      processes: () => [],
+      macScriptingPermission: () => blocked,
+      adopt: { pid: 42, startedAt: T0 + 1_000, executable: install.executable },
+    });
+    await expect(t.launch()).rejects.toThrow(/Scripting & Expressions/);
+  });
+
+  it("proceeds when the permission is allowed, unreadable, or unevaluated", async () => {
+    for (const permission of [
+      null,
+      { state: "unreadable" as const, prefsDir: "/p", prefValue: null },
+      { state: "allowed" as const, prefsDir: "/p", prefValue: "1" },
+    ]) {
+      const t = new ScriptInvocationTransport({
+        platform: "darwin",
+        install,
+        now: () => T0,
+        processes: () => [],
+        launchMacHost: () => Promise.resolve(42),
+        macScriptingPermission: () => permission,
+      });
+      await expect(t.launch()).resolves.toBeUndefined();
+    }
+  });
+
+  it("is not consulted on Windows", async () => {
+    const child = Object.assign(new EventEmitter(), { pid: 7, unref: () => {} });
+    queueMicrotask(() => child.emit("spawn"));
+    const t = new ScriptInvocationTransport({
+      platform: "win32",
+      install: {
+        executable: "C:\\AE\\Support Files\\AfterFX.exe",
+        versionName: "x",
+        renderExecutable: null,
+      },
+      processes: () => {
+        throw new Error("must not be consulted");
+      },
+      macScriptingPermission: () => {
+        throw new Error("must not be consulted");
+      },
+      spawnLauncher: () => child,
+    });
+    await expect(t.launch()).resolves.toBeUndefined();
   });
 });
 

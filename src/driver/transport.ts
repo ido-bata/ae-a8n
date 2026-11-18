@@ -23,6 +23,22 @@ export class ScriptNotSentError extends Error {
   }
 }
 
+/**
+ * The host's own scripting preference provably forbids the file writes the
+ * bridge needs, established before anything was started or sent. Every
+ * request and result travels as a file, so with
+ * `Pref_SCRIPTING_FILE_NETWORK_SECURITY = "0"` the host opens the result
+ * file, writes nothing, and every call would only ever time out (observed
+ * on AE 27.0, issue #188). Thrown instead of launching so no After Effects
+ * process is left running for a session that cannot work.
+ */
+export class ScriptingPermissionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ScriptingPermissionError";
+  }
+}
+
 export type InvokeOptions = {
   /**
    * Aborted when the call's deadline passes. A transport that waits for the

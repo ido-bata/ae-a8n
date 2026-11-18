@@ -26,7 +26,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir, userInfo } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import { NODE_FLOOR_MAJOR, nodeMajor } from "../../doctor/index.js";
@@ -60,6 +60,11 @@ import {
   type TargetSpec,
   UnprovenTargetError,
 } from "../contract.js";
+import {
+  aePrefsDir,
+  aeScriptingPermission,
+  currentUsername,
+} from "./scripting-permission.js";
 
 /** The package's Node floor; the neutral doctor owns the constant. */
 export { NODE_FLOOR_MAJOR };
@@ -194,15 +199,7 @@ function failureOf(result: CommandRun): string {
   return text.length > 0 ? text : `command exited with ${result.status}`;
 }
 
-/** The current account, or null when the directory service will not say. */
-export function currentUsername(): string | null {
-  try {
-    const name = userInfo().username;
-    return name.length > 0 ? name : null;
-  } catch {
-    return null;
-  }
-}
+export { currentUsername };
 
 /** `ps -axo pid=,uid=,comm=` output, filtered to After Effects executables. */
 export function parseAeProcesses(text: string): DarwinProcess[] {
@@ -376,27 +373,6 @@ export function readDarwinFacts(
   };
 }
 
-/**
- * The account's AE prefs folder for an app version (`26.5.3` → `26.5`), or
- * null when the version string cannot be split. This is the same folder the
- * scripting preference and the per-user `Scripts/Startup` directory live
- * under; both were observed on AE 26.5/27.0 (G0 evidence 2026-11-16).
- */
-function aePrefsDir(version: string): string | null {
-  const [major, minor] = version.split(".");
-  if (major === undefined || minor === undefined) {
-    return null;
-  }
-  return join(
-    homedir(),
-    "Library",
-    "Preferences",
-    "Adobe",
-    "After Effects",
-    `${major}.${minor}`,
-  );
-}
-
 /** The locations the ExtendScript component is known to occupy, per install. */
 function scriptingComponentCandidates(install: DarwinAeInstall): readonly string[] {
   const bundle = join(install.location, `${basename(install.location)}.app`);
@@ -482,61 +458,16 @@ export function readStartupFolder(
 
 /**
  * `Pref_SCRIPTING_FILE_NETWORK_SECURITY` for the selected install, from the
- * target account's own AE prefs. Readable only when the target account is
- * the account this process runs as — another account's `~/Library` cannot
- * be read honestly, so the result is `null` there rather than a guess.
- *
- * AE keys its prefs folder by `major.minor` of the app version
- * (`26.5.3` → `26.5`). The pref is `"1"` when scripts may write files and
- * use the network, `"0"` when they may not (verified on AE 26.5, G0
- * evidence 2026-11-16). A missing file or key is "unreadable", not a
- * verdict.
+ * target account's own AE prefs. The evaluation itself lives in
+ * `scripting-permission.ts`, shared with the script-invocation transport's
+ * launch check so the two cannot disagree about what "blocked" means.
  */
 export function readAeScriptingPermission(
   installs: readonly DarwinAeInstall[],
   targetUser: string | null,
 ): DarwinFacts["aeScripting"] {
-  if (targetUser === null || targetUser !== currentUsername()) {
-    return null;
-  }
   const selected = installs.find((install) => install.selected) ?? null;
-  if (selected === null || selected.version === null) {
-    return null;
-  }
-  const prefsDir = aePrefsDir(selected.version);
-  if (prefsDir === null) {
-    return null;
-  }
-  const unreadable = { state: "unreadable" as const, prefsDir, prefValue: null };
-  let entries: string[];
-  try {
-    entries = readdirSync(prefsDir);
-  } catch {
-    return unreadable;
-  }
-  const prefix = `Adobe After Effects ${selected.version.split(".").slice(0, 2).join(".")} `;
-  for (const name of entries) {
-    if (!name.startsWith(prefix) || !name.endsWith(".txt")) {
-      continue;
-    }
-    let text: string;
-    try {
-      text = readFileSync(join(prefsDir, name), "utf-8");
-    } catch {
-      continue;
-    }
-    const match = /Pref_SCRIPTING_FILE_NETWORK_SECURITY" = "([^"]+)"/.exec(text);
-    if (match === null) {
-      continue;
-    }
-    const value = match[1] ?? "";
-    return {
-      state: value === "1" ? "allowed" : value === "0" ? "blocked" : "unreadable",
-      prefsDir,
-      prefValue: value,
-    };
-  }
-  return unreadable;
+  return aeScriptingPermission(selected?.version ?? null, targetUser);
 }
 
 /** The capabilities this backend can honestly claim today. */
