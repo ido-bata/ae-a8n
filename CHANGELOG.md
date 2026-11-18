@@ -2,13 +2,18 @@
 
 ## 0.3.0
 
-Staged for the `next` dist-tag; `latest` stays on `0.1.0-alpha.0` until
-the #75 cross-platform evidence gate passes. This is the `release-0-3-0`
+Published as `latest` under an owner-approved limited guarantee: the
+local script-invocation automation path is verified on real hosts on both
+macOS and Windows (packaged-consumer E2E, 2026-11-18); the opt-in
+dispatcher and isolated backend remain experimental — their unverified
+scope is stated under "Not proven" and tracked in the open issues. This is
+the `release-0-3-0`
 train: the isolated-session hardening and packaged-consumer work merged
 after 0.2.0, plus the delivery-model repair that reopened a release
 branch after `release-0-2-0` closed. As a `0.x` version it is an
-early-development release; Windows real-host evidence remains partial and
-is stated under "Not proven" rather than encoded in the version number.
+early-development release; the unverified scope — dispatcher and isolated
+backend paths — is stated under "Not proven" rather than encoded in the
+version number.
 
 ### Added
 

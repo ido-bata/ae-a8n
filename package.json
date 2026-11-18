@@ -1,7 +1,7 @@
 {
   "name": "@ido-bata/ae-a8n",
   "version": "0.3.0",
-  "description": "Drive Adobe After Effects from Node: open projects, apply effects, set parameters, render frames. Early 0.x release; core flows are macOS-verified and the opt-in in-AE dispatcher path passed real-host acceptance on macOS AE 26.5.3, but Windows real-host evidence is missing.",
+  "description": "Drive Adobe After Effects from Node: open projects, apply effects, set parameters, render frames. Local automation is verified on real hosts (macOS AE 26.5/27 and Windows AE 2027); the opt-in in-AE dispatcher and isolated backend are experimental with partial real-host evidence.",
   "type": "module",
   "license": "MIT",
   "engines": {
