@@ -5,8 +5,10 @@
 **ローカルの script-invocation 経路**（`AfterEffects.launch()`）の話。
 
 隔離セッション（`ae-a8n test` / `setup` / `--user` / `--host`）の手順は
-[specs/isolated-ae/quickstart.md](../specs/isolated-ae/quickstart.md) と
-[docs/offstage-macos.md](offstage-macos.md) を参照。そちらは「他人の
+[docs/isolated-testing.md](isolated-testing.md)（helper user の運用）、
+[specs/isolated-ae/quickstart.md](../specs/isolated-ae/quickstart.md)、
+[docs/offstage-macos.md](offstage-macos.md) を参照。詰まった時は
+[docs/troubleshooting.md](troubleshooting.md) の判断木から。そちらは「他人の
 デスクトップに触れない」ことを目的にした別モードで、保証の強さが違う。
 
 ## 全体の流れ
