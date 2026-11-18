@@ -121,7 +121,10 @@ function npm(args, options = {}) {
 function npmView(args, registry) {
   const registryArgs = registry === undefined ? [] : ["--registry", registry];
   const out = npm(["view", ...args, "--json", ...registryArgs]);
-  return JSON.parse(out);
+  // An empty answer means the registry has no dist-tags view for the
+  // package (npm.pkg.github.com does not serve it for every package).
+  // Callers decide whether empty is "none" or "cannot ask".
+  return out.trim() === "" ? null : JSON.parse(out);
 }
 
 function versionsOn(registry, name) {
@@ -144,7 +147,15 @@ function versionsOn(registry, name) {
 function distTagsOn(registry, name) {
   try {
     const tags = npmView([name, "dist-tags"], registry);
-    if (tags === null || typeof tags !== "object" || Array.isArray(tags)) {
+    if (tags === null) {
+      // npmjs must always answer dist-tags; an empty reply there means the
+      // mirror cannot know where tags should point, so it must not guess.
+      if (registry === undefined) {
+        throw new Error(`npm view ${name} dist-tags answered empty on ${NPMJS_REGISTRY}`);
+      }
+      return {};
+    }
+    if (typeof tags !== "object" || Array.isArray(tags)) {
       return {};
     }
     return Object.fromEntries(Object.entries(tags).map(([tag, v]) => [tag, String(v)]));
