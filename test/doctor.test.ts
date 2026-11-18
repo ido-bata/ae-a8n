@@ -1174,7 +1174,8 @@ describe("the in-session and packaged TCC probes cannot drift apart", () => {
     expect(match).not.toBeNull();
     // The two measure the same grants for the same responsible process;
     // a change to one without the other would silently measure different
-    // things under the same name.
-    expect(match?.[1]).toBe(packaged);
+    // things under the same name. Line endings are normalised: a Windows
+    // checkout writes CRLF where the packaged source keeps LF.
+    expect(match?.[1].replace(/\r\n/g, "\n")).toBe(packaged);
   });
 });
