@@ -547,7 +547,7 @@ export class MacGuiRecovery {
       );
     }
     if (options.allowConsoleSession !== true) {
-      const consoleUid = consoleSessionUid();
+      const consoleUid = (options.consoleUid ?? consoleSessionUid)();
       // A console owner that cannot be read must not be read as "not the
       // console": -1 never equals a real uid, so the check below would pass
       // and the recovery would act on the screen the human is looking at.
