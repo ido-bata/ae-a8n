@@ -150,7 +150,7 @@ describe("evaluatePreflight malformed-input refusals", () => {
 
   it("rejects ahead_by that is not a positive integer", () => {
     for (const aheadBy of [0, -1, 1.5, NaN, "5" as never, undefined as never]) {
-      expect(mod.evaluatePreflight(facts({ aheadBy: aheadBy as number })).ok).toBe(false);
+      expect(mod.evaluatePreflight(facts({ aheadBy })).ok).toBe(false);
     }
   });
 
@@ -160,8 +160,8 @@ describe("evaluatePreflight malformed-input refusals", () => {
   });
 
   it("rejects check runs that are not an array", () => {
-    expect(mod.evaluatePreflight(facts({ runs: null as never })).ok).toBe(false);
-    expect(mod.evaluatePreflight(facts({ runs: {} as never })).ok).toBe(false);
+    expect(mod.evaluatePreflight(facts({ runs: null })).ok).toBe(false);
+    expect(mod.evaluatePreflight(facts({ runs: {} })).ok).toBe(false);
   });
 
   it("rejects a required check run with an unparseable started_at", () => {
