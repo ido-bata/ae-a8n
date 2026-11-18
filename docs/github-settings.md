@@ -60,6 +60,24 @@ train branch tip, and `main...train` `ahead_by > 0` so a fully merged
 (stale) train stops authorizing integrations. An unset, empty or
 non-branch-name `RELEASE_TRAIN` fails closed.
 
+### Merge-time preflight
+
+The gate proves the path when its check runs; it cannot re-run when
+`RELEASE_TRAIN` changes or when a stale check result outlives a branch
+update. The merge executor therefore revalidates immediately before
+merging:
+
+```bash
+node scripts/release-merge-preflight.js <release-pr-number>
+gh pr merge <release-pr-number> --merge
+```
+
+The script re-fetches the PR base/head, the `RELEASE_TRAIN` variable,
+the train tip, `ahead_by`, and the latest required-check runs **on the
+current head SHA**, and exits non-zero on any mismatch. Merge only on
+exit 0, and only with explicit human authorization — the script checks
+the integration path, not approval.
+
 The gate does not decide release *approval* — that remains the explicit
 human authorization at merge time. It only proves the integration path.
 
