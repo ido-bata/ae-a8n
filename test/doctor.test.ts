@@ -1152,3 +1152,16 @@ describe("doctor on a Windows host, through the same CLI", () => {
     ).toEqual({ host: "WIN-AE-01", user: "" });
   });
 });
+
+describe("the in-session and packaged TCC probes cannot drift apart", () => {
+  it("run the identical preflight script", async () => {
+    const { TCC_PROBE_SCRIPT: packaged } = await import("../src/platform/darwin/tcc.js");
+    const { TCC_PROBE_SCRIPT: inSession } = await import(
+      "../scripts/isolated-session/permission-probe.mjs"
+    );
+    // The two measure the same grants for the same responsible process;
+    // a change to one without the other would silently measure different
+    // things under the same name.
+    expect(inSession).toBe(packaged);
+  });
+});
