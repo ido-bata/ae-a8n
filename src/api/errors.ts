@@ -15,6 +15,8 @@ import {
 } from "../driver/driver.js";
 import type { HostCondition } from "../driver/driver.js";
 import { ScriptNotSentError } from "../driver/transport.js";
+import { ScriptInvocationError } from "../driver/script-invocation.js";
+import { classifyAppleEventError } from "../driver/apple-event-denials.js";
 import type { PropertyKind } from "./types.js";
 
 export {
@@ -183,6 +185,20 @@ export function contextualise(op: string, error: unknown): never {
       cause: error,
       ...(error.hostCondition !== undefined ? { hostCondition: error.hostCondition } : {}),
     });
+  }
+  if (error instanceof ScriptInvocationError) {
+    // A refused or unanswered Apple Event carries a number with a distinct
+    // remedy (-1708 trust, -1743 Automation, -1712 modal, -609 gone). Name
+    // it and its next action instead of leaving a raw osascript line.
+    const denial = classifyAppleEventError(error.stderr);
+    throw new AfterEffectsError(
+      denial === null
+        ? `${op} failed: ${error.message}`
+        : `${op} failed: ${error.message} ` +
+            `(Apple Events ${denial.code}: ${denial.meaning}. Next: ${denial.nextAction})`,
+      op,
+      { cause: error },
+    );
   }
   if (error instanceof ScriptNotSentError) {
     // The call never reached the host: it did not fail there, and nothing ran.
