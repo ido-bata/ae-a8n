@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.3.0
+
+Staged for the `next` dist-tag; `latest` stays on `0.1.0-alpha.0` until
+the #75 cross-platform evidence gate passes. This is the `release-0-3-0`
+train: the isolated-session hardening and packaged-consumer work merged
+after 0.2.0, plus the delivery-model repair that reopened a release
+branch after `release-0-2-0` closed. As a `0.x` version it is an
+early-development release; Windows real-host evidence remains partial and
+is stated under "Not proven" rather than encoded in the version number.
+
+### Added
+
+- **Packaged shared-root inspection** (#199): `ae-a8n doctor` and
+  `recover` now report read-only diagnostics for the isolated-session
+  shared root — stale jobs, orphaned results, interrupted publish
+  temporaries and the agent banner — using the same trust rules as the
+  repository harness (trusted uid from the agent banner, console-owner
+  fallback, never the caller's uid). Packaged prune is intentionally not
+  provided.
+- **Isolated-session acceptance fixture** (#62): `examples/isolated-test.ts`
+  ships in the tarball and verifies it really runs as the helper account
+  (`--expect-user`, exit 3 before touching AE on mismatch) before running
+  the minimal AE smoke. `docs/isolated-testing.md` §2.1 documents the
+  runnable quickstart for npm consumers without a repository checkout.
+- **GitHub Packages mirror** (#117): `scripts/github-packages-sync.js` +
+  `github-packages.yml` mirror every npmjs-published version to
+  npm.pkg.github.com with sha1 verification, idempotent skip, dist-tag
+  reconciliation to npmjs pointers, and per-version probing (verified live:
+  all five versions mirrored, `latest`/`next` match npmjs).
+- **Guided grant/check loop** (#57): `grant-check.mjs` requests only
+  missing permissions inside the helper session and re-probes until
+  granted, with dialog routing printed before any request.
+
+### Security
+
+- **Session identity re-proof** (#59/T035, PR #194): every Apple Event
+  send and every GUI recovery action re-reads the target session
+  (uid/asid/kind/console owner) and refuses on mismatch, session loss or
+  console flip.
+- **Shared directory continuous proof** (#59/T036, PR #208): the session
+  agent re-validates the sticky/writable contract of jobs/results/logs on
+  every poll and refuses symlinked or decayed directories instead of
+  silently repairing them mid-flight.
+- **Job/result trust rules** extended in the packaged inspector to mirror
+  the harness: lstat-only, real `.job.json`/`.result.json` matching,
+  60-second temporary publish window, fail-closed ownership/mode checks.
+
+### Changed
+
+- **Delivery model repair** (#210/#215): `release-0-3-0` opened after the
+  `release-0-2-0` merge left ticket PRs integrating into `main`;
+  `release-gate.yml` (`pull_request_target`) will accept only the
+  canonical train recorded in the `RELEASE_TRAIN` repository variable
+  once it reaches `main`.
+
+### Not proven in this version
+
+- Windows real-host evidence for the dispatcher path, extension calls and
+  `ae.call` remains absent; `ownership()` is always `unknown` on
+  Windows and the package will not quit After Effects there.
+- The isolated-session end-to-end run on a real helper account has not
+  completed; the new fixture exists but its real-session PASS is pending
+  (#57 T026, #62 T076).
+- AE 26.5 script-trust approval granularity is still unmeasured (#125).
+
+
 ## 0.2.0
 
 Staged for the `next` dist-tag; `latest` stays on `0.1.0-alpha.0`. This is
