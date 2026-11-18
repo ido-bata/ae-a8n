@@ -105,6 +105,12 @@ Open, not fixed here:
 - **ae-test teardown hides a stuck session.** `TestFixture.teardown` swallows
   `close()` errors, so a test whose session failed to quit is reported as
   passed and the next test launches into the stuck AE.
+- **The same frame can render ±1 differently across After Effects sessions**
+  (#25): one channel differs on 13 pixels of a blurred edge between two
+  sessions of the same project and edits. It is per-session state, not edit
+  order. Snapshots and pixel comparisons must run within one session, or
+  carry a per-channel tolerance across sessions — the packaged skill says
+  the same (`skills/after-effects-automation/SKILL.md`).
 - ~~`close()` quits an AE it did not start~~ — fixed after `6de80c5`; see
   [sessions.md](sessions.md).
 
