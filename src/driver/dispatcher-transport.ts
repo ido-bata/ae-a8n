@@ -39,6 +39,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { errorMessage } from "../errors.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { basename, dirname, join, posix, resolve, win32 } from "node:path";
@@ -212,10 +213,6 @@ const REQUEST_ID_RE =
 const RESULT_MAX_AGE_MS = 60 * 60 * 1000;
 /** Inbox leftovers older than this are swept on prepare. */
 const INBOX_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /** First two version components, as AE's per-user Scripts folders are named. */
 export function aeScriptsVersion(aeVersion: string): string {
@@ -463,7 +460,7 @@ export class DispatcherTransport implements HostTransport {
       });
     } catch (error) {
       throw new HostUnavailableError(
-        `cannot verify the Windows ACL of ${path}: ${messageOf(error)}; ` +
+        `cannot verify the Windows ACL of ${path}: ${errorMessage(error)}; ` +
           "the in-AE channel is refused rather than assumed private",
       );
     }
@@ -576,7 +573,7 @@ export class DispatcherTransport implements HostTransport {
         source = readFileSync(this.#hostScriptPath);
       } catch (error) {
         throw new HostUnavailableError(
-          `host script not found: ${this.#hostScriptPath} (${messageOf(error)})`,
+          `host script not found: ${this.#hostScriptPath} (${errorMessage(error)})`,
         );
       }
     }
@@ -1027,7 +1024,7 @@ export class DispatcherTransport implements HostTransport {
       request = JSON.parse(await readFile(paths.requestPath, "utf-8")) as Record<string, unknown>;
     } catch (error) {
       throw new ScriptNotSentError(
-        `cannot read the request the driver wrote: ${messageOf(error)}`,
+        `cannot read the request the driver wrote: ${errorMessage(error)}`,
       );
     }
     if (request["v"] !== 1 || request["id"] !== paths.id) {

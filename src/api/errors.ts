@@ -13,6 +13,7 @@ import {
   HostUnavailableError,
   TimeoutError,
 } from "../driver/driver.js";
+import { errorMessage } from "../errors.js";
 import type { HostCondition } from "../driver/driver.js";
 import { ScriptNotSentError } from "../driver/transport.js";
 import { ScriptInvocationError } from "../driver/script-invocation.js";
@@ -231,7 +232,7 @@ export function contextualise(op: string, error: unknown): never {
     throw error;
   }
   throw new AfterEffectsError(
-    `${op} failed: ${error instanceof Error ? error.message : String(error)}`,
+    `${op} failed: ${errorMessage(error)}`,
     op,
     { cause: error },
   );

@@ -21,6 +21,7 @@ import {
   parseIcaclsReport,
   type AclRead,
 } from "./acl.js";
+import { errorMessage } from "../../errors.js";
 
 import {
   MAX_KEY_FILE_BYTES,
@@ -49,7 +50,7 @@ async function readAclWithIcacls(path: string): Promise<AclRead> {
   } catch (error) {
     return {
       ok: false,
-      detail: `icacls could not be run on ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      detail: `icacls could not be run on ${path}: ${errorMessage(error)}`,
     };
   }
 }

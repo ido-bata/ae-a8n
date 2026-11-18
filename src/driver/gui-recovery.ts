@@ -32,6 +32,7 @@ import {
   type CensusRunner,
   type WindowCensus,
 } from "../platform/darwin/window-census.js";
+import { errorMessage } from "../errors.js";
 import {
   acquireGuiLease,
   auditGuiEvent,
@@ -673,14 +674,14 @@ export class MacGuiRecovery {
             kind: "mutate",
             op,
             outcome: "unknown",
-            detail: error instanceof Error ? error.message : String(error),
+            detail: errorMessage(error),
           });
         } catch {
           // The original failure is the evidence that matters.
         }
         throw new GuiMutationError(
           `the ${op} mutation was attempted but its result is unknown: ` +
-            `${error instanceof Error ? error.message : String(error)}. ` +
+            `${errorMessage(error)}. ` +
             "The screen must be re-observed before any retry.",
           { cause: error },
         );
@@ -707,7 +708,7 @@ export class MacGuiRecovery {
             kind: "lease-release",
             op,
             outcome: "error",
-            detail: error instanceof Error ? error.message : String(error),
+            detail: errorMessage(error),
           });
         } catch {
           // Nothing left to report to.
@@ -746,7 +747,7 @@ export class MacGuiRecovery {
     } catch (error) {
       census = {
         available: false,
-        reason: `window census failed: ${error instanceof Error ? error.message : String(error)}`,
+        reason: `window census failed: ${errorMessage(error)}`,
       };
     }
     return assessGuiObservation(this.#pid, parsed.frontmost, parsed.windows, census);
@@ -1052,7 +1053,7 @@ export function defaultLeaseController(options: {
         outcome.lease.release();
         throw new GuiRecoveryError(
           `GUI mutation refused: the lease was acquired but its audit record could not be ` +
-            `written (${auditError instanceof Error ? auditError.message : String(auditError)}); ` +
+            `written (${errorMessage(auditError)}); ` +
             "the lease was released and nothing was pressed or clicked",
         );
       }

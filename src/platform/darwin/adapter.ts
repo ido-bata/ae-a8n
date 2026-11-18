@@ -26,6 +26,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { errorMessage } from "../../errors.js";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -262,7 +263,7 @@ function readInstalls(exec: DarwinExec): {
     return {
       installs: [],
       failure: `the Applications folder could not be read: ${
-        error instanceof Error ? error.message : String(error)
+        errorMessage(error)
       }`,
     };
   }
@@ -1052,7 +1053,7 @@ function readSetupState(stateFile: string): SetupStateRead {
     return {
       ok: false,
       detail: `the setup state file ${stateFile} could not be read: ${
-        error instanceof Error ? error.message : String(error)
+        errorMessage(error)
       }`,
     };
   }
@@ -1605,7 +1606,7 @@ export class DarwinAdapter implements PlatformAdapter {
         code: "A8N-JOB-002",
         action: "reported",
         detail: `the run directory could not be listed: ${
-          error instanceof Error ? error.message : String(error)
+          errorMessage(error)
         }`,
       });
     }

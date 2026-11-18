@@ -21,6 +21,7 @@ import {
   presenceInstancePath,
   signPresence,
 } from "./presence.js";
+import { errorMessage } from "../../errors.js";
 import { loadKeyFile } from "./key-store.js";
 import { measureWindowsSessionId, resolveSessionId } from "./session.js";
 
@@ -147,10 +148,6 @@ function parseArguments(argv: readonly string[], defaults: AgentDefaults): Parse
   };
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -190,7 +187,7 @@ export async function main(
   try {
     assertInteractiveIdentity(identity);
   } catch (error) {
-    stderr(`windows-agent: ${messageOf(error)}\n`);
+    stderr(`windows-agent: ${errorMessage(error)}\n`);
     return 1;
   }
 
@@ -224,7 +221,7 @@ export async function main(
     }
     await channel.listDirectories("jobs");
   } catch (error) {
-    stderr(`windows-agent: the channel could not be read: ${messageOf(error)}\n`);
+    stderr(`windows-agent: the channel could not be read: ${errorMessage(error)}\n`);
     return 1;
   }
 
@@ -253,7 +250,7 @@ export async function main(
   try {
     await publishPresence();
   } catch (error) {
-    stderr(`windows-agent: the heartbeat could not be written: ${messageOf(error)}\n`);
+    stderr(`windows-agent: the heartbeat could not be written: ${errorMessage(error)}\n`);
     return 1;
   }
 
@@ -269,7 +266,7 @@ export async function main(
     try {
       jobIds = await channel.listDirectories("jobs");
     } catch (error) {
-      stderr(`windows-agent: the channel could not be read: ${messageOf(error)}\n`);
+      stderr(`windows-agent: the channel could not be read: ${errorMessage(error)}\n`);
       return 1;
     }
 
@@ -296,7 +293,7 @@ export async function main(
         // heartbeat would stop with it. The job stays unexecuted, and the
         // controller times it out to `unknown`, which is the fail-closed
         // direction.
-        stderr(`windows-agent: job ${jobId}'s result could not be read: ${messageOf(error)}\n`);
+        stderr(`windows-agent: job ${jobId}'s result could not be read: ${errorMessage(error)}\n`);
         continue;
       }
       if (result !== null) {
@@ -355,7 +352,7 @@ export async function main(
           stderr(`windows-agent: job ${jobId} is quarantined: ${outcome.detail}\n`);
         }
       } catch (error) {
-        stderr(`windows-agent: job ${jobId} could not be processed: ${messageOf(error)}\n`);
+        stderr(`windows-agent: job ${jobId} could not be processed: ${errorMessage(error)}\n`);
         return 1;
       }
     }
@@ -366,7 +363,7 @@ export async function main(
     try {
       await publishPresence();
     } catch (error) {
-      stderr(`windows-agent: the heartbeat could not be written: ${messageOf(error)}\n`);
+      stderr(`windows-agent: the heartbeat could not be written: ${errorMessage(error)}\n`);
       return 1;
     }
     await sleep(pollMs);

@@ -18,6 +18,7 @@ import {
   readGuiSessionFailure,
   type MacSession,
 } from "../driver/mac-session.js";
+import { errorMessage } from "../errors.js";
 import { MacHostRecovery } from "../driver/recovery.js";
 import type { LaunchProvenance } from "../driver/launch-provenance.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
@@ -252,7 +253,7 @@ function resolveTransport(
   } catch (error) {
     throw new AfterEffectsError(
       `transport target pin is not a usable AE version: ${
-        error instanceof Error ? error.message : String(error)
+        errorMessage(error)
       }`,
       op,
     );
@@ -354,7 +355,7 @@ export async function openAfterEffects(
     try {
       source = readFileSync(hostScript, "utf-8");
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = errorMessage(error);
       throw new AfterEffectsError(
         `host script not readable: ${hostScript} (${reason})`,
         op,

@@ -25,6 +25,7 @@ import {
   isBlockingWindow,
   type GuiWindowInfo,
 } from "./gui-recovery.js";
+import { errorMessage } from "../errors.js";
 import type { MacSession } from "./mac-session.js";
 
 export type RecoveryContext = {
@@ -380,7 +381,7 @@ export class MacHostRecovery implements HostRecovery {
         recovered: false,
         outcome: "refused",
         ...(error instanceof GuiRecoveryError && error.code !== undefined ? { code: error.code } : {}),
-        evidence: `no GUI recovery is possible: ${error instanceof Error ? error.message : String(error)}`,
+        evidence: `no GUI recovery is possible: ${errorMessage(error)}`,
       };
     }
     let state: ReturnType<MacGuiRecovery["listWindows"]>;
@@ -391,7 +392,7 @@ export class MacHostRecovery implements HostRecovery {
         recovered: false,
         outcome: "refused",
         ...(error instanceof GuiRecoveryError && error.code !== undefined ? { code: error.code } : {}),
-        evidence: `the target session could not be inspected: ${error instanceof Error ? error.message : String(error)}`,
+        evidence: `the target session could not be inspected: ${errorMessage(error)}`,
       };
     }
     const windows = state.windows;
@@ -496,7 +497,7 @@ export class MacHostRecovery implements HostRecovery {
           // Any other pre-mutation GuiRecoveryError (session entry, listing
           // mismatch, a failed process-identity re-check) also means nothing
           // was pressed.
-          leaseRefusal = error instanceof Error ? error.message : String(error);
+          leaseRefusal = errorMessage(error);
           refusalCode = error instanceof GuiRecoveryError ? error.code : undefined;
         }
         break;

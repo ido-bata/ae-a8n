@@ -21,6 +21,7 @@ import {
   type SessionIdentity,
   type TargetSpec,
 } from "../platform/contract.js";
+import { errorMessage } from "../errors.js";
 import {
   captureFile,
   writeRunArtifacts,
@@ -64,10 +65,6 @@ export type TestRunResult = {
   readonly identity: SessionIdentity | null;
   readonly notice?: string;
 };
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function codeOf(error: unknown): string | null {
   if (typeof error !== "object" || error === null) {
@@ -121,7 +118,7 @@ function launchEvidenceOf(error: unknown): Readonly<Record<string, string | numb
  * it is never reported as a test failure, and it quarantines the target.
  */
 function classifyError(error: unknown, doing: string): Classified {
-  const message = messageOf(error);
+  const message = errorMessage(error);
   if (error instanceof UnprovenTargetError) {
     return {
       status: "refused",
@@ -284,9 +281,9 @@ export async function runTest(input: TestRunInput): Promise<TestRunResult> {
       // The state is unknown whether or not the record could be written. The
       // run must still report that, and must not pretend the next run will be
       // refused: no record means no guard.
-      event("run.quarantine-unwritten", detail, { error: messageOf(error) });
+      event("run.quarantine-unwritten", detail, { error: errorMessage(error) });
       notice =
-        `${detail}. The quarantine record could not be written (${messageOf(error)}), ` +
+        `${detail}. The quarantine record could not be written (${errorMessage(error)}), ` +
         "so the next run will not be refused by it; inspect this run before continuing.";
       return;
     }
@@ -461,7 +458,7 @@ export async function runTest(input: TestRunInput): Promise<TestRunResult> {
       try {
         closing = await session.close();
       } catch (error) {
-        closing = { closed: false, reason: `the session could not be closed: ${messageOf(error)}` };
+        closing = { closed: false, reason: `the session could not be closed: ${errorMessage(error)}` };
       }
       const detail =
         closing.reason ?? (closing.closed ? "the session was closed" : "the session was not closed");

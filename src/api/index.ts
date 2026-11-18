@@ -24,6 +24,7 @@ import {
   readLaunchProvenance,
   type LaunchProvenance,
 } from "../driver/launch-provenance.js";
+import { errorMessage } from "../errors.js";
 import type { TraceEvent } from "../trace/trace.js";
 import {
   buildCapabilityHandshake,
@@ -166,7 +167,7 @@ export class AfterEffects {
       provenance = readLaunchProvenance(sessionRoot);
     } catch (error) {
       throw new AfterEffectsError(
-        error instanceof Error ? error.message : String(error),
+        errorMessage(error),
         "session.resume",
       );
     }

@@ -34,6 +34,7 @@ import {
   parseIcaclsReport,
   type AclRead,
 } from "./acl.js";
+import { errorMessage } from "../../errors.js";
 import { channelModeVerdict } from "./channel-mode.js";
 import { loadKeyFile } from "./key-store.js";
 import { encodeJobPayload } from "./executor.js";
@@ -280,7 +281,7 @@ async function defaultAclReader(path: string): Promise<AclRead> {
   } catch (error) {
     return {
       ok: false,
-      detail: `icacls could not be run on ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      detail: `icacls could not be run on ${path}: ${errorMessage(error)}`,
     };
   }
 }
@@ -499,7 +500,7 @@ export async function openComms(
     const detail =
       error instanceof ChannelFileTooLargeError
         ? `the agent heartbeat is larger than the channel allows`
-        : `the agent heartbeats could not be listed: ${error instanceof Error ? error.message : String(error)}`;
+        : `the agent heartbeats could not be listed: ${errorMessage(error)}`;
     return {
       ok: false,
       checks: [
@@ -525,7 +526,7 @@ export async function openComms(
       bytes = await options.channel.read(path);
     } catch (error) {
       heartbeatNotes.push(
-        `${path} could not be read: ${error instanceof Error ? error.message : String(error)}`,
+        `${path} could not be read: ${errorMessage(error)}`,
       );
       continue;
     }

@@ -20,6 +20,7 @@ import {
   defaultDispatcherChannelDir,
   type DispatcherChannelStatus,
 } from "../driver/dispatcher-transport.js";
+import { errorMessage } from "../errors.js";
 import { buildEnvelope, type CliEnvelope, type NextAction } from "./envelope.js";
 import { EXIT, type ExitCode } from "./exit-code.js";
 
@@ -494,7 +495,7 @@ export async function runDispatcherCommand(
     emit(envelope, parsed.json, fullDeps);
     return { exitCode: EXIT.ok };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     const refused = /refusing to (overwrite|remove)/.test(message);
     const status = refused ? "refused" : "failed";
     const exitCode = refused ? EXIT.refused : EXIT.failed;
