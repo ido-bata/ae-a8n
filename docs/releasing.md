@@ -18,8 +18,9 @@ scope is stated in README, CHANGELOG, the package description and the
 evidence record rather than encoded in a prerelease suffix
 (`docs/consumer-acceptance.md` §4). `scripts/check-release.js` enforces the
 `next`-only publish config (`tag`, `provenance`, `access`) and the tag =
-`v<version>` precondition; it does not decide which versions are
-evidence-complete — that judgement stays with the human release step.
+`v<version>` precondition. `scripts/evidence-gate.js` (below) enforces the
+cross-platform evidence contract mechanically; whether the evidence behind
+a record is sufficient remains the human release judgement.
 
 ## What stops an accidental or double publish
 
@@ -191,12 +192,71 @@ Not verified before the first real use: staging through OIDC against the
 real registry, what `npm stage view` shows, and how long a staged version
 waits (npm's documentation does not say).
 
+## Promoting `latest`: the cross-platform evidence gate (#75)
+
+Staging under `next` is a publish; moving the `latest` dist-tag is a
+promotion and needs real-host evidence on **both** supported platforms.
+`scripts/evidence-gate.js` is that gate. It is a manual release step — it
+runs on the maintainer's machine against the exact candidate, not inside
+the publish workflow — and it fails closed: a missing, malformed, stale or
+failed record denies with a named reason.
+
+One record per platform lives at `docs/evidence/platforms/<platform>.json`
+(`macos`, `windows`):
+
+```json
+{
+  "schemaVersion": 1,
+  "platform": "macos",
+  "commit": "<full sha of the candidate commit>",
+  "tarballSha256": "<sha256 hex of the packed tarball>",
+  "recordedAt": "2026-11-18",
+  "verdict": "pass",
+  "evidence": "docs/evidence/<run directory or file>"
+}
+```
+
+`commit` and `tarballSha256` bind the record to the candidate; a record
+naming any other commit or hash is stale and denies. `verdict` is `pass`,
+`unverified` or `fail`. The record is written by the human release step
+from the acceptance run (`docs/evidence/` directories hold the underlying
+evidence); the gate only enforces that the record exists, parses, is
+current and says what it claims.
+
+Run it against the packed candidate tarball:
+
+```bash
+npm pack
+node scripts/evidence-gate.js --dist-tag next \
+  --commit "$(git rev-parse HEAD)" --tarball ./ido-bata-ae-a8n-<version>.tgz
+# and again with --dist-tag latest before any latest promotion
+```
+
+Rules (`scripts/evidence-gate.js`, tested in `test/release-gate.test.ts`):
+
+- `latest`: every platform record must be present, well-formed, bound to
+  the candidate commit and tarball, and `verdict: "pass"`. Anything less
+  denies.
+- `next`: the same currency and integrity requirements hold, but Windows
+  may be `verdict: "unverified"` — and only while the package description
+  **and** README still declare that Windows real-host evidence is
+  missing. The gate checks the declaration itself; removing it while the
+  record stays `unverified` denies. `unverified` is not accepted for
+  macOS, and `fail` is never accepted.
+- The published tarball's SHA-256 is the one the records were written
+  against: the gate hashes the `.tgz` it is given, and `stage-publish.js`
+  separately refuses a tarball whose sha1 differs from the one the gate
+  and registry saw.
+
 ## Not here yet
 
 - Provenance: npm does not generate it for private repositories
   ([GitHub changelog][gh-prov]). It goes with making the repository public.
 - `repository` and `homepage` point to the private repository, so the links
   on npmjs.com will be 404 for everyone outside the organisation.
+- Real `docs/evidence/platforms/` records: they are produced per candidate
+  by the acceptance runs; until they exist the gate denies, which is the
+  intended fail-closed state.
 
 [gh-env]: https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments
 [gh-manage]: https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments
