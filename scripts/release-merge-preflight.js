@@ -38,28 +38,42 @@ export const REQUIRED_MAIN_CHECKS = ["check", "release-tooling-windows", "window
  * @param {Array<{ name?: string, status?: string, conclusion?: string|null, started_at?: string, app?: { slug?: string }|null }>} facts.runs check runs on the head SHA
  */
 export function evaluatePreflight({ pr, train, tip, aheadBy, runs }) {
+  if (typeof pr !== "object" || pr === null) return { ok: false, reason: "PR payload missing" };
   if (pr.base?.ref !== "main") return { ok: false, reason: `base is ${pr.base?.ref}, not main` };
   if (pr.base?.repo?.full_name !== pr.head?.repo?.full_name)
     return { ok: false, reason: "head is a fork, not a branch in this repository" };
   if (pr.state !== "open") return { ok: false, reason: `PR is ${pr.state}` };
-  if (!/^[A-Za-z0-9._/-]+$/.test(train ?? ""))
+  if (typeof train !== "string" || !/^[A-Za-z0-9._/-]+$/.test(train))
     return { ok: false, reason: `RELEASE_TRAIN is unset or invalid ('${train}')` };
-  if (pr.head?.ref !== train)
-    return { ok: false, reason: `head '${pr.head?.ref}' is not the current release train '${train}'` };
-  if (pr.head?.sha !== tip)
-    return { ok: false, reason: `head ${pr.head?.sha?.slice(0, 7)} is not the tip of ${train} (${tip?.slice(0, 7)})` };
-  if (aheadBy === 0) return { ok: false, reason: `${train} is fully merged into main (ahead_by=0); RELEASE_TRAIN is stale` };
+  if (typeof pr.head?.ref !== "string" || pr.head.ref.length === 0)
+    return { ok: false, reason: "PR head ref is missing" };
+  if (pr.head.ref !== train)
+    return { ok: false, reason: `head '${pr.head.ref}' is not the current release train '${train}'` };
+  if (!/^[0-9a-f]{40}$/.test(pr.head?.sha ?? "") || !/^[0-9a-f]{40}$/.test(tip ?? ""))
+    return { ok: false, reason: "head SHA or train tip is not a 40-hex commit SHA" };
+  if (pr.head.sha !== tip)
+    return { ok: false, reason: `head ${pr.head.sha.slice(0, 7)} is not the tip of ${train} (${tip.slice(0, 7)})` };
+  if (!Number.isInteger(aheadBy) || aheadBy < 1)
+    return { ok: false, reason: `compare ahead_by is ${aheadBy}, expected a positive integer (stale or broken train)` };
 
+  if (!Array.isArray(runs)) return { ok: false, reason: "check-runs payload is not an array" };
   const latest = new Map();
-  for (const run of runs ?? []) {
+  for (const run of runs) {
+    if (typeof run !== "object" || run === null) continue;
     if (!REQUIRED_MAIN_CHECKS.includes(run.name)) continue;
     if (run.app?.slug !== "github-actions") continue;
+    // A run without a parseable start time cannot be ordered; treat the
+    // whole payload as unverifiable rather than guessing which is latest.
+    const started = Date.parse(run.started_at ?? "");
+    if (!Number.isFinite(started))
+      return { ok: false, reason: `check run '${run.name}' has no valid started_at` };
     const prev = latest.get(run.name);
-    if (!prev || new Date(run.started_at) > new Date(prev.started_at)) latest.set(run.name, run);
+    if (!prev || started > prev.started) latest.set(run.name, { run, started });
   }
   for (const ctx of REQUIRED_MAIN_CHECKS) {
-    const run = latest.get(ctx);
-    if (!run) return { ok: false, reason: `required check '${ctx}' has no GitHub Actions run on the head SHA` };
+    const entry = latest.get(ctx);
+    if (!entry) return { ok: false, reason: `required check '${ctx}' has no GitHub Actions run on the head SHA` };
+    const { run } = entry;
     if (run.status !== "completed" || run.conclusion !== "success")
       return { ok: false, reason: `required check '${ctx}' is ${run.status}/${run.conclusion}, not success` };
   }

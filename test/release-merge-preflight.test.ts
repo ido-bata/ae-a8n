@@ -134,3 +134,44 @@ describe("evaluatePreflight", () => {
     expect(v.ok).toBe(false);
   });
 });
+
+describe("evaluatePreflight malformed-input refusals", () => {
+  it("rejects a missing PR payload", () => {
+    expect(mod.evaluatePreflight(facts({ pr: null as never })).ok).toBe(false);
+  });
+
+  it("rejects non-40-hex head SHA and tip", () => {
+    for (const bad of ["abc123", "g".repeat(40), "", undefined]) {
+      const pr = { ...facts().pr, head: { ...facts().pr.head!, sha: bad as string } };
+      expect(mod.evaluatePreflight(facts({ pr })).ok).toBe(false);
+      expect(mod.evaluatePreflight(facts({ tip: bad as string })).ok).toBe(false);
+    }
+  });
+
+  it("rejects ahead_by that is not a positive integer", () => {
+    for (const aheadBy of [0, -1, 1.5, NaN, "5" as never, undefined as never]) {
+      expect(mod.evaluatePreflight(facts({ aheadBy: aheadBy as number })).ok).toBe(false);
+    }
+  });
+
+  it("rejects a missing head ref", () => {
+    const pr = { ...facts().pr, head: { ...facts().pr.head!, ref: "" } };
+    expect(mod.evaluatePreflight(facts({ pr })).ok).toBe(false);
+  });
+
+  it("rejects check runs that are not an array", () => {
+    expect(mod.evaluatePreflight(facts({ runs: null as never })).ok).toBe(false);
+    expect(mod.evaluatePreflight(facts({ runs: {} as never })).ok).toBe(false);
+  });
+
+  it("rejects a required check run with an unparseable started_at", () => {
+    const runs = facts().runs.map((r) => (r.name === "check" ? { ...r, started_at: "not-a-date" } : r));
+    const v = mod.evaluatePreflight(facts({ runs }));
+    expect(v.ok).toBe(false);
+    expect(v.reason).toContain("started_at");
+  });
+
+  it("still accepts the valid canonical case after hardening", () => {
+    expect(mod.evaluatePreflight(facts()).ok).toBe(true);
+  });
+});
