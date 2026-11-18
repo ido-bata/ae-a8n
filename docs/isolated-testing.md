@@ -39,6 +39,39 @@ npx @ido-bata/ae-a8n test --user ae-test -- <検証コマンド>
 止まったら表示された blocker の `code` を
 [troubleshooting.md](troubleshooting.md) で引く。
 
+### 2.1. tarball 同梱の検証 fixture（リポジトリを持たない環境向け）
+
+npm から入れたパッケージだけで「隔離セッションが本当に効いたか」を
+確かめるには、tarball 同梱の fixture を helper session 内で実行する。
+fixture（`examples/isolated-test.ts`）はまず **自分が期待した helper
+user として動いているか**を検証し、一致した時だけ AE の最小 smoke
+（launch → version → handshake → project → close）を行う。
+
+helper user は別 OS アカウントなので、インストール先は helper から
+読める場所に置く（`/Users/Shared` 配下など）:
+
+```bash
+npm install --prefix /Users/Shared/ae-a8n-fixture @ido-bata/ae-a8n@next
+ae-a8n doctor --user ae-test
+ae-a8n setup --user ae-test
+ae-a8n test --user ae-test -- \
+  "$(which node)" \
+  /Users/Shared/ae-a8n-fixture/node_modules/@ido-bata/ae-a8n/examples/isolated-test.ts \
+  --expect-user ae-test
+```
+
+- `$(which node)` は controller 側で展開され、helper session の PATH に
+  依存しない絶対パスとして job に入る
+- package の import はファイル自身の位置から self-reference で解決
+  される。NODE_PATH や symlink、checkout は不要
+- `--expect-user` が実際の user と違えば AE に触れる前に exit 3。
+  「隔離されず console user で動いた」実行を成功と誤認しない
+- AE が見つからない環境では skip（exit 0）。skip は PASS ではない
+  （[consumer-acceptance.md](consumer-acceptance.md) の検証レベル参照）
+- §4.5 以降の `scripts/isolated-session/*` はリポジトリの開発 harness
+  であり、npm パッケージには含まれない。packaged 側の対応物は
+  `ae-a8n doctor` / `setup` / `recover` の各コマンド
+
 ## 3. 人間がやる画面（順不同に起こりうる）
 
 | 画面 | 出る場所 | やること |
