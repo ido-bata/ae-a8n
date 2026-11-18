@@ -44,6 +44,27 @@ also refuses if a required check did not run, from GitHub Actions, on the
 latest pull request. It matches rulesets by name and target, so a second run
 changes nothing. Other rulesets are left alone.
 
+## Release-only integration gate
+
+`main` accepts only the current release train's PR. The canonical train is
+the repository variable `RELEASE_TRAIN` (currently `release-0-3-0`), not a
+branch-name pattern — a spoofed `release-*` head fails the gate.
+
+`.github/workflows/release-gate.yml` runs on `pull_request_target`, so the
+workflow definition always comes from `main` and a PR cannot weaken it by
+editing workflow files in its head. It never checks out head code; it only
+compares PR metadata (same-repo, head ref == `RELEASE_TRAIN`, head SHA ==
+branch tip) passed through environment variables.
+
+The gate does not decide release *approval* — that remains the explicit
+human authorization at merge time. It only proves the integration path.
+
+Bootstrap note: `pull_request_target` only runs workflows that exist on
+`main`, so `release-gate` is not a required check until the first release
+PR carrying it merges. Afterwards, add `"release-gate"` back to
+`REQUIRED_CHECKS` in `scripts/github-rulesets.js` and re-run
+`node scripts/github-rulesets.js --apply`.
+
 The required checks name the CI jobs, not the workflow. If a job in
 `.github/workflows/ci.yml` is renamed, change `REQUIRED_CHECKS` in the same
 pull request, then re-run the script after merging. Until then, main waits

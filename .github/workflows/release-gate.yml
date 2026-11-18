@@ -1,0 +1,69 @@
+name: release-gate
+
+# The only PRs allowed into `main` are release PRs: head must be the
+# *current* release train recorded in the RELEASE_TRAIN repository variable.
+#
+# This workflow deliberately uses `pull_request_target`: the workflow
+# definition always comes from `main`, so a pull request cannot weaken or
+# remove the check by editing workflow files in its own head. It never
+# checks out or executes code from the pull request — it only reads PR
+# metadata and repository variables, both of which are outside the head's
+# control.
+#
+# What this gate does NOT decide: whether the release is *approved*. That
+# stays a human authorization at merge time (github-delivery Skill). This
+# job only proves the integration path is the canonical release branch.
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify the pull request is the canonical release train
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Forks can never be the release train: the train branch lives in
+          # this repository.
+          if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            echo "::error::release PRs must come from a branch in $BASE_REPO, not a fork ($HEAD_REPO)"
+            exit 1
+          fi
+
+          # The canonical train is whatever RELEASE_TRAIN currently names —
+          # not any branch that happens to match a pattern. A spoofed
+          # `release-evil` fails here because it is not the recorded train.
+          train="$(gh api "repos/$BASE_REPO/actions/variables/RELEASE_TRAIN" --jq .value)"
+          if [ -z "$train" ]; then
+            echo "::error::repository variable RELEASE_TRAIN is not set; the current release train is unknown, so no PR may integrate into main"
+            exit 1
+          fi
+          if [ "$HEAD_REF" != "$train" ]; then
+            echo "::error::PRs into main must come from the current release train '$train', not '$HEAD_REF'"
+            exit 1
+          fi
+
+          # The head SHA must be the train branch's actual tip: a PR cannot
+          # point at a stale or rewritten commit and still count as the train.
+          tip="$(gh api "repos/$BASE_REPO/branches/$train" --jq .commit.sha)"
+          if [ "$HEAD_SHA" != "$tip" ]; then
+            echo "::error::PR head $HEAD_SHA is not the tip of $train ($tip); update the branch before merging"
+            exit 1
+          fi
+
+          echo "release-gate: $train @ $HEAD_SHA is the canonical release train for main"
