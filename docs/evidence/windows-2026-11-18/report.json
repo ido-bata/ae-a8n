@@ -1,0 +1,23 @@
+{
+  "date": "2026-11-18",
+  "scope": "Windows local real-host E2E for @ido-bata/ae-a8n 0.3.0",
+  "summary": "Two consecutive packaged-consumer runs of launch -> version -> project -> createComp -> addTextLayer -> renderFrame(0) -> close(discard) against AE 2027 (27.0) on a real Windows 11 host. Both PASS with owned-process proof and clean quit.",
+  "operations": [
+    { "op": "session.probe", "win1": "ok 8.6s", "win2": "ok" },
+    { "op": "session.launch", "win1": "ok, owned pid 47744, 76.9s cold", "win2": "ok, owned pid 47272" },
+    { "op": "project.info/createComp/addTextLayer/renderFrame", "win1": "all ok, PNG rendered", "win2": "all ok, PNG rendered" },
+    { "op": "session.quit + session.close", "win1": "quit ok, process gone in 6.8s", "win2": "quit ok, gone in 13.4s" }
+  ],
+  "safety": {
+    "preexistingAe": "none",
+    "unownedAeQuit": "never attempted; close() only acts on owned processes",
+    "userDesktop": "commands ran in a dedicated herdr workspace pane on the interactive session; no focus/input/GUI manipulation performed",
+    "postRunAe": "pid 46276 (AE 2027) appeared at 21:45 JST after the runs, attributed to the user (parent pid 49328, not our launcher); left untouched"
+  },
+  "unverified": [
+    "isolated E2E (dedicated user session / VM / dedicated host)",
+    "non-interference under concurrent user input",
+    "T092 matrix rows: setup/reboot/resume, recover/quarantine, wrong-destination refusal, dispatcher handshake, refusal matrix, fixture integrity",
+    "AE 2026 (26.5.3) real-host run (only AE 2027 was exercised)"
+  ]
+}

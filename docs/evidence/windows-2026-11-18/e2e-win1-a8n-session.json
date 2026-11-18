@@ -1,0 +1,7 @@
+{
+  "v": 1,
+  "transport": "script-invocation",
+  "hostScript": "C:\\Users\\rebui\\ae-a8n-verify\\consumer\\node_modules\\@ido-bata\\ae-a8n\\host\\a8n-host.js",
+  "stagedHostScript": "C:\\Users\\rebui\\ae-a8n-verify\\e2e-win1\\staging\\a8n-host.js",
+  "pid": 51536
+}
