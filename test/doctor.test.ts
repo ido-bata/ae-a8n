@@ -744,7 +744,13 @@ describe("the Darwin adapter's non-probe methods do not lie", () => {
       expect(byId.get("macos.session")?.state).toBe("done");
       expect(byId.get("macos.console-separation")?.state).toBe("done");
       expect(byId.get("macos.ae")?.state).toBe("done");
-      for (const id of ["macos.permissions", "macos.ae-scripting", "macos.signin"]) {
+      for (const id of [
+        "macos.screen-recording",
+        "macos.accessibility",
+        "macos.automation-system-events",
+        "macos.ae-scripting",
+        "macos.signin",
+      ]) {
         expect(byId.get(id)?.state).toBe("needs-human");
       }
       expect(steps.every((step) => step.automatable === false)).toBe(true);
@@ -784,7 +790,13 @@ describe("the Darwin adapter's non-probe methods do not lie", () => {
           .filter((outcome) => outcome.state === "needs-human")
           .map((outcome) => outcome.id)
           .sort(),
-      ).toEqual(["macos.ae-scripting", "macos.permissions", "macos.signin"]);
+      ).toEqual([
+        "macos.accessibility",
+        "macos.ae-scripting",
+        "macos.automation-system-events",
+        "macos.screen-recording",
+        "macos.signin",
+      ]);
 
       const findings = await adapter.recover("/tmp/a8n-run");
       expect(findings).toHaveLength(1);

@@ -99,6 +99,37 @@ node scripts/isolated-session/run-in-isolated-session.mjs \
 再実行する。`unproven` が残る場合は interpreter 不在等の環境要因を疑う
 （Command Line Tools の python3 が必要）。
 
+### 4.5.1. guided grant/check ループ（grant-check）
+
+probe は測るだけで request はしない。consent を取る側は
+`grant-check.mjs` — 同じく helper user セッション内で実行する:
+
+```bash
+node scripts/isolated-session/run-in-isolated-session.mjs \
+  --user ae-test --substrate terminal -- \
+  node scripts/isolated-session/grant-check.mjs [--wait-ms 300000]
+```
+
+動作:
+
+1. まず全 permission を probe し、**既に granted のものは request しない**。
+2. 未許可のものだけ OS の request を上げる — Screen Recording は
+   `CGRequestScreenCaptureAccess`（System Settings がその desktop に開く）、
+   Accessibility と Automation→System Events は検証済みの
+   `ax-grant.command` helper が dialog を出す。
+3. dialog が出る **desktop（どのユーザーの画面か）を request 前に
+   stderr へ表示**する。helper user の desktop へは fast user switching
+   で移る — logout はしない。
+4. 2 秒ごとに再 probe し、全て granted か `--wait-ms` 経過まで待つ。
+
+出力 JSON の `permissions.*.state` は `granted | denied | unproven`、
+`pending` に残ったもの、`requests` に実際に上げた request が入る。
+`aeScriptFileNetwork` と Adobe sign-in は AE の UI 内の人間手順なので
+request せず、instruction だけを報告する。このループは dialog を
+押さず、TCC.db を書かず、credential を保存しない。
+`setup` の `macos.screen-recording` / `macos.accessibility` /
+`macos.automation-system-events` step の action がこの手順を指す。
+
 ## 4.6. 残った状態の検査と掃除（status / prune）
 
 中断した run や死んだ agent が共有ディレクトリ（既定

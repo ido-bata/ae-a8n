@@ -26,6 +26,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { grantCheck } from "../scripts/isolated-session/grant-check.mjs";
 import { assertResultMatchesJob, assertTrustedResult, cancelJob, parseArgs } from "../scripts/isolated-session/dispatch.mjs";
 import {
   classifyAutomation,
@@ -922,4 +923,112 @@ test("a hardlinked result that names another job is refused", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("grant-check requests only what is missing and re-checks until granted", () => {
+  const session = { uid: 502, username: "ae-test", asid: 100040, kind: "Aqua", onConsole: false };
+  const denied = { state: "denied", detail: null };
+  const granted = { state: "granted", detail: null };
+  const sequences = [
+    // first measure: screen denied, ax denied, automation granted
+    { screenRecording: denied, accessibility: denied, automationSystemEvents: granted },
+    // after requests + one poll: everything granted
+    { screenRecording: granted, accessibility: granted, automationSystemEvents: granted },
+  ];
+  let calls = 0;
+  const screenRequests = [];
+  const axRequests = [];
+  const report = grantCheck({
+    waitMs: 60_000,
+    now: (() => {
+      let t = 0;
+      return () => (t += 3_000);
+    })(),
+    sleep: () => {},
+    measureFn: () => sequences[Math.min(calls++, sequences.length - 1)],
+    requestScreen: () => {
+      screenRequests.push(1);
+      return { requested: true, detail: null };
+    },
+    requestAx: () => {
+      axRequests.push(1);
+      return { requested: true, detail: null };
+    },
+    readSessionFn: () => session,
+    aePrefsFn: () => ({ state: "unproven", detail: "no prefs", versions: {} }),
+  });
+  assert.equal(report.probe, "ae-a8n-grant-check/1");
+  assert.equal(report.session.username, "ae-test");
+  assert.match(report.routing, /ae-test's desktop/);
+  assert.match(report.routing, /fast user switching/i);
+  // Screen Recording was requested once; ax-grant ran once for AX (automation
+  // was already granted but the helper still covers both — recorded once).
+  assert.equal(screenRequests.length, 1);
+  assert.equal(axRequests.length, 1);
+  assert.deepEqual(report.pending, []);
+  assert.equal(report.permissions.screenRecording.state, "granted");
+  assert.equal(report.permissions.aeScriptFileNetwork.state, "unproven");
+  assert.equal(report.permissions.adobeSignIn.state, "unproven");
+});
+
+test("grant-check never re-requests an already-granted permission", () => {
+  const granted = { state: "granted", detail: null };
+  const states = {
+    screenRecording: granted,
+    accessibility: granted,
+    automationSystemEvents: granted,
+  };
+  let screenRequests = 0;
+  let axRequests = 0;
+  const report = grantCheck({
+    waitMs: 60_000,
+    now: (() => {
+      let t = 0;
+      return () => (t += 1_000);
+    })(),
+    sleep: () => {},
+    measureFn: () => states,
+    requestScreen: () => {
+      screenRequests += 1;
+      return { requested: true, detail: null };
+    },
+    requestAx: () => {
+      axRequests += 1;
+      return { requested: true, detail: null };
+    },
+    readSessionFn: () => ({ uid: 1, username: "u", asid: null, kind: "none", onConsole: null }),
+    aePrefsFn: () => ({ state: "granted", detail: null, versions: {} }),
+  });
+  assert.equal(screenRequests, 0);
+  assert.equal(axRequests, 0);
+  assert.equal(report.requests.length, 0);
+  assert.deepEqual(report.pending, []);
+});
+
+test("grant-check reports what stays ungranted at the deadline", () => {
+  const denied = { state: "denied", detail: null };
+  const states = {
+    screenRecording: denied,
+    accessibility: denied,
+    automationSystemEvents: denied,
+  };
+  const report = grantCheck({
+    waitMs: 5_000,
+    now: (() => {
+      let t = 0;
+      return () => (t += 3_000);
+    })(),
+    sleep: () => {},
+    measureFn: () => states,
+    requestScreen: () => ({ requested: true, detail: null }),
+    requestAx: () => ({ requested: true, detail: null }),
+    readSessionFn: () => ({ uid: 502, username: "ae-test", asid: 1, kind: "Aqua", onConsole: false }),
+    aePrefsFn: () => ({ state: "granted", detail: null, versions: {} }),
+  });
+  assert.deepEqual(report.pending.sort(), ["accessibility", "automationSystemEvents", "screenRecording"]);
+  assert.equal(report.permissions.screenRecording.state, "denied");
+  // Each mechanism was asked exactly once even though nothing was granted.
+  assert.equal(report.requests.filter((r) => r.permission === "screenRecording").length, 1);
+  assert.equal(report.requests.filter((r) => r.permission === "accessibility").length, 1);
+  assert.equal(report.requests.filter((r) => r.permission === "automationSystemEvents").length, 1);
 });
