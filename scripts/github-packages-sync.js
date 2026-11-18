@@ -62,6 +62,47 @@ export function selectSyncVersions(sourceVersions, targetVersions, requested) {
   return { action: "publish", versions: missing };
 }
 
+/**
+ * The dist-tag operations that make GitHub Packages point where npmjs
+ * points. `sourceTags`/`targetTags` map tag → version; `presentVersions`
+ * are the versions known to exist on GitHub Packages after this run.
+ * A tag npmjs assigns to a version the mirror does not have is ignored —
+ * the mirror never tags what it does not carry. A tag that exists only on
+ * GitHub Packages is removed so `npm install <pkg>` resolves the same
+ * default on both registries.
+ *
+ * @param {Record<string, string>} sourceTags npmjs dist-tags
+ * @param {Record<string, string>} targetTags GitHub Packages dist-tags
+ * @param {ReadonlySet<string>} presentVersions versions on GitHub Packages
+ * @returns {{ add: { tag: string, version: string }[], remove: string[] }}
+ */
+export function planDistTagSync(sourceTags, targetTags, presentVersions) {
+  const desired = new Map();
+  for (const [tag, version] of Object.entries(sourceTags)) {
+    if (presentVersions.has(version)) {
+      desired.set(tag, version);
+    }
+  }
+  const add = [];
+  for (const [tag, version] of desired) {
+    if (targetTags[tag] !== version) {
+      add.push({ tag, version });
+    }
+  }
+  const remove = Object.keys(targetTags).filter((tag) => !desired.has(tag));
+  return { add, remove };
+}
+
+/** The --tag a publish should carry so the interim pointer is closest to npmjs. */
+export function publishTagFor(version, sourceTags) {
+  const tags = Object.entries(sourceTags)
+    .filter(([, v]) => v === version)
+    .map(([tag]) => tag)
+    .sort();
+  if (tags.includes("latest")) return "latest";
+  return tags[0] ?? "next";
+}
+
 function fail(message) {
   console.error(`::error::${message}`);
   process.exit(1);
@@ -94,6 +135,23 @@ function versionsOn(registry, name) {
     const text = `${error?.stderr ?? ""} ${error?.message ?? ""}`;
     if (registry === GITHUB_PACKAGES_REGISTRY && /E404|404 Not Found/.test(text)) {
       return [];
+    }
+    throw error;
+  }
+}
+
+/** dist-tags as { tag: version }; an unseen package has none. */
+function distTagsOn(registry, name) {
+  try {
+    const tags = npmView([name, "dist-tags"], registry);
+    if (tags === null || typeof tags !== "object" || Array.isArray(tags)) {
+      return {};
+    }
+    return Object.fromEntries(Object.entries(tags).map(([tag, v]) => [tag, String(v)]));
+  } catch (error) {
+    const text = `${error?.stderr ?? ""} ${error?.message ?? ""}`;
+    if (registry === GITHUB_PACKAGES_REGISTRY && /E404|404 Not Found/.test(text)) {
+      return {};
     }
     throw error;
   }
@@ -154,9 +212,13 @@ async function main() {
 
   let sourceVersions;
   let targetVersions;
+  let sourceTags;
+  let targetTags;
   try {
     sourceVersions = versionsOn(undefined, name);
     targetVersions = versionsOn(GITHUB_PACKAGES_REGISTRY, name);
+    sourceTags = distTagsOn(undefined, name);
+    targetTags = distTagsOn(GITHUB_PACKAGES_REGISTRY, name);
   } catch (error) {
     fail(
       `cannot ask the registries (${error instanceof Error ? error.message : String(error)}); ` +
@@ -168,14 +230,34 @@ async function main() {
   if (decision.action === "fail") {
     fail(decision.reason);
   }
-  if (decision.action === "skip") {
+  if (decision.action === "skip" && dryRun) {
     console.log(`github-packages: ${decision.reason}`);
+    return;
+  }
+
+  const toPublish = decision.action === "publish" ? decision.versions : [];
+  const presentVersions = new Set([...targetVersions, ...toPublish]);
+  const tagPlan = planDistTagSync(sourceTags, targetTags, presentVersions);
+
+  if (dryRun) {
+    if (decision.action === "skip") {
+      console.log(`github-packages: ${decision.reason}`);
+    }
+    for (const version of toPublish) {
+      console.log(`would publish ${name}@${version} to ${GITHUB_PACKAGES_REGISTRY}`);
+    }
+    for (const { tag, version } of tagPlan.add) {
+      console.log(`would tag ${name}@${version} as ${tag} on ${GITHUB_PACKAGES_REGISTRY}`);
+    }
+    for (const tag of tagPlan.remove) {
+      console.log(`would remove ${tag} from ${GITHUB_PACKAGES_REGISTRY}`);
+    }
     return;
   }
 
   const work = mkdtempSync(join(tmpdir(), "ae-a8n-gpr-"));
   try {
-    for (const version of decision.versions) {
+    for (const version of toPublish) {
       const { tarball, shasum } = distInfo(name, version);
       const file = join(work, `${name.replace("/", "-")}-${version}.tgz`);
       await download(tarball, file);
@@ -183,20 +265,29 @@ async function main() {
       if (actual !== shasum) {
         fail(`${name}@${version}: downloaded tarball sha1 ${actual} does not match npmjs dist.shasum ${shasum}`);
       }
-      if (dryRun) {
-        console.log(`would publish ${name}@${version} to ${GITHUB_PACKAGES_REGISTRY} (sha1 ${shasum})`);
-        continue;
-      }
-      // npm refuses a prerelease without an explicit tag; mirror it under the
-      // same dist-tag convention npmjs uses (publishConfig.tag, "next"). A
-      // stable version keeps npm's default (latest).
-      const publishArgs = ["publish", file, "--registry", GITHUB_PACKAGES_REGISTRY];
-      if (version.includes("-")) {
-        const tag = manifest.publishConfig?.tag ?? "next";
-        publishArgs.push("--tag", String(tag));
-      }
+      // npm refuses a prerelease without an explicit tag; pick the tag npmjs
+      // assigns to this version so the interim pointer is closest to the
+      // canonical registry. planDistTagSync reconciles every tag afterwards.
+      const publishArgs = [
+        "publish",
+        file,
+        "--registry",
+        GITHUB_PACKAGES_REGISTRY,
+        "--tag",
+        publishTagFor(version, sourceTags),
+      ];
       npm(publishArgs, { stdio: "inherit" });
       console.log(`published ${name}@${version} to ${GITHUB_PACKAGES_REGISTRY} (sha1 ${shasum})`);
+    }
+    // Publishing can move `latest`/`next` to the wrong version; reconcile
+    // dist-tags to npmjs's pointers for every version the mirror carries.
+    for (const { tag, version } of tagPlan.add) {
+      npm(["dist-tag", "add", `${name}@${version}`, tag, "--registry", GITHUB_PACKAGES_REGISTRY]);
+      console.log(`tagged ${name}@${version} as ${tag} on ${GITHUB_PACKAGES_REGISTRY}`);
+    }
+    for (const tag of tagPlan.remove) {
+      npm(["dist-tag", "rm", `${name}@${tag}`, "--registry", GITHUB_PACKAGES_REGISTRY]);
+      console.log(`removed ${tag} from ${GITHUB_PACKAGES_REGISTRY}`);
     }
   } finally {
     rmSync(work, { recursive: true, force: true });
