@@ -20,6 +20,7 @@
  * Log:        <root>/logs/<id>.log
  */
 import { readdir, readFile, writeFile, appendFile, lstat, rename, rm } from "node:fs/promises";
+import { lstatSync } from "node:fs";
 import { execFile, execFileSync as syncExecFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -30,6 +31,7 @@ import {
   assertJobSession,
   consoleUid,
   ensureSharedDir,
+  sharedDirStillUsable,
   jobFileIsTrusted,
 } from "./session-rules.mjs";
 
@@ -110,11 +112,12 @@ async function main() {
   }
   // Only now, having refused every reason to not run at all, touch the
   // shared directories.
-  for (const [dir, what] of [
+  const sharedDirs = [
     [jobs, "job"],
     [results, "result"],
     [logs, "log"],
-  ]) {
+  ];
+  for (const [dir, what] of sharedDirs) {
     ensureSharedDir(dir, what);
   }
   const banner = {
@@ -145,8 +148,41 @@ async function main() {
   // shared directory (a symlink, or one writable by everyone) is re-checked
   // and re-reported every poll, and the log fills with the same line forever.
   const ignored = new Set();
+  let dirsDegraded = false;
 
   for (;;) {
+    // Either account can change a shared directory's mode after setup, and
+    // a decayed directory lets a job file be swapped between the trust check
+    // and the read. The contract is re-proven every poll; while it fails, no
+    // new job is started (a job already running is never interrupted).
+    let dirsUsable = true;
+    for (const [dir] of sharedDirs) {
+      let info = null;
+      try {
+        info = lstatSync(dir);
+      } catch {
+        info = null;
+      }
+      if (info === null || !sharedDirStillUsable(info, session.uid)) {
+        dirsUsable = false;
+        break;
+      }
+    }
+    if (!dirsUsable) {
+      if (!dirsDegraded) {
+        dirsDegraded = true;
+        process.stderr.write(
+          "[ae-a8n session agent] a shared directory no longer satisfies the sticky/writable contract; " +
+            `no job is run until it does. Waiting for jobs in ${jobs}\n`,
+        );
+      }
+      await new Promise((done) => setTimeout(done, POLL_MS));
+      continue;
+    }
+    if (dirsDegraded) {
+      dirsDegraded = false;
+      process.stderr.write("[ae-a8n session agent] the shared directories are usable again; jobs resume.\n");
+    }
     let entries = [];
     try {
       entries = await readdir(jobs);

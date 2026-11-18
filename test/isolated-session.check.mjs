@@ -58,7 +58,9 @@ import {
   resultEntryKind,
   sessionFromOffstageStatus,
   sessionIsolation,
+  ensureSharedDir,
   sharedDirIsUsable,
+  sharedDirStillUsable,
   sharedDirIsUsableForOthers,
   shellCommandLine,
   shellQuote,
@@ -201,6 +203,46 @@ test("a shared directory is usable only with the sticky bit", () => {
   assert.equal(sharedDirIsUsableForOthers(0o041777), true);
   assert.equal(sharedDirIsUsableForOthers(0o040777), false);
   assert.equal(sharedDirIsUsableForOthers(0o041775), false);
+});
+
+test("a shared directory must still satisfy the contract at poll time", () => {
+  const dir = (over) => ({
+    isDirectory: () => true,
+    isSymbolicLink: () => false,
+    mode: 0o41777,
+    uid: 502,
+    ...over,
+  });
+  // Ours, correct mode.
+  assert.equal(sharedDirStillUsable(dir({ uid: 501 }), 501), true);
+  // Ours and decayed (sticky lost): a refusal — setup may chmod once, a later
+  // check must not silently repair while jobs are in flight.
+  assert.equal(sharedDirStillUsable(dir({ uid: 501, mode: 0o40777 }), 501), false);
+  // The other account's directory, usable-for-others: acceptable, because
+  // it cannot be chmod'ed from here anyway.
+  assert.equal(sharedDirStillUsable(dir({ uid: 502, mode: 0o41002 }), 501), true);
+  // The same permissive-looking mode on our own directory is not acceptable:
+  // we could repair it, so decay is a refusal.
+  assert.equal(sharedDirStillUsable(dir({ uid: 501, mode: 0o41002 }), 501), false);
+  // A symlink or a non-directory is never a shared directory.
+  assert.equal(sharedDirStillUsable(dir({ isDirectory: () => false }), 501), false);
+  assert.equal(
+    sharedDirStillUsable(dir({ isDirectory: () => true, isSymbolicLink: () => true }), 501),
+    false,
+  );
+});
+
+test("ensureSharedDir refuses a symlink where a shared directory should be", () => {
+  const root = mkdtempSync(join(tmpdir(), "a8n-shared-"));
+  try {
+    const real = join(root, "real");
+    mkdirSync(real);
+    const link = join(root, "jobs");
+    symlinkSync(real, link);
+    assert.throws(() => ensureSharedDir(link, "job"), /not a real directory/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("a job file is run only when it is attributable to the controller", () => {

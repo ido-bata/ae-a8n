@@ -16,7 +16,7 @@
  * disagree with the same fact reported by the other.
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, statSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync } from "node:fs";
 
 /**
  * The target session must exist, belong to the target user, be graphical,
@@ -329,7 +329,16 @@ export function describeMissingSession(uid, failure) {
  */
 export function ensureSharedDir(dir, what) {
   mkdirSync(dir, { recursive: true, mode: 0o1777 });
-  if (sharedDirIsUsable(statSync(dir).mode)) {
+  // lstat, not stat: a symlink where a shared directory should be is a
+  // refusal, not something to chmod through.
+  const lst = lstatSync(dir);
+  if (!lst.isDirectory()) {
+    throw new Error(
+      `the shared directory ${dir} is not a real directory (a symlink or other non-directory was found), ` +
+        `so the ${what} could not be written there safely. Nothing was run.`,
+    );
+  }
+  if (sharedDirIsUsable(lst.mode)) {
     return;
   }
   try {
@@ -338,7 +347,7 @@ export function ensureSharedDir(dir, what) {
     if (error?.code !== "EPERM") {
       throw error;
     }
-    if (!sharedDirIsUsableForOthers(statSync(dir).mode)) {
+    if (!sharedDirIsUsableForOthers(lstatSync(dir).mode)) {
       throw new Error(
         `the shared directory ${dir} belongs to another account and is not writable-and-sticky for others, ` +
           `so the ${what} could not be written there safely. Nothing was run.`,
@@ -545,6 +554,28 @@ export function sharedDirIsUsable(mode) {
  */
 export function sharedDirIsUsableForOthers(mode) {
   return (mode & 0o1002) === 0o1002;
+}
+
+/**
+ * Whether a shared directory still satisfies the contract at poll time.
+ *
+ * `ensureSharedDir` may repair a directory it owns once at setup; a mode
+ * that decays afterwards is a refusal, not something to silently fix while
+ * jobs are in flight. A directory another account made usable-for-others
+ * stays acceptable — it cannot be chmod'ed from here anyway. A symlink
+ * or non-directory is never a shared directory.
+ */
+export function sharedDirStillUsable(info, selfUid) {
+  if (typeof info?.isDirectory !== "function" || !info.isDirectory()) {
+    return false;
+  }
+  if (typeof info.isSymbolicLink === "function" && info.isSymbolicLink()) {
+    return false;
+  }
+  if (sharedDirIsUsable(info.mode)) {
+    return true;
+  }
+  return info.uid !== selfUid && sharedDirIsUsableForOthers(info.mode);
 }
 
 /**
