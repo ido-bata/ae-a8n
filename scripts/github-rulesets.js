@@ -89,11 +89,17 @@ export function desiredRulesets(checks = REQUIRED_CHECKS) {
       rules: [
         { type: "deletion" },
         { type: "non_fast_forward" },
-        { type: "update", parameters: { update_allows_fetch_and_merge: false } },
+        { type: "update" },
       ],
     },
   ];
 }
+
+// NOTE: GitHub's rulesets API accepts but does not persist
+// `parameters.update_allows_fetch_and_merge` on the `update` rule — it reads
+// back as a bare `{"type":"update"}`. The desired state therefore omits it;
+// the `update` restriction itself (tags cannot be moved once pushed) is what
+// the API actually enforces.
 
 /**
  * Where `actual` (a ruleset as GitHub returns it) differs from `desired`.
