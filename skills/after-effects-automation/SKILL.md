@@ -10,9 +10,17 @@ a typed API over it. Everything below matches the package's public types; if
 a call you want is not listed here, check `dist/index.d.ts` rather than guess —
 there is, for example, **no save and no arbitrary-script API**.
 
-Verified on macOS (After Effects 2026 / 26.5, Japanese UI). **Windows has not
-been run at all**; on Windows the package will not quit After Effects for you
-(ownership is always `unknown` there).
+Verified on macOS (After Effects 2026 / 26.5.3). The opt-in in-AE
+dispatcher path (`transport: "in-ae-dispatcher"`, `ae-a8n dispatcher`,
+`ae-a8n extension build`) passed real-host acceptance on macOS AE 26.5.3;
+the default script-invocation path is verified on earlier macOS hosts.
+**Windows is only partially verified**: the isolated-session backend has
+real-host evidence for portions of its matrix (`docs/windows-verification.md`),
+but no Windows run exists for the dispatcher path, extension calls, or
+`ae.call`; on Windows `ownership()` is always `unknown` and the package
+will not quit After Effects for you. The macOS-only isolated CLI
+(`ae-a8n doctor/setup/test/recover --user <name>`) has no Windows
+equivalent — see `docs/isolated-testing.md`.
 
 ## Rules that are not optional
 
@@ -220,17 +228,33 @@ work:
 ## Not covered
 
 Saving projects, expressions, keyframes, render queue output modules, audio,
-Windows behaviour. Creating a comp and adding a text layer **are** covered
-(`project.createComp(...)`, `comp.addTextLayer(...)`); do not improvise the
-rest through other channels without the human's agreement.
+and Windows behaviour beyond the partial evidence in
+`docs/windows-verification.md`. Creating a comp and adding a text layer
+**are** covered (`project.createComp(...)`, `comp.addTextLayer(...)`); do
+not improvise the rest through other channels without the human's
+agreement.
+
+## Caller-owned extension methods
+
+A consumer can add its own host operations without forking the package:
+declare a `HostExtension` module (ES3 function sources), build a host
+script with `ae-a8n extension build`, launch with `{ hostScript }`, and
+call the method via `ae.call(name, params)` — same ownership, timeout,
+trace and authorization envelope as a built-in. Undeclared names are
+refused before anything reaches AE. See
+`examples/extension-consumer.ts` and `specs/isolated-ae/contracts/extensions.md`
+in the repository (the contract doc is not shipped in the tarball).
 
 ## Worked examples
 
 In the package (`node_modules/@ido-bata/ae-a8n/examples/`) and the repository:
 
 - `examples/inspect.ts` — install, ownership, project listing; touches nothing.
+- `examples/smoke.ts` — minimal launch → version → handshake → close; read-only.
 - `examples/render-compare.ts` — apply, set, render before/after, count
   changed pixels, close.
+- `examples/extension-consumer.ts` — build a static extension host script,
+  call the method through `ae.call`, see the undeclared-name refusal.
 
 Node will not run `.ts` files from inside `node_modules`; copy `examples/`
 into your own directory first, then run them with a Node that executes

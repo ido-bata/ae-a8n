@@ -1,7 +1,11 @@
 # Verification status and how to close the gap
 
-`ae-a8n` is **not** verified against a real After Effects. This document says
-exactly what that means, and what to run on a machine that has one.
+Verification here is **per section, per host, per date** — each section
+names the machine, AE build and revision it ran against, and nothing below
+should be read as a blanket claim. The current summary lives in the README
+compatibility table; the Windows matrix is `docs/windows-verification.md`.
+Sections written before real-host runs existed say so where they were
+written; later sections record what was actually observed.
 
 ## The boundary
 
