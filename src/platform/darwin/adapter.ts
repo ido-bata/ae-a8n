@@ -70,6 +70,7 @@ import {
   runTccProbe,
   type TccProbeResult,
 } from "./tcc.js";
+import { inspectSharedRoot } from "./shared-root.js";
 
 /** The package's Node floor; the neutral doctor owns the constant. */
 export { NODE_FLOOR_MAJOR };
@@ -808,11 +809,12 @@ export function probeDarwin(
         remedy:
           tcc.mechanism === "deferred"
             ? "These grants belong to the responsible process inside the target " +
-              "session and cannot be measured from here. Run `ae-a8n doctor` inside " +
-              "that session — its local probe measures the process that would run the " +
-              "tests — or the guided grant/check loop " +
-              "scripts/isolated-session/grant-check.mjs in this repository. Until then " +
-              "the state stays unproven."
+              "session and cannot be measured from here. Inside that session, grant " +
+              "the missing permission (System Settings > Privacy & Security, or the " +
+              "consent dialog macOS shows on first use — it appears on that account's " +
+              "desktop, reachable by fast user switching), then run `ae-a8n doctor` " +
+              "there again; its local probe measures the process that would run the " +
+              "tests. Until then the state stays unproven."
             : "Re-run doctor. If it persists, install the Command Line Tools so the " +
               "preflight probe can run; doctor never guesses a grant.",
         remedyKind: "human",
@@ -1245,9 +1247,66 @@ export class DarwinAdapter implements PlatformAdapter {
     // The probe is synchronous and read-only; it cannot start AE or open a
     // session. Wrapping the call keeps a failure a rejection, as the contract
     // promises, instead of a synchronous throw.
-    return Promise.resolve().then(() =>
-      probeDarwin(this.#readFacts(target.user, intent), intent),
-    );
+    return Promise.resolve().then(() => {
+      const result = probeDarwin(this.#readFacts(target.user, intent), intent);
+      return { ...result, checks: [...result.checks, ...this.#sharedRootChecks()] };
+    });
+  }
+
+  /**
+   * What the isolated-session shared root still holds, as one warning.
+   * Read-only: stale/cancelled jobs, orphan results and stale publish
+   * temporaries are reported with their state — ae-a8n never deletes them.
+   */
+  #sharedRootChecks(): readonly DiagnosticCheck[] {
+    const report = inspectSharedRoot(this.#sharedSessionRoot);
+    if (!report.present) {
+      return [];
+    }
+    const byState = new Map<string, number>();
+    for (const job of report.jobs) {
+      byState.set(job.state, (byState.get(job.state) ?? 0) + 1);
+    }
+    const parts: string[] = [];
+    for (const [state, count] of [...byState.entries()].sort()) {
+      parts.push(`${count} ${state}`);
+    }
+    if (report.orphanResults.length > 0) {
+      parts.push(`${report.orphanResults.length} orphan result(s)`);
+    }
+    if (report.staleTemporaries.length > 0) {
+      parts.push(`${report.staleTemporaries.length} stale temporary file(s)`);
+    }
+    if (report.otherArtifacts.length > 0) {
+      parts.push(`${report.otherArtifacts.length} other artifact(s)`);
+    }
+    if (parts.length === 0) {
+      return [];
+    }
+    return [
+      diagnostic("A8N-JOB-002", {
+        detail:
+          `the isolated-session shared root ${this.#sharedSessionRoot} holds ` +
+          `leftovers: ${parts.join(", ")}. Stale and cancelled jobs can never run ` +
+          "again; pending ones may still be picked up. ae-a8n reports them and " +
+          "never deletes them.",
+        remedy:
+          "Inspect the shared root yourself and remove only files you can prove " +
+          "are yours and finished; running jobs and other accounts' files are " +
+          "never ae-a8n's to delete.",
+        remedyKind: "human",
+        evidence: {
+          sharedRoot: this.#sharedSessionRoot,
+          jobs: report.jobs.map((job) => `${job.name}:${job.state}`).join("; "),
+          orphanResults: report.orphanResults.join("; "),
+          staleTemporaries: report.staleTemporaries.join("; "),
+          otherArtifacts: report.otherArtifacts
+            .map((artifact) => `${artifact.dir}/${artifact.name}`)
+            .join("; "),
+          agentBanner: report.banner === null ? "none" : "present",
+        },
+      }),
+    ];
   }
 
   plan(target: TargetSpec): Promise<readonly SetupStep[]> {
@@ -1363,33 +1422,36 @@ export class DarwinAdapter implements PlatformAdapter {
       // say exactly which one is still missing. The grant belongs to the
       // responsible process *inside the target session*, so setup cannot
       // perform it — it can only route the human to the right desktop and
-      // name the check that re-measures afterwards. The guided loop raises
-      // the OS's own dialogs, waits, and reports granted/denied/unproven; it
-      // never presses a dialog, writes TCC.db, or stores a credential.
+      // name the check that re-measures afterwards. The packaged flow is the
+      // OS's own request surface plus `ae-a8n doctor` inside the session;
+      // ae-a8n never presses a dialog, writes TCC.db, or stores a credential.
       const targetAccount = facts.targetUser ?? "the target account";
       const grantAction = (what: string) =>
-        `Run the guided grant/check loop inside ${targetAccount}'s session ` +
-        "(dialogs appear on that account's desktop — reach it with macOS fast " +
-        "user switching, do not log out): " +
-        `node scripts/isolated-session/run-in-isolated-session.mjs --user ${targetAccount} ` +
-        "--substrate terminal -- node scripts/isolated-session/grant-check.mjs. " +
-        `It requests ${what} through the OS, waits for the grant, and re-probes; ` +
-        "with the packaged CLI, run `ae-a8n doctor` inside that session to re-measure.";
+        `Inside ${targetAccount}'s session, grant ${what} — any dialog appears on ` +
+        "that account's desktop (reach it with macOS fast user switching, do not " +
+        "log out). Then run `ae-a8n doctor` inside that session to confirm the " +
+        "grant; doctor reports the state and never changes TCC itself.";
       for (const permission of [
         {
           id: "macos.screen-recording",
           name: "Screen Recording",
-          what: "Screen Recording (System Settings opens on the target desktop)",
+          what:
+            'Screen Recording (System Settings > Privacy & Security > Screen Recording, ' +
+            "enabled for the terminal or app that runs ae-a8n)",
         },
         {
           id: "macos.accessibility",
           name: "Accessibility",
-          what: 'Accessibility (the "wants to control this computer" dialog)',
+          what:
+            'Accessibility (System Settings > Privacy & Security > Accessibility, ' +
+            "or the \"wants to control this computer\" dialog)",
         },
         {
           id: "macos.automation-system-events",
           name: "Automation → System Events",
-          what: 'Automation → System Events (the "wants to control System Events" consent)',
+          what:
+            'Automation → System Events (System Settings > Privacy & Security > ' +
+            "Automation, or the \"wants to control System Events\" consent on first use)",
         },
       ]) {
         steps.push({
@@ -1577,23 +1639,42 @@ export class DarwinAdapter implements PlatformAdapter {
     }
 
     // 3. Scope note: leftovers of the isolated-session shared root (stale
-    //    jobs, orphan agents, cancelled runs)
-    //    are inspected by the repository status/prune tool, not by this
-    //    command. Reported only when that root actually exists, so a machine
-    //    that never ran an isolated session is not told to go look.
-    if (existsSync(this.#sharedSessionRoot)) {
-      findings.push({
-        code: "A8N-JOB-002",
-        action: "reported",
-        detail:
-          `the isolated-session shared root ${this.#sharedSessionRoot} exists; its stale jobs, ` +
-          "orphan agents and interrupted runs are inspected by " +
-          "scripts/isolated-session/run-in-isolated-session.mjs status|prune, which this " +
-          "command does not drive",
-        remedy:
-          "Run `node scripts/isolated-session/run-in-isolated-session.mjs status --user <account>` " +
-          "to inspect it; `prune --dry-run` shows what may be removed.",
-      });
+    //    jobs, orphan agents, cancelled runs) are reported with the same
+    //    read-only inspection `doctor` uses — never removed, because ae-a8n
+    //    does not delete another flow's files. Reported only when the root
+    //    actually holds something, so a machine that never ran an isolated
+    //    session is not told to go look.
+    const sharedReport = inspectSharedRoot(this.#sharedSessionRoot);
+    if (sharedReport.present) {
+      const byState = new Map<string, number>();
+      for (const job of sharedReport.jobs) {
+        byState.set(job.state, (byState.get(job.state) ?? 0) + 1);
+      }
+      const parts: string[] = [];
+      for (const [state, count] of [...byState.entries()].sort()) {
+        parts.push(`${count} ${state}`);
+      }
+      if (sharedReport.orphanResults.length > 0) {
+        parts.push(`${sharedReport.orphanResults.length} orphan result(s)`);
+      }
+      if (sharedReport.staleTemporaries.length > 0) {
+        parts.push(`${sharedReport.staleTemporaries.length} stale temporary file(s)`);
+      }
+      if (sharedReport.otherArtifacts.length > 0) {
+        parts.push(`${sharedReport.otherArtifacts.length} other artifact(s)`);
+      }
+      if (parts.length > 0) {
+        findings.push({
+          code: "A8N-JOB-002",
+          action: "reported",
+          detail:
+            `the isolated-session shared root ${this.#sharedSessionRoot} holds ` +
+            `leftovers: ${parts.join(", ")}; they are reported, never removed by ae-a8n`,
+          remedy:
+            "Inspect the shared root yourself and remove only files you can prove are " +
+            "yours and finished; ae-a8n never deletes session leftovers or quits a process.",
+        });
+      }
     }
 
     if (findings.length === 0) {

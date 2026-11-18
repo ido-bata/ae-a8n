@@ -165,6 +165,22 @@ path — the caller's own session is the target, so session-separation checks
 isolated-session checks. `setup`, `test` and `recover` always probe with
 session intent.
 
+Shared-root leftovers: on macOS, `doctor` also inspects the isolated-session
+shared root (`/Users/Shared/ae-a8n` by default) read-only and reports what a
+stale job, an orphaned result, an interrupted publish or a cancelled run left
+behind as an `A8N-JOB-002` warning. The inspection never deletes, never
+signals a process and never guesses ownership: job trust is resolved from the
+session agent's banner (`results/agent.json`), falling back to the console
+owner — never from the uid of whoever runs `doctor`. `recover` reports the
+same leftovers.
+
+Prune is deliberately **not** part of the packaged contract in this release:
+removal needs its own ownership/terminal-state contract before a consumer can
+be told it is safe, so packaged `doctor`/`recover` only report and the remedy
+routes the human to inspect the files themselves. The repository's
+`scripts/isolated-session/` harness keeps its own `status`/`prune` for
+development use; it is not shipped and packaged output never references it.
+
 ## 7. `setup`
 
 Steps are a list; each is `done`, `skipped`, `needs-human`, or `failed`.
