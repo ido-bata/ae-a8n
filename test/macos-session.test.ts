@@ -440,10 +440,17 @@ describe("the GUI recovery", () => {
       });
     // The session is gone entirely.
     expect(() => mk(() => null, () => 1).listWindows()).toThrow(/no login session/);
-    // A fast user switch made the target the console session.
-    expect(() => mk(() => proven, () => FOREIGN_UID).listWindows()).toThrow(/console session/);
-    // The console owner cannot be read, so "not the console" cannot be shown.
-    expect(() => mk(() => proven, () => -1).listWindows()).toThrow(/console owner could not be read/);
+    // A fast user switch made the target the console session *after* the
+    // recovery was constructed: the per-action re-proof must catch it.
+    let console = 1;
+    const flipped = mk(() => proven, () => console);
+    console = FOREIGN_UID;
+    expect(() => flipped.listWindows()).toThrow(/console session/);
+    // The console owner cannot be read at action time, so "not the console"
+    // cannot be shown.
+    let reads = 0;
+    const blind = mk(() => proven, () => (reads++ === 0 ? 1 : -1));
+    expect(() => blind.listWindows()).toThrow(/console owner could not be read/);
   });
 });
 
