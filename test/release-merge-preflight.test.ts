@@ -175,3 +175,39 @@ describe("evaluatePreflight malformed-input refusals", () => {
     expect(mod.evaluatePreflight(facts()).ok).toBe(true);
   });
 });
+
+describe("evaluatePreflight repository identity", () => {
+  const withRepos = (baseRepo: unknown, headRepo: unknown) =>
+    facts({
+      pr: {
+        ...facts().pr,
+        base: { ref: "main", repo: { full_name: baseRepo as string } },
+        head: { ...facts().pr.head!, repo: { full_name: headRepo as string } },
+      },
+    });
+
+  it("rejects when both repo identities are missing (must not compare equal)", () => {
+    const v = mod.evaluatePreflight(
+      facts({
+        pr: {
+          ...facts().pr,
+          base: { ref: "main", repo: {} },
+          head: { ...facts().pr.head!, repo: {} },
+        },
+      }),
+    );
+    expect(v.ok).toBe(false);
+    expect(v.reason).toContain("repository identity");
+  });
+
+  it("rejects malformed repo identities", () => {
+    for (const bad of ["", "noslash", "a/b/c", "!!!"]) {
+      expect(mod.evaluatePreflight(withRepos(bad, "ido-bata/ae-a8n")).ok).toBe(false);
+      expect(mod.evaluatePreflight(withRepos("ido-bata/ae-a8n", bad)).ok).toBe(false);
+    }
+  });
+
+  it("still accepts matching well-formed identities", () => {
+    expect(mod.evaluatePreflight(withRepos("ido-bata/ae-a8n", "ido-bata/ae-a8n")).ok).toBe(true);
+  });
+});

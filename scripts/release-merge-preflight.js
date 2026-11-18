@@ -40,7 +40,14 @@ export const REQUIRED_MAIN_CHECKS = ["check", "release-tooling-windows", "window
 export function evaluatePreflight({ pr, train, tip, aheadBy, runs }) {
   if (typeof pr !== "object" || pr === null) return { ok: false, reason: "PR payload missing" };
   if (pr.base?.ref !== "main") return { ok: false, reason: `base is ${pr.base?.ref}, not main` };
-  if (pr.base?.repo?.full_name !== pr.head?.repo?.full_name)
+  // Repo identity must be present, well-formed and equal on both sides —
+  // two missing values must not compare equal.
+  const repoName = (r) => (typeof r === "string" && /^[\w.-]+\/[\w.-]+$/.test(r) ? r : null);
+  const baseRepo = repoName(pr.base?.repo?.full_name);
+  const headRepo = repoName(pr.head?.repo?.full_name);
+  if (baseRepo === null || headRepo === null)
+    return { ok: false, reason: "PR base/head repository identity is missing or malformed" };
+  if (baseRepo !== headRepo)
     return { ok: false, reason: "head is a fork, not a branch in this repository" };
   if (pr.state !== "open") return { ok: false, reason: `PR is ${pr.state}` };
   if (typeof train !== "string" || !/^[A-Za-z0-9._/-]+$/.test(train))
