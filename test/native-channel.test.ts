@@ -96,10 +96,15 @@ describe("prepareNativeChannel", () => {
     const channel = prepareNativeChannel(root);
     expect(channel.reused).toBe(false);
     for (const dir of [channel.root, channel.inbox, channel.outbox]) {
-      expect(statSync(dir).mode & 0o777).toBe(0o700);
+      expect(statSync(dir).isDirectory()).toBe(true);
+      if (process.platform !== "win32") {
+        expect(statSync(dir).mode & 0o777).toBe(0o700);
+      }
     }
     const metaPath = join(channel.root, NATIVE_CHANNEL_META);
-    expect(statSync(metaPath).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(statSync(metaPath).mode & 0o777).toBe(0o600);
+    }
     const meta = JSON.parse(readFileSync(metaPath, "utf-8")) as Record<string, unknown>;
     expect(meta.v).toBe(1);
     expect(meta.token).toMatch(/^[a-f0-9]{64}$/);
@@ -118,7 +123,7 @@ describe("prepareNativeChannel", () => {
     expect(meta.sessionAeVersion).toBe("26.5");
   });
 
-  it("refuses a group/other-accessible directory", () => {
+  it.skipIf(process.platform === "win32")("refuses a group/other-accessible directory", () => {
     const root = join(tmpRoot(), "chan");
     mkdirSync(root, { recursive: true });
     chmodSync(root, 0o755);
@@ -185,7 +190,9 @@ describe("publishNativeRequest", () => {
     const channel = prepareNativeChannel(join(tmpRoot(), "chan"));
     publishNativeRequest(channel, baseInput({ target: "inst-1" }));
     const path = join(channel.inbox, `req-001${NATIVE_REQUEST_SUFFIX}`);
-    expect(statSync(path).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(statSync(path).mode & 0o777).toBe(0o600);
+    }
     expect(existsSync(`${path}.part`)).toBe(false);
     const doc = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
     expect(doc.v).toBe(1);
@@ -340,6 +347,8 @@ describe("claimed artifacts", () => {
 
 describe("defaultNativeChannelDir", () => {
   it("places the channel under ~/.ae-a8n/native", () => {
-    expect(defaultNativeChannelDir("/home/x")).toBe("/home/x/.ae-a8n/native");
+    expect(defaultNativeChannelDir("/home/x")).toBe(
+      join("/home/x", ".ae-a8n", "native"),
+    );
   });
 });
