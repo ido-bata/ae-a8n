@@ -238,6 +238,42 @@ describe("publishNativeRequest", () => {
     expect(doc.request.args).toBeNull();
     expect(doc.request.authorizationRef).toBe("grant-1");
   });
+
+  it("passes structured args through verbatim (#243)", () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"));
+    publishNativeRequest(
+      channel,
+      baseInput({ requestId: "req-args", args: { itemType: 2 } }),
+    );
+    const doc = JSON.parse(
+      readFileSync(join(channel.inbox, `req-args${NATIVE_REQUEST_SUFFIX}`), "utf-8"),
+    ) as { request: Record<string, unknown> };
+    expect(doc.request.args).toEqual({ itemType: 2 });
+  });
+
+  it("refuses unserializable args as ScriptNotSentError before any file write (#243)", () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const throwing = {
+      get boom(): unknown {
+        throw new Error("hostile getter");
+      },
+    };
+    for (const [label, args] of [
+      ["circular", circular],
+      ["bigint", { n: 1n }],
+      ["throwing getter", throwing],
+    ] as const) {
+      const channel = prepareNativeChannel(join(tmpRoot(), `chan-${label}`));
+      expect(() =>
+        publishNativeRequest(channel, baseInput({ args })),
+      ).toThrow(ScriptNotSentError);
+      /* provably nothing sent: neither the request nor a .part staging
+         file may exist */
+      expect(existsSync(join(channel.inbox, `req-001${NATIVE_REQUEST_SUFFIX}`))).toBe(false);
+      expect(existsSync(join(channel.inbox, `req-001${NATIVE_REQUEST_SUFFIX}.part`))).toBe(false);
+    }
+  });
 });
 
 describe("awaitNativeResult", () => {

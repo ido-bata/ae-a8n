@@ -436,8 +436,21 @@ export function publishNativeRequest(
   if (input.target !== undefined) {
     envelope.target = input.target;
   }
+  /* Serialize BEFORE any file is created: an unserializable args value
+     (circular structure, BigInt, throwing getter) must surface as
+     ScriptNotSentError — nothing was sent, so re-issuing under a fixed
+     input is safe. A raw TypeError would leave callers unable to tell
+     "provably not sent" from "maybe sent". */
+  let body: string;
+  try {
+    body = `${JSON.stringify(envelope)}\n`;
+  } catch (err) {
+    throw new ScriptNotSentError(
+      `request envelope is not JSON-serializable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   const part = `${target}.part`;
-  writeFileSync(part, `${JSON.stringify(envelope)}\n`, { mode: 0o600 });
+  writeFileSync(part, body, { mode: 0o600 });
   renameSync(part, target);
 }
 
