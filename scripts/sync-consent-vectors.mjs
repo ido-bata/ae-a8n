@@ -88,16 +88,23 @@ function fetchSource() {
     };
   }
   const ref = argValue("--ref") ?? "release-0-5-0";
-  const raw = execFileSync(
+  /* Fetch via the contents API's base64 `content` field, NOT the
+     `application/vnd.github.raw+json` media type: gh api parses and
+     re-serializes JSON bodies, decoding `\uXXXX` escapes into literal
+     control bytes — the returned bytes then differ from the git blob
+     and every --check reports false drift (#254). base64 `.content`
+     decodes to the exact blob bytes. */
+  const b64 = execFileSync(
     "gh",
     [
       "api",
       `repos/${UPSTREAM_REPO}/contents/${UPSTREAM_PATH}?ref=${encodeURIComponent(ref)}`,
-      "-H",
-      "Accept: application/vnd.github.raw+json",
+      "--jq",
+      ".content",
     ],
-    { encoding: "buffer", maxBuffer: 8 * 1024 * 1024 },
+    { encoding: "utf-8", maxBuffer: 8 * 1024 * 1024 },
   );
+  const raw = Buffer.from(b64.replace(/\s+/g, ""), "base64");
   let sha = ref;
   try {
     sha = execFileSync(
