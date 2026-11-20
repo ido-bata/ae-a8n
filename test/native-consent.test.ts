@@ -1,13 +1,22 @@
 /**
- * Contract tests for the §7g consent encoder (ae-a8n #245).
+ * Contract tests for the §7g consent encoder (ae-a8n #245/#247).
  *
- * The shared vectors are committed verbatim in ae-devtools
- * `packages/native-adapter/tests/consent.test.ts` and mirrored in the
- * C++ plug-in tests — both sides must produce byte-identical canon
- * strings and MACs; divergence is a contract bug, not an
- * implementation detail. Evidence level: fake/mock only.
+ * The canonical cross-repo fixture is vendored at
+ * `test/fixtures/native-consent-vectors.json` — the SAME file the
+ * ae-devtools C++ intake suite (`native_consent.cpp` via
+ * CONSENT_VECTORS_PATH) and `packages/native-adapter/src/consent.ts`
+ * verify against. It is refreshed by `npm run sync:consent-vectors`
+ * (scripts/sync-consent-vectors.mjs), never hand-edited; the sha256 in
+ * `native-consent-vectors.meta.json` proves the vendored copy is
+ * intact. `AE_DEVTOOLS_ROOT=<ae-devtools checkout>` additionally runs a
+ * live drift check against the upstream worktree. Evidence level:
+ * fake/mock only.
  */
 
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -19,60 +28,82 @@ import {
   nativeOperationRequiresConsent,
 } from "../src/driver/native-consent.js";
 
-const KEY = "a".repeat(64);
+const HERE = dirname(fileURLToPath(import.meta.url));
+const FIXTURE_PATH = join(HERE, "fixtures", "native-consent-vectors.json");
+const META_PATH = join(HERE, "fixtures", "native-consent-vectors.meta.json");
 
-const VECTORS = [
-  {
-    scope: {
-      operationId: "AEGP_ItemSuite9.AEGP_SetItemComment",
-      requestId: "r1",
-      session: { sessionId: "s1", aeVersion: "26.5" },
-      args: {
-        projectIndex: 0,
-        item: {
-          aeRef: { type: "comp", name: "C", path: [0], itemId: 1 },
-        },
-        comment: "hi",
-      },
+type CanonicalVector = {
+  name: string;
+  operationId: string;
+  requestId: string;
+  sessionJson: string;
+  argsJson?: string;
+  target?: string;
+  canonicalString: string;
+  mac: string;
+};
+
+type FixtureMeta = {
+  v: number;
+  upstream: { repo: string; path: string; ref: string };
+  sha256: string;
+};
+
+type Fixture = {
+  v: number;
+  consentKey: string;
+  channelToken: string;
+  operationId: string;
+  session: { sessionId: string; aeVersion: string };
+  argsJson: string;
+  canonicalVectors: CanonicalVector[];
+  wireCases: unknown[];
+};
+
+const fixtureBytes = readFileSync(FIXTURE_PATH);
+const fixture = JSON.parse(fixtureBytes.toString("utf-8")) as Fixture;
+const meta = JSON.parse(readFileSync(META_PATH, "utf-8")) as FixtureMeta;
+const KEY = fixture.consentKey;
+
+function vectorScope(v: CanonicalVector) {
+  return {
+    operationId: v.operationId,
+    requestId: v.requestId,
+    session: JSON.parse(v.sessionJson),
+    args: v.argsJson === undefined ? undefined : JSON.parse(v.argsJson),
+    ...(v.target === undefined ? {} : { target: v.target }),
+  };
+}
+
+describe("consent fixture integrity", () => {
+  it("vendored bytes match the recorded upstream sha256", () => {
+    const digest = createHash("sha256").update(fixtureBytes).digest("hex");
+    expect(digest).toBe(meta.sha256);
+    expect(meta.v).toBe(1);
+    expect(meta.upstream.path).toBe(
+      "packages/native-adapter/tests/fixtures/native-consent-vectors.json",
+    );
+  });
+
+  it("fixture shape is the contract v1", () => {
+    expect(fixture.v).toBe(1);
+    expect(fixture.consentKey).toMatch(/^[a-f0-9]{64}$/);
+    expect(fixture.canonicalVectors.length).toBeGreaterThan(0);
+    expect(fixture.wireCases.length).toBeGreaterThan(0);
+  });
+
+  it.skipIf(process.env.AE_DEVTOOLS_ROOT === undefined)(
+    "vendored copy is byte-identical to the AE_DEVTOOLS_ROOT worktree",
+    () => {
+      const upstream = join(
+        process.env.AE_DEVTOOLS_ROOT as string,
+        meta.upstream.path,
+      );
+      expect(existsSync(upstream)).toBe(true);
+      expect(readFileSync(upstream).equals(fixtureBytes)).toBe(true);
     },
-    wantCanon:
-      "native-consent/v1\nAEGP_ItemSuite9.AEGP_SetItemComment\nr1\n" +
-      "{\"aeVersion\":\"26.5\",\"sessionId\":\"s1\"}\n" +
-      "{\"comment\":\"hi\",\"item\":{\"aeRef\":{\"itemId\":1,\"name\":\"C\",\"path\":[0],\"type\":\"comp\"}},\"projectIndex\":0}\n",
-    wantMac: "6253c53d4af5731e9cbfb96141c66b4d782e0675fc1ef020528a73799200e888",
-  },
-  {
-    scope: {
-      operationId: "OP.X",
-      requestId: "req-2",
-      session: {
-        aeVersion: "26.5",
-        sdkRelease: { distribution: "macos", identifier: "26.5" },
-        sessionId: "s",
-      },
-      args: null,
-      target: "inst-1",
-    },
-    wantCanon:
-      "native-consent/v1\nOP.X\nreq-2\n" +
-      "{\"aeVersion\":\"26.5\",\"sdkRelease\":{\"distribution\":\"macos\",\"identifier\":\"26.5\"},\"sessionId\":\"s\"}\n" +
-      "null\ninst-1",
-    wantMac: "4d2eb82d4d845f24b3e24e544026f306d75d6152f008a0f67cab9c665c902e1f",
-  },
-  {
-    scope: {
-      operationId: "OP.Y",
-      requestId: "r3",
-      session: { aeVersion: "1.0", sessionId: "s\"q" },
-      args: { a: [1, -2, 0], b: { k: true, z: "x\ny" }, c: null },
-    },
-    wantCanon:
-      "native-consent/v1\nOP.Y\nr3\n" +
-      "{\"aeVersion\":\"1.0\",\"sessionId\":\"s\\\"q\"}\n" +
-      "{\"a\":[1,-2,0],\"b\":{\"k\":true,\"z\":\"x\\ny\"},\"c\":null}\n",
-    wantMac: "cb89c6ba1fb651081c0b790a02085206dba9fbff80f3fbe748abf672fe34ae67",
-  },
-];
+  );
+});
 
 describe("consent canonicalJson", () => {
   it("sorts object keys by UTF-8 byte order, no whitespace", () => {
@@ -87,34 +118,94 @@ describe("consent canonicalJson", () => {
     expect(canonicalJson(-0)).toBe("0");
   });
 
+  it("rejects lone UTF-16 surrogates in strings and object keys", () => {
+    /* contract §7g (devtools #337): no shared canonical form exists —
+       the C++ parser maps them to U+FFFD while JSON.stringify re-emits
+       \uDXXX escapes. Issuance must fail closed. */
+    expect(() => canonicalJson("lone \uD800 high")).toThrow(ConsentCanonicalError);
+    expect(() => canonicalJson("lone \uDC00 low")).toThrow(ConsentCanonicalError);
+    expect(() => canonicalJson("\uD800\uD800 pair")).toThrow(ConsentCanonicalError);
+    expect(() => canonicalJson({ "\uD800key": 1 })).toThrow(ConsentCanonicalError);
+    expect(() => canonicalJson(["ok", "\uDC00"])).toThrow(ConsentCanonicalError);
+    /* well-formed surrogate pairs stay encodable */
+    expect(canonicalJson("café 😀")).toBe('"café 😀"');
+  });
+
   it("undefined object values are dropped like JSON.stringify", () => {
     expect(canonicalJson({ a: undefined, b: 2 })).toBe('{"b":2}');
   });
 });
 
-describe("consent shared vectors", () => {
-  for (const [i, v] of VECTORS.entries()) {
-    it(`vector ${i}: canon + MAC match the C++ plug-in`, () => {
-      expect(canonicalConsentString(v.scope)).toBe(v.wantCanon);
-      expect(issueConsentMac(KEY, v.scope)).toBe(v.wantMac);
+describe("consent shared vectors (native-consent-vectors.json)", () => {
+  for (const v of fixture.canonicalVectors) {
+    it(`${v.name}: canon string + MAC match the contract`, () => {
+      expect(canonicalConsentString(vectorScope(v))).toBe(v.canonicalString);
+      expect(issueConsentMac(KEY, vectorScope(v))).toBe(v.mac);
     });
   }
 
+  it("every wireCase consent.expectedMac reproduces under the fixture key", () => {
+    /* The wireCases pin the MAC ae-a8n must present for each scenario;
+       recompute it over the presented scope (macFor overrides apply). */
+    type WireConsent =
+      | { mode: string; macFor?: Record<string, unknown>; expectedMac?: string }
+      | undefined;
+    type WireCase = {
+      requestId: string;
+      argsJson?: string;
+      consent?: WireConsent;
+    };
+    const cases = fixture.wireCases as WireCase[];
+    let checked = 0;
+    for (const c of cases) {
+      const consent = c.consent;
+      if (
+        consent === undefined ||
+        (consent.mode !== "valid" && consent.mode !== "macFor") ||
+        typeof consent.expectedMac !== "string"
+      ) {
+        continue;
+      }
+      const over = consent.macFor ?? {};
+      const argsJson =
+        over.argsJson !== undefined ? over.argsJson : (c.argsJson ?? fixture.argsJson);
+      const scope = {
+        operationId:
+          typeof over.operationId === "string" ? over.operationId : fixture.operationId,
+        requestId:
+          typeof over.requestId === "string" ? over.requestId : c.requestId,
+        session: JSON.parse(
+          typeof over.sessionJson === "string"
+            ? over.sessionJson
+            : JSON.stringify(fixture.session),
+        ),
+        args: argsJson === null || argsJson === undefined ? null : JSON.parse(argsJson as string),
+        ...(typeof over.target === "string" ? { target: over.target } : {}),
+      };
+      expect(issueConsentMac(KEY, scope), `wireCase ${c.requestId}`).toBe(
+        consent.expectedMac,
+      );
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it("tampered scope field breaks the MAC", () => {
-    const v = VECTORS[0]!;
-    const mac = issueConsentMac(KEY, { ...v.scope, operationId: "OP.TAMPERED" });
-    expect(mac).not.toBe(v.wantMac);
+    const v = fixture.canonicalVectors[0]!;
+    const mac = issueConsentMac(KEY, { ...vectorScope(v), operationId: "OP.TAMPERED" });
+    expect(mac).not.toBe(v.mac);
   });
 
   it("wrong key never verifies the vector MAC", () => {
-    const v = VECTORS[0]!;
-    expect(issueConsentMac("b".repeat(64), v.scope)).not.toBe(v.wantMac);
+    const v = fixture.canonicalVectors[0]!;
+    expect(issueConsentMac("b".repeat(64), vectorScope(v))).not.toBe(v.mac);
   });
 
   it("malformed key shape is rejected", () => {
-    expect(() => issueConsentMac("abc", VECTORS[0]!.scope)).toThrow(
+    const v = fixture.canonicalVectors[0]!;
+    expect(() => issueConsentMac("abc", vectorScope(v))).toThrow(
       ConsentCanonicalError);
-    expect(() => issueConsentMac("A".repeat(64), VECTORS[0]!.scope)).toThrow(
+    expect(() => issueConsentMac("A".repeat(64), vectorScope(v))).toThrow(
       ConsentCanonicalError);
   });
 });

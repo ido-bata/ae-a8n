@@ -11,6 +11,13 @@
  * per-request §7g MAC issuance behind the authorization grant, and the
  * denied/tampered/replayed/UNKNOWN/reconciliation cases — all against
  * the real C++ intake, not a mock.
+ *
+ * #247 adds the shared-fixture wire run: `wireCases` from the vendored
+ * `native-consent-vectors.json` (ae-devtools #337) executed IN ORDER
+ * against `probe_test --channel-server with-clip` — the same cases the
+ * C++ suite runs in-process. Cases needing in-process host knobs
+ * (`hostSetCommentError`, `nullItemEntry`) stay C++-suite-only and are
+ * skipped here explicitly.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -20,11 +27,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   awaitNativeResult,
@@ -42,6 +51,75 @@ import {
 import { issueConsentMac } from "../src/driver/native-consent.js";
 
 const BIN = process.env.AE_DEVTOOLS_PROBE_TEST ?? "";
+
+/* Shared consent fixture (vendored from ae-devtools, #247). */
+const HERE = dirname(fileURLToPath(import.meta.url));
+const CONSENT_FIXTURE = JSON.parse(
+  readFileSync(join(HERE, "fixtures", "native-consent-vectors.json"), "utf-8"),
+) as {
+  v: number;
+  consentKey: string;
+  channelToken: string;
+  operationId: string;
+  session: { sessionId: string; aeVersion: string };
+  argsJson: string;
+  wireCases: WireCase[];
+};
+
+type WireExpect = {
+  outcome: string;
+  refusalCode?: string;
+  mayHaveMutated?: "true" | "false" | "absent";
+  payload?: Record<string, unknown>;
+  opCallsInclude?: string[];
+  opCallsExclude?: string[];
+};
+
+type WireConsent =
+  | { mode: "absent" }
+  | { mode: "invalid"; mac: string }
+  | { mode: "raw"; raw: string }
+  | {
+      mode: "valid" | "macFor";
+      macFor?: {
+        requestId?: string;
+        operationId?: string;
+        sessionJson?: string;
+        argsJson?: string | null;
+        target?: string;
+      };
+      expectedMac: string;
+    };
+
+type WireCase = {
+  name: string;
+  requestId: string;
+  argsJson?: string;
+  channelConsentKey: boolean;
+  consent: WireConsent;
+  hostSetCommentError?: boolean;
+  nullItemEntry?: boolean;
+  expect: WireExpect;
+};
+
+/** The scope a presented consent MAC was computed over: the request's
+ *  own fields, overridden by consent.macFor where present. Mirrors the
+ *  devtools fixture semantics (consent.test.ts presentedMacScope). */
+function presentedMacScope(c: WireCase) {
+  const over =
+    c.consent.mode === "valid" || c.consent.mode === "macFor"
+      ? c.consent.macFor
+      : undefined;
+  const argsJson =
+    over?.argsJson !== undefined ? over.argsJson : (c.argsJson ?? CONSENT_FIXTURE.argsJson);
+  return {
+    operationId: over?.operationId ?? CONSENT_FIXTURE.operationId,
+    requestId: over?.requestId ?? c.requestId,
+    session: JSON.parse(over?.sessionJson ?? JSON.stringify(CONSENT_FIXTURE.session)),
+    args: argsJson === null || argsJson === undefined ? null : JSON.parse(argsJson),
+    ...(over?.target === undefined ? {} : { target: over.target }),
+  };
+}
 
 const FAST = { pollMs: 50, graceMs: 25_000 };
 const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
@@ -373,5 +451,153 @@ describe.skipIf(BIN === "")(
         rmSync(root3, { recursive: true, force: true });
       }
     }, 60_000);
+  },
+);
+
+/* Write channel.json for a wire case: fixture token always, consentKey
+   only when the case declares channelConsentKey. The plug-in re-reads
+   channel.json every tick, so per-case rewrites take effect without a
+   restart. */
+function writeWireChannelMeta(root: string, withKey: boolean): void {
+  const meta: Record<string, unknown> = { v: 1, token: CONSENT_FIXTURE.channelToken };
+  if (withKey) {
+    meta.consentKey = CONSENT_FIXTURE.consentKey;
+  }
+  /* Atomic replace: the plug-in re-reads channel.json every tick, so a
+     torn write must never be observable. */
+  const target = join(root, NATIVE_CHANNEL_META);
+  const part = `${target}.part`;
+  writeFileSync(part, `${JSON.stringify(meta)}\n`, { mode: 0o600 });
+  renameSync(part, target);
+}
+
+/* Build the contract envelope for a wire case. `macFor`/`valid` modes
+   carry consent.expectedMac; `macFor` MACs are recomputed here and
+   asserted against the fixture pin before the file is written. */
+function wireEnvelope(c: WireCase): Record<string, unknown> {
+  const argsJson = c.argsJson ?? CONSENT_FIXTURE.argsJson;
+  const envelope: Record<string, unknown> = {
+    v: 1,
+    token: CONSENT_FIXTURE.channelToken,
+    timeoutMs: 30_000,
+    request: {
+      schema: "ae-devtools/native-dispatch/v1",
+      requestId: c.requestId,
+      session: CONSENT_FIXTURE.session,
+      operationId: CONSENT_FIXTURE.operationId,
+      args: JSON.parse(argsJson),
+    },
+  };
+  const consent = c.consent;
+  if (consent.mode === "absent") {
+    return envelope;
+  }
+  if (consent.mode === "raw") {
+    envelope.consent = JSON.parse(consent.raw);
+    return envelope;
+  }
+  if (consent.mode === "invalid") {
+    envelope.consent = { v: 1, mac: consent.mac };
+    return envelope;
+  }
+  /* valid | macFor: the presented MAC must equal the fixture pin —
+     recompute over the presented scope (macFor overrides apply) so a
+     drift in OUR issuance is caught before the wire even sees it. */
+  const mac = issueConsentMac(CONSENT_FIXTURE.consentKey, presentedMacScope(c));
+  expect(mac, `wireCase ${c.name} expectedMac`).toBe(consent.expectedMac);
+  envelope.consent = { v: 1, mac };
+  return envelope;
+}
+
+describe.skipIf(BIN === "")(
+  "shared consent wireCases against ae-devtools probe_test (fake host, #247)",
+  () => {
+    let root = "";
+    let child: ChildProcess | undefined;
+
+    afterAll(() => {
+      child?.kill();
+      if (root !== "") {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it("executes the fixture wireCases in order on one channel + one host", async () => {
+      root = mkdtempSync(join(tmpdir(), "a8n-native-wire-"));
+      for (const d of ["inbox", "outbox"]) {
+        mkdirSync(join(root, d), { recursive: true, mode: 0o700 });
+        chmodSync(join(root, d), 0o700);
+      }
+      /* with-clip (devtools #341): project Shot01 /tmp/shot01.aep with
+         COMP item "Clip" itemId 7001 — the fixture argsJson descriptor. */
+      child = spawnChannelServer(root, "zz-wire", 120_000, "with-clip");
+      const channel = {
+        root,
+        token: CONSENT_FIXTURE.channelToken,
+        consentKey: CONSENT_FIXTURE.consentKey,
+        inbox: join(root, "inbox"),
+        outbox: join(root, "outbox"),
+        reused: true,
+      };
+
+      /* Host-knob cases (hostSetCommentError, nullItemEntry) need the
+         in-process C++ harness — TestConsentWireCases covers them. */
+      const runnable = CONSENT_FIXTURE.wireCases.filter(
+        (c) => c.hostSetCommentError !== true && c.nullItemEntry !== true,
+      );
+      expect(runnable.length).toBe(CONSENT_FIXTURE.wireCases.length - 2);
+
+      for (const c of runnable) {
+        writeWireChannelMeta(root, c.channelConsentKey);
+        /* A repeated requestId (the replay case) would otherwise read
+           the PREVIOUS case's verdict file — remove it so the new
+           verdict is what gets collected. */
+        rmSync(
+          join(root, "outbox", `${c.requestId}${NATIVE_RESULT_SUFFIX}`),
+          { force: true },
+        );
+        const envelope = wireEnvelope(c);
+        /* Atomic publish, same as the client's .part + rename. */
+        const reqPath = join(root, "inbox", `${c.requestId}${NATIVE_REQUEST_SUFFIX}`);
+        writeFileSync(`${reqPath}.part`, `${JSON.stringify(envelope)}\n`, {
+          mode: 0o600,
+        });
+        renameSync(`${reqPath}.part`, reqPath);
+        const delivery = await awaitNativeResult(channel, c.requestId, 30_000, FAST);
+        const r = delivery.result;
+        expect(r.outcome, `wireCase ${c.name}`).toBe(c.expect.outcome);
+        if (c.expect.refusalCode !== undefined) {
+          expect(r.refusalCode, `wireCase ${c.name}`).toBe(c.expect.refusalCode);
+        }
+        if (c.expect.mayHaveMutated === "true") {
+          expect(r.mayHaveMutated, `wireCase ${c.name}`).toBe(true);
+        } else if (c.expect.mayHaveMutated === "false") {
+          expect(r.mayHaveMutated, `wireCase ${c.name}`).toBe(false);
+        } else {
+          /* "absent": refused/not-sent verdicts omit the field — a
+             pre-execution outcome must never claim possible mutation. */
+          expect(r.mayHaveMutated, `wireCase ${c.name}`).toBeUndefined();
+        }
+        if (c.expect.payload !== undefined) {
+          expect(r.result, `wireCase ${c.name}`).toEqual(c.expect.payload);
+        }
+        /* opCalls pins are SUBSTRING matches — the fixture's short names
+           ("AEGP_SetItemComment") match the full operationIds the wire
+           result carries, same as JValContains in the C++ suite. */
+        const calls = r.opCalls ?? [];
+        for (const op of c.expect.opCallsInclude ?? []) {
+          expect(
+            calls.some((entry) => entry.includes(op)),
+            `wireCase ${c.name} opCalls include ${op}`,
+          ).toBe(true);
+        }
+        for (const op of c.expect.opCallsExclude ?? []) {
+          expect(
+            calls.some((entry) => entry.includes(op)),
+            `wireCase ${c.name} opCalls exclude ${op}`,
+          ).toBe(false);
+        }
+      }
+    }, 180_000);
   },
 );
