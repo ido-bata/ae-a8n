@@ -288,6 +288,36 @@ describe("attach-only target selection (script transport, macOS)", () => {
     expect(error?.reason).toBe("not-found");
     expect(error?.message).toContain("never starts a replacement");
   });
+
+  it("invoke reports unknown-target, not not-found, when the census cannot be read", async () => {
+    // #processState answers "unknown" when the process list throws; the
+    // target may still be running, so the failure must not claim it
+    // stopped. Only "alive" continues delivery.
+    const lists = [[ae(7)], [ae(7)]];
+    let i = 0;
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install: INSTALL,
+      now: () => T0,
+      sessionUid: 501,
+      attach: {},
+      processes: () => {
+        if (i < lists.length) {
+          return lists[i++] as HostProcess[];
+        }
+        throw new Error("ps failed");
+      },
+    });
+    await transport.launch();
+    transport.confirmLaunched();
+    const error = await transport.invoke("/tmp/entry.jsx").then(
+      () => null,
+      (caught: unknown) => caught as AttachTargetError,
+    );
+    expect(error).toBeInstanceOf(AttachTargetError);
+    expect(error?.reason).toBe("unknown-target");
+    expect(error?.message).toContain("could not be read");
+  });
 });
 
 describe("attach-only on Windows", () => {
