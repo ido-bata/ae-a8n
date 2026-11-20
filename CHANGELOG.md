@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.5.0
+
+Patch-level release on the `release-0-5-0` train: ExtendScript host
+script hardening merged after 0.4.0 (#265). No public API changes;
+`package.json` exports and the bridge contract are unchanged.
+
+### Fixed
+
+- **Host script I/O validation** (#265): the ExtendScript host now
+  rejects invalid result-file writes, honours `Project.close`
+  cancellation instead of reporting success, and pre-validates text
+  arguments, closing holes where a failed write or a cancelled close
+  could be mistaken for a completed call.
+- **Close-failure simulation narrowed to result writes** (#265): test
+  fixtures no longer mask request-path failures, keeping the
+  fake-host/real-host parity claim honest.
+
+### Verification
+
+- `verified on real host`: packaged consumer smoke
+  (`scripts/check-consumer-smoke.js`, packed tarball → clean install →
+  launch → handshake → project → diagnostics → close) passed against
+  After Effects 2027 `27.0x78` on macOS arm64, and the same tarball
+  completed a read-only attach smoke against a running AE 2027 on
+  Windows (`ownership: attached`, quit=false). Evidence recorded on
+  ae-a8n#99.
+- The native-channel path remains `fake/mock only` (unchanged from
+  0.4.0; real-host gate tracked by ae-devtools#223).
+
 ## 0.4.0
 
 This is the `release-0-4-0` train: the opt-in native-channel mutation
