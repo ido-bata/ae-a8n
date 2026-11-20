@@ -107,10 +107,12 @@ describe("ES3 host failure safety (#265)", () => {
     { position: [10] },
     { position: [10, Number.NaN] },
   ])("rejects invalid comp.addText arguments before a layer exists (%j)", (invalid) => {
-    const before = app.project.item(1).numLayers;
+    const comp = app.project.item(1);
+    if (comp === undefined) throw new Error("missing test composition");
+    const before = comp.numLayers;
     const reply = dispatch("comp.addText", { comp: "Main", text: "Hello", ...invalid });
     expect(reply.execution.success).toBe(true);
     expect(reply.result?.ok).toBe(false);
-    expect(app.project.item(1).numLayers).toBe(before);
+    expect(comp.numLayers).toBe(before);
   });
 });
