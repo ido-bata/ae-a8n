@@ -14,7 +14,7 @@ Tracking: [#127](https://github.com/ido-bata/ae-a8n/issues/127)。前提とな�
 
 1. Node 側で channel を準備する。`AfterEffects.launch({ transport: "in-ae-dispatcher" })` は channel dir（既定 `~/.ae-a8n/dispatcher`）を自動で用意し、`<channelDir>/activate.jsx` を生成する。
 2. **人間が**、起動済みの AE で **File → Scripts → Run Script File** を選び `activate.jsx` を実行する。これが第一の activation 経路であり、自動化しない。
-3. dispatcher は `app.scheduleTask` で定期的に `<channelDir>/inbox/*.request.json` を poll し、claim（`.claimed` へ rename）→ token/id/method/deadline 検証 → named method 実行 → `<channelDir>/outbox/*.result.json` へ atomic publish する。
+3. dispatcher は `app.scheduleTask` で定期的に `<channelDir>/inbox/*.request.json` を poll し、claim（`.claimed` へ rename）→ token/id/method/deadline 検証 → named method 実行 → `<channelDir>/outbox/*.result.json` へ publish する。publish は同一 dir の `.part` staging + rename を優先する（rename 3 回失敗時のみ in-place write に fallback — 後述）。
 4. `<channelDir>/state.json` が heartbeat として書かれる。Node 側はこれが新しい間だけ「応答中」とみなす。
 
 同一 AE 内で二重に有効化しようとすると `__a8nDispatcherTask` ガードにより拒否される。
@@ -57,6 +57,7 @@ API からは `DispatcherTransport.installStartupScript()` / `uninstallStartupSc
 - `verifiesDestination = true` のため、probe は `session.adopt`、probe 以降の全 call は `session.require` マーカーを伴う。dispatcher は probe に応答した**同一の AE エンジンインスタンス**でのみ後続要求を実行する（host の `__a8nSessions` store による per-instance 強制）。これは「どのプロセスか」の証明ではなく、「probe に答えたエンジンと同じエンジンか」の保証に留まる。
 - **timeout は `UNKNOWN`**。リクエストは削除も再送もしない。再送すると二重実行になり得るため、呼び出し側は結果不明として扱う。
 - stale（deadline 超過）・id 不一致・token 不一致・未知 method は dispatcher が `ok:false` で拒否し、**実行しない**。
+- result publish は atomic-or-fail ではない。dispatcher は `.part` staging + rename を優先するが、rename が 3 回失敗すると in-place write に fallback する（ExtendScript の制約上 atomic-only にできない）。driver は malformed/partial な result file を parse 失敗として読み飛ばし続けるため、torn read は latency にしかならず、持続的な partial write は timeout → `UNKNOWN`・非再送に収束する — native-channel/v1 intake の「atomic publish or fails」と outcome は同じ fail-closed 側に落ちるが、publish semantics 自体は意図的に異なる（`ae-devtools` `specs/ae-capability-coverage/contracts/native-channel.md` §5 は plug-in intake の契約であり、この dispatcher transport を拘束しない）。
 
 ## 診断
 

@@ -1,0 +1,342 @@
+{
+  "v": 1,
+  "contract": "ae-devtools/native-channel/v1 §7g/§7h (Issue #326/#327/#337)",
+  "description": "Shared consent contract vectors. canonicalVectors pin canonicalConsentString + HMAC-SHA256 byte output for both native_consent.cpp and packages/native-adapter/src/consent.ts. wireCases pin the envelope consent shape, refusal codes, mayHaveMutated and opCalls semantics; executed in array order by the fake-host suite and mirrored by the TS adapter test. ae-a8n consumes this file for consent issuance (ae-a8n#245).",
+  "consentKey": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "channelToken": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "operationId": "AEGP_ItemSuite9.AEGP_SetItemComment",
+  "session": {
+    "sessionId": "sess-1",
+    "aeVersion": "26.5"
+  },
+  "argsJson": "{\"projectIndex\":0,\"item\":{\"aeRef\":{\"type\":\"comp\",\"name\":\"Clip\",\"path\":[0],\"itemId\":7001,\"projectName\":\"Shot01\",\"projectPath\":\"/tmp/shot01.aep\"}},\"comment\":\"fx-note\"}",
+  "canonicalVectors": [
+    {
+      "name": "set-item-comment-scope",
+      "operationId": "AEGP_ItemSuite9.AEGP_SetItemComment",
+      "requestId": "r1",
+      "sessionJson": "{\"sessionId\":\"s1\",\"aeVersion\":\"26.5\"}",
+      "canonicalString": "native-consent/v1\nAEGP_ItemSuite9.AEGP_SetItemComment\nr1\n{\"aeVersion\":\"26.5\",\"sessionId\":\"s1\"}\n{\"comment\":\"hi\",\"item\":{\"aeRef\":{\"itemId\":1,\"name\":\"C\",\"path\":[0],\"type\":\"comp\"}},\"projectIndex\":0}\n",
+      "mac": "e0c8fd86e46a1b53ec2dc8b2795f948f36a4bafe0db7fff14ee28633bdb394c6",
+      "argsJson": "{\"projectIndex\":0,\"item\":{\"aeRef\":{\"type\":\"comp\",\"name\":\"C\",\"path\":[0],\"itemId\":1}},\"comment\":\"hi\"}"
+    },
+    {
+      "name": "target-null-args-sdkrelease",
+      "operationId": "OP.X",
+      "requestId": "req-2",
+      "sessionJson": "{\"aeVersion\":\"26.5\",\"sdkRelease\":{\"distribution\":\"macos\",\"identifier\":\"26.5\"},\"sessionId\":\"s\"}",
+      "canonicalString": "native-consent/v1\nOP.X\nreq-2\n{\"aeVersion\":\"26.5\",\"sdkRelease\":{\"distribution\":\"macos\",\"identifier\":\"26.5\"},\"sessionId\":\"s\"}\nnull\ninst-1",
+      "mac": "fc635d3196fbf90c426c3e4693300e2e8469c1c479e17f3152b8ce04a8e8d359",
+      "target": "inst-1"
+    },
+    {
+      "name": "string-escapes-negatives",
+      "operationId": "OP.Y",
+      "requestId": "r3",
+      "sessionJson": "{\"aeVersion\":\"1.0\",\"sessionId\":\"s\\\"q\"}",
+      "canonicalString": "native-consent/v1\nOP.Y\nr3\n{\"aeVersion\":\"1.0\",\"sessionId\":\"s\\\"q\"}\n{\"a\":[1,-2,0],\"b\":{\"k\":true,\"z\":\"x\\ny\"},\"c\":null}\n",
+      "mac": "210f5dc3ad36a5b36ae2af1e77339573574ffc6d0f27ed1fd6554107c5bf0e1d",
+      "argsJson": "{\"a\":[1,-2,0],\"b\":{\"k\":true,\"z\":\"x\\ny\"},\"c\":null}"
+    },
+    {
+      "name": "unicode-key-byte-order",
+      "operationId": "OP.UNI",
+      "requestId": "u1",
+      "sessionJson": "{\"sessionId\":\"s-uni\",\"aeVersion\":\"26.5\"}",
+      "canonicalString": "native-consent/v1\nOP.UNI\nu1\n{\"aeVersion\":\"26.5\",\"sessionId\":\"s-uni\"}\n{\"a\":{\"z\":2,\"😀\":1},\"z\":1,\"é\":2,\"α\":3}\n",
+      "mac": "120229183eaeb07fab6884df0b7289b675d046cced3cbaca918ac9c6fbfebf06",
+      "argsJson": "{\"z\":1,\"é\":2,\"α\":3,\"a\":{\"😀\":1,\"z\":2}}"
+    },
+    {
+      "name": "control-chars-and-del",
+      "operationId": "OP.CTL",
+      "requestId": "c1",
+      "sessionJson": "{\"sessionId\":\"s\",\"aeVersion\":\"1.0\"}",
+      "canonicalString": "native-consent/v1\nOP.CTL\nc1\n{\"aeVersion\":\"1.0\",\"sessionId\":\"s\"}\n{\"del\":\"\",\"empty\":\"\",\"s\":\"ctl\\u0001\\u001f end\",\"tab\":\"a\\tb\",\"uni\":\"café 😀\"}\n",
+      "mac": "dff4c64e118d16fc42e13d8bcb260678210aa7b076fd50aeab7afa6ea3e5b4b2",
+      "argsJson": "{\"s\":\"ctl\\u0001\\u001f end\",\"del\":\"\",\"tab\":\"a\\tb\",\"uni\":\"café 😀\",\"empty\":\"\"}"
+    },
+    {
+      "name": "integer-bounds",
+      "operationId": "OP.INT",
+      "requestId": "i1",
+      "sessionJson": "{\"sessionId\":\"s\",\"aeVersion\":\"1.0\"}",
+      "canonicalString": "native-consent/v1\nOP.INT\ni1\n{\"aeVersion\":\"1.0\",\"sessionId\":\"s\"}\n{\"max\":9007199254740991,\"min\":-9007199254740991,\"neg\":-7,\"zero\":0}\n",
+      "mac": "87a8f3fc9fde3c200ab3118f079d235ffc76341ee598a82b461b1abb393000e2",
+      "argsJson": "{\"max\":9007199254740991,\"min\":-9007199254740991,\"zero\":0,\"neg\":-7}"
+    },
+    {
+      "name": "unicode-target",
+      "operationId": "OP.UTF8",
+      "requestId": "t1",
+      "sessionJson": "{\"sessionId\":\"s\",\"aeVersion\":\"26.5\"}",
+      "canonicalString": "native-consent/v1\nOP.UTF8\nt1\n{\"aeVersion\":\"26.5\",\"sessionId\":\"s\"}\n{\"k\":\"v\"}\ninst-café-😀",
+      "mac": "2325e804d88e8ff034eb8092526006919ed275f110dbb4c1a0500b484fecd9e8",
+      "argsJson": "{\"k\":\"v\"}",
+      "target": "inst-café-😀"
+    },
+    {
+      "name": "empty-containers",
+      "operationId": "OP.EMPTY",
+      "requestId": "e1",
+      "sessionJson": "{\"sessionId\":\"s\"}",
+      "canonicalString": "native-consent/v1\nOP.EMPTY\ne1\n{\"sessionId\":\"s\"}\n{\"a\":[],\"nested\":{\"x\":{}},\"o\":{}}\n",
+      "mac": "09df8b0387d6643c71fc50ed493d8cfa38601661560fef59f5a010cdf3a251a5",
+      "argsJson": "{\"o\":{},\"a\":[],\"nested\":{\"x\":{}}}"
+    }
+  ],
+  "wireCases": [
+    {
+      "name": "consent-absent",
+      "requestId": "fx-missing",
+      "channelConsentKey": false,
+      "consent": {
+        "mode": "absent"
+      },
+      "expect": {
+        "outcome": "refused",
+        "refusalCode": "CONSENT_REQUIRED",
+        "mayHaveMutated": "absent",
+        "opCallsExclude": [
+          "AEGP_SetItemComment"
+        ]
+      }
+    },
+    {
+      "name": "consent-malformed-version",
+      "requestId": "fx-bad-v",
+      "channelConsentKey": false,
+      "consent": {
+        "mode": "raw",
+        "raw": "{\"v\":2,\"mac\":\"0000000000000000000000000000000000000000000000000000000000000000\"}"
+      },
+      "expect": {
+        "outcome": "refused",
+        "refusalCode": "CONSENT_REQUIRED",
+        "mayHaveMutated": "absent",
+        "opCallsExclude": [
+          "AEGP_SetItemComment"
+        ]
+      }
+    },
+    {
+      "name": "consent-malformed-mac",
+      "requestId": "fx-bad-mac",
+      "channelConsentKey": false,
+      "consent": {
+        "mode": "raw",
+        "raw": "{\"v\":1,\"mac\":\"not-hex\"}"
+      },
+      "expect": {
+        "outcome": "refused",
+        "refusalCode": "CONSENT_REQUIRED",
+        "mayHaveMutated": "absent",
+        "opCallsExclude": [
+          "AEGP_SetItemComment"
+        ]
+      }
+    },
+    {
+      "name": "consent-no-channel-key",
+      "requestId": "fx-nokey",
+      "channelConsentKey": false,
+      "consent": {
+        "mode": "valid",
+        "expectedMac": "86a7e02e8bfd3696a6b084663b06854d449f14dc674cd1d55ad3abf2535f6462"
+      },
+      "expect": {
+        "outcome": "refused",
+        "refusalCode": "CONSENT_REQUIRED",
+        "mayHaveMutated": "absent",
+        "opCallsExclude": [
+          "AEGP_SetItemComment"
+        ]
+      }
+    },
+    {
+      "name": "consent-wrong-mac",
+      "requestId": "fx-wrongmac",
+      "channelConsentKey": true,
+      "consent": {
+        "mode": "invalid",
+        "mac": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "expect": {
+        "outcome": "refused",
+        "refusalCode": "CONSENT_INVALID",
+        "mayHaveMutated": "absent",
+        "opCallsExclude": [
+          "AEGP_SetItemComment"
+        ]
+      }
+    },
+    {
+      "name": "consent-mac-other-args",
+      "requestId": "fx-tamper-args",
+      "channelConsentKey": true,
+      "consent": {
+        "mode": "macFor",
+        "macFor": {
+          "argsJson": "{\"projectIndex\":0,\"item\":{\"aeRef\":{\"type\":\"comp\",\"name\":\"Clip\",\"path\":[0],\"itemId\":7001,\"projectName\":\"Shot01\",\"projectPath\":\"/tmp/shot01.aep\"}},\"comment\":\"other\"}"
+        },
+        "expectedMac": "74c6f0345227555f423d5fe06b1d4aa13dd3398a9f3d01bbb8cf4f705cec9eb6"
+      },
+      "expect": {
+        "outcome": "refused",
+        "refusalCode": "CONSENT_INVALID",
+        "mayHaveMutated": "absent",
+        "opCallsExclude": [
+          "AEGP_SetItemComment"
+        ]
+      }
+    },
+    {
+      "name": "consent-mac-other-request-id",
+      "requestId": "fx-tamper-rid",
+      "channelConsentKey": true,
+      "consent": {
+        "mode": "macFor",
+        "macFor": {
+          "requestId": "fx-other-id"
+        },
+        "expectedMac": "d394bd2ce7d8422c2bc63f81547bc78c93f5da22ad146ccf4d7d9ef0de7c2628"
+      },
+      "expect": {
+        "outcome": "refused",
+        "refusalCode": "CONSENT_INVALID",
+        "mayHaveMutated": "absent",
+        "opCallsExclude": [
+          "AEGP_SetItemComment"
+        ]
+      }
+    },
+    {
+      "name": "consent-mac-other-session",
+      "requestId": "fx-tamper-sess",
+      "channelConsentKey": true,
+      "consent": {
+        "mode": "macFor",
+        "macFor": {
+          "sessionJson": "{\"sessionId\":\"sess-1\",\"aeVersion\":\"26.4\"}"
+        },
+        "expectedMac": "1fa8a8fd3c2c32d253f96d2c9b135ffc7a5da1267286620a5bf213b9ee526bf6"
+      },
+      "expect": {
+        "outcome": "refused",
+        "refusalCode": "CONSENT_INVALID",
+        "mayHaveMutated": "absent",
+        "opCallsExclude": [
+          "AEGP_SetItemComment"
+        ]
+      }
+    },
+    {
+      "name": "consent-mac-other-target",
+      "requestId": "fx-tamper-tgt",
+      "channelConsentKey": true,
+      "consent": {
+        "mode": "macFor",
+        "macFor": {
+          "target": "inst-other"
+        },
+        "expectedMac": "a53cfbd39d4f85a91fa947341fb800aa6a129aa9695c241631de5955d57f8f62"
+      },
+      "expect": {
+        "outcome": "refused",
+        "refusalCode": "CONSENT_INVALID",
+        "mayHaveMutated": "absent",
+        "opCallsExclude": [
+          "AEGP_SetItemComment"
+        ]
+      }
+    },
+    {
+      "name": "consent-valid-mutation",
+      "requestId": "fx-valid",
+      "channelConsentKey": true,
+      "consent": {
+        "mode": "valid",
+        "expectedMac": "dc2523abbf7b996bc687350750be2a57dad29467d3cf72d924ba253cdce95a25"
+      },
+      "expect": {
+        "outcome": "completed",
+        "mayHaveMutated": "true",
+        "payload": {
+          "commentSet": true
+        },
+        "opCallsInclude": [
+          "AEGP_SetItemComment"
+        ]
+      }
+    },
+    {
+      "name": "consent-valid-stale-descriptor",
+      "requestId": "fx-stale",
+      "channelConsentKey": true,
+      "consent": {
+        "mode": "valid",
+        "expectedMac": "92db8a3b4aafbf2f9fe1f3f7099f33d164282b298b8f378d5fcf65e25a4eb5f5"
+      },
+      "expect": {
+        "outcome": "refused",
+        "refusalCode": "STALE_REFERENCE",
+        "mayHaveMutated": "absent",
+        "opCallsExclude": [
+          "AEGP_SetItemComment"
+        ]
+      },
+      "argsJson": "{\"projectIndex\":0,\"item\":{\"aeRef\":{\"type\":\"comp\",\"name\":\"Clip\",\"path\":[0],\"itemId\":9999,\"projectName\":\"Shot01\",\"projectPath\":\"/tmp/shot01.aep\"}},\"comment\":\"fx-note\"}"
+    },
+    {
+      "name": "consent-valid-aegp-error",
+      "requestId": "fx-aegperr",
+      "channelConsentKey": true,
+      "consent": {
+        "mode": "valid",
+        "expectedMac": "3d9ea9dcadfa5c27f22243d4c6df6b42fc24fd9f45b15bafc4f3bffda5e26d63"
+      },
+      "expect": {
+        "outcome": "failed",
+        "mayHaveMutated": "true",
+        "opCallsInclude": [
+          "AEGP_SetItemComment"
+        ]
+      },
+      "hostSetCommentError": true
+    },
+    {
+      "name": "consent-valid-missing-suite-entry",
+      "requestId": "fx-nosuite",
+      "channelConsentKey": true,
+      "consent": {
+        "mode": "valid",
+        "expectedMac": "a8fb93e49120dcd0d6be983ffdf20e12b33c4a4e4c02009abd1b2dc7401108ef"
+      },
+      "expect": {
+        "outcome": "not-sent",
+        "mayHaveMutated": "absent",
+        "opCallsExclude": [
+          "AEGP_SetItemComment"
+        ]
+      },
+      "nullItemEntry": true
+    },
+    {
+      "name": "consent-duplicate-request-id",
+      "requestId": "fx-valid",
+      "channelConsentKey": true,
+      "consent": {
+        "mode": "valid",
+        "expectedMac": "dc2523abbf7b996bc687350750be2a57dad29467d3cf72d924ba253cdce95a25"
+      },
+      "expect": {
+        "outcome": "refused",
+        "refusalCode": "DUPLICATE_REQUEST",
+        "mayHaveMutated": "absent",
+        "opCallsExclude": [
+          "AEGP_SetItemComment"
+        ]
+      }
+    }
+  ]
+}

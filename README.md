@@ -22,7 +22,10 @@ await ae.close({ unsavedChanges: "discard" }); // the edits above are ours to th
 > 26.5/27 and Windows AE 2027, packaged-consumer E2E 2026-11-18), while
 > the opt-in in-AE dispatcher and the isolated backend remain
 > experimental with the unverified scope listed under "What is not
-> proven" below. The API may change before 1.0.0.
+> proven" below. `0.4.0` adds the opt-in native-channel mutation path
+> (consent-gated `AEGP_SetItemComment` and read-back reconciliation)
+> verified at fake-mock level only — see "What is not proven". The API
+> may change before 1.0.0.
 
 ## First run in about five minutes
 
@@ -77,6 +80,13 @@ than it is:
   hung dialog, were not measured on Windows.
 - `ae-a8n setup` is not implemented in this version; it refuses and changes
   nothing.
+- The native-channel mutation path (`prepareNativeChannel`,
+  `publishNativeRequest`, consent grants, `reconcileItemComment`) is
+  `fake/mock only`: verified against the ae-devtools fake C++ intake and
+  shared wire-case fixtures, never against real After Effects. Real-host
+  verification is tracked in ae-devtools #223. Authorization grants are
+  an ae-a8n policy layer — they decide what this client will sign, not
+  what a same-OS-user process could forge; see ADR-0004.
 
 ## Install
 

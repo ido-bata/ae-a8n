@@ -37,12 +37,10 @@ import { pathToFileURL } from "node:url";
 export const GITHUB_ACTIONS_APP_ID = 15368;
 
 /** The CI jobs main requires: ci.yml's Linux job and both Windows jobs. */
-// `release-gate` joins REQUIRED_CHECKS only after the workflow exists on
-// main: pull_request_target runs the base branch's workflows, so requiring
-// it earlier would deadlock every release PR (the check could never run).
-// Bootstrap: release-0-3-0 -> main lands the workflow, then run
-// `node scripts/github-rulesets.js --apply` with it listed again.
-export const REQUIRED_CHECKS = ["check", "release-tooling-windows", "windows"];
+// release-gate reached main with the 0.3.0 release (#214); it is now a
+// required check so only the canonical train recorded in RELEASE_TRAIN can
+// integrate into main.
+export const REQUIRED_CHECKS = ["check", "release-gate", "release-tooling-windows", "windows"];
 
 /**
  * @param {readonly string[]} checks
@@ -214,12 +212,39 @@ async function main() {
   const info = ghJson(`repos/${repo}`);
   console.log(`${repo}: ${info.visibility}, admin=${info.permissions?.admin === true}`);
 
-  const pulls = ghJson(`repos/${repo}/pulls?state=all&per_page=1`);
-  const head = pulls[0]?.head?.sha;
-  if (head === undefined) throw new Error("no pull request to check the required checks against");
-  const runs = ghJson(`repos/${repo}/commits/${head}/check-runs?per_page=100`).check_runs;
-  const missing = missingChecks(REQUIRED_CHECKS, runs);
-  console.log(`required checks on PR #${pulls[0].number} (${head.slice(0, 7)}): ${missing.length === 0 ? "all present" : `missing ${missing.join(", ")}`}`);
+  const pulls = ghJson(`repos/${repo}/pulls?state=all&per_page=30`);
+  /* release-gate runs only on PRs targeting main (pull_request_target);
+     the ci/verify checks run on every PR. Verify each group against the
+     newest PR of the applicable base — otherwise a ticket PR as the
+     latest PR would starve the main-only evidence and block --apply. */
+  const mainOnly = new Set(["release-gate"]);
+  const runsFor = (sha) =>
+    ghJson(`repos/${repo}/commits/${sha}/check-runs?per_page=100`).check_runs;
+  const missing = [];
+  const latestAny = pulls[0];
+  if (latestAny?.head?.sha !== undefined) {
+    const shared = REQUIRED_CHECKS.filter((c) => !mainOnly.has(c));
+    missing.push(...missingChecks(shared, runsFor(latestAny.head.sha)));
+    console.log(
+      `shared checks on PR #${latestAny.number} (${latestAny.head.sha.slice(0, 7)}): ` +
+        (missing.length === 0 ? "all present" : `missing ${missing.join(", ")}`),
+    );
+  }
+  const latestMain = pulls.find((p) => p.base?.ref === "main" && p.head?.sha !== undefined);
+  if (latestMain !== undefined) {
+    const mainMissing = missingChecks([...mainOnly], runsFor(latestMain.head.sha));
+    missing.push(...mainMissing);
+    console.log(
+      `main-only checks on PR #${latestMain.number} (${latestMain.head.sha.slice(0, 7)}): ` +
+        (mainMissing.length === 0 ? "all present" : `missing ${mainMissing.join(", ")}`),
+    );
+  } else {
+    missing.push(...mainOnly);
+    console.log("main-only checks: no main-targeting PR found");
+  }
+  if (pulls.length === 0 || latestAny?.head?.sha === undefined) {
+    throw new Error("no pull request to check the required checks against");
+  }
 
   const summaries = ghJson(`repos/${repo}/rulesets?includes_parents=false&per_page=100`);
   const existing = summaries.map((/** @type {{ id: number }} */ summary) => ghJson(`repos/${repo}/rulesets/${summary.id}`));

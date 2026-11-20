@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "upstream": {
+    "repo": "ido-bata/ae-devtools",
+    "path": "packages/native-adapter/tests/fixtures/native-consent-vectors.json",
+    "ref": "8fa89b0a2624a5813aba0e8262516ea3b7d838da"
+  },
+  "sha256": "247dbf5c97b52129a2baf6d62b3278f73bbd718c9fdb8892587bdb50940819ea"
+}
