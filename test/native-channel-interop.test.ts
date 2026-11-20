@@ -251,7 +251,7 @@ describe.skipIf(BIN === "")(
     it("authorized SetItemComment completes, marks mayHaveMutated, and reconciles", async () => {
       root = mkdtempSync(join(tmpdir(), "a8n-native-mutation-"));
       channel = prepareNativeChannel(root, {
-        authorization: { operations: [SET_OP] },
+        authorization: { grants: [{ operationId: SET_OP }] },
       });
       /* watch id is never published: the server keeps processing the
          whole inbox (one request per idle tick, name-sorted) until the
@@ -346,7 +346,7 @@ describe.skipIf(BIN === "")(
       const child2 = spawnChannelServer(root2, "zz-ref", 45000);
       try {
         const prepared = prepareNativeChannel(root2, {
-          authorization: { operations: [SET_OP] },
+          authorization: { grants: [{ operationId: SET_OP }] },
         });
         const { token, consentKey } = channelSecrets(root2);
         expect(consentKey).toMatch(/^[a-f0-9]{64}$/);

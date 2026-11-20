@@ -40,6 +40,7 @@ import {
   publishNativeRequest,
   readNativeChannelState,
   reconcileItemComment,
+  updateNativeChannelAuthorization,
   type NativeRequestInput,
 } from "../src/driver/native-channel.js";
 import { issueConsentMac } from "../src/driver/native-consent.js";
@@ -168,11 +169,25 @@ describe("prepareNativeChannel", () => {
     for (const bad of [
       "yes",
       {},
-      { operations: [] },
-      { operations: "AEGP_ItemSuite9.AEGP_SetItemComment" },
-      { operations: ["OP", 3] },
-      { operations: ["OP"], targets: "inst-1" },
-      { operations: ["OP"], bogus: true },
+      { grants: [] },
+      { grants: "AEGP_ItemSuite9.AEGP_SetItemComment" },
+      { grants: [null] },
+      { grants: [{ operationId: "" }] },
+      { grants: [{ operationId: 3 }] },
+      /* a grant can only name a consent-gated operation — read-only
+         ops need no grant and typos fail loudly (#248) */
+      { grants: [{ operationId: "AEGP_ItemSuite9.AEGP_GetItemComment" }] },
+      { grants: [{ operationId: "AEGP_ItemSuite9.AEGP_SetItemComment", bogus: true }] },
+      { grants: [{ operationId: "AEGP_ItemSuite9.AEGP_SetItemComment", targets: "inst-1" }] },
+      { grants: [{ operationId: "AEGP_ItemSuite9.AEGP_SetItemComment", targets: ["", 1] }] },
+      /* args patterns must live in the consent-canonical domain */
+      { grants: [{ operationId: "AEGP_ItemSuite9.AEGP_SetItemComment", args: { a: undefined } }] },
+      { grants: [{ operationId: "AEGP_ItemSuite9.AEGP_SetItemComment", args: { a: 0.5 } }] },
+      { grants: [{ operationId: "AEGP_ItemSuite9.AEGP_SetItemComment", args: { a: "\uD800" } }] },
+      { grants: [{ operationId: "AEGP_ItemSuite9.AEGP_SetItemComment", args: () => 1 }] },
+      { sessionIds: "sess-1", grants: [{ operationId: "AEGP_ItemSuite9.AEGP_SetItemComment" }] },
+      { sessionIds: ["", 3], grants: [{ operationId: "AEGP_ItemSuite9.AEGP_SetItemComment" }] },
+      { operations: ["OP"], grants: [{ operationId: "AEGP_ItemSuite9.AEGP_SetItemComment" }] },
     ]) {
       expect(() =>
         prepareNativeChannel(root, { authorization: bad as never }),
@@ -182,10 +197,24 @@ describe("prepareNativeChannel", () => {
        for the mutation path — the directory may exist (read-only use
        is still valid), but no grant was snapshotted */
     const ok = prepareNativeChannel(join(tmpRoot(), "chan2"), {
-      authorization: { operations: ["OP"], targets: ["inst-1"] },
+      authorization: {
+        sessionIds: ["sess-1"],
+        grants: [
+          {
+            operationId: "AEGP_ItemSuite9.AEGP_SetItemComment",
+            targets: ["inst-1"],
+            args: { projectIndex: 0 },
+          },
+        ],
+      },
     });
-    expect(ok.authorization?.operations).toEqual(["OP"]);
-    expect(ok.authorization?.targets).toEqual(["inst-1"]);
+    expect(ok.authorization?.sessionIds).toEqual(["sess-1"]);
+    expect(ok.authorization?.grants).toHaveLength(1);
+    expect(ok.authorization?.grants[0]?.operationId).toBe(
+      "AEGP_ItemSuite9.AEGP_SetItemComment",
+    );
+    expect(ok.authorization?.grants[0]?.targets).toEqual(["inst-1"]);
+    expect(ok.authorization?.grants[0]?.args).toEqual({ projectIndex: 0 });
   });
 
   it.skipIf(process.platform === "win32")("refuses a group/other-accessible directory", () => {
@@ -484,7 +513,9 @@ function readRequestDoc(
   ) as RequestDoc;
 }
 
-describe("consent issuance and the authorization policy (#245)", () => {
+describe("consent issuance and the authorization policy (#245, #248)", () => {
+  const GRANT = { operationId: MUTATION_OP };
+
   it("refuses a requiresConsent op without a grant — before anything is sent", () => {
     const channel = prepareNativeChannel(join(tmpRoot(), "chan"));
     expect(() => publishNativeRequest(channel, mutationInput())).toThrow(
@@ -498,23 +529,10 @@ describe("consent issuance and the authorization policy (#245)", () => {
     ).toBe(false);
   });
 
-  it("refuses when the grant covers a different operation", () => {
-    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
-      authorization: { operations: ["AEGP_ItemSuite9.AEGP_GetItemComment"] },
-    });
-    expect(() => publishNativeRequest(channel, mutationInput())).toThrow(
-      ScriptNotSentError,
-    );
-    expect(
-      existsSync(join(channel.inbox, `mut-001${NATIVE_REQUEST_SUFFIX}`)),
-    ).toBe(false);
-  });
-
   it("binds target-scoped grants: untargeted and wrong-target requests refuse", () => {
     const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
       authorization: {
-        operations: [MUTATION_OP],
-        targets: ["inst-1"],
+        grants: [{ ...GRANT, targets: ["inst-1"] }],
       },
     });
     /* untargeted request is NOT covered by a target-bound grant */
@@ -532,7 +550,7 @@ describe("consent issuance and the authorization policy (#245)", () => {
 
   it("issues a §7g consent MAC over the exact scope for a covered mutation", () => {
     const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
-      authorization: { operations: [MUTATION_OP] },
+      authorization: { grants: [GRANT] },
     });
     publishNativeRequest(channel, mutationInput({ target: "inst-9" }));
     const doc = readRequestDoc(channel, "mut-001");
@@ -558,9 +576,7 @@ describe("consent issuance and the authorization policy (#245)", () => {
   });
 
   it("never attaches consent to read-only ops, grant or not", () => {
-    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
-      authorization: { operations: [MUTATION_OP] },
-    });
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"));
     publishNativeRequest(channel, baseInput({ requestId: "ro-1" }));
     const doc = readRequestDoc(channel, "ro-1");
     expect(doc.consent).toBeUndefined();
@@ -568,7 +584,7 @@ describe("consent issuance and the authorization policy (#245)", () => {
 
   it("refuses non-canonical args on a consent op as ScriptNotSentError", () => {
     const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
-      authorization: { operations: [MUTATION_OP] },
+      authorization: { grants: [GRANT] },
     });
     const circular: Record<string, unknown> = {};
     circular.self = circular;
@@ -587,6 +603,187 @@ describe("consent issuance and the authorization policy (#245)", () => {
         existsSync(join(channel.inbox, `bad-${label}${NATIVE_REQUEST_SUFFIX}`)),
       ).toBe(false);
     }
+  });
+});
+
+describe("grant scope: session, args, update and revocation (#248)", () => {
+  const ITEM_A = { aeRef: { type: "comp", name: "A", path: [0], itemId: 1 } };
+  const ITEM_B = { aeRef: { type: "comp", name: "B", path: [0], itemId: 2 } };
+
+  function scopedInput(overrides: Partial<NativeRequestInput> = {}): NativeRequestInput {
+    return mutationInput({ requestId: "sc-001", ...overrides });
+  }
+
+  it("sessionIds binds the grant: another session's request is refused", () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
+      authorization: {
+        sessionIds: ["sess-1"],
+        grants: [{ operationId: MUTATION_OP }],
+      },
+    });
+    publishNativeRequest(channel, scopedInput());
+    /* same operation+args under a different sessionId → not covered,
+       and nothing is sent (the §7g MAC would have bound the session,
+       but policy refuses before a MAC is even issued) */
+    expect(() =>
+      publishNativeRequest(
+        channel,
+        scopedInput({
+          requestId: "sc-002",
+          session: { sessionId: "sess-2", aeVersion: "26.5" },
+        }),
+      ),
+    ).toThrow(ScriptNotSentError);
+    expect(
+      existsSync(join(channel.inbox, `sc-002${NATIVE_REQUEST_SUFFIX}`)),
+    ).toBe(false);
+  });
+
+  it("args scope pins the item descriptor: sibling items are refused", () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
+      authorization: {
+        grants: [
+          {
+            operationId: MUTATION_OP,
+            args: { projectIndex: 0, item: { aeRef: { itemId: 1 } } },
+          },
+        ],
+      },
+    });
+    /* the pattern is a subset match: comment text is unconstrained,
+       extra request keys are allowed, but itemId must be 1 */
+    publishNativeRequest(
+      channel,
+      scopedInput({
+        args: { projectIndex: 0, item: ITEM_A, comment: "anything", extra: true },
+      }),
+    );
+    expect(() =>
+      publishNativeRequest(
+        channel,
+        scopedInput({ requestId: "sc-002", args: { projectIndex: 0, item: ITEM_B, comment: "x" } }),
+      ),
+    ).toThrow(ScriptNotSentError);
+    expect(
+      existsSync(join(channel.inbox, `sc-002${NATIVE_REQUEST_SUFFIX}`)),
+    ).toBe(false);
+    /* a different projectIndex is likewise outside the grant */
+    expect(() =>
+      publishNativeRequest(
+        channel,
+        scopedInput({ requestId: "sc-003", args: { projectIndex: 1, item: ITEM_A, comment: "x" } }),
+      ),
+    ).toThrow(ScriptNotSentError);
+  });
+
+  it("args scope matches arrays element-wise and primitives strictly", () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
+      authorization: {
+        grants: [
+          {
+            operationId: MUTATION_OP,
+            args: { item: { aeRef: { path: [0] } }, projectIndex: 0 },
+          },
+        ],
+      },
+    });
+    publishNativeRequest(
+      channel,
+      scopedInput({ args: { projectIndex: 0, item: { aeRef: { path: [0], itemId: 7 } }, comment: "c" } }),
+    );
+    /* path [0,1] is a different length → outside the grant */
+    expect(() =>
+      publishNativeRequest(
+        channel,
+        scopedInput({ requestId: "sc-002", args: { projectIndex: 0, item: { aeRef: { path: [0, 1] } }, comment: "c" } }),
+      ),
+    ).toThrow(ScriptNotSentError);
+  });
+
+  it("an absent args pattern is operation-wide — an explicit, documented choice", () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
+      authorization: { grants: [{ operationId: MUTATION_OP }] },
+    });
+    publishNativeRequest(
+      channel,
+      scopedInput({ args: { projectIndex: 9, item: ITEM_B, comment: "wide" } }),
+    );
+    const doc = readRequestDoc(channel, "sc-001");
+    expect(doc.consent?.mac).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("updateNativeChannelAuthorization narrows, widens and revokes the live grant", () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
+      authorization: { grants: [{ operationId: MUTATION_OP }] },
+    });
+    /* narrow to item A only */
+    updateNativeChannelAuthorization(channel, {
+      grants: [
+        {
+          operationId: MUTATION_OP,
+          args: { item: { aeRef: { itemId: 1 } } },
+        },
+      ],
+    });
+    publishNativeRequest(
+      channel,
+      scopedInput({ args: { projectIndex: 0, item: ITEM_A, comment: "ok" } }),
+    );
+    expect(() =>
+      publishNativeRequest(
+        channel,
+        scopedInput({ requestId: "sc-002", args: { projectIndex: 0, item: ITEM_B, comment: "no" } }),
+      ),
+    ).toThrow(ScriptNotSentError);
+    /* revoke: fail closed for every future mutation */
+    updateNativeChannelAuthorization(channel, undefined);
+    expect(channel.authorization).toBeUndefined();
+    expect(() =>
+      publishNativeRequest(
+        channel,
+        scopedInput({ requestId: "sc-003", args: { projectIndex: 0, item: ITEM_A, comment: "no" } }),
+      ),
+    ).toThrow(ScriptNotSentError);
+    expect(
+      existsSync(join(channel.inbox, `sc-003${NATIVE_REQUEST_SUFFIX}`)),
+    ).toBe(false);
+  });
+
+  it("the grant snapshot is detached: mutating the caller's pattern cannot widen it", () => {
+    const pattern = { item: { aeRef: { itemId: 1 } } };
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
+      authorization: {
+        grants: [{ operationId: MUTATION_OP, args: pattern }],
+      },
+    });
+    /* caller mutates the pattern object after prepare — the channel's
+       grant must not follow it */
+    (pattern.item.aeRef as Record<string, unknown>).itemId = 2;
+    publishNativeRequest(
+      channel,
+      scopedInput({ args: { projectIndex: 0, item: ITEM_A, comment: "ok" } }),
+    );
+    expect(() =>
+      publishNativeRequest(
+        channel,
+        scopedInput({ requestId: "sc-002", args: { projectIndex: 0, item: ITEM_B, comment: "no" } }),
+      ),
+    ).toThrow(ScriptNotSentError);
+  });
+
+  it("re-preparing the same root without authorization yields a fail-closed channel", () => {
+    const root = join(tmpRoot(), "chan");
+    const granted = prepareNativeChannel(root, {
+      authorization: { grants: [{ operationId: MUTATION_OP }] },
+    });
+    const reopened = prepareNativeChannel(root);
+    expect(reopened.reused).toBe(true);
+    expect(reopened.authorization).toBeUndefined();
+    /* the old object keeps its own grant; the new one refuses */
+    publishNativeRequest(granted, scopedInput({ requestId: "sc-001" }));
+    expect(() =>
+      publishNativeRequest(reopened, scopedInput({ requestId: "sc-002" })),
+    ).toThrow(ScriptNotSentError);
   });
 });
 
