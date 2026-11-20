@@ -40,13 +40,14 @@
  *   caller reports UNKNOWN and must not resend.
  * - Mutating (`requiresConsent`) operations additionally need a §7g
  *   consent proof AND an explicit authorization grant. The grant is
- *   caller-side recorded consent fixed at `prepareNativeChannel` time
- *   (#145 model): `publishNativeRequest` evaluates it BEFORE any MAC is
- *   issued and refuses unapproved mutations as `ScriptNotSentError` —
- *   provably nothing was sent. A valid MAC alone is never treated as
- *   authorization; it only proves the request passed through the
- *   consent-issuing path inside the channel's trust boundary (see
- *   `native-consent.ts` for the honest boundary).
+ *   caller-side recorded consent snapshotted at `prepareNativeChannel`
+ *   and replaceable/revocable via `updateNativeChannelAuthorization`
+ *   (#145/#248 model): `publishNativeRequest` evaluates it BEFORE any
+ *   MAC is issued and refuses unapproved mutations as
+ *   `ScriptNotSentError` — provably nothing was sent. A valid MAC alone
+ *   is never treated as authorization; it proves possession of
+ *   `consentKey` and binding to the exact scope fields, nothing more
+ *   (see `native-consent.ts` for the honest boundary).
  */
 
 import { execFileSync } from "node:child_process";
@@ -74,6 +75,8 @@ import {
 } from "../platform/windows/acl.js";
 import { HostUnavailableError } from "./driver.js";
 import {
+  ConsentCanonicalError,
+  canonicalJson,
   issueConsentMac,
   nativeOperationRequiresConsent,
 } from "./native-consent.js";
@@ -164,32 +167,81 @@ export type NativeRequestInput = {
 };
 
 /**
- * Caller-side recorded consent for mutating (`requiresConsent`)
- * native-channel operations (#245, #145 grant model).
+ * One scoped grant inside a `NativeMutationAuthorization` (#248).
  *
- * This is the ae-a8n-owned authorization layer: it decides which
- * operation scopes may carry a §7g consent proof at all, and it is
- * evaluated BEFORE any MAC is issued. It is snapshotted when the
- * channel is prepared, exactly like `LaunchOptions.authorization` is
- * snapshotted at session open. Like that grant it is NOT
- * host-authenticated — it is the policy gate inside the channel's
- * trust boundary; the plug-in only verifies the resulting proof.
+ * A grant names exactly one `requiresConsent` operationId — grants are
+ * per-operation, never operation-class-wide, so adding a future
+ * mutation to `NATIVE_REQUIRES_CONSENT_OPERATIONS` can never inherit
+ * authority from an existing grant: the new op needs its own entry.
  */
-export type NativeMutationAuthorization = {
+export type NativeMutationGrant = {
   /**
-   * Exact `requiresConsent` operationIds this grant covers — currently
-   * `AEGP_ItemSuite9.AEGP_SetItemComment` (see
+   * Exact `requiresConsent` operationId this grant covers — currently
+   * only `AEGP_ItemSuite9.AEGP_SetItemComment` (see
    * `NATIVE_REQUIRES_CONSENT_OPERATIONS`). Read-only operations never
-   * consult this grant.
+   * consult grants, and a grant for a non-consent operationId is
+   * rejected at validation time.
    */
-  operations: readonly string[];
+  operationId: string;
   /**
-   * Instance `target` values the grant is bound to. When present, a
+   * Instance `target` values this grant is bound to. When present, a
    * mutation request must name one of them — an untargeted request is
    * NOT covered. When absent, any target on this channel is covered,
    * including untargeted (legacy) requests.
    */
   targets?: readonly string[];
+  /**
+   * Partial deep-match constraint over the request `args` (#248):
+   *
+   * - objects: every pattern key must exist in the request args and
+   *   match recursively; extra request keys are allowed (subset match)
+   * - arrays: same length, element-wise recursive match
+   * - primitives: strict equality
+   * - absent (`undefined`): no args constraint — the grant covers the
+   *   operation for ANY args. This is an explicit, documented choice;
+   *   a narrow grant should always pin the descriptor fields
+   *   (e.g. `projectIndex`, `item.aeRef.itemId`) so one item's grant
+   *   cannot mutate another.
+   *
+   * This is POLICY, distinct from the §7g MAC: the MAC binds whatever
+   * args the request carries, but only this pattern decides whether
+   * those args were authorized. The pattern must live in the
+   * consent-canonical domain (integers only, no lone surrogates, no
+   * `undefined`/floats/functions) — anything else is rejected when the
+   * authorization is validated.
+   */
+  args?: unknown;
+};
+
+/**
+ * Caller-side recorded consent for mutating (`requiresConsent`)
+ * native-channel operations (#245, #248; #145 grant model).
+ *
+ * This is the ae-a8n-owned authorization layer: it decides which
+ * (session, operation, target, args) scopes may carry a §7g consent
+ * proof at all, and it is evaluated BEFORE any MAC is issued. It is
+ * snapshotted when the channel is prepared and can be replaced or
+ * revoked while the channel lives via
+ * `updateNativeChannelAuthorization` — but requests already published
+ * (and their issued MACs) cannot be recalled; revocation only gates
+ * FUTURE `publishNativeRequest` calls.
+ *
+ * Like `LaunchOptions.authorization` it is NOT host-authenticated —
+ * it is the policy gate inside the channel's trust boundary; the
+ * plug-in only verifies the resulting proof.
+ */
+export type NativeMutationAuthorization = {
+  /**
+   * `session.sessionId` values this authorization applies to. When
+   * present, a mutation request whose session is not listed is NOT
+   * covered — a grant cannot be replayed across sessions. When absent,
+   * any session reported on this channel is covered (the channel's
+   * single-user scope makes session identity advisory, not a boundary).
+   */
+  sessionIds?: readonly string[];
+  /** Per-operation grant entries; a request is covered when ANY entry
+   *  matches its (operationId, target, args) scope. */
+  grants: readonly NativeMutationGrant[];
 };
 
 export type PrepareNativeChannelOptions = {
@@ -360,6 +412,102 @@ function readChannelMeta(metaPath: string): ChannelMeta {
 }
 
 /**
+ * Validate an args-scope pattern (#248). The pattern lives in the
+ * consent-canonical domain so it compares against request args in the
+ * same value space the §7g MAC binds: integers only, no lone
+ * surrogates, and no `undefined` anywhere (canonicalJson would silently
+ * drop object keys or turn array holes into `null` — a pattern that
+ * means something different than it reads is refused instead).
+ * Returns a canonical deep copy so later caller-side mutation cannot
+ * widen the grant.
+ */
+function canonicalArgsPattern(value: unknown, what: string): unknown {
+  const walk = (v: unknown, path: string): void => {
+    if (v === undefined) {
+      throw new TypeError(`${what} contains undefined at ${path}`);
+    }
+    if (v === null || typeof v === "boolean" || typeof v === "string") {
+      return;
+    }
+    if (typeof v === "number") {
+      if (!Number.isInteger(v) || Math.abs(v) > 9007199254740991) {
+        throw new TypeError(`${what} contains a non-canonical number at ${path}`);
+      }
+      return;
+    }
+    if (Array.isArray(v)) {
+      v.forEach((e, i) => walk(e, `${path}[${i}]`));
+      return;
+    }
+    if (typeof v === "object") {
+      for (const [k, e] of Object.entries(v as Record<string, unknown>)) {
+        walk(e, `${path}.${k}`);
+      }
+      return;
+    }
+    throw new TypeError(`${what} contains an unsupported value at ${path}`);
+  };
+  walk(value, "$");
+  try {
+    /* canonicalJson is the single source of truth for the canonical
+       domain (surrogates, key order); parse its output back so the
+       stored pattern is a detached canonical clone. */
+    return JSON.parse(canonicalJson(value)) as unknown;
+  } catch (error) {
+    if (error instanceof ConsentCanonicalError) {
+      throw new TypeError(`${what} is not consent-canonical: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+function requireNativeMutationGrant(value: unknown): NativeMutationGrant {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("each authorization.grants entry must be an object");
+  }
+  const grant = value as Record<string, unknown>;
+  for (const key of Object.keys(grant)) {
+    if (key !== "operationId" && key !== "targets" && key !== "args") {
+      throw new TypeError(
+        `authorization.grants[].${key} is not a grant scope; known scopes: operationId, targets, args`,
+      );
+    }
+  }
+  const operationId = grant.operationId;
+  if (typeof operationId !== "string" || operationId === "") {
+    throw new TypeError("authorization.grants[].operationId must be a non-empty string");
+  }
+  if (!nativeOperationRequiresConsent(operationId)) {
+    /* A grant can only ever name a consent-gated operation: read-only
+       ops need no grant, and an opId typo fails loudly here instead of
+       silently authorizing nothing. A future mutation op joins
+       NATIVE_REQUIRES_CONSENT_OPERATIONS together with its own grant
+       entries — it can never inherit this grant's authority. */
+    throw new TypeError(
+      `authorization.grants[].operationId ${JSON.stringify(operationId)} does not require consent`,
+    );
+  }
+  const targets = grant.targets;
+  if (
+    targets !== undefined &&
+    (!Array.isArray(targets) ||
+      !targets.every((t) => typeof t === "string" && t !== ""))
+  ) {
+    throw new TypeError(
+      "authorization.grants[].targets must be a list of instance target ids",
+    );
+  }
+  const out: NativeMutationGrant = { operationId };
+  if (targets !== undefined) {
+    out.targets = [...(targets as string[])];
+  }
+  if (grant.args !== undefined) {
+    out.args = canonicalArgsPattern(grant.args, "authorization.grants[].args");
+  }
+  return out;
+}
+
+/**
  * Validate and snapshot the caller's mutation grant. Anything that
  * cannot be read as an explicit scope list is refused before the
  * channel exists — a grant that cannot be read is not a grant (same
@@ -376,36 +524,62 @@ function requireNativeMutationAuthorization(
   }
   const grant = value as Record<string, unknown>;
   for (const key of Object.keys(grant)) {
-    if (key !== "operations" && key !== "targets") {
+    if (key !== "sessionIds" && key !== "grants") {
       throw new TypeError(
-        `authorization.${key} is not a grant scope; known scopes: operations, targets`,
+        `authorization.${key} is not a grant scope; known scopes: sessionIds, grants`,
       );
     }
   }
-  const operations = grant.operations;
+  const sessionIds = grant.sessionIds;
   if (
-    !Array.isArray(operations) ||
-    operations.length === 0 ||
-    !operations.every((op) => typeof op === "string" && op !== "")
+    sessionIds !== undefined &&
+    (!Array.isArray(sessionIds) ||
+      !sessionIds.every((s) => typeof s === "string" && s !== ""))
   ) {
+    throw new TypeError("authorization.sessionIds must be a list of session ids");
+  }
+  const grants = grant.grants;
+  if (!Array.isArray(grants) || grants.length === 0) {
     throw new TypeError(
-      "authorization.operations must be a non-empty list of operationIds",
+      "authorization.grants must be a non-empty list of grant entries",
     );
   }
-  const targets = grant.targets;
-  if (
-    targets !== undefined &&
-    (!Array.isArray(targets) ||
-      !targets.every((t) => typeof t === "string" && t !== ""))
-  ) {
-    throw new TypeError("authorization.targets must be a list of instance target ids");
-  }
+  /* Snapshot: the channel's grant must not follow later mutation of
+     the caller's arrays/objects — authorization is fixed when it is
+     set, not when it is read again. */
   return {
-    // Snapshot: the channel's grant must not follow later mutation of
-    // the caller's arrays — authorization is fixed when the channel opens.
-    operations: [...operations],
-    ...(targets === undefined ? {} : { targets: [...(targets as string[])] }),
+    ...(sessionIds === undefined
+      ? {}
+      : { sessionIds: [...(sessionIds as string[])] }),
+    grants: grants.map(requireNativeMutationGrant),
   };
+}
+
+/**
+ * Partial deep-match of an args-scope pattern against request args
+ * (#248). See `NativeMutationGrant.args` for the semantics; both sides
+ * are compared in the consent-canonical domain (absent args ≡ null).
+ */
+function grantArgsCover(pattern: unknown, actual: unknown): boolean {
+  const a = actual ?? null;
+  if (pattern === null || typeof pattern !== "object") {
+    return pattern === a;
+  }
+  if (Array.isArray(pattern)) {
+    return (
+      Array.isArray(a) &&
+      a.length === pattern.length &&
+      pattern.every((p, i) => grantArgsCover(p, a[i]))
+    );
+  }
+  if (typeof a !== "object" || a === null || Array.isArray(a)) {
+    return false;
+  }
+  const rec = a as Record<string, unknown>;
+  return Object.keys(pattern as Record<string, unknown>).every((k) =>
+    Object.prototype.hasOwnProperty.call(rec, k) &&
+    grantArgsCover((pattern as Record<string, unknown>)[k], rec[k]),
+  );
 }
 
 /**
@@ -489,6 +663,33 @@ export function prepareNativeChannel(
 }
 
 /**
+ * Replace or revoke the channel's mutation grant while it lives (#248).
+ * Passing `undefined` revokes all mutation authority (fail closed).
+ *
+ * Scope of the change: only FUTURE `publishNativeRequest` calls are
+ * gated by the new grant. Requests already published — and the §7g
+ * MACs already issued for them — cannot be recalled; cancelling an
+ * in-flight mutation is not possible through this API (a fresh
+ * requestId is the only way to express a new intent).
+ *
+ * Re-preparing the same root WITHOUT an authorization does not touch
+ * an existing `PreparedNativeChannel` object, but the new object it
+ * returns carries no grant — callers that re-prepare get fail-closed
+ * behavior unless they pass authorization again.
+ */
+export function updateNativeChannelAuthorization(
+  channel: PreparedNativeChannel,
+  authorization: NativeMutationAuthorization | undefined,
+): void {
+  const validated = requireNativeMutationAuthorization(authorization);
+  if (validated === undefined) {
+    delete channel.authorization;
+  } else {
+    channel.authorization = validated;
+  }
+}
+
+/**
  * Read the plug-in heartbeat. Returns null when no fresh, well-formed
  * `state.json` exists — absence is information, not an error. The caller
  * decides freshness from `lastTick` (epoch ms).
@@ -567,11 +768,12 @@ function assertRequestInput(input: NativeRequestInput): void {
 }
 
 /**
- * Whether the channel's grant covers this mutation request. The grant
- * scope is (operationId, target) per #245: `operations` must list the
- * exact `requiresConsent` operationId, and when `targets` is present
- * the request must name one of them — an untargeted request is not
- * covered by a target-bound grant.
+ * Whether the channel's grant covers this mutation request (#248).
+ * A request is covered when the authorization's `sessionIds` (when
+ * present) names the request's session AND at least one grant entry
+ * matches on operationId, target scope, and args scope. Grant
+ * evaluation is POLICY: the §7g MAC binds the args whatever they are,
+ * but only this check decides whether those args were authorized.
  */
 function grantCoversMutation(
   authorization: NativeMutationAuthorization | undefined,
@@ -580,13 +782,19 @@ function grantCoversMutation(
   if (authorization === undefined) {
     return false;
   }
-  if (!authorization.operations.includes(input.operationId)) {
+  if (
+    authorization.sessionIds !== undefined &&
+    !authorization.sessionIds.includes(input.session.sessionId)
+  ) {
     return false;
   }
-  if (authorization.targets === undefined) {
-    return true;
-  }
-  return input.target !== undefined && authorization.targets.includes(input.target);
+  return authorization.grants.some(
+    (grant) =>
+      grant.operationId === input.operationId &&
+      (grant.targets === undefined ||
+        (input.target !== undefined && grant.targets.includes(input.target))) &&
+      (grant.args === undefined || grantArgsCover(grant.args, input.args)),
+  );
 }
 
 /**
@@ -596,10 +804,11 @@ function grantCoversMutation(
  * nothing was sent, so fixing the id and retrying is safe).
  *
  * `requiresConsent` operations additionally pass two gates BEFORE any
- * file is written (#245): the channel's authorization grant must cover
- * the (operationId, target) scope, and only then is the §7g consent MAC
- * issued over the exact request scope. A MAC is never treated as
- * authorization by itself — grant evaluation comes first, always.
+ * file is written (#245, #248): the channel's authorization grant must
+ * cover the (session, operationId, target, args) scope, and only then
+ * is the §7g consent MAC issued over the exact request scope. A MAC is
+ * never treated as authorization by itself — grant evaluation comes
+ * first, always.
  */
 export function publishNativeRequest(
   channel: PreparedNativeChannel,
@@ -613,8 +822,9 @@ export function publishNativeRequest(
         `native mutation ${input.operationId}` +
           (input.target === undefined ? "" : ` on target ${input.target}`) +
           " is not covered by the channel authorization grant" +
-          " — pass authorization.operations (and targets when binding" +
-          " instances) in prepareNativeChannel; nothing was sent",
+          " — pass authorization.grants entries (with sessionIds," +
+          " targets and args scopes as needed) in prepareNativeChannel" +
+          " or updateNativeChannelAuthorization; nothing was sent",
       );
     }
     try {
