@@ -1,5 +1,77 @@
 # Changelog
 
+## 0.4.0
+
+This is the `release-0-4-0` train: the opt-in native-channel mutation
+path (`NativeProbe` intake against the ae-devtools plug-in channel) plus
+the delivery-model and test-alignment work merged after 0.3.0.
+
+**Verification boundary.** Everything the native-channel path does is
+verified against a fake C++ intake (`probe_test --channel-server`) and
+shared wire-case fixtures only — **fake/mock level, not real After
+Effects**. Real-host verification of this path remains gated on
+ae-devtools #223 and is not claimed here. The 0.3.0 real-host evidence
+(packaged local E2E on macOS and Windows) covers unchanged code paths
+and still stands on its own.
+
+### Added
+
+- **Native-channel client** (#238): `prepareNativeChannel`,
+  `publishNativeRequest`, `awaitNativeResult`,
+  `readNativeChannelState`, `defaultNativeChannelDir`,
+  `updateNativeChannelAuthorization`, `nativeOperationRequiresConsent`,
+  `reconcileItemComment` and the associated types are exported from the
+  package root. Requests/results use the `ae-devtools/native-dispatch/v1`
+  file contract with atomic publish, session/ownership checks, and
+  `UNKNOWN` (never resent) semantics on missing or timed-out results.
+- **Mutation consent and authorization** (#245, #247, #248, #249,
+  #254, #256): the channel mints a `consentKey` alongside the request
+  token; consent-gated mutations (currently `AEGP_SetItemComment`)
+  receive a per-request HMAC-SHA256 proof over canonical scope
+  (operation, request id, session, args, target) only after an explicit
+  `NativeMutationAuthorization` grant covers session/operation/target/
+  args. Uncovered mutations throw `ScriptNotSentError` before anything
+  is published; `updateNativeChannelAuthorization` revokes or narrows
+  future authority. Canonicalization and HMAC are pinned byte-for-byte
+  by the shared `native-consent-vectors.json` fixture synced from
+  ae-devtools `release-0-5-0` (`scripts/sync-consent-vectors.mjs`),
+  including lone-surrogate rejection. Grant `args` patterns are partial
+  deep matches, restricted to the consent-canonical domain.
+  `reconcileItemComment` classifies read-back as `state-consistent` /
+  `state-inconsistent` / `unobservable` — consistency is not causal
+  proof of execution. ADR-0004 records the trust model: same-OS-user
+  processes are inside the channel trust boundary; the MAC binds scope
+  and proves key possession, not a particular code path.
+- **Fault-injection interop coverage** (#256): all 14 shared
+  `wireCases` run against the real C++ intake, including the
+  `setcomment-error` and `null-itementry` fault modes from ae-devtools
+  PR #352.
+
+### Changed
+
+- **Package metadata**: `package.json`, `A8N_VERSION` and
+  `package-lock.json` now agree on `0.4.0`; the lockfile version had
+  drifted at `0.2.0-beta.1` since the 0.2.0 prerelease.
+
+### Fixed
+
+- **Unserializable mutation args** (#243): arguments outside the
+  consent-canonical domain are rejected as `ScriptNotSentError` before
+  publication instead of producing an unverifiable request.
+- **GitHub rulesets test** (#240): expectations track the
+  `release-gate` required check.
+- **Fixture sync** (#254): `sync-consent-vectors.mjs` fetches the exact
+  base64 blob so `\uXXXX` escapes survive; fixture files are marked
+  `-text` to prevent CRLF drift on Windows.
+
+### Documentation
+
+- **Dispatcher publish semantics** (#242): `docs/in-ae-dispatcher.md`
+  now states that result publish is rename-preferred with an in-place
+  fallback, why that converges to the same fail-closed `UNKNOWN`
+  outcome as the native-channel contract, and that native-channel §5
+  does not govern this transport.
+
 ## 0.3.0
 
 Published as `latest` under an owner-approved limited guarantee: the
