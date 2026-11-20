@@ -174,15 +174,26 @@ export class FakeFile {
     return this.encoding === "BINARY" ? slice.toString("latin1") : slice.toString("utf-8");
   }
 
-  write(text: string): void {
+  write(text: string): boolean {
     if (this.#handle !== "w") {
       throw new Error("file is not open for writing: " + this.fsName);
     }
+    if (writeFailuresRemaining > 0) {
+      writeFailuresRemaining -= 1;
+      return false;
+    }
     writeFileSync(this.fsName, text, "utf-8");
+    return true;
   }
 
-  close(): void {
+  close(): boolean {
+    const wasWriting = this.#handle === "w";
     this.#handle = null;
+    if (wasWriting && closeFailuresRemaining > 0) {
+      closeFailuresRemaining -= 1;
+      return false;
+    }
+    return true;
   }
 
   remove(): boolean {
@@ -225,6 +236,22 @@ export class FakeFile {
  */
 let renameFailuresRemaining = 0;
 let renameSuccesses = 0;
+let writeFailuresRemaining = 0;
+let closeFailuresRemaining = 0;
+
+/** Emulate ExtendScript File.write/close returning false without throwing. */
+export function failNextFileWrites(count: number): void {
+  writeFailuresRemaining = count;
+}
+
+export function failNextFileCloses(count: number): void {
+  closeFailuresRemaining = count;
+}
+
+export function resetFileFaults(): void {
+  writeFailuresRemaining = 0;
+  closeFailuresRemaining = 0;
+}
 
 /** Make the next `count` `File.rename` calls return false. */
 export function failNextRenames(count: number): void {
