@@ -1,0 +1,136 @@
+/**
+ * native-consent.ts — mutation consent proof (ae-a8n #245).
+ *
+ * Canonical encoder + HMAC-SHA256 for the `native-channel/v1` per-request
+ * authorization MAC, implementing ae-devtools
+ * `specs/ae-capability-coverage/contracts/native-channel.md` §7g. The
+ * implementation is contract-identical to ae-devtools
+ * `packages/native-adapter/src/consent.ts` and the C++ plug-in
+ * (`native_consent.cpp`); the shared test vectors committed on both
+ * sides pin byte-identical output — any divergence is a contract bug.
+ *
+ * What this proves and what it does not (contract §7g threat model):
+ *
+ * - `consentKey` is a second shared secret in `channel.json`, in the
+ *   same 0600/private-directory domain as `token`. Anyone who can read
+ *   `channel.json` — i.e. any process running as the same OS user — can
+ *   compute valid MACs. The MAC is therefore tamper-evident and
+ *   scope-bound proof that a request passed through the consent-issuing
+ *   code path; it is NOT authentication against same-user processes.
+ * - Operation authorization is a separate layer: `publishNativeRequest`
+ *   evaluates the channel's explicit grant BEFORE a MAC is issued and
+ *   refuses unapproved mutations before anything is sent. Key possession
+ *   proves channel capability only.
+ * - Asymmetric signing (ae-a8n-held key, plug-in-held verify key) is the
+ *   documented future hardening for crossing a real trust boundary; it
+ *   is a contract-level change owned by ae-devtools, not this module.
+ */
+
+import { createHmac } from "node:crypto";
+
+/** Thrown when a value cannot be canonically encoded (non-integer or
+ *  out-of-range number — floats are not consent-encodable in v1). */
+export class ConsentCanonicalError extends Error {
+  constructor(detail: string) {
+    super(`value is not consent-canonical: ${detail}`);
+    this.name = "ConsentCanonicalError";
+  }
+}
+
+const MAX_SAFE = 9007199254740991;
+const HEX64 = /^[a-f0-9]{64}$/;
+
+/**
+ * canonicalJson — restricted JSON canonical form (contract §7g):
+ * no whitespace; object keys sorted by UTF-8 byte order; strings
+ * escaped exactly like JSON.stringify; integers only.
+ */
+export function canonicalJson(v: unknown): string {
+  if (v === null || v === undefined) return "null";
+  if (typeof v === "boolean") return v ? "true" : "false";
+  if (typeof v === "number") {
+    if (!Number.isInteger(v) || Math.abs(v) > MAX_SAFE) {
+      throw new ConsentCanonicalError(`non-canonical number ${v}`);
+    }
+    return String(v);
+  }
+  if (typeof v === "string") return JSON.stringify(v);
+  if (Array.isArray(v)) {
+    return `[${v.map((e) => canonicalJson(e)).join(",")}]`;
+  }
+  if (typeof v === "object") {
+    const keys = Object.keys(v).sort((a, b) =>
+      Buffer.compare(Buffer.from(a, "utf8"), Buffer.from(b, "utf8")));
+    const parts = keys.map((k) => {
+      const val = (v as Record<string, unknown>)[k];
+      if (val === undefined) {
+        /* JSON.stringify drops undefined object values; the canonical
+           form treats them as absent — same semantics. */
+        return null;
+      }
+      return `${JSON.stringify(k)}:${canonicalJson(val)}`;
+    }).filter((p): p is string => p !== null);
+    return `{${parts.join(",")}}`;
+  }
+  throw new ConsentCanonicalError(`unsupported value type ${typeof v}`);
+}
+
+export type ConsentScopeInput = {
+  operationId: string;
+  requestId: string;
+  session: unknown;
+  args?: unknown;
+  target?: string;
+};
+
+/**
+ * canonicalConsentString (contract §7g):
+ *   "native-consent/v1\n" ++ operationId ++ "\n" ++ requestId ++ "\n"
+ *     ++ canonicalJson(session) ++ "\n" ++ canonicalJson(args ?? null)
+ *     ++ "\n" ++ (target ?? "")
+ */
+export function canonicalConsentString(input: ConsentScopeInput): string {
+  return (
+    "native-consent/v1\n" +
+    input.operationId + "\n" +
+    input.requestId + "\n" +
+    canonicalJson(input.session) + "\n" +
+    canonicalJson(input.args ?? null) + "\n" +
+    (input.target ?? "")
+  );
+}
+
+/**
+ * Issue a consent MAC: HMAC-SHA256 over the canonical consent string,
+ * keyed by the 32-byte consentKey (64 lowercase hex). Returns the
+ * 64-char lowercase hex MAC for the request envelope's `consent.mac`.
+ */
+export function issueConsentMac(
+  consentKeyHex: string,
+  scope: ConsentScopeInput,
+): string {
+  if (!HEX64.test(consentKeyHex)) {
+    throw new ConsentCanonicalError("consentKey must be 64 lowercase hex chars");
+  }
+  const msg = canonicalConsentString(scope);
+  return createHmac("sha256", Buffer.from(consentKeyHex, "hex"))
+    .update(msg, "utf8")
+    .digest("hex");
+}
+
+/**
+ * The intake-allowlist operations that require a §7g consent proof.
+ * Mirrors the `requiresConsent` flag in ae-devtools
+ * `NATIVE_INTAKE_OPERATIONS` (contract §7). Currently exactly one —
+ * `AEGP_ItemSuite9.AEGP_SetItemComment` (§7h). Keep in sync with the
+ * contract: a stale entry fails closed in the safe direction (the
+ * plug-in refuses `CONSENT_REQUIRED` for an op this list misses, and
+ * ignores `consent` on read-only ops).
+ */
+export const NATIVE_REQUIRES_CONSENT_OPERATIONS: readonly string[] = [
+  "AEGP_ItemSuite9.AEGP_SetItemComment",
+];
+
+export function nativeOperationRequiresConsent(operationId: string): boolean {
+  return NATIVE_REQUIRES_CONSENT_OPERATIONS.includes(operationId);
+}

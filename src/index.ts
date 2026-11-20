@@ -149,6 +149,10 @@ export {
   type DispatcherTransportOptions,
 } from "./driver/dispatcher-transport.js";
 export {
+  NATIVE_REQUIRES_CONSENT_OPERATIONS,
+  nativeOperationRequiresConsent,
+} from "./driver/native-consent.js";
+export {
   NATIVE_CHANNEL_META,
   NATIVE_CHANNEL_STATE,
   NATIVE_CLAIMED_SUFFIX,
@@ -166,15 +170,19 @@ export {
   prepareNativeChannel,
   publishNativeRequest,
   readNativeChannelState,
+  reconcileItemComment,
   type AwaitNativeResultOptions,
   type NativeChannelState,
+  type NativeCommentReconciliation,
   type NativeDispatchOutcome,
   type NativeDispatchResult,
   type NativeHostAttestation,
+  type NativeMutationAuthorization,
   type NativeRequestInput,
   type NativeResultDelivery,
   type PrepareNativeChannelOptions,
   type PreparedNativeChannel,
+  type ReconcileItemCommentOptions,
 } from "./driver/native-channel.js";
 export {
   launchProvenancePath,
