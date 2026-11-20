@@ -29,6 +29,8 @@ shell で mise を activate していなくても `mise exec -- <command>` / `mi
 
 unit test は After Effects を必要としません。実機 AE に対する検証は opt-in で、AE が見つからない環境では skip されます。何がどのレベルで確認済みかは [`verification.md`](verification.md) と README の Status 表が正本です。`fake/mock only` の結果を実機 verified として報告しないでください。
 
+native-channel の consent contract は ae-devtools の共有 fixture `native-consent-vectors.json` を正本とし、`test/fixtures/` に vendored copy を置いています。手編集はせず、upstream 更新時は `npm run sync:consent-vectors`（`--devtools <path>` / `--ref <git-ref>` / `--check`）で同期します。`AE_DEVTOOLS_ROOT` を設定すると test が live drift check も行います。
+
 ## Worktree
 
 作業単位は Issue 番号だけの branch とし、worktree は `wt`（Worktrunk）等の frontend で作成します。作成・削除時の処理は frontend に依存せず、必ず repository の入口を通します。

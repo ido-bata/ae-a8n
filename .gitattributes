@@ -1,0 +1,2 @@
+test/fixtures/native-consent-vectors.json -text
+test/fixtures/native-consent-vectors.meta.json -text

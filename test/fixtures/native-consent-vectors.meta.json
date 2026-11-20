@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "upstream": {
+    "repo": "/Users/rebui/work/ae-devtools",
+    "path": "packages/native-adapter/tests/fixtures/native-consent-vectors.json",
+    "ref": "e926c621136a430d42a0c079fe438242dc70a8e3"
+  },
+  "sha256": "247dbf5c97b52129a2baf6d62b3278f73bbd718c9fdb8892587bdb50940819ea"
+}
