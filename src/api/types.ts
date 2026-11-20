@@ -395,7 +395,12 @@ export type AttachOptions = Omit<LaunchOptions, "sessionRoot"> & {
    * instance of the selected install; several candidates are refused as
    * `ambiguous`. `target.pid` pins one process — it must still name a
    * single in-scope After Effects, and a pid that belongs to another
-   * login session's AE is refused as `wrong-session`.
+   * login session's AE is refused as `wrong-session`. On macOS the pin is
+   * honoured only while its target is the single in-scope instance:
+   * delivery addresses the app bundle rather than a pid, so a sibling
+   * could receive the probe. The pin is enforced only by the built-in
+   * script lane; a supplied transport keeps its own selection, and a pin
+   * it cannot enforce is refused.
    */
   readonly target?: {
     readonly pid?: number;

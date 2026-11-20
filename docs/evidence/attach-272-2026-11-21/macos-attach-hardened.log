@@ -1,0 +1,14 @@
+before: [
+  '68426 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects'
+]
+attach1 OK {"kind":"attached","evidence":"attached to pid 68426 (the process running since 2026-11-20T19:05:42.000Z); it was already running and is not this session's to quit in the session of rebui (uid 501, asid 100022)"}
+info {"version":"26.5.3x9","build":"9"}
+attach2 pinned OK {"kind":"attached","evidence":"attached to pid 68426 (the process running since 2026-11-20T19:05:42.000Z); it was already running and is not this session's to quit in the session of rebui (uid 501, asid 100022)"}
+badpid AttachTargetError not-found pid 999999 is not a running /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Eff
+after: [
+  '68426 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects'
+]
+close false false
+final: [
+  '68426 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects'
+]

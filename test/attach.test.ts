@@ -128,14 +128,30 @@ describe("attach-only target selection (script transport, macOS)", () => {
     expect(calls.launchMacHost).toBe(0);
   });
 
-  it("honours target.pid among several instances", async () => {
-    const { transport, calls } = attachTransport([[ae(7), ae(8)], [ae(7), ae(8)]], {
-      targetPid: 8,
+  it("honours target.pid when it is the single in-scope instance", async () => {
+    const { transport, calls } = attachTransport([[ae(7)], [ae(7)]], {
+      targetPid: 7,
     });
     await transport.launch();
     transport.confirmLaunched();
     expect(transport.ownership()).toMatchObject({ kind: "attached" });
-    expect(transport.hostPid()).toBe(8);
+    expect(transport.hostPid()).toBe(7);
+    expect(calls).toEqual({ launchMacHost: 0, openMacApp: 0, spawnLauncher: 0 });
+  });
+
+  it("refuses a pinned pid when sibling instances make the answer unprovable", async () => {
+    // macOS delivery addresses the app bundle, not a pid: with two in-scope
+    // instances of this install, the probe's Apple Event could reach the
+    // sibling even though the pinned pid exists. Fail closed instead.
+    const { transport, calls } = attachTransport([[ae(7), ae(8)]], {
+      targetPid: 8,
+    });
+    const error = await transport.launch().then(
+      () => null,
+      (caught: unknown) => caught as AttachTargetError,
+    );
+    expect(error?.reason).toBe("ambiguous");
+    expect(error?.message).toContain("bundle rather than a pid");
     expect(calls).toEqual({ launchMacHost: 0, openMacApp: 0, spawnLauncher: 0 });
   });
 
@@ -206,13 +222,71 @@ describe("attach-only target selection (script transport, macOS)", () => {
     expect(transport.ownership()).toMatchObject({ kind: "unknown" });
   });
 
-  it("stays attached when a pinned target coexists with another instance", async () => {
-    const { transport } = attachTransport([[ae(7), ae(8)], [ae(7), ae(8)]], {
+  it("downgrades a pinned attach to unknown when a sibling appears before confirm", async () => {
+    // Selection saw a single instance; a second one appeared before the
+    // probe answered. On macOS the pin cannot aim delivery, so the attach
+    // can no longer prove which instance answered.
+    const { transport } = attachTransport([[ae(7)], [ae(7), ae(8)]], {
       targetPid: 7,
     });
     await transport.launch();
     transport.confirmLaunched();
-    expect(transport.ownership()).toMatchObject({ kind: "attached" });
+    expect(transport.ownership()).toMatchObject({ kind: "unknown" });
+  });
+
+  it("a refused attach does not stay launched: a retry refuses again, never reaching invoke", async () => {
+    // Regression for the retry hole: launch() set #launched before target
+    // selection, so a failed attach left the transport "launched" and a
+    // second launch() returned early — the driver would then invoke(),
+    // which on macOS can start the very process attach refused to.
+    const { transport, calls } = attachTransport([[]]);
+    const first = await transport.launch().then(
+      () => null,
+      (caught: unknown) => caught as AttachTargetError,
+    );
+    expect(first?.reason).toBe("not-found");
+    const second = await transport.launch().then(
+      () => null,
+      (caught: unknown) => caught as AttachTargetError,
+    );
+    expect(second?.reason).toBe("not-found");
+    expect(calls).toEqual({ launchMacHost: 0, openMacApp: 0, spawnLauncher: 0 });
+  });
+
+  it("a refused attach on Windows refuses again on retry instead of falling through to spawn", async () => {
+    const { transport, calls } = attachTransport([[]], { platform: "win32" });
+    await expect(transport.launch()).rejects.toMatchObject({ reason: "unsupported" });
+    // Before the fix this second call returned early, leaving invoke() —
+    // `AfterFX.exe -r`, a process creation — reachable.
+    await expect(transport.launch()).rejects.toMatchObject({ reason: "unsupported" });
+    expect(calls).toEqual({ launchMacHost: 0, openMacApp: 0, spawnLauncher: 0 });
+  });
+
+  it("invoke refuses to deliver once the attached process is gone", async () => {
+    // `tell application <bundle>` starts the app when nothing is running.
+    // Attach-mode invoke must re-prove the selected target immediately
+    // before the Apple Event goes out, or the "never spawn" contract has
+    // a hole the moment the attached AE exits.
+    const lists = [[ae(7)], [ae(7)], [] as HostProcess[]];
+    let i = 0;
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install: INSTALL,
+      now: () => T0,
+      sessionUid: 501,
+      attach: {},
+      processes: () => lists[Math.min(i++, lists.length - 1)] as HostProcess[],
+    });
+    await transport.launch();
+    transport.confirmLaunched();
+    expect(transport.hostState()).toBe("gone");
+    const error = await transport.invoke("/tmp/entry.jsx").then(
+      () => null,
+      (caught: unknown) => caught as AttachTargetError,
+    );
+    expect(error).toBeInstanceOf(AttachTargetError);
+    expect(error?.reason).toBe("not-found");
+    expect(error?.message).toContain("never starts a replacement");
   });
 });
 
@@ -293,6 +367,75 @@ describe("AfterEffects.attach", () => {
     );
     expect(error).toBeInstanceOf(AttachTargetError);
     expect((error as AttachTargetError).reason).toBe("not-found");
+  });
+
+  it("rejects a public target.pid the supplied transport cannot enforce", async () => {
+    // The supplied transport keeps its own attach pin; the public pin must
+    // match it or be refused — silently attaching to a different pid is
+    // worse than failing.
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install: INSTALL,
+      sessionUid: 501,
+      attach: { targetPid: 111 },
+      processes: () => [ae(111)],
+    });
+    await expect(
+      AfterEffects.attach({ sessionRoot: root, transport, target: { pid: 222 } }),
+    ).rejects.toThrow(/cannot be enforced/);
+  });
+
+  it("rejects a public target.pid on an unpinned supplied transport", async () => {
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install: INSTALL,
+      sessionUid: 501,
+      attach: {},
+      processes: () => [ae(7)],
+    });
+    await expect(
+      AfterEffects.attach({ sessionRoot: root, transport, target: { pid: 7 } }),
+    ).rejects.toThrow(/cannot be enforced/);
+  });
+
+  it("rejects a public target.pid for transports with no pid selection", async () => {
+    await expect(
+      AfterEffects.attach({
+        sessionRoot: root,
+        transport: new FakeAfterEffectsTransport(),
+        target: { pid: 7 },
+      }),
+    ).rejects.toThrow(/cannot be enforced/);
+    await expect(
+      AfterEffects.attach({
+        sessionRoot: root,
+        transport: { kind: "in-ae-dispatcher", channelDir: join(root, "channel") },
+        target: { pid: 7 },
+      }),
+    ).rejects.toThrow(/cannot be enforced/);
+  });
+
+  it("honours a public target.pid that matches the supplied transport's pin", async () => {
+    // Enforcement passes, so the transport's own census decides: nothing is
+    // running here, which fails as not-found — proof the pin was accepted
+    // rather than rejected, and still before anything is sent.
+    const transport = new ScriptInvocationTransport({
+      platform: "darwin",
+      install: INSTALL,
+      sessionUid: 501,
+      attach: { targetPid: 7 },
+      processes: () => [],
+    });
+    const error = await AfterEffects.attach({
+      sessionRoot: root,
+      transport,
+      target: { pid: 7 },
+    }).then(
+      () => null,
+      (caught: unknown) => caught as AttachTargetError,
+    );
+    expect(error).toBeInstanceOf(AttachTargetError);
+    expect(error?.reason).toBe("not-found");
   });
 
   it("wraps an unresponsive target as AttachTargetError", async () => {

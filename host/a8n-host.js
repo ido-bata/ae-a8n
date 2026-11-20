@@ -1178,8 +1178,22 @@
 
     // Every atomic attempt failed. Write anyway rather than lose a computed
     // result, then drop the staging copy so it does not accumulate.
-    writeTextFile(resultPath, text);
     var leftover = new File(staging);
+    try {
+      writeTextFile(resultPath, text);
+    } catch (directWriteError) {
+      // A write that reported failure must not leave a readable envelope
+      // behind: the driver accepts any parseable result at resultPath, so a
+      // complete ok:true left by a failed close would be read as success.
+      var partial = new File(resultPath);
+      if (partial.exists) {
+        partial.remove();
+      }
+      if (leftover.exists) {
+        leftover.remove();
+      }
+      throw directWriteError;
+    }
     if (leftover.exists) {
       leftover.remove();
     }

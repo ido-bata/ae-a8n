@@ -10,9 +10,12 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  failFileClosesAt,
   failNextFileCloses,
   failNextFileWrites,
+  failNextRenames,
   resetFileFaults,
+  resetRenameFaults,
   runHostScript,
   type HostGlobals,
 } from "../src/testing/fake-ae/es3-runtime.js";
@@ -34,10 +37,12 @@ beforeEach(() => {
   app.project.load(createDefaultComp(), null);
   sequence = 0;
   resetFileFaults();
+  resetRenameFaults();
 });
 
 afterEach(() => {
   resetFileFaults();
+  resetRenameFaults();
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -88,6 +93,30 @@ describe("ES3 host failure safety (#265)", () => {
     expect(reply.execution.success).toBe(false);
     expect(reply.result).toBeNull();
     expect(existsSync(reply.resultPath)).toBe(false);
+  });
+
+  it("removes a directly written result when its close fails", () => {
+    // Every rename fails, so publishResult falls back to a direct write;
+    // that write's close then reports failure. Before the fix the complete
+    // ok:true envelope stayed at resultPath and read as a success while the
+    // host reported failure — and the staging file was left behind.
+    const id = String(++sequence);
+    const requestPath = join(root, `request-${id}.json`);
+    const resultPath = join(root, `result-${id}.json`);
+    writeFileSync(
+      requestPath,
+      JSON.stringify({ v: 1, id, method: "app.info", params: {}, timeoutMs: 5000 }),
+    );
+    failNextRenames(3); // PUBLISH_ATTEMPTS in the host script
+    failFileClosesAt(resultPath, 1);
+    const globals: HostGlobals = {
+      ...createFakeGlobals(app),
+      __a8n: { request: requestPath, result: resultPath },
+    };
+    const execution = runHostScript(HOST_SCRIPT, globals);
+    expect(execution.success).toBe(false);
+    expect(existsSync(resultPath)).toBe(false);
+    expect(existsSync(resultPath + ".part")).toBe(false);
   });
 
   it("does not report project.close success after a cancelled dialog", () => {

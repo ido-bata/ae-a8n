@@ -314,6 +314,28 @@ export async function openAfterEffects(
   const trace = new TraceRecorder({ file: join(sessionRoot, "trace.jsonl") });
   const transport = resolveTransport(options.transport, adopt, opts, op, attach);
 
+  // A public `target.pid` is honoured only where the transport can enforce
+  // it: the built script transport's own attach pin. A supplied transport —
+  // or the named dispatcher, which selects by instance/version pins — keeps
+  // its own selection rules, and resolveTransport never rewrites it. A pin
+  // the transport cannot enforce must be refused, not silently dropped:
+  // attaching to a different After Effects than the caller named is worse
+  // than failing.
+  if (attach?.targetPid !== undefined) {
+    const enforced =
+      transport instanceof ScriptInvocationTransport &&
+      transport.attachOnly &&
+      transport.attachTargetPid === attach.targetPid;
+    if (!enforced) {
+      throw new AfterEffectsError(
+        `target.pid ${attach.targetPid} cannot be enforced by the selected transport: ` +
+          "omit transport to use the built-in script lane, or construct a " +
+          "ScriptInvocationTransport with attach: { targetPid } matching it. Nothing was started.",
+        op,
+      );
+    }
+  }
+
   // The GUI fallback is only wired when the caller asks for it, and it only
   // ever acts inside the session that owns the After Effects.
   let recovery: MacHostRecovery | undefined;
