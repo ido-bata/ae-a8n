@@ -9,21 +9,30 @@
  * (`native_consent.cpp`); the shared test vectors committed on both
  * sides pin byte-identical output — any divergence is a contract bug.
  *
- * What this proves and what it does not (contract §7g threat model):
+ * What this proves and what it does not (contract §7g threat model,
+ * ae-a8n #249):
  *
  * - `consentKey` is a second shared secret in `channel.json`, in the
  *   same 0600/private-directory domain as `token`. Anyone who can read
  *   `channel.json` — i.e. any process running as the same OS user — can
- *   compute valid MACs. The MAC is therefore tamper-evident and
- *   scope-bound proof that a request passed through the consent-issuing
- *   code path; it is NOT authentication against same-user processes.
- * - Operation authorization is a separate layer: `publishNativeRequest`
- *   evaluates the channel's explicit grant BEFORE a MAC is issued and
- *   refuses unapproved mutations before anything is sent. Key possession
- *   proves channel capability only.
- * - Asymmetric signing (ae-a8n-held key, plug-in-held verify key) is the
- *   documented future hardening for crossing a real trust boundary; it
- *   is a contract-level change owned by ae-devtools, not this module.
+ *   compute valid MACs. The MAC therefore proves exactly two things:
+ *   (a) the writer possessed `consentKey` at signing time, and (b) the
+ *   MAC binds the request to the exact scope fields
+ *   (operationId/requestId/session/args/target). It does NOT prove
+ *   which code path or process produced it — same-user forgery is
+ *   undetectable at this layer — and it is NOT authentication.
+ * - Operation authorization is a separate, ae-a8n-owned layer:
+ *   `publishNativeRequest` evaluates the channel's explicit grant
+ *   BEFORE a MAC is issued and refuses unapproved mutations before
+ *   anything is sent. Key possession proves channel capability only.
+ * - Product model assumption: the native channel trusts processes
+ *   running as the same OS user. The channel directory's POSIX
+ *   privacy is the outer boundary; a malicious same-user process can
+ *   forge requests, results, and heartbeats regardless of consent.
+ *   Isolating untrusted local agents requires contract-level work —
+ *   signing-key separation AND channel access control AND result
+ *   authenticity; asymmetric request signing alone does not close the
+ *   result-forgery gap. That redesign is owned by ae-devtools.
  */
 
 import { createHmac } from "node:crypto";
