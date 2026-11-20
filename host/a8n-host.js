@@ -61,8 +61,18 @@
     if (!file.open("w")) {
       throw new Error("cannot open result file for writing: " + path);
     }
-    file.write(text);
-    file.close();
+    // ExtendScript can report an I/O failure with false instead of throwing.
+    // Never rename a staging file unless both the write and the close succeed.
+    var wrote = false;
+    var closed = false;
+    try {
+      wrote = file.write(text) !== false;
+    } finally {
+      closed = file.close() !== false;
+    }
+    if (!wrote || !closed) {
+      throw new Error("cannot finish writing result file: " + path);
+    }
   }
 
   function parentOf(path) {
@@ -467,9 +477,14 @@
     if (save !== true) {
       guardUnsavedChanges(params, "closing without saving");
     }
-    getProject().close(
+    var closed = getProject().close(
       save ? CloseOptions.SAVE_CHANGES : CloseOptions.DO_NOT_SAVE_CHANGES
     );
+    if (closed === false) {
+      var cancelled = new Error("project close was cancelled");
+      cancelled.name = "ProjectCloseCancelled";
+      throw cancelled;
+    }
     return { closed: true };
   };
 
@@ -750,32 +765,44 @@
   methods["comp.addText"] = function (params) {
     var comp = findComp(String(requireParam(params, "comp")));
     var text = String(requireParam(params, "text"));
-    var layer = comp.layers.addText(text);
+    // Reject every invalid optional value before creating a layer: a failed
+    // request must not leave an orphan text layer in the user's project.
     var name = optionalParam(params, "name", null);
+    var font = optionalParam(params, "font", null);
+    var fontSize = optionalParam(params, "fontSize", null);
+    var fillColor = optionalParam(params, "fillColor", null);
+    var position = optionalParam(params, "position", null);
+    if (fontSize !== null) {
+      fontSize = requireNumber(params, "fontSize", 1);
+    }
+    if (fillColor !== null) {
+      fillColor = requireNumbers(fillColor, "fillColor", 3);
+    }
+    if (position !== null) {
+      position = requireNumbers(position, "position", 2);
+    }
+
+    var layer = comp.layers.addText(text);
     if (name !== null) {
       layer.name = String(name);
     }
     var source = layer.property("ADBE Text Properties").property("ADBE Text Document");
     var doc = source.value;
-    var font = optionalParam(params, "font", null);
     if (font !== null) {
       doc.font = String(font);
     }
-    var fontSize = optionalParam(params, "fontSize", null);
     if (fontSize !== null) {
-      doc.fontSize = requireNumber(params, "fontSize", 1);
+      doc.fontSize = fontSize;
     }
-    var fillColor = optionalParam(params, "fillColor", null);
     if (fillColor !== null) {
       doc.applyFill = true;
-      doc.fillColor = requireNumbers(fillColor, "fillColor", 3);
+      doc.fillColor = fillColor;
     }
     doc.applyStroke = false;
     source.setValue(doc);
-    var position = optionalParam(params, "position", null);
     if (position !== null) {
       layer.property("ADBE Transform Group").property("ADBE Position")
-        .setValue(requireNumbers(position, "position", 2));
+        .setValue(position);
     }
     var applied = source.value;
     var info = layerInfo(layer);
