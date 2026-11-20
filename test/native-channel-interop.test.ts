@@ -41,6 +41,7 @@ import {
   NATIVE_REQUEST_SUFFIX,
   NATIVE_RESULT_SUFFIX,
   NativeChannelTimeoutError,
+  type NativeDispatchResult,
   prepareNativeChannel,
   publishNativeRequest,
   readNativeChannelState,
@@ -138,9 +139,14 @@ function spawnChannelServer(
   watchId: string,
   deadlineMs: number,
   fixture?: string,
+  fault?: string,
 ): ChildProcess {
   const args = ["--channel-server", root, watchId, String(deadlineMs)];
   if (fixture !== undefined) args.push(fixture);
+  /* devtools #352: optional fault arg ("setcomment-error" /
+     "null-itementry") — one channel-server run serves one requestId,
+     so fault cases each get a dedicated process. */
+  if (fault !== undefined) args.push(fault);
   return spawn(BIN, args, { stdio: "ignore" });
 }
 
@@ -509,6 +515,70 @@ function wireEnvelope(c: WireCase): Record<string, unknown> {
   return envelope;
 }
 
+/* Publish one fixture wire case's envelope atomically (.part + rename,
+   the same write shape the client uses). A repeated requestId (the
+   replay case) would otherwise read the PREVIOUS verdict file — remove
+   it first so the new verdict is what gets collected. */
+function publishWireRequest(root: string, c: WireCase): void {
+  rmSync(
+    join(root, "outbox", `${c.requestId}${NATIVE_RESULT_SUFFIX}`),
+    { force: true },
+  );
+  const envelope = wireEnvelope(c);
+  const reqPath = join(root, "inbox", `${c.requestId}${NATIVE_REQUEST_SUFFIX}`);
+  writeFileSync(`${reqPath}.part`, `${JSON.stringify(envelope)}\n`, {
+    mode: 0o600,
+  });
+  renameSync(`${reqPath}.part`, reqPath);
+}
+
+/* Assert a collected delivery against the fixture's expect block.
+   opCalls pins are SUBSTRING matches — the fixture's short names
+   ("AEGP_SetItemComment") match the full operationIds the wire result
+   carries, same as JValContains in the C++ suite. */
+function assertWireDelivery(c: WireCase, r: NativeDispatchResult): void {
+  expect(r.outcome, `wireCase ${c.name}`).toBe(c.expect.outcome);
+  if (c.expect.refusalCode !== undefined) {
+    expect(r.refusalCode, `wireCase ${c.name}`).toBe(c.expect.refusalCode);
+  }
+  if (c.expect.mayHaveMutated === "true") {
+    expect(r.mayHaveMutated, `wireCase ${c.name}`).toBe(true);
+  } else if (c.expect.mayHaveMutated === "false") {
+    expect(r.mayHaveMutated, `wireCase ${c.name}`).toBe(false);
+  } else {
+    /* "absent": refused/not-sent verdicts omit the field — a
+       pre-execution outcome must never claim possible mutation. */
+    expect(r.mayHaveMutated, `wireCase ${c.name}`).toBeUndefined();
+  }
+  if (c.expect.payload !== undefined) {
+    expect(r.result, `wireCase ${c.name}`).toEqual(c.expect.payload);
+  }
+  const calls = r.opCalls ?? [];
+  for (const op of c.expect.opCallsInclude ?? []) {
+    expect(
+      calls.some((entry) => entry.includes(op)),
+      `wireCase ${c.name} opCalls include ${op}`,
+    ).toBe(true);
+  }
+  for (const op of c.expect.opCallsExclude ?? []) {
+    expect(
+      calls.some((entry) => entry.includes(op)),
+      `wireCase ${c.name} opCalls exclude ${op}`,
+    ).toBe(false);
+  }
+}
+
+/* The devtools #352 channel-server fault arg for a wire case: exactly
+   one host-knob flag per fault case, mapped to the C++ fixture mode. */
+function wireCaseFault(c: WireCase): string {
+  const faults = [
+    ...(c.hostSetCommentError === true ? ["setcomment-error"] : []),
+    ...(c.nullItemEntry === true ? ["null-itementry"] : []),
+  ];
+  expect(faults, `wireCase ${c.name} fault flags`).toHaveLength(1);
+  return faults[0] as string;
+}
+
 describe.skipIf(BIN === "")(
   "shared consent wireCases against ae-devtools probe_test (fake host, #247)",
   () => {
@@ -540,8 +610,9 @@ describe.skipIf(BIN === "")(
         reused: true,
       };
 
-      /* Host-knob cases (hostSetCommentError, nullItemEntry) need the
-         in-process C++ harness — TestConsentWireCases covers them. */
+      /* Host-knob cases (hostSetCommentError, nullItemEntry) run in the
+         dedicated fault-injection block below — devtools #352 gives
+         each its own channel-server process. */
       const runnable = CONSENT_FIXTURE.wireCases.filter(
         (c) => c.hostSetCommentError !== true && c.nullItemEntry !== true,
       );
@@ -549,55 +620,60 @@ describe.skipIf(BIN === "")(
 
       for (const c of runnable) {
         writeWireChannelMeta(root, c.channelConsentKey);
-        /* A repeated requestId (the replay case) would otherwise read
-           the PREVIOUS case's verdict file — remove it so the new
-           verdict is what gets collected. */
-        rmSync(
-          join(root, "outbox", `${c.requestId}${NATIVE_RESULT_SUFFIX}`),
-          { force: true },
-        );
-        const envelope = wireEnvelope(c);
-        /* Atomic publish, same as the client's .part + rename. */
-        const reqPath = join(root, "inbox", `${c.requestId}${NATIVE_REQUEST_SUFFIX}`);
-        writeFileSync(`${reqPath}.part`, `${JSON.stringify(envelope)}\n`, {
-          mode: 0o600,
-        });
-        renameSync(`${reqPath}.part`, reqPath);
+        publishWireRequest(root, c);
         const delivery = await awaitNativeResult(channel, c.requestId, 30_000, FAST);
-        const r = delivery.result;
-        expect(r.outcome, `wireCase ${c.name}`).toBe(c.expect.outcome);
-        if (c.expect.refusalCode !== undefined) {
-          expect(r.refusalCode, `wireCase ${c.name}`).toBe(c.expect.refusalCode);
-        }
-        if (c.expect.mayHaveMutated === "true") {
-          expect(r.mayHaveMutated, `wireCase ${c.name}`).toBe(true);
-        } else if (c.expect.mayHaveMutated === "false") {
-          expect(r.mayHaveMutated, `wireCase ${c.name}`).toBe(false);
-        } else {
-          /* "absent": refused/not-sent verdicts omit the field — a
-             pre-execution outcome must never claim possible mutation. */
-          expect(r.mayHaveMutated, `wireCase ${c.name}`).toBeUndefined();
-        }
-        if (c.expect.payload !== undefined) {
-          expect(r.result, `wireCase ${c.name}`).toEqual(c.expect.payload);
-        }
-        /* opCalls pins are SUBSTRING matches — the fixture's short names
-           ("AEGP_SetItemComment") match the full operationIds the wire
-           result carries, same as JValContains in the C++ suite. */
-        const calls = r.opCalls ?? [];
-        for (const op of c.expect.opCallsInclude ?? []) {
-          expect(
-            calls.some((entry) => entry.includes(op)),
-            `wireCase ${c.name} opCalls include ${op}`,
-          ).toBe(true);
-        }
-        for (const op of c.expect.opCallsExclude ?? []) {
-          expect(
-            calls.some((entry) => entry.includes(op)),
-            `wireCase ${c.name} opCalls exclude ${op}`,
-          ).toBe(false);
-        }
+        assertWireDelivery(c, delivery.result);
       }
     }, 180_000);
+
+    it("executes the fault-injection wireCases, one channel-server process each (#256)", async () => {
+      const faultCases = CONSENT_FIXTURE.wireCases.filter(
+        (c) => c.hostSetCommentError === true || c.nullItemEntry === true,
+      );
+      expect(faultCases.length).toBe(2);
+
+      for (const c of faultCases) {
+        /* Fresh root per case: the fault is baked into the FakeHost at
+           process start, and one channel-server run serves one
+           requestId — cases cannot share a host. */
+        const caseRoot = mkdtempSync(join(tmpdir(), "a8n-native-fault-"));
+        const children: ChildProcess[] = [];
+        try {
+          for (const d of ["inbox", "outbox"]) {
+            mkdirSync(join(caseRoot, d), { recursive: true, mode: 0o700 });
+            chmodSync(join(caseRoot, d), 0o700);
+          }
+          writeWireChannelMeta(caseRoot, c.channelConsentKey);
+          children.push(
+            spawnChannelServer(
+              caseRoot,
+              c.requestId,
+              30_000,
+              "with-clip",
+              wireCaseFault(c),
+            ),
+          );
+          const channel = {
+            root: caseRoot,
+            token: CONSENT_FIXTURE.channelToken,
+            consentKey: CONSENT_FIXTURE.consentKey,
+            inbox: join(caseRoot, "inbox"),
+            outbox: join(caseRoot, "outbox"),
+            reused: true,
+          };
+          publishWireRequest(caseRoot, c);
+          const delivery = await awaitNativeResult(
+            channel,
+            c.requestId,
+            30_000,
+            FAST,
+          );
+          assertWireDelivery(c, delivery.result);
+        } finally {
+          for (const ch of children) ch.kill();
+          rmSync(caseRoot, { recursive: true, force: true });
+        }
+      }
+    }, 120_000);
   },
 );
