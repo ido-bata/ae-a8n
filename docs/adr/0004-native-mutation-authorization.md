@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-11-20
-- Issue: [#245](https://github.com/ido-bata/ae-a8n/issues/245), refined by [#247](https://github.com/ido-bata/ae-a8n/issues/247) (shared consent fixture) and [#248](https://github.com/ido-bata/ae-a8n/issues/248) (grant scope/lease)
+- Issue: [#245](https://github.com/ido-bata/ae-a8n/issues/245), refined by [#247](https://github.com/ido-bata/ae-a8n/issues/247) (shared consent fixture), [#248](https://github.com/ido-bata/ae-a8n/issues/248) (grant scope/lease) and [#249](https://github.com/ido-bata/ae-a8n/issues/249) (trust-boundary wording)
 - Contract: ae-devtools `specs/ae-capability-coverage/contracts/native-channel.md` §7g/§7h, `design/trusted-execution.md` §8
 - Affects: `src/driver/native-channel.ts`, `src/driver/native-consent.ts`
 
@@ -83,12 +83,23 @@ Verified against the contract's threat model, not assumed:
   bytes, the grant decides whether those bytes were permitted.
 - A same-user process that ignores the client can still forge requests,
   results, and heartbeats — the same residual the `token` already has
-  for read-only ops. Closing that gap requires asymmetric consent
-  signing (ae-a8n-held signing key, plug-in-held verify key), which is
-  a contract-level change owned by ae-devtools and an explicit non-goal
-  of #245. It is the documented proportionate answer for the current
-  single-user private-channel model; revisit if the channel ever
-  crosses a trust boundary.
+  for read-only ops. This includes forging a *result* envelope, so even
+  a perfectly authorized mutation's reported outcome is only as
+  trustworthy as the channel directory's privacy.
+- **Product model (explicit assumption, #249):** the native channel
+  treats processes running as the same OS user as inside the trust
+  boundary. ae-a8n is a single-user automation runtime; the channel's
+  confidentiality and integrity rest on POSIX private-directory
+  permissions (and the Windows ACL equivalent), not on cryptographic
+  separation between same-user processes. Any deployment that must
+  isolate *untrusted* local agents or other same-user processes needs
+  a contract-level redesign, not a larger key: signing-key separation
+  for requests, channel access control that keeps untrusted callers
+  out of `channel.json`'s reach, and authenticated results —
+  asymmetric request signing alone does not provide result
+  authenticity. That work is owned by ae-devtools and remains out of
+  scope here; revisit this ADR if the channel ever crosses a trust
+  boundary.
 
 ## Consequences
 
