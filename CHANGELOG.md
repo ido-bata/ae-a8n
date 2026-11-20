@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.5.0
+
+Patch-level release on the `release-0-5-0` train: ExtendScript host
+script hardening merged after 0.4.0 (#265), plus the additive
+`AfterEffects.attach` API (#269). The bridge contract is unchanged.
+
+### Added
+
+- **`AfterEffects.attach(options)`** (#269): an explicit attach-only path
+  to an already-running After Effects. The default script transport is
+  built attach-only — its `launch()` selects a census target and has no
+  path to process creation — so a caller that only wants to connect can
+  never spawn a second AE (the #99 double-launch defect). Target
+  selection is fail-closed: `AttachTargetError` with `reason`
+  (`not-found` / `ambiguous` / `wrong-session` / `unknown-target` /
+  `unresponsive` / `unsupported`), no resend or retry. On Windows the
+  script lane refuses (every delivery is an `AfterFX.exe -r` spawn);
+  attach there uses `transport: "in-ae-dispatcher"` or a supplied
+  transport. `launch()` / `resume()` / `close()` semantics are unchanged.
+
+### Fixed
+
+- **Attach-only hardening from release review** (#272): a refused attach
+  or adoption no longer leaves the transport "launched", so a retry
+  cannot fall through to the process-creating invoke path; a public
+  `target.pid` that the selected transport cannot enforce is refused
+  instead of silently ignored; on macOS a pinned attach requires the
+  target to remain the single in-scope instance (delivery addresses the
+  app bundle, not a pid); and attach-mode delivery re-proves the attached
+  process immediately before each call so an exited target fails closed
+  rather than letting `tell application` start a replacement. The host's
+  direct-write result fallback now removes a partially published result
+  file when the write reports failure.
+- **Host script I/O validation** (#265): the ExtendScript host now
+  rejects invalid result-file writes, honours `Project.close`
+  cancellation instead of reporting success, and pre-validates text
+  arguments, closing holes where a failed write or a cancelled close
+  could be mistaken for a completed call.
+- **Close-failure simulation narrowed to result writes** (#265): test
+  fixtures no longer mask request-path failures, keeping the
+  fake-host/real-host parity claim honest.
+
+### Verification
+
+- `verified on real host`: packaged consumer smoke
+  (`scripts/check-consumer-smoke.js`, packed tarball → clean install →
+  launch → handshake → project → diagnostics → close) passed against
+  After Effects 2027 `27.0x78` on macOS arm64, and the same tarball
+  completed a read-only attach smoke against a running AE 2027 on
+  Windows (`ownership: attached`, quit=false). Evidence recorded on
+  ae-a8n#99.
+- The native-channel path remains `fake/mock only` (unchanged from
+  0.4.0; real-host gate tracked by ae-devtools#223).
+
 ## 0.4.0
 
 This is the `release-0-4-0` train: the opt-in native-channel mutation

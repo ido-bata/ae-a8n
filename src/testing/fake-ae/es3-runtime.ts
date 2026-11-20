@@ -174,15 +174,33 @@ export class FakeFile {
     return this.encoding === "BINARY" ? slice.toString("latin1") : slice.toString("utf-8");
   }
 
-  write(text: string): void {
+  write(text: string): boolean {
     if (this.#handle !== "w") {
       throw new Error("file is not open for writing: " + this.fsName);
     }
+    if (writeFailuresRemaining > 0) {
+      writeFailuresRemaining -= 1;
+      return false;
+    }
     writeFileSync(this.fsName, text, "utf-8");
+    return true;
   }
 
-  close(): void {
+  close(): boolean {
+    const wasWriting = this.#handle === "w";
     this.#handle = null;
+    if (wasWriting) {
+      const scoped = closeFailuresByPath.get(this.fsName);
+      if (scoped !== undefined && scoped > 0) {
+        closeFailuresByPath.set(this.fsName, scoped - 1);
+        return false;
+      }
+      if (closeFailuresRemaining > 0) {
+        closeFailuresRemaining -= 1;
+        return false;
+      }
+    }
+    return true;
   }
 
   remove(): boolean {
@@ -225,6 +243,35 @@ export class FakeFile {
  */
 let renameFailuresRemaining = 0;
 let renameSuccesses = 0;
+let writeFailuresRemaining = 0;
+let closeFailuresRemaining = 0;
+/** Close failures scoped to one file path, for faults a count cannot aim at. */
+const closeFailuresByPath = new Map<string, number>();
+
+/** Emulate ExtendScript File.write/close returning false without throwing. */
+export function failNextFileWrites(count: number): void {
+  writeFailuresRemaining = count;
+}
+
+export function failNextFileCloses(count: number): void {
+  closeFailuresRemaining = count;
+}
+
+/**
+ * Make `File.close` return false only for the file at `fsName` — the next
+ * `count` times it is closed for writing. Other files (the request read,
+ * the result staging file) close normally, which a global count cannot
+ * express.
+ */
+export function failFileClosesAt(fsName: string, count: number): void {
+  closeFailuresByPath.set(fsName, count);
+}
+
+export function resetFileFaults(): void {
+  writeFailuresRemaining = 0;
+  closeFailuresRemaining = 0;
+  closeFailuresByPath.clear();
+}
 
 /** Make the next `count` `File.rename` calls return false. */
 export function failNextRenames(count: number): void {

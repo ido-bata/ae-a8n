@@ -39,6 +39,64 @@ export class ScriptingPermissionError extends Error {
   }
 }
 
+/**
+ * Why an attach-only session (`AfterEffects.attach`) refused or failed.
+ *
+ * Every reason is a fail-closed answer: the session was never established,
+ * or it was established against a target that later stopped being provable.
+ * Nothing here ever means "try launching instead" — attach has no launch
+ * path at all.
+ */
+export type AttachFailureReason =
+  /** No After Effects of the selected install is running in scope. */
+  | "not-found"
+  /** Several candidates and no `target.pid` pin to choose between them. */
+  | "ambiguous"
+  /**
+   * The After Effects that was found belongs to a different login session
+   * than the one this process may address (macOS uid scoping).
+   */
+  | "wrong-session"
+  /**
+   * The process list or the target's identity could not be read, so which
+   * After Effects would answer cannot be proven.
+   */
+  | "unknown-target"
+  /**
+   * A target was selected but never answered the readiness probe — busy,
+   * showing a modal, or otherwise unresponsive. No resend or retry follows.
+   */
+  | "unresponsive"
+  /**
+   * This transport cannot attach without creating a process (Windows
+   * script invocation delivers every script through `AfterFX.exe -r`).
+   */
+  | "unsupported";
+
+/**
+ * The typed failure `AfterEffects.attach` throws. `reason` is the stable
+ * field callers branch on; the message carries the human-readable detail
+ * (pids, sessions, install path) and `cause` keeps the underlying error.
+ */
+export class AttachTargetError extends Error {
+  readonly reason: AttachFailureReason;
+  /** The API operation that failed, e.g. `session.attach`. */
+  readonly op?: string;
+
+  constructor(
+    reason: AttachFailureReason,
+    message: string,
+    options?: { cause?: unknown; op?: string },
+  ) {
+    super(message, options);
+    this.name = "AttachTargetError";
+    this.reason = reason;
+    if (options?.op !== undefined) {
+      this.op = options.op;
+    }
+  }
+}
+
 export type InvokeOptions = {
   /**
    * Aborted when the call's deadline passes. A transport that waits for the

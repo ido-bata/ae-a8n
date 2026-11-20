@@ -30,6 +30,45 @@ run's After Effects from one the person started a moment later.
 Windows has no process check yet, so a Windows session is `unknown` and
 `close()` does not quit AE there. That is deliberate: no evidence, no quit.
 
+## Attaching without ever launching (#269)
+
+`AfterEffects.launch()` detects a running After Effects but falls back to
+starting one when its probe cannot reach it — which is how a caller that
+only wanted to connect could end up with a second AE process (#99). For
+that case there is `AfterEffects.attach(options)`:
+
+- The default script transport is built **attach-only**: its `launch()`
+  selects a target from the process census and returns — the branches that
+  would call `open` (macOS) or `AfterFX.exe` (Windows) are unreachable.
+  On Windows the script lane refuses outright, because every script
+  delivery there is itself an `AfterFX.exe -r` spawn; Windows attach uses
+  `transport: "in-ae-dispatcher"` (a file channel that spawns nothing) or
+  a caller-supplied transport.
+- Selection is fail-closed. With no `target`, exactly one in-scope
+  instance of the selected install must be running. `target.pid` pins one
+  process — on macOS the pin is honoured only while its target is the
+  single in-scope instance, because delivery addresses the app bundle
+  rather than a pid and a sibling could receive the probe. A public
+  `target.pid` is refused (`AfterEffectsError`) when the selected
+  transport cannot enforce it: supplied transports keep their own
+  selection, so pass a matching `attach: { targetPid }` or omit
+  `transport`. Refusals are `AttachTargetError` with `reason`:
+  `not-found`, `ambiguous`, `wrong-session` (the AE belongs to another
+  login session), `unknown-target` (the process list or identity could not
+  be read), `unresponsive` (a target was selected but never answered the
+  probe — busy or modal), `unsupported` (this transport cannot attach
+  without creating a process). Nothing is resent or retried afterwards.
+- Identity is re-proven at probe time: the selected pid and start time
+  must still name the same process — and still the only in-scope
+  instance — or ownership downgrades to `unknown`. Calls remain bound to
+  the engine that answered the probe by the session marker. Every later
+  call re-proves the attached process immediately before delivery: if it
+  is gone, the call fails rather than letting `tell application` start a
+  replacement.
+- The session's ownership is `attached` (or `unknown`), so `close()`
+  never quits the host, and `session.recover` is refused: the GUI
+  fallback needs a process this session started.
+
 ## Resuming a session
 
 `AfterEffects.launch()` writes `launch-provenance.json` into the session

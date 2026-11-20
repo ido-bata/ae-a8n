@@ -41,6 +41,7 @@ import {
 } from "./errors.js";
 import type { StopResult } from "../driver/driver.js";
 import type { HostOwnership } from "../driver/transport.js";
+import { attachAfterEffects } from "./attach.js";
 import { openAfterEffects } from "./launch.js";
 import {
   grantedScopes,
@@ -53,6 +54,7 @@ export type CloseResult = StopResult;
 export type { HostOwnership };
 import type {
   ApplicationInfo,
+  AttachOptions,
   CommandExecution,
   CompInfo,
   DiagnosticsOptions,
@@ -140,6 +142,32 @@ export class AfterEffects {
    */
   static async launch(options: LaunchOptions = {}): Promise<AfterEffects> {
     const opened = await openAfterEffects(options, null, "session.launch");
+    return new AfterEffects(opened.session, opened.probe, opened.extensionMethods);
+  }
+
+  /**
+   * Connects to an After Effects that is already running — and only that.
+   *
+   * Unlike `launch()`, which detects a running instance but falls back to
+   * starting one, `attach()` has no launch path at all: the default
+   * script transport is built attach-only, so its `launch()` selects a
+   * census target and the spawn branches are unreachable. On Windows the
+   * script lane cannot attach (every script delivery there is an
+   * `AfterFX.exe -r` spawn), so attach goes through
+   * `transport: "in-ae-dispatcher"` or a caller-supplied transport.
+   *
+   * Target selection is fail-closed. With no `target`, exactly one
+   * in-scope instance of the selected install must be running; `target.pid`
+   * pins one process. No candidate, several candidates, a pid in another
+   * login session, an unreadable process list, or a target that never
+   * answers the probe all reject with `AttachTargetError` — and nothing is
+   * resent or retried afterwards.
+   *
+   * The returned session's ownership is `attached` (or `unknown` when the
+   * target stops being provable), so `close()` never quits the host.
+   */
+  static async attach(options: AttachOptions = {}): Promise<AfterEffects> {
+    const opened = await attachAfterEffects(options);
     return new AfterEffects(opened.session, opened.probe, opened.extensionMethods);
   }
 
