@@ -12,7 +12,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { AeDriver } from "../driver/driver.js";
+import { AeDriver, HostUnavailableError, TimeoutError } from "../driver/driver.js";
 import {
   readGuiSession,
   readGuiSessionFailure,
@@ -28,6 +28,7 @@ import {
   DispatcherTransport,
 } from "../driver/dispatcher-transport.js";
 import {
+  AttachTargetError,
   DISPATCHER_TRANSPORT_KIND,
   type HostTransport,
 } from "../driver/transport.js";
@@ -170,9 +171,14 @@ function resolveTransport(
   adopt: LaunchProvenance | null,
   options: LaunchOptions,
   op: string,
+  attach?: { readonly targetPid?: number },
 ): HostTransport {
   if (selection === undefined) {
     return new ScriptInvocationTransport({
+      // Attach-only (#269): `attach` is passed only by `AfterEffects.attach`,
+      // and it makes `launch()` select a running instance with no path to
+      // process creation. `launch`/`resume` never set it.
+      ...(attach === undefined ? {} : { attach }),
       ...(adopt === null
         ? {}
         : {
@@ -295,6 +301,7 @@ export async function openAfterEffects(
   options: LaunchOptions,
   adopt: LaunchProvenance | null,
   op: string,
+  attach?: { readonly targetPid?: number },
 ): Promise<OpenedSession> {
   // `session` is the one option every consumer of `options` below reads, so
   // it is validated and normalised once here rather than at each use.
@@ -305,7 +312,7 @@ export async function openAfterEffects(
   // its own working directory rather than the caller's.
   const sessionRoot = resolve(options.sessionRoot ?? mkdtempSync(join(tmpdir(), "ae-a8n-")));
   const trace = new TraceRecorder({ file: join(sessionRoot, "trace.jsonl") });
-  const transport = resolveTransport(options.transport, adopt, opts, op);
+  const transport = resolveTransport(options.transport, adopt, opts, op, attach);
 
   // The GUI fallback is only wired when the caller asks for it, and it only
   // ever acts inside the session that owns the After Effects.
@@ -399,6 +406,9 @@ export async function openAfterEffects(
   try {
     probe = await driver.start();
   } catch (error) {
+    if (attach !== undefined) {
+      throw attachStartFailure(op, error);
+    }
     contextualise(op, error);
   }
   if (environment !== undefined) {
@@ -430,4 +440,29 @@ export async function openAfterEffects(
     result: { ownership: session.driver.ownership().kind, granted: [...grantedScopes(session)] },
   });
   return { session, probe, extensionMethods };
+}
+
+/**
+ * Translates a failed attach `driver.start()` into the typed failure the
+ * attach contract promises (#269). The transport's own `AttachTargetError`
+ * (not-found / ambiguous / wrong-session / unknown-target / unsupported)
+ * passes through untouched; a probe that never answered — timeout or
+ * unavailable host, which is how "busy" and "modal" surface — becomes
+ * `unresponsive` with the original as `cause`. Anything else takes the
+ * same contextualisation `launch` uses, which always throws.
+ */
+function attachStartFailure(op: string, error: unknown): Error {
+  if (error instanceof AttachTargetError) {
+    return error;
+  }
+  if (error instanceof TimeoutError || error instanceof HostUnavailableError) {
+    return new AttachTargetError(
+      "unresponsive",
+      `${op} failed: the selected After Effects did not answer the readiness probe — ` +
+        "it is busy, blocked by a dialog, or not the instance the census named. " +
+        "Attach never resends or retries; inspect the host and attach again.",
+      { cause: error, op },
+    );
+  }
+  contextualise(op, error);
 }
