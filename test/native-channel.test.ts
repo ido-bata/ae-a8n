@@ -39,8 +39,10 @@ import {
   prepareNativeChannel,
   publishNativeRequest,
   readNativeChannelState,
+  reconcileItemComment,
   type NativeRequestInput,
 } from "../src/driver/native-channel.js";
+import { issueConsentMac } from "../src/driver/native-consent.js";
 import { HostUnavailableError } from "../src/driver/driver.js";
 import { ScriptNotSentError } from "../src/driver/transport.js";
 
@@ -108,19 +110,82 @@ describe("prepareNativeChannel", () => {
     const meta = JSON.parse(readFileSync(metaPath, "utf-8")) as Record<string, unknown>;
     expect(meta.v).toBe(1);
     expect(meta.token).toMatch(/^[a-f0-9]{64}$/);
+    expect(meta.consentKey).toMatch(/^[a-f0-9]{64}$/);
     expect(meta.sessionAeVersion).toBeUndefined();
   });
 
-  it("reuses the existing token idempotently and keeps a session pin", () => {
+  it("reuses the existing token and consentKey idempotently and keeps a session pin", () => {
     const root = join(tmpRoot(), "chan");
     const first = prepareNativeChannel(root, { sessionAeVersion: "26.5" });
     const second = prepareNativeChannel(root);
     expect(second.reused).toBe(true);
     expect(second.token).toBe(first.token);
+    expect(second.consentKey).toBe(first.consentKey);
     const meta = JSON.parse(
       readFileSync(join(root, NATIVE_CHANNEL_META), "utf-8"),
     ) as Record<string, unknown>;
     expect(meta.sessionAeVersion).toBe("26.5");
+  });
+
+  it("backfills a consentKey into a legacy channel.json, preserving token and pin", () => {
+    const root = join(tmpRoot(), "chan");
+    mkdirSync(root, { recursive: true, mode: 0o700 });
+    const legacyToken = "ab".repeat(32);
+    writeFileSync(
+      join(root, NATIVE_CHANNEL_META),
+      `${JSON.stringify({ v: 1, token: legacyToken, sessionAeVersion: "26.5" })}\n`,
+      { mode: 0o600 },
+    );
+    const channel = prepareNativeChannel(root);
+    expect(channel.reused).toBe(true);
+    expect(channel.token).toBe(legacyToken);
+    expect(channel.consentKey).toMatch(/^[a-f0-9]{64}$/);
+    const meta = JSON.parse(
+      readFileSync(join(root, NATIVE_CHANNEL_META), "utf-8"),
+    ) as Record<string, unknown>;
+    expect(meta.token).toBe(legacyToken);
+    expect(meta.consentKey).toBe(channel.consentKey);
+    expect(meta.sessionAeVersion).toBe("26.5");
+    if (process.platform !== "win32") {
+      expect(statSync(join(root, NATIVE_CHANNEL_META)).mode & 0o777).toBe(0o600);
+    }
+  });
+
+  it("replaces a malformed consentKey rather than reusing it", () => {
+    const root = join(tmpRoot(), "chan");
+    mkdirSync(root, { recursive: true, mode: 0o700 });
+    writeFileSync(
+      join(root, NATIVE_CHANNEL_META),
+      `${JSON.stringify({ v: 1, token: "cd".repeat(32), consentKey: "not-hex" })}\n`,
+      { mode: 0o600 },
+    );
+    const channel = prepareNativeChannel(root);
+    expect(channel.consentKey).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("validates the authorization grant shape before the channel exists", () => {
+    const root = join(tmpRoot(), "chan");
+    for (const bad of [
+      "yes",
+      {},
+      { operations: [] },
+      { operations: "AEGP_ItemSuite9.AEGP_SetItemComment" },
+      { operations: ["OP", 3] },
+      { operations: ["OP"], targets: "inst-1" },
+      { operations: ["OP"], bogus: true },
+    ]) {
+      expect(() =>
+        prepareNativeChannel(root, { authorization: bad as never }),
+      ).toThrow(TypeError);
+    }
+    /* a rejected grant must not leave a half-prepared channel behind
+       for the mutation path — the directory may exist (read-only use
+       is still valid), but no grant was snapshotted */
+    const ok = prepareNativeChannel(join(tmpRoot(), "chan2"), {
+      authorization: { operations: ["OP"], targets: ["inst-1"] },
+    });
+    expect(ok.authorization?.operations).toEqual(["OP"]);
+    expect(ok.authorization?.targets).toEqual(["inst-1"]);
   });
 
   it.skipIf(process.platform === "win32")("refuses a group/other-accessible directory", () => {
@@ -386,5 +451,207 @@ describe("defaultNativeChannelDir", () => {
     expect(defaultNativeChannelDir("/home/x")).toBe(
       join("/home/x", ".ae-a8n", "native"),
     );
+  });
+});
+
+const MUTATION_OP = "AEGP_ItemSuite9.AEGP_SetItemComment";
+const MUTATION_ARGS = {
+  projectIndex: 0,
+  item: { aeRef: { type: "comp", name: "Plate", path: [0] } },
+  comment: "hello",
+};
+
+function mutationInput(overrides: Partial<NativeRequestInput> = {}): NativeRequestInput {
+  return baseInput({
+    requestId: "mut-001",
+    operationId: MUTATION_OP,
+    args: MUTATION_ARGS,
+    ...overrides,
+  });
+}
+
+type RequestDoc = {
+  consent?: { v: number; mac: string };
+  request: { operationId?: string; args?: unknown };
+};
+
+function readRequestDoc(
+  channel: ReturnType<typeof prepareNativeChannel>,
+  requestId: string,
+): RequestDoc {
+  return JSON.parse(
+    readFileSync(join(channel.inbox, `${requestId}${NATIVE_REQUEST_SUFFIX}`), "utf-8"),
+  ) as RequestDoc;
+}
+
+describe("consent issuance and the authorization policy (#245)", () => {
+  it("refuses a requiresConsent op without a grant — before anything is sent", () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"));
+    expect(() => publishNativeRequest(channel, mutationInput())).toThrow(
+      ScriptNotSentError,
+    );
+    expect(
+      existsSync(join(channel.inbox, `mut-001${NATIVE_REQUEST_SUFFIX}`)),
+    ).toBe(false);
+    expect(
+      existsSync(join(channel.inbox, `mut-001${NATIVE_REQUEST_SUFFIX}.part`)),
+    ).toBe(false);
+  });
+
+  it("refuses when the grant covers a different operation", () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
+      authorization: { operations: ["AEGP_ItemSuite9.AEGP_GetItemComment"] },
+    });
+    expect(() => publishNativeRequest(channel, mutationInput())).toThrow(
+      ScriptNotSentError,
+    );
+    expect(
+      existsSync(join(channel.inbox, `mut-001${NATIVE_REQUEST_SUFFIX}`)),
+    ).toBe(false);
+  });
+
+  it("binds target-scoped grants: untargeted and wrong-target requests refuse", () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
+      authorization: {
+        operations: [MUTATION_OP],
+        targets: ["inst-1"],
+      },
+    });
+    /* untargeted request is NOT covered by a target-bound grant */
+    expect(() => publishNativeRequest(channel, mutationInput())).toThrow(
+      ScriptNotSentError,
+    );
+    expect(() =>
+      publishNativeRequest(channel, mutationInput({ target: "inst-2" })),
+    ).toThrow(ScriptNotSentError);
+    publishNativeRequest(channel, mutationInput({ target: "inst-1" }));
+    const doc = readRequestDoc(channel, "mut-001");
+    expect(doc.consent?.v).toBe(1);
+    expect(doc.consent?.mac).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("issues a §7g consent MAC over the exact scope for a covered mutation", () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
+      authorization: { operations: [MUTATION_OP] },
+    });
+    publishNativeRequest(channel, mutationInput({ target: "inst-9" }));
+    const doc = readRequestDoc(channel, "mut-001");
+    expect(doc.consent).toEqual({
+      v: 1,
+      mac: issueConsentMac(channel.consentKey, {
+        operationId: MUTATION_OP,
+        requestId: "mut-001",
+        session: { sessionId: "sess-1", aeVersion: "26.5" },
+        args: MUTATION_ARGS,
+        target: "inst-9",
+      }),
+    });
+    /* the MAC is scope-bound: any field change breaks it */
+    const tampered = issueConsentMac(channel.consentKey, {
+      operationId: MUTATION_OP,
+      requestId: "mut-001",
+      session: { sessionId: "sess-1", aeVersion: "26.5" },
+      args: { ...MUTATION_ARGS, comment: "other" },
+      target: "inst-9",
+    });
+    expect(tampered).not.toBe(doc.consent?.mac);
+  });
+
+  it("never attaches consent to read-only ops, grant or not", () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
+      authorization: { operations: [MUTATION_OP] },
+    });
+    publishNativeRequest(channel, baseInput({ requestId: "ro-1" }));
+    const doc = readRequestDoc(channel, "ro-1");
+    expect(doc.consent).toBeUndefined();
+  });
+
+  it("refuses non-canonical args on a consent op as ScriptNotSentError", () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
+      authorization: { operations: [MUTATION_OP] },
+    });
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    for (const [label, args] of [
+      ["circular", circular],
+      ["float", { ...MUTATION_ARGS, projectIndex: 0.5 }],
+      ["bigint", { ...MUTATION_ARGS, comment: 1n }],
+    ] as const) {
+      expect(() =>
+        publishNativeRequest(
+          channel,
+          mutationInput({ requestId: `bad-${label}`, args }),
+        ),
+      ).toThrow(ScriptNotSentError);
+      expect(
+        existsSync(join(channel.inbox, `bad-${label}${NATIVE_REQUEST_SUFFIX}`)),
+      ).toBe(false);
+    }
+  });
+});
+
+describe("reconcileItemComment (#245, trusted-execution §8.3)", () => {
+  const SCOPE = {
+    session: { sessionId: "sess-1", aeVersion: "26.5" },
+    projectIndex: 0,
+    item: MUTATION_ARGS.item,
+  };
+  const OPTS = { requestId: "rb-001", timeoutMs: 5_000 };
+
+  it("publishes a read-only GetItemComment on the same descriptor", async () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"));
+    const pending = reconcileItemComment(channel, SCOPE, "hello", OPTS);
+    /* the read-back request is on disk before the first await */
+    const doc = readRequestDoc(channel, "rb-001");
+    expect(doc.request.operationId).toBe("AEGP_ItemSuite9.AEGP_GetItemComment");
+    expect(doc.request.args).toEqual({ projectIndex: 0, item: MUTATION_ARGS.item });
+    expect(doc.consent).toBeUndefined();
+    writeResult(channel, "rb-001", {
+      outcome: "completed",
+      result: { comment: "hello" },
+    });
+    await expect(pending).resolves.toEqual({
+      verdict: "state-consistent",
+      observedComment: "hello",
+    });
+  });
+
+  it("classifies a contradicting observation as state-inconsistent", async () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"));
+    const pending = reconcileItemComment(channel, SCOPE, "hello", OPTS);
+    writeResult(channel, "rb-001", {
+      outcome: "completed",
+      result: { comment: "" },
+    });
+    await expect(pending).resolves.toEqual({
+      verdict: "state-inconsistent",
+      observedComment: "",
+    });
+  });
+
+  it("classifies a refused read-back as unobservable, never guessed", async () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"));
+    const pending = reconcileItemComment(channel, SCOPE, "hello", OPTS);
+    writeResult(channel, "rb-001", {
+      outcome: "refused",
+      refusalCode: "STALE_REFERENCE",
+    });
+    await expect(pending).resolves.toEqual({
+      verdict: "unobservable",
+      detail: "refused/STALE_REFERENCE",
+    });
+  });
+
+  it("propagates UNKNOWN when the read-back itself times out", async () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"));
+    await expect(
+      reconcileItemComment(channel, SCOPE, "hello", {
+        requestId: "rb-001",
+        timeoutMs: 10,
+        awaitOptions: { pollMs: 5, graceMs: 20 },
+      }),
+    ).rejects.toThrow(NativeChannelTimeoutError);
+    /* the read-back request was still sent — nothing was resent */
+    expect(existsSync(join(channel.inbox, `rb-001${NATIVE_REQUEST_SUFFIX}`))).toBe(true);
   });
 });
