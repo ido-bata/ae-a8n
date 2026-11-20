@@ -187,8 +187,9 @@ export class FakeFile {
   }
 
   close(): boolean {
+    const wasWriting = this.#handle === "w";
     this.#handle = null;
-    if (closeFailuresRemaining > 0) {
+    if (wasWriting && closeFailuresRemaining > 0) {
       closeFailuresRemaining -= 1;
       return false;
     }
