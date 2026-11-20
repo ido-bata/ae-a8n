@@ -1474,11 +1474,20 @@ export class ScriptInvocationTransport implements HostTransport {
       // this transport cannot close without pid-addressed Apple Events.
       if (this.#attach !== null) {
         const attached = this.#attached;
-        if (attached === null || this.#processState(attached) !== "alive") {
+        // Only a proven-alive target may receive the event. "gone" is a
+        // confirmed absence; "unknown" — the census could not be read —
+        // must not be reported as the process having stopped, because it
+        // may still be running.
+        const state = attached === null ? "gone" : this.#processState(attached);
+        if (state !== "alive") {
           throw new AttachTargetError(
-            "not-found",
-            `the attached After Effects (pid ${attached?.pid ?? "unknown"}) is no longer ` +
-              "running; attach never starts a replacement, so nothing was sent",
+            state === "unknown" ? "unknown-target" : "not-found",
+            state === "unknown"
+              ? `the attached After Effects (pid ${attached?.pid ?? "unknown"}) could not be ` +
+                "re-verified: the process list could not be read. Attach never starts a " +
+                "replacement and never guesses, so nothing was sent"
+              : `the attached After Effects (pid ${attached?.pid ?? "unknown"}) is no longer ` +
+                "running; attach never starts a replacement, so nothing was sent",
           );
         }
       }
