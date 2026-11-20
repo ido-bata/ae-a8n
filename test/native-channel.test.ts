@@ -15,6 +15,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -147,6 +148,8 @@ describe("prepareNativeChannel", () => {
     expect(meta.token).toBe(legacyToken);
     expect(meta.consentKey).toBe(channel.consentKey);
     expect(meta.sessionAeVersion).toBe("26.5");
+    /* the backfill lock is always released */
+    expect(existsSync(join(root, `${NATIVE_CHANNEL_META}.lock`))).toBe(false);
     if (process.platform !== "win32") {
       expect(statSync(join(root, NATIVE_CHANNEL_META)).mode & 0o777).toBe(0o600);
     }
@@ -321,6 +324,30 @@ describe("publishNativeRequest", () => {
     const channel = prepareNativeChannel(join(tmpRoot(), "chan"));
     publishNativeRequest(channel, baseInput());
     expect(() => publishNativeRequest(channel, baseInput())).toThrow(ScriptNotSentError);
+  });
+
+  it("refuses a requestId that was already claimed or answered", () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"));
+    publishNativeRequest(channel, baseInput({ requestId: "req-once" }));
+    /* the plug-in claims by renaming the inbox file — the id stays spent */
+    renameSync(
+      join(channel.inbox, `req-once${NATIVE_REQUEST_SUFFIX}`),
+      claimedRequestPath(channel, "req-once"),
+    );
+    expect(() =>
+      publishNativeRequest(channel, baseInput({ requestId: "req-once" })),
+    ).toThrow(ScriptNotSentError);
+
+    /* a stale outbox result blocks reuse the same way: awaitNativeResult
+       would otherwise return it as the new request's answer */
+    const answered = prepareNativeChannel(join(tmpRoot(), "chan-answered"));
+    writeFileSync(
+      join(answered.outbox, `req-done${NATIVE_RESULT_SUFFIX}`),
+      "{}\n",
+    );
+    expect(() =>
+      publishNativeRequest(answered, baseInput({ requestId: "req-done" })),
+    ).toThrow(ScriptNotSentError);
   });
 
   it("passes args and authorizationRef through to the inner envelope", () => {
@@ -592,6 +619,9 @@ describe("consent issuance and the authorization policy (#245, #248)", () => {
       ["circular", circular],
       ["float", { ...MUTATION_ARGS, projectIndex: 0.5 }],
       ["bigint", { ...MUTATION_ARGS, comment: 1n }],
+      ["sparse", { ...MUTATION_ARGS, tags: sparseList() }],
+      ["date", { ...MUTATION_ARGS, when: new Date(0) }],
+      ["tojson", { ...MUTATION_ARGS, when: { toJSON: () => "x" } }],
     ] as const) {
       expect(() =>
         publishNativeRequest(
@@ -604,7 +634,45 @@ describe("consent issuance and the authorization policy (#245, #248)", () => {
       ).toBe(false);
     }
   });
+
+  it("evaluates grant, MAC and wire against one args snapshot", () => {
+    /* An accessor-backed args value must not be able to answer the grant
+       check with one value and the consent MAC / wire with another. */
+    let reads = 0;
+    const args = {
+      ...MUTATION_ARGS,
+      get comment() {
+        reads += 1;
+        return reads === 1 ? "authorized-value" : "swapped-value";
+      },
+    };
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"), {
+      authorization: {
+        grants: [
+          { operationId: MUTATION_OP, args: { comment: "authorized-value" } },
+        ],
+      },
+    });
+    const input = mutationInput({ args });
+    publishNativeRequest(channel, input);
+    const doc = readRequestDoc(channel, "mut-001");
+    expect(doc.request.args).toMatchObject({ comment: "authorized-value" });
+    expect(doc.consent?.mac).toBe(
+      issueConsentMac(channel.consentKey, {
+        operationId: MUTATION_OP,
+        requestId: "mut-001",
+        session: input.session,
+        args: { ...MUTATION_ARGS, comment: "authorized-value" },
+      }),
+    );
+  });
 });
+
+function sparseList(): string[] {
+  const list = new Array<string>(2);
+  list[1] = "x";
+  return list;
+}
 
 describe("grant scope: session, args, update and revocation (#248)", () => {
   const ITEM_A = { aeRef: { type: "comp", name: "A", path: [0], itemId: 1 } };

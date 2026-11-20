@@ -134,6 +134,27 @@ describe("consent canonicalJson", () => {
   it("undefined object values are dropped like JSON.stringify", () => {
     expect(canonicalJson({ a: undefined, b: 2 })).toBe('{"b":2}');
   });
+
+  it("rejects values whose canonical bytes diverge from the wire", () => {
+    /* The MAC covers canonical bytes; anything JSON.stringify or the
+       plug-in would serialize differently must fail before sending —
+       same fail-closed rule as the lone-surrogate rejection. */
+    const sparse = new Array<unknown>(3);
+    sparse[0] = 1;
+    sparse[2] = 2;
+    expect(() => canonicalJson(sparse)).toThrow(ConsentCanonicalError);
+    expect(() => canonicalJson(new Date(0))).toThrow(ConsentCanonicalError);
+    class Box {
+      a = 1;
+    }
+    expect(() => canonicalJson(new Box())).toThrow(ConsentCanonicalError);
+    expect(() => canonicalJson({ toJSON: () => ({}) })).toThrow(
+      ConsentCanonicalError,
+    );
+    /* plain data still canonicalizes */
+    expect(canonicalJson([1, 2, 3])).toBe("[1,2,3]");
+    expect(canonicalJson(Object.create(null))).toBe("{}");
+  });
 });
 
 describe("consent shared vectors (native-consent-vectors.json)", () => {

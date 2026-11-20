@@ -59,6 +59,7 @@ import {
   mkdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -631,22 +632,54 @@ export function prepareNativeChannel(
   }
   let meta = readChannelMeta(metaPath);
   if (meta.consentKey === "") {
-    /* Backfill: preserve token and session pin, mint a fresh consent
-       key. Atomic replace at 0600; a racing backfill resolves to
-       whichever write landed last, and the re-read below adopts the
-       on-disk winner. */
-    const next: Record<string, unknown> = {
-      v: 1,
-      token: meta.token,
-      consentKey: randomBytes(32).toString("hex"),
-    };
-    if (meta.sessionAeVersion !== undefined) {
-      next.sessionAeVersion = meta.sessionAeVersion;
+    /* Backfill under an exclusive lock file: two processes preparing
+       the same legacy channel.json must not each mint a key, because
+       the loser would keep a consentKey the plug-in no longer reads
+       and every mutation would fail CONSENT_INVALID. The lock is
+       `wx`-created and released in `finally`; a dead holder's lock
+       goes stale and contenders fall back to the read-adopt path
+       after the deadline (still fail-safe: mismatched keys only ever
+       refuse, never authorize). */
+    const lockPath = `${metaPath}.lock`;
+    const deadline = Date.now() + 2000;
+    let locked = false;
+    while (!locked && Date.now() < deadline) {
+      try {
+        writeFileSync(lockPath, `${process.pid}\n`, { mode: 0o600, flag: "wx" });
+        locked = true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+          throw error;
+        }
+        const spinUntil = Date.now() + 25;
+        while (Date.now() < spinUntil) {
+          /* brief synchronous back-off; prepare is rare and short */
+        }
+      }
     }
-    const part = `${metaPath}.${process.pid}.part`;
-    writeFileSync(part, `${JSON.stringify(next)}\n`, { mode: 0o600 });
-    renameSync(part, metaPath);
-    meta = readChannelMeta(metaPath);
+    try {
+      /* Re-read inside the lock: a racing backfill may have filled the
+         key while we waited. */
+      meta = readChannelMeta(metaPath);
+      if (meta.consentKey === "") {
+        const next: Record<string, unknown> = {
+          v: 1,
+          token: meta.token,
+          consentKey: randomBytes(32).toString("hex"),
+        };
+        if (meta.sessionAeVersion !== undefined) {
+          next.sessionAeVersion = meta.sessionAeVersion;
+        }
+        const part = `${metaPath}.${process.pid}.part`;
+        writeFileSync(part, `${JSON.stringify(next)}\n`, { mode: 0o600 });
+        renameSync(part, metaPath);
+        meta = readChannelMeta(metaPath);
+      }
+    } finally {
+      if (locked) {
+        rmSync(lockPath, { force: true });
+      }
+    }
   }
   const channel: PreparedNativeChannel = {
     root: resolved,
@@ -816,8 +849,28 @@ export function publishNativeRequest(
 ): void {
   assertRequestInput(input);
   let consent: { v: 1; mac: string } | undefined;
+  /* For consent-gated mutations, snapshot args once in the canonical
+     domain: the grant match, the consent MAC and the published envelope
+     must all describe the same value. Accessor-backed input could
+     otherwise answer differently on each read, letting the grant cover
+     one value while the wire carries another. A non-canonical snapshot
+     is refused before anything is sent — same not-sent contract as the
+     MAC. Read-only operations keep the previous pass-through: they
+     carry no grant/MAC scope, so there is nothing to diverge. */
+  let argsForWire = input.args;
   if (nativeOperationRequiresConsent(input.operationId)) {
-    if (!grantCoversMutation(channel.authorization, input)) {
+    if (input.args !== undefined) {
+      try {
+        argsForWire = JSON.parse(canonicalJson(input.args));
+      } catch (error) {
+        throw new ScriptNotSentError(
+          `request args cannot be canonicalized: ${errorMessage(error)}; nothing was sent`,
+        );
+      }
+    }
+    const scopedInput =
+      argsForWire === input.args ? input : { ...input, args: argsForWire };
+    if (!grantCoversMutation(channel.authorization, scopedInput)) {
       throw new ScriptNotSentError(
         `native mutation ${input.operationId}` +
           (input.target === undefined ? "" : ` on target ${input.target}`) +
@@ -834,7 +887,7 @@ export function publishNativeRequest(
           operationId: input.operationId,
           requestId: input.requestId,
           session: input.session,
-          args: input.args,
+          args: argsForWire,
           ...(input.target === undefined ? {} : { target: input.target }),
         }),
       };
@@ -849,9 +902,17 @@ export function publishNativeRequest(
     }
   }
   const target = join(channel.inbox, `${input.requestId}${NATIVE_REQUEST_SUFFIX}`);
-  if (existsSync(target)) {
+  /* A requestId is single-use for the life of the channel: the plug-in
+     claims (renames) the inbox file, so checking only the inbox would
+     let a reused id through — and a stale outbox result could then be
+     returned by awaitNativeResult as if it answered the new request. */
+  if (
+    existsSync(target) ||
+    existsSync(claimedRequestPath(channel, input.requestId)) ||
+    existsSync(join(channel.outbox, `${input.requestId}${NATIVE_RESULT_SUFFIX}`))
+  ) {
     throw new ScriptNotSentError(
-      `a native channel request for ${input.requestId} already exists`,
+      `requestId ${input.requestId} was already used on this channel; use a fresh id`,
     );
   }
   const inner: Record<string, unknown> = {
@@ -860,8 +921,8 @@ export function publishNativeRequest(
     session: input.session,
     operationId: input.operationId,
   };
-  if (input.args !== undefined) {
-    inner.args = input.args;
+  if (argsForWire !== undefined) {
+    inner.args = argsForWire;
   }
   if (input.authorizationRef !== undefined) {
     inner.authorizationRef = input.authorizationRef;

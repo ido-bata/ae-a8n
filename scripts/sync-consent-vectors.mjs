@@ -64,7 +64,10 @@ function fetchSource() {
     }
     return {
       bytes: readFileSync(path),
-      provenance: { repo: "local", path, ref: "worktree" },
+      /* `path` must stay the contract-relative UPSTREAM_PATH: the meta
+         assertion and the AE_DEVTOOLS_ROOT drift check resolve it
+         against a repo root. The absolute source goes in `ref`. */
+      provenance: { repo: "local", path: UPSTREAM_PATH, ref: `file:${path}` },
     };
   }
   const devtools = argValue("--devtools") ?? process.env.AE_DEVTOOLS_ROOT;
