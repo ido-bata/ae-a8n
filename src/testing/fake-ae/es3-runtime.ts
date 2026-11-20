@@ -189,9 +189,16 @@ export class FakeFile {
   close(): boolean {
     const wasWriting = this.#handle === "w";
     this.#handle = null;
-    if (wasWriting && closeFailuresRemaining > 0) {
-      closeFailuresRemaining -= 1;
-      return false;
+    if (wasWriting) {
+      const scoped = closeFailuresByPath.get(this.fsName);
+      if (scoped !== undefined && scoped > 0) {
+        closeFailuresByPath.set(this.fsName, scoped - 1);
+        return false;
+      }
+      if (closeFailuresRemaining > 0) {
+        closeFailuresRemaining -= 1;
+        return false;
+      }
     }
     return true;
   }
@@ -238,6 +245,8 @@ let renameFailuresRemaining = 0;
 let renameSuccesses = 0;
 let writeFailuresRemaining = 0;
 let closeFailuresRemaining = 0;
+/** Close failures scoped to one file path, for faults a count cannot aim at. */
+const closeFailuresByPath = new Map<string, number>();
 
 /** Emulate ExtendScript File.write/close returning false without throwing. */
 export function failNextFileWrites(count: number): void {
@@ -248,9 +257,20 @@ export function failNextFileCloses(count: number): void {
   closeFailuresRemaining = count;
 }
 
+/**
+ * Make `File.close` return false only for the file at `fsName` — the next
+ * `count` times it is closed for writing. Other files (the request read,
+ * the result staging file) close normally, which a global count cannot
+ * express.
+ */
+export function failFileClosesAt(fsName: string, count: number): void {
+  closeFailuresByPath.set(fsName, count);
+}
+
 export function resetFileFaults(): void {
   writeFailuresRemaining = 0;
   closeFailuresRemaining = 0;
+  closeFailuresByPath.clear();
 }
 
 /** Make the next `count` `File.rename` calls return false. */

@@ -549,6 +549,17 @@ export class ScriptInvocationTransport implements HostTransport {
     return this.#attach !== null;
   }
 
+  /**
+   * The pid an attach-only transport was pinned to, when it was. The public
+   * `AfterEffects.attach({ target: { pid } })` compares this against its own
+   * pin: a supplied transport keeps its own selection, so a public pin that
+   * does not match — or that the transport cannot enforce at all — is
+   * refused rather than silently ignored.
+   */
+  get attachTargetPid(): number | undefined {
+    return this.#attach?.targetPid;
+  }
+
   /** The login session this transport talks into, when it is macOS. */
   get targetSession(): MacSession | null {
     return this.#targetSession;
@@ -864,11 +875,27 @@ export class ScriptInvocationTransport implements HostTransport {
       // Attach-only (#269): select a running instance or refuse. The spawn
       // branches below are unreachable from here — there is no code path
       // from this branch to `open`/`AfterFX.exe`.
-      this.#selectAttachTarget();
+      try {
+        this.#selectAttachTarget();
+      } catch (error) {
+        // A refused attach must not leave the transport "launched": a retry
+        // would return early above and the driver would go on to invoke(),
+        // which on macOS can start the very process attach refused to.
+        this.#launched = false;
+        this.#launchBegan = 0;
+        throw error;
+      }
       return;
     }
     if (this.#adopt !== null) {
-      this.#adoptProcess();
+      try {
+        this.#adoptProcess();
+      } catch (error) {
+        // Same rule as attach: a refused adoption is not a launch.
+        this.#launched = false;
+        this.#launchBegan = 0;
+        throw error;
+      }
       return;
     }
     if (this.#platform === "win32") {
@@ -1061,6 +1088,21 @@ export class ScriptInvocationTransport implements HostTransport {
           `pid ${targetPid} names ${matches.length} in-scope After Effects processes; nothing was sent`,
         );
       }
+      // macOS delivery addresses the install's app bundle, not a pid: with a
+      // second in-scope instance running, the probe's Apple Event can reach
+      // the sibling even though the pinned pid exists, so "which instance
+      // answered" is unprovable. A pin disambiguates only where delivery
+      // can aim; here the pin is honoured only while its target is the
+      // single in-scope instance. (Windows refuses attach before this.)
+      if (this.#platform === "darwin" && candidates.length > 1) {
+        throw new AttachTargetError(
+          "ambiguous",
+          `pid ${targetPid} names one instance, but ${candidates.length} After Effects ` +
+            "processes of this install are running and macOS delivery addresses the app " +
+            "bundle rather than a pid, so the probe could reach a different instance; " +
+            "nothing was sent",
+        );
+      }
     } else if (candidates.length === 0) {
       if (foreignSession.length > 0) {
         throw new AttachTargetError(
@@ -1115,11 +1157,14 @@ export class ScriptInvocationTransport implements HostTransport {
     }
     const same = now.filter((p) => sameProcess(this.#platform, p, attached));
     const pinned = this.#attach?.targetPid !== undefined;
-    // A pinned pid is itself the disambiguator: the target must still be
-    // present, other instances may coexist. Unpinned, the target must also
-    // remain the only in-scope instance — a second AE started mid-attach
-    // makes "which one answered" unprovable again.
-    const proven = same.length === 1 && (pinned || now.length === 1);
+    // A pinned pid is itself the disambiguator — except on macOS, where
+    // delivery addresses the app bundle rather than a pid: a second
+    // in-scope instance makes "which one answered" unprovable even with a
+    // pin, so there the target must remain the only instance. Unpinned,
+    // the target must also remain the only in-scope instance — a second AE
+    // started mid-attach makes "which one answered" unprovable again.
+    const mustBeOnly = !pinned || this.#platform === "darwin";
+    const proven = same.length === 1 && (!mustBeOnly || now.length === 1);
     if (proven) {
       this.#attached = same[0] as HostProcess;
       this.#ownershipAtLaunch = {
@@ -1418,6 +1463,23 @@ export class ScriptInvocationTransport implements HostTransport {
             );
           }
           throw error;
+        }
+      }
+      // Attach-only (#269): `tell application <bundle>` starts the app when
+      // no instance is running, so delivery is only safe while the selected
+      // target is provably alive. Re-check immediately before the Apple
+      // Event goes out — including for the readiness probe, which is the
+      // first invoke of an attach session. The check and the send are not
+      // atomic: a process can exit in the gap, which is the residual race
+      // this transport cannot close without pid-addressed Apple Events.
+      if (this.#attach !== null) {
+        const attached = this.#attached;
+        if (attached === null || this.#processState(attached) !== "alive") {
+          throw new AttachTargetError(
+            "not-found",
+            `the attached After Effects (pid ${attached?.pid ?? "unknown"}) is no longer ` +
+              "running; attach never starts a replacement, so nothing was sent",
+          );
         }
       }
       // DoScriptFile returns only when the script has finished. On a deadline

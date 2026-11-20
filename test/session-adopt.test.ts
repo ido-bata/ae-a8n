@@ -173,6 +173,15 @@ describe("transport adoption", () => {
     await expect(transport.launch()).rejects.toThrow(/cannot adopt/);
   });
 
+  it("a refused adoption does not stay launched: a retry refuses again", async () => {
+    // Same rule as attach (#272): launch() must not latch "launched" on a
+    // selection that threw, or a retry returns early and invoke() — which
+    // can start the app — becomes reachable on a stale record.
+    const transport = darwinTransport(() => [], recorded);
+    await expect(transport.launch()).rejects.toThrow(/cannot adopt/);
+    await expect(transport.launch()).rejects.toThrow(/cannot adopt/);
+  });
+
   it("refuses when the pid was reused by a different process", async () => {
     // Same pid, a start time far outside ps's one-second resolution.
     const transport = darwinTransport(() => [ae(42, T0 + 60_000)], recorded);

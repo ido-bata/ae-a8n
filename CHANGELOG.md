@@ -22,6 +22,17 @@ script hardening merged after 0.4.0 (#265), plus the additive
 
 ### Fixed
 
+- **Attach-only hardening from release review** (#272): a refused attach
+  or adoption no longer leaves the transport "launched", so a retry
+  cannot fall through to the process-creating invoke path; a public
+  `target.pid` that the selected transport cannot enforce is refused
+  instead of silently ignored; on macOS a pinned attach requires the
+  target to remain the single in-scope instance (delivery addresses the
+  app bundle, not a pid); and attach-mode delivery re-proves the attached
+  process immediately before each call so an exited target fails closed
+  rather than letting `tell application` start a replacement. The host's
+  direct-write result fallback now removes a partially published result
+  file when the write reports failure.
 - **Host script I/O validation** (#265): the ExtendScript host now
   rejects invalid result-file writes, honours `Project.close`
   cancellation instead of reporting success, and pre-validates text
