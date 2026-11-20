@@ -3,8 +3,22 @@
 ## 0.5.0
 
 Patch-level release on the `release-0-5-0` train: ExtendScript host
-script hardening merged after 0.4.0 (#265). No public API changes;
-`package.json` exports and the bridge contract are unchanged.
+script hardening merged after 0.4.0 (#265), plus the additive
+`AfterEffects.attach` API (#269). The bridge contract is unchanged.
+
+### Added
+
+- **`AfterEffects.attach(options)`** (#269): an explicit attach-only path
+  to an already-running After Effects. The default script transport is
+  built attach-only — its `launch()` selects a census target and has no
+  path to process creation — so a caller that only wants to connect can
+  never spawn a second AE (the #99 double-launch defect). Target
+  selection is fail-closed: `AttachTargetError` with `reason`
+  (`not-found` / `ambiguous` / `wrong-session` / `unknown-target` /
+  `unresponsive` / `unsupported`), no resend or retry. On Windows the
+  script lane refuses (every delivery is an `AfterFX.exe -r` spawn);
+  attach there uses `transport: "in-ae-dispatcher"` or a supplied
+  transport. `launch()` / `resume()` / `close()` semantics are unchanged.
 
 ### Fixed
 

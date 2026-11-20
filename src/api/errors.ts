@@ -15,12 +15,17 @@ import {
 } from "../driver/driver.js";
 import { errorMessage } from "../errors.js";
 import type { HostCondition } from "../driver/driver.js";
-import { ScriptNotSentError } from "../driver/transport.js";
+import {
+  AttachTargetError,
+  ScriptNotSentError,
+  type AttachFailureReason,
+} from "../driver/transport.js";
 import { ScriptInvocationError } from "../driver/script-invocation.js";
 import { classifyAppleEventError } from "../driver/apple-event-denials.js";
 import type { PropertyKind } from "./types.js";
 
 export {
+  AttachTargetError,
   HostLeftRunningError,
   HostQuarantinedError,
   HostUnavailableError,
@@ -161,6 +166,7 @@ export class ParameterValueError extends AfterEffectsError {
 }
 
 export { HostError };
+export type { AttachFailureReason };
 
 /**
  * Re-labels a transport error with the operation that produced it, keeping the

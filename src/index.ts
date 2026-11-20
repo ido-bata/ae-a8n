@@ -24,6 +24,7 @@ export {
 
 export {
   AfterEffectsError,
+  AttachTargetError,
   EntityNotFoundError,
   HostError,
   HostLeftRunningError,
@@ -38,6 +39,7 @@ export {
   UnsavedChangesError,
 } from "./api/errors.js";
 export type { CloseResult } from "./api/index.js";
+export type { AttachFailureReason } from "./api/errors.js";
 
 /*
  * Capability handshake surface (#102): `ae.capabilities()` plus the
@@ -79,6 +81,7 @@ export {
 
 export type {
   ApplicationInfo,
+  AttachOptions,
   CommandExecution,
   CompInfo,
   CreateCompOptions,

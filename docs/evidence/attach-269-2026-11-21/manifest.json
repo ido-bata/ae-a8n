@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-21",
+  "issue": "https://github.com/ido-bata/ae-a8n/issues/269",
+  "source": {
+    "repository": "ido-bata/ae-a8n",
+    "sha": "1ea8f38c98b6751c3ec0bdb6f04bc4b3775d2800",
+    "branch": "269",
+    "note": "packaged bytes verified identical at this SHA; tarball sha256 matches both hosts"
+  },
+  "package": {
+    "name": "@ido-bata/ae-a8n",
+    "version": "0.5.0",
+    "tarball": "ido-bata-ae-a8n-0.5.0.tgz",
+    "sha256": "4a9e92405441b92acf2e160938feb1831765068f3852d544149dfb0e04dd4be7"
+  },
+  "host": {
+    "access": "ssh to local macOS + ssh device-windows (saved SSH machine)",
+    "os_macos": "macOS (local dev host)",
+    "os_windows": "Windows 11 (device-windows)",
+    "ae_macos": "After Effects 2026, version 26.5.3x9, build 9, already running (pid 34792, started 2026-11-20T16:36:38Z)",
+    "ae_windows": "After Effects 2026 (pid 22944) and After Effects 2027 (pid 16708) both already running under the user's desktop session before verification started; neither was touched"
+  },
+  "files": [
+    "manifest.json",
+    "macos-attach.log",
+    "macos-attach-failures.log",
+    "windows-attach.log"
+  ]
+}

@@ -211,6 +211,7 @@ unsaved edit in someone's open project is still their work.
 | | |
 | --- | --- |
 | `AfterEffects.launch(options?)` | `{ sessionRoot?, installDir?, timeoutMs?, readinessTimeoutMs?, transport?, hostEnvironment? }`; `hostEnvironment` is set inside an owned AE process (`$.setenv`) for native plugins; `timeoutMs` is the per-call default, which `openProject`, `project` and `renderFrame` can override for one call; `readinessTimeoutMs` extends the readiness-probe budget (default 180 s) for slow cold starts; waits for a readiness probe |
+| `AfterEffects.attach(options?)` | same options plus `target?: { pid? }`; connects to an already-running AE **only** — the attach-only transport has no path to process creation. No candidate / several candidates / another session's AE / unreadable process list / an unanswered probe all reject with `AttachTargetError` (`reason`: `not-found`, `ambiguous`, `wrong-session`, `unknown-target`, `unresponsive`, `unsupported`); nothing is resent or retried. On Windows the script lane cannot attach (every delivery is an `AfterFX.exe -r` spawn) — use `transport: "in-ae-dispatcher"` or a supplied transport |
 | `ae.info()`, `ae.version()` | version from the probe / live |
 | `ae.ownership()` | `{ kind: "owned" \| "attached" \| "unknown", evidence }` |
 | `ae.openProject(path, { unsavedChanges?, timeoutMs? })` | → `Project`; `path` must be absolute (`/…`, `C:\…`, `\\server\…`), otherwise `TypeError` before anything is sent |

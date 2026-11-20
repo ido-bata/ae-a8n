@@ -1,0 +1,6 @@
+before: ["34792"]
+2027-notfound: AttachTargetError reason=not-found | no /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects After Effects is running in the session 
+badpid: AttachTargetError reason=not-found | pid 999999 is not a running /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects After Effects; 
+pin34792 OK "attached" {"version":"26.5.3x9","build":"9"}
+close: {"quit":false,"ownership":{"kind":"attached","evidence":"attached to pid 34792 (the process running since 2026-11-20T16:36:38.000Z); it was already running and is not this session's to quit in the session of rebui (uid 501, asid 100022)"},"reason":"not quitting a host this session does not own (attached to pid 34792 (the process running since 2026-11-20T16:36:38.000Z); it was already running and is not this session's to quit in the session of rebui (uid 501, asid 100022))"}
+after: ["34792"]
