@@ -93,9 +93,25 @@ export function canonicalJson(v: unknown): string {
     return JSON.stringify(v);
   }
   if (Array.isArray(v)) {
+    /* A hole would canonicalize differently from JSON.stringify
+       ([1,,2] vs [1,null,2]) — the MAC would cover bytes the plug-in
+       never rebuilds, so refuse before sending. */
+    for (let i = 0; i < v.length; i++) {
+      if (!(i in v)) {
+        throw new ConsentCanonicalError("sparse array");
+      }
+    }
     return `[${v.map((e) => canonicalJson(e)).join(",")}]`;
   }
   if (typeof v === "object") {
+    /* Only plain records belong to the canonical domain: a class
+       instance or a toJSON-bearing object serializes differently on
+       the wire than the canonical bytes the MAC covers. */
+    const proto = Object.getPrototypeOf(v);
+    if ((proto !== Object.prototype && proto !== null) ||
+        typeof (v as { toJSON?: unknown }).toJSON === "function") {
+      throw new ConsentCanonicalError("non-plain object");
+    }
     const keys = Object.keys(v).sort((a, b) =>
       Buffer.compare(Buffer.from(a, "utf8"), Buffer.from(b, "utf8")));
     const parts = keys.map((k) => {
