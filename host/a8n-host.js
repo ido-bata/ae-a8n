@@ -1312,6 +1312,10 @@
       activatedAt: state.activatedAt,
       lastTick: new Date().getTime(),
       pollMs: state.pollMs,
+      // The per-delivery nonce a `ae.activateDispatcher()` script carried
+      // (#276). Null for a human activation; the Node side requires it to
+      // match its own delivery before reporting activation success.
+      activationNonce: state.activationNonce === undefined ? null : state.activationNonce,
       // The extension set this dispatcher actually registered (#146).
       // Captured once at activation into `state`; the table cannot change
       // afterwards, so the heartbeat keeps reporting the fixed set — not a
@@ -1434,7 +1438,31 @@
   }
 
   function startDispatcher(config) {
+    var runningState = $.global.__a8nDispatcherState;
     if ($.global.__a8nDispatcherTask !== undefined) {
+      // A dispatcher is already running in this After Effects. A freshly
+      // generated activation script carries a new per-delivery nonce:
+      // recording it re-proves that THIS delivery reached this instance,
+      // without starting a second dispatcher. Re-running the identical
+      // script (same nonce) or a human activate.jsx (no nonce) is still
+      // refused, exactly as before.
+      var deliveredNonce =
+        config !== null &&
+        typeof config === "object" &&
+        typeof config.nonce === "string" &&
+        /^[a-f0-9]{32}$/.test(config.nonce)
+          ? config.nonce
+          : null;
+      if (
+        runningState !== undefined &&
+        runningState !== null &&
+        deliveredNonce !== null &&
+        deliveredNonce !== runningState.activationNonce
+      ) {
+        runningState.activationNonce = deliveredNonce;
+        writeDispatcherState(runningState);
+        return;
+      }
       throw new Error(
         "ae-a8n dispatcher is already active in this After Effects; " +
           "refusing a second dispatcher"
@@ -1491,8 +1519,20 @@
       // The function snapshot dispatch actually resolves against (#146):
       // the heartbeat's names and this table are captured together, so a
       // later mutation of `__a8n.extensions` cannot widen the answer set.
-      extensionFunctions: snapshotExtensionFunctions()
+      extensionFunctions: snapshotExtensionFunctions(),
+      // The nonce this activation script carried, if any (#276). A later
+      // re-delivery with a fresh nonce replaces it (see the guard above),
+      // which is how `ae.activateDispatcher()` proves each call reached
+      // this instance.
+      activationNonce:
+        typeof config.nonce === "string" && /^[a-f0-9]{32}$/.test(config.nonce)
+          ? config.nonce
+          : null
     };
+    // Kept on the global so a re-delivered activation script can re-prove
+    // delivery against the running dispatcher instead of starting a
+    // second one.
+    $.global.__a8nDispatcherState = state;
     var tick = function () {
       dispatcherTick(state);
     };

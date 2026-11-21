@@ -24,9 +24,10 @@
  */
 
 import { execFileSync, spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import type { EventEmitter } from "node:events";
-import { existsSync, readFileSync } from "node:fs";
-import { join, win32 } from "node:path";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve, win32 } from "node:path";
 
 import { macAppBundle, resolveInstall, type AfterEffectsInstall } from "./install-path.js";
 import {
@@ -57,7 +58,11 @@ import {
   ScriptNotSentError,
   ScriptingPermissionError,
 } from "./transport.js";
-import { isDispatcherActivationScript } from "./dispatcher-activation.js";
+import { toPosixPath } from "./bootstrap.js";
+import {
+  isCanonicalDispatcherActivationScript,
+  parseDispatcherActivationScript,
+} from "./dispatcher-activation.js";
 import {
   aeScriptingPermission,
   currentUsername,
@@ -1527,8 +1532,11 @@ export class ScriptInvocationTransport implements HostTransport {
    * This is deliberately *not* `invoke()`: `invoke()` carries whatever
    * entry script the driver staged for a bridge call, while this method
    * exists only for the generated dispatcher activation script and refuses
-   * anything else — the marker check means the path can never become a way
-   * to run arbitrary JSX inside After Effects.
+   * anything else. The file must be *byte-identical* to what this
+   * package's generator produces for the parameters it embeds
+   * (`isCanonicalDispatcherActivationScript`) — a marker-bearing foreign
+   * file or any deviation fails, so the path can never become a way to
+   * run arbitrary JSX inside After Effects.
    *
    * Three fail-closed gates, checked in order:
    *
@@ -1536,8 +1544,7 @@ export class ScriptInvocationTransport implements HostTransport {
    *   same activation question is still open (the `-1708` trust gate is a
    *   separate, unmeasured problem there), so this refuses rather than
    *   guessing.
-   * - The file must be a dispatcher activation script this package
-   *   generated (`isDispatcherActivationScript`).
+   * - The file must be canonical package-generated output (above).
    * - `ownership()` must currently answer "owned" — the same live
    *   re-check `stop()` uses (same pid *and* start/creation identity,
    *   and the only in-scope instance). `AfterFX.exe -r` cannot name a
@@ -1545,13 +1552,24 @@ export class ScriptInvocationTransport implements HostTransport {
    *   After Effects is that proof; when it does not hold, nothing is
    *   spawned.
    *
-   * Resolves once the `-r` launcher process exists — the hand-off to the
-   * running instance is asynchronous and the launcher's exit status says
-   * nothing about the script, exactly as in `invoke()`. Whether the
-   * dispatcher actually activated is proven by its heartbeat, which the
-   * caller waits for.
+   * What is delivered is a *private copy* of the verified bytes, written
+   * to an unpredictable name beside the staged file (the channel
+   * directory, already privacy-checked by `prepare()`, mode 0600). That
+   * binds the `-r` argument to the exact bytes that passed verification:
+   * a swap at the staged path after the read cannot reach AE. The
+   * residual — a same-user process racing to swap the copy itself in the
+   * window before AE reads it — is inside the documented same-user trust
+   * boundary (such a process can already read `channel.json`'s token and
+   * forge requests), not something `-r` can exclude.
+   *
+   * Resolves to the delivered copy's path once the `-r` launcher process
+   * exists — the hand-off to the running instance is asynchronous and
+   * the launcher's exit status says nothing about the script, exactly as
+   * in `invoke()`. The caller owns the copy's cleanup: it must survive
+   * until AE has read it, which is only proven by the delivery nonce in
+   * the dispatcher heartbeat.
    */
-  async deliverActivationScript(scriptPath: string): Promise<void> {
+  async deliverActivationScript(scriptPath: string): Promise<string> {
     if (this.#platform !== "win32") {
       throw new Error(
         `dispatcher activation delivery is only implemented for Windows (-r); ` +
@@ -1566,24 +1584,69 @@ export class ScriptInvocationTransport implements HostTransport {
           "-r cannot name a process, so activation is only ever sent to a proven owned instance",
       );
     }
-    let content: string;
+    let bytes: Buffer;
     try {
-      content = readFileSync(scriptPath, "utf-8");
+      bytes = readFileSync(scriptPath);
     } catch (error) {
       throw new Error(
         `cannot read the dispatcher activation script ${scriptPath}: ${errorMessage(error)}`,
       );
     }
-    if (!isDispatcherActivationScript(content)) {
+    const source = bytes.toString("utf-8");
+    if (!isCanonicalDispatcherActivationScript(source)) {
       throw new Error(
         `${scriptPath} is not a dispatcher activation script generated by this package; ` +
-          "this delivery path runs only that generated script, never arbitrary JSX",
+          "this delivery path runs only byte-identical package output, never arbitrary JSX",
       );
     }
-    const launcherPid = await this.#startWindows(["-r", this.#windowsArgumentPath(scriptPath)]);
-    if (launcherPid !== undefined && launcherPid !== this.#spawnedPid) {
-      this.#launcherPids.add(launcherPid);
+    // Byte-identity alone still admits *any* (root, token) pair the
+    // generator could emit — including one pointing `$.evalFile` at a
+    // foreign `a8n-host.js`. Bind the embedded parameters to the channel
+    // the staged file actually lives in: the root must be the script's
+    // own directory, and when `channel.json` is present the embedded
+    // token must be the channel's token. A wrong token fails closed at
+    // the heartbeat anyway; refusing here keeps the delivered script
+    // honest about which channel it activates.
+    const parsed = parseDispatcherActivationScript(source);
+    const scriptDir = resolve(dirname(scriptPath));
+    if (parsed === null || parsed.channelDir !== toPosixPath(scriptDir)) {
+      throw new Error(
+        `${scriptPath} is not a dispatcher activation script generated for ` +
+          `this channel directory (${toPosixPath(scriptDir)}); refusing to deliver it`,
+      );
     }
+    const metaPath = join(scriptDir, "channel.json");
+    let channelToken: string | null = null;
+    try {
+      const meta = JSON.parse(readFileSync(metaPath, "utf-8")) as { token?: unknown };
+      channelToken = typeof meta.token === "string" ? meta.token : null;
+    } catch {
+      channelToken = null;
+    }
+    if (channelToken !== null && parsed.token !== channelToken) {
+      throw new Error(
+        `${scriptPath} carries a token that is not this channel's; ` +
+          "refusing to deliver an activation script for a different channel",
+      );
+    }
+    const deliveryPath = join(
+      dirname(scriptPath),
+      `.a8n-deliver-${randomBytes(16).toString("hex")}.jsx`,
+    );
+    writeFileSync(deliveryPath, bytes, { mode: 0o600 });
+    try {
+      const launcherPid = await this.#startWindows(["-r", this.#windowsArgumentPath(deliveryPath)]);
+      if (launcherPid !== undefined && launcherPid !== this.#spawnedPid) {
+        this.#launcherPids.add(launcherPid);
+      }
+    } catch (error) {
+      // Nothing was handed off: the copy has no reader, so it does not
+      // linger. (After a successful spawn the caller owns cleanup — AE
+      // may not have read the file yet.)
+      rmSync(deliveryPath, { force: true });
+      throw error;
+    }
+    return deliveryPath;
   }
 
   /**

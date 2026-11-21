@@ -17,6 +17,7 @@
  * ```
  */
 
+import { rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import type { MacSession } from "../driver/mac-session.js";
@@ -420,10 +421,24 @@ export class AfterEffects {
    * AE this session does not own stays a human action (Run Script File,
    * or Startup install on a dedicated profile).
    *
-   * Resolves once the dispatcher's heartbeat is fresh on the channel.
-   * A timeout means the script may not have run — After Effects can show
-   * a script-trust or consent dialog that only a human can answer — and
-   * the error says so instead of reporting success.
+   * Success is bound to *this* delivery, not to "a dispatcher answers the
+   * channel": the staged script carries a per-call nonce that the
+   * dispatcher records in its heartbeat, and the call only resolves once
+   * a fresh heartbeat reports that exact nonce — observed *after* the
+   * `-r` spawn. A dispatcher that was already answering (on this or any
+   * other After Effects sharing the channel) cannot satisfy it, and
+   * ownership is re-verified after the nonce appears, so a second
+   * in-scope instance appearing mid-delivery fails closed rather than
+   * attributing the activation to the owned AE. What remains unproven —
+   * honestly — is which OS process the `-r` hand-off reached in the
+   * instant between the pre-spawn census and AE reading the script; the
+   * nonce proves the script ran on *an* AE answering this channel, and
+   * the post-delivery census is what ties that to the owned instance.
+   *
+   * Resolves once that proof is observed. A timeout means the script may
+   * not have run — After Effects can show a script-trust or consent
+   * dialog that only a human can answer — and the error says so instead
+   * of reporting success.
    */
   async activateDispatcher(
     options: ActivateDispatcherOptions = {},
@@ -452,23 +467,54 @@ export class AfterEffects {
     const channelDir = options.channelDir ?? defaultDispatcherChannelDir();
     const dispatcher = new DispatcherTransport({ channelDir });
     await dispatcher.prepare();
-    await transport.deliverActivationScript(dispatcher.activateScriptPath);
-    const deadline = Date.now() + (options.timeoutMs ?? 15_000);
-    for (;;) {
-      const beat = dispatcher.status().heartbeat;
-      if (beat !== null && beat.fresh) {
-        return { channelDir, instance: beat.instance, aeVersion: beat.aeVersion };
-      }
-      if (Date.now() >= deadline) {
+    const activation = await dispatcher.prepareActivationScript();
+    const timeoutMs = options.timeoutMs ?? 15_000;
+    let deliveredPath: string | null = null;
+    // The staged per-call file is always safe to remove: AE only ever
+    // reads the private copy `deliverActivationScript` returns. That copy
+    // must survive until AE has read it — proven by the nonce appearing —
+    // so on timeout it is left behind: a still-pending script-trust
+    // dialog may yet read it and complete the activation.
+    try {
+      // Pre-spawn refusals (ownership lost, non-canonical file) propagate
+      // as-is: nothing was delivered, so the timeout wording would lie.
+      deliveredPath = await transport.deliverActivationScript(activation.path);
+      // The nonce — not heartbeat freshness — is the proof: a dispatcher
+      // that was already answering the channel cannot carry this call's
+      // nonce, so a stale-but-fresh heartbeat fails closed here.
+      let beat: NonNullable<ReturnType<typeof dispatcher.status>["heartbeat"]>;
+      try {
+        beat = await dispatcher.waitForActivationNonce(activation.nonce, timeoutMs);
+      } catch (error) {
         throw new AfterEffectsError(
-          `the activation script was delivered to the owned After Effects but no ` +
-            `dispatcher heartbeat appeared within ${String(options.timeoutMs ?? 15_000)} ms; ` +
-            "After Effects may be showing a script-trust or consent dialog. If so, answer " +
-            `it, or run ${dispatcher.activateScriptPath} via File > Scripts > Run Script File`,
+          `the activation script was delivered to the owned After Effects but ` +
+            `${errorMessage(error)}; After Effects may be showing a script-trust ` +
+            "or consent dialog, or the -r hand-off reached a different instance. " +
+            "If so, answer it, or run " +
+            `${dispatcher.activateScriptPath} via File > Scripts > Run Script File`,
           op,
         );
       }
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // The nonce proves the delivered script ran on an After Effects
+      // answering this channel. Bind it to the owned instance: if the
+      // census no longer proves a single owned in-scope process, the
+      // `-r` hand-off may have reached a different After Effects that
+      // started mid-delivery — fail closed rather than claim it.
+      const postDelivery = this.#session.driver.ownership();
+      if (postDelivery.kind !== "owned") {
+        throw new AfterEffectsError(
+          `the activation script ran, but the owned After Effects can no ` +
+            `longer be proven sole in-scope (${postDelivery.evidence}); ` +
+            "the dispatcher may have activated a different instance — " +
+            "inspect `ae-a8n dispatcher status` before attaching",
+          op,
+        );
+      }
+      rmSync(deliveredPath, { force: true });
+      deliveredPath = null;
+      return { channelDir, instance: beat.instance, aeVersion: beat.aeVersion };
+    } finally {
+      rmSync(activation.path, { force: true });
     }
   }
 

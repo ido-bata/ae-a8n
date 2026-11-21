@@ -45,8 +45,11 @@ import { homedir, userInfo } from "node:os";
 import { basename, dirname, join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { es3StringLiteral, toPosixPath } from "./bootstrap.js";
-import { ACTIVATION_MARKER, isDispatcherActivationScript } from "./dispatcher-activation.js";
+import {
+  ACTIVATION_NONCE_RE,
+  dispatcherActivationScript,
+  isDispatcherActivationScript,
+} from "./dispatcher-activation.js";
 import { HostUnavailableError } from "./driver.js";
 import { readExtensionManifest, type ExtensionManifest } from "../extensions/manifest.js";
 import {
@@ -146,6 +149,13 @@ export type DispatcherHeartbeat = {
   readonly lastTick: number;
   readonly pollMs: number;
   /**
+   * The per-delivery nonce the answering dispatcher recorded (#276). Set
+   * only when the dispatcher was started by — or re-proved by — a
+   * `prepareActivationScript()` delivery file; null for a human-activated
+   * dispatcher and for heartbeats written before the field existed.
+   */
+  readonly activationNonce?: string | null;
+  /**
    * Extension method names the dispatcher actually registered at activation
    * (#146), sorted. Absent in heartbeats written before the field existed;
    * {@link DispatcherTransport} normalises a missing value to `[]`, which a
@@ -186,6 +196,13 @@ export type DispatcherChannelStatus = {
     readonly ageMs: number;
     /** Whether the heartbeat is fresh enough to count as answering. */
     readonly fresh: boolean;
+    /**
+     * The per-delivery nonce the answering dispatcher recorded, or null.
+     * `ae.activateDispatcher()` requires it to equal the nonce of *its*
+     * delivery before reporting success — a fresh heartbeat alone only
+     * proves that SOME dispatcher answers the channel.
+     */
+    readonly activationNonce: string | null;
     /** Extension methods the dispatcher registered at activation (#146). */
     readonly extensionMethods: readonly string[];
     /** The registration fingerprint it reported, or null. */
@@ -584,20 +601,52 @@ export class DispatcherTransport implements HostTransport {
     if (this.#token === null) {
       throw new Error("channel is not prepared");
     }
-    const source = [
-      ACTIVATION_MARKER,
-      "// Run once per After Effects process: File > Scripts > Run Script File,",
-      "// or install into the per-user Scripts/Startup folder (see docs).",
-      "var __a8n = {",
-      "  dispatcher: {",
-      `    root: ${es3StringLiteral(toPosixPath(this.#channelDir))},`,
-      `    token: ${es3StringLiteral(this.#token)}`,
-      "  }",
-      "};",
-      `$.evalFile(new File(${es3StringLiteral(toPosixPath(join(this.#channelDir, "a8n-host.js")))}));`,
-      "",
-    ].join("\n");
-    await writeFile(this.activateScriptPath, source, { mode: 0o600 });
+    await writeFile(
+      this.activateScriptPath,
+      dispatcherActivationScript({
+        channelDir: this.#channelDir,
+        token: this.#token,
+      }),
+      { mode: 0o600 },
+    );
+  }
+
+  /**
+   * Stages the private per-call activation file `ae.activateDispatcher()`
+   * delivers through `AfterFX.exe -r` (#276).
+   *
+   * Unlike `activate.jsx` — the stable, human-runnable script `prepare()`
+   * writes — this file carries a fresh random `nonce` and lives at an
+   * unpredictable name inside the same private channel directory. The
+   * dispatcher records the nonce in its heartbeat, which is the only
+   * evidence that *this* delivery reached an After Effects: a heartbeat
+   * that was already fresh before the `-r` spawn cannot satisfy it.
+   *
+   * The caller owns cleanup of `path`: it must survive until After
+   * Effects has read it, which is only proven once the nonce appears in
+   * the heartbeat (or never, on timeout — a still-pending script-trust
+   * dialog may read it later, so a timed-out file is intentionally left).
+   */
+  async prepareActivationScript(): Promise<{ readonly path: string; readonly nonce: string }> {
+    await this.prepare();
+    if (this.#token === null) {
+      throw new Error("channel is not prepared");
+    }
+    const nonce = randomBytes(16).toString("hex");
+    if (!ACTIVATION_NONCE_RE.test(nonce)) {
+      throw new Error("internal error: generated activation nonce is malformed");
+    }
+    const path = join(this.#channelDir, `activate-${nonce}.jsx`);
+    await writeFile(
+      path,
+      dispatcherActivationScript({
+        channelDir: this.#channelDir,
+        token: this.#token,
+        nonce,
+      }),
+      { mode: 0o600 },
+    );
+    return { path, nonce };
   }
 
   /**
@@ -672,12 +721,17 @@ export class DispatcherTransport implements HostTransport {
             !rawRecord["extensionMethods"].every((name) => typeof name === "string"))) ||
         ("extensionsRegistration" in rawRecord &&
           rawRecord["extensionsRegistration"] !== null &&
-          typeof rawRecord["extensionsRegistration"] !== "string")
+          typeof rawRecord["extensionsRegistration"] !== "string") ||
+        ("activationNonce" in rawRecord &&
+          rawRecord["activationNonce"] !== null &&
+          typeof rawRecord["activationNonce"] !== "string")
       ) {
         return null;
       }
       return {
         ...beat,
+        activationNonce:
+          typeof beat.activationNonce === "string" ? beat.activationNonce : null,
         extensionMethods: Array.isArray(beat.extensionMethods)
           ? [...beat.extensionMethods]
           : [],
@@ -739,6 +793,8 @@ export class DispatcherTransport implements HostTransport {
       typeof raw["extensionsRegistration"] === "string"
         ? raw["extensionsRegistration"]
         : null;
+    const activationNonce =
+      typeof raw["activationNonce"] === "string" ? raw["activationNonce"] : null;
     const ageMs = Math.max(0, this.#now() - beat.lastTick);
     return {
       channelDir: this.#channelDir,
@@ -751,10 +807,48 @@ export class DispatcherTransport implements HostTransport {
         lastTick: beat.lastTick,
         ageMs,
         fresh: ageMs <= this.#heartbeatStaleMs,
+        activationNonce,
         extensionMethods,
         extensionsRegistration,
       },
     };
+  }
+
+  /**
+   * Waits until the answering dispatcher's heartbeat is fresh AND reports
+   * `nonce` as its `activationNonce` — the post-delivery proof
+   * `ae.activateDispatcher()` requires (#276).
+   *
+   * A fresh heartbeat alone is not enough: `prepare()` keeps an existing
+   * `state.json`, so a dispatcher that was already answering (on this or
+   * any other After Effects sharing the channel) would satisfy a
+   * freshness check without this delivery ever running. The nonce is
+   * generated per call and can only appear if the delivered script
+   * executed, so matching it is the evidence that THIS `-r` delivery
+   * activated a dispatcher on this channel.
+   *
+   * Resolves with the matching heartbeat; rejects on timeout. The caller
+   * still owns the ownership re-check — the nonce proves the script ran
+   * on *an* AE answering this channel, not which OS process that was.
+   */
+  async waitForActivationNonce(
+    nonce: string,
+    timeoutMs: number,
+  ): Promise<NonNullable<DispatcherChannelStatus["heartbeat"]>> {
+    const deadline = this.#now() + timeoutMs;
+    for (;;) {
+      const beat = this.status().heartbeat;
+      if (beat !== null && beat.fresh && beat.activationNonce === nonce) {
+        return beat;
+      }
+      if (this.#now() >= deadline) {
+        throw new Error(
+          `no fresh dispatcher heartbeat carrying activation nonce ${nonce} ` +
+            `appeared within ${timeoutMs} ms`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
   }
 
   /* -------------------------------------------------------------- launch */
