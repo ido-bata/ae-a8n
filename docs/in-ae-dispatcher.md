@@ -19,9 +19,19 @@ Tracking: [#127](https://github.com/ido-bata/ae-a8n/issues/127)。前提とな�
 
 同一 AE 内で二重に有効化しようとすると `__a8nDispatcherTask` ガードにより拒否される。
 
+### owned session の自動 activation（#276・Windows のみ）
+
+`AfterFX.exe -r <activate.jsx>` は、起動済みの AE があると script を対話 instance へ hand-off する（launcher は transient で即終了）。この経路を使う自動 activation は **session がその AE を所有している時だけ** `ae.activateDispatcher({ channelDir? })` が行う。
+
+- gate は二重: session の ownership が live に "owned"（`close()` と同じ再検証: 同一 pid・同一 start/creation identity・in-scope instance が 1 つだけ）であること、かつ配送する file がこの package が生成した activation script であること（marker の whole-line 一致）。`-r` は pid を指定できないため、所有証明が立たない限り spawn 自体を行わない。attached / unknown / 2 つ目の instance 出現時は拒否される。
+- owned session は既にその AE に対して任意 script を実行できるため、dispatcher の有効化は新しい権限を与えない。**他人・ユーザー所有の AE の activation は従来どおり人間の操作**（Run Script File、または専用 profile での Startup install）であり、この API はそれを自動化しない。
+- heartbeat が `timeoutMs`（既定 15 秒）以内に fresh にならなければ `AfterEffectsError` で失敗する。AE が script-trust / consent dialog を出している可能性を error message が明示し、人間の操作に戻る。
+- **実機検証（Windows）**: `device-windows`・AE 2026 `26.5.3x9`（`D:\4_apps\adobe\Adobe After Effects 2026`）で `dispatcher prepare` → `AfterFX.exe -r activate.jsx` → heartbeat → `AfterEffects.attach({ transport: "in-ae-dispatcher" })` 成功・`close()` が AE を終了しないことを確認済み（2026-11-19 頃、対話ユーザー profile 上）。ただしこれは profile 既存の信頼状態での観測であり、**fresh/使い捨て profile での初回 `-r` に trust modal（-1708 系）が出るかは未計測**。`activateDispatcher` API 自体の実機 end-to-end は未検証。
+- macOS では実装しない: `-r` は Windows の機構であり、macOS の `-1708` trust gate は別途未計測のため fail-closed で拒否する。
+
 ## CLI lifecycle（#147）
 
-機械化できる部分は `ae-a8n dispatcher` が担う。**activation（AE 内での Run Script File）だけが人間の操作**で、それ以外の準備・確認・登録・解除は CLI が正確に案内する。
+機械化できる部分は `ae-a8n dispatcher` が担う。**activation（AE 内での Run Script File）だけが人間の操作**で、それ以外の準備・確認・登録・解除は CLI が正確に案内する。例外は owned session の `ae.activateDispatcher`（前節・Windows のみ）で、所有が証明できる AE に限り `-r` で生成済み activation script を配送する。
 
 ```sh
 ae-a8n dispatcher prepare [--channel-dir <dir>]    # channel 作成 + activate.jsx 生成（冪等）

@@ -336,6 +336,17 @@ export class AeDriver {
   }
 
   /**
+   * The script-invocation transport, when this session uses one — the only
+   * transport that can deliver the dispatcher activation script to a host
+   * it owns (`AfterFX.exe -r`, issue #276). Null for every other
+   * transport; callers must treat null as "this session cannot activate a
+   * dispatcher", never substitute another delivery path.
+   */
+  scriptTransport(): ScriptInvocationTransport | null {
+    return this.#transport instanceof ScriptInvocationTransport ? this.#transport : null;
+  }
+
+  /**
    * Launch the host and prove it answers before returning. Without the probe,
    * every later call fails identically and the trace cannot tell "AE never
    * started" from "AE rejected this operation".

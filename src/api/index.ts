@@ -37,9 +37,14 @@ import {
   EntityNotFoundError,
   ExtensionMethodNotFoundError,
   HostError,
+  HostNotOwnedError,
   contextualise,
 } from "./errors.js";
 import type { StopResult } from "../driver/driver.js";
+import {
+  defaultDispatcherChannelDir,
+  DispatcherTransport,
+} from "../driver/dispatcher-transport.js";
 import type { HostOwnership } from "../driver/transport.js";
 import { attachAfterEffects } from "./attach.js";
 import { openAfterEffects } from "./launch.js";
@@ -53,11 +58,13 @@ import {
 export type CloseResult = StopResult;
 export type { HostOwnership };
 import type {
+  ActivateDispatcherOptions,
   ApplicationInfo,
   AttachOptions,
   CommandExecution,
   CompInfo,
   DiagnosticsOptions,
+  DispatcherActivation,
   GuiStateReport,
   LaunchOptions,
   OpenProjectOptions,
@@ -391,6 +398,78 @@ export class AfterEffects {
       return null;
     }
     return this.#session.driver.recoveryTarget();
+  }
+
+  /**
+   * Activates the in-AE dispatcher inside the After Effects this session
+   * owns, so other sessions can `AfterEffects.attach` to it through the
+   * dispatcher channel (issue #276).
+   *
+   * Windows only: the delivery mechanism is `AfterFX.exe -r`, which hands
+   * the generated `activate.jsx` to the running instance. That launcher
+   * cannot name a pid, so the call is gated twice before anything is
+   * spawned — the session's ownership must be "owned" (the same live
+   * re-check `close()` uses: same process, and the only in-scope
+   * instance), and the file delivered must be the activation script this
+   * package generated, never arbitrary JSX.
+   *
+   * This does not weaken the human-activation boundary for foreign After
+   * Effects: an owned session already has full script control over that
+   * instance, so activating its dispatcher grants it nothing new. An
+   * attached or unknown session is refused outright — activation of an
+   * AE this session does not own stays a human action (Run Script File,
+   * or Startup install on a dedicated profile).
+   *
+   * Resolves once the dispatcher's heartbeat is fresh on the channel.
+   * A timeout means the script may not have run — After Effects can show
+   * a script-trust or consent dialog that only a human can answer — and
+   * the error says so instead of reporting success.
+   */
+  async activateDispatcher(
+    options: ActivateDispatcherOptions = {},
+  ): Promise<DispatcherActivation> {
+    const op = "session.dispatcherActivate";
+    if (this.#closed) {
+      throw new AfterEffectsError("the session is closed", op);
+    }
+    const ownership = this.#session.driver.ownership();
+    if (ownership.kind !== "owned") {
+      throw new HostNotOwnedError(
+        op,
+        ownership.kind,
+        `${ownership.evidence}; dispatcher activation is only delivered to an After ` +
+          "Effects this session owns — activating a foreign instance stays a human action",
+      );
+    }
+    const transport = this.#session.driver.scriptTransport();
+    if (transport === null) {
+      throw new AfterEffectsError(
+        "only a session on the built-in script transport can deliver the " +
+          "dispatcher activation script; this session's transport cannot",
+        op,
+      );
+    }
+    const channelDir = options.channelDir ?? defaultDispatcherChannelDir();
+    const dispatcher = new DispatcherTransport({ channelDir });
+    await dispatcher.prepare();
+    await transport.deliverActivationScript(dispatcher.activateScriptPath);
+    const deadline = Date.now() + (options.timeoutMs ?? 15_000);
+    for (;;) {
+      const beat = dispatcher.status().heartbeat;
+      if (beat !== null && beat.fresh) {
+        return { channelDir, instance: beat.instance, aeVersion: beat.aeVersion };
+      }
+      if (Date.now() >= deadline) {
+        throw new AfterEffectsError(
+          `the activation script was delivered to the owned After Effects but no ` +
+            `dispatcher heartbeat appeared within ${String(options.timeoutMs ?? 15_000)} ms; ` +
+            "After Effects may be showing a script-trust or consent dialog. If so, answer " +
+            `it, or run ${dispatcher.activateScriptPath} via File > Scripts > Run Script File`,
+          op,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
   }
 
   /**

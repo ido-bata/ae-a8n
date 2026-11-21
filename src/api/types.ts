@@ -408,6 +408,37 @@ export type AttachOptions = Omit<LaunchOptions, "sessionRoot"> & {
 };
 
 /**
+ * Options for `AfterEffects.activateDispatcher` (#276): deliver the
+ * generated in-AE dispatcher activation script to the After Effects this
+ * session owns. Windows only — the delivery mechanism is `AfterFX.exe -r`.
+ */
+export type ActivateDispatcherOptions = {
+  /**
+   * The dispatcher channel directory to activate. Defaults to the
+   * per-user channel (`defaultDispatcherChannelDir()`); the directory is
+   * prepared first, exactly as `ae-a8n dispatcher prepare` does.
+   */
+  readonly channelDir?: string;
+  /**
+   * How long to wait for the dispatcher's heartbeat after the `-r`
+   * delivery. Default 15 s. A timeout is not proof of failure — After
+   * Effects may be showing a script-trust or consent dialog — so the
+   * error says so and names the manual activation path.
+   */
+  readonly timeoutMs?: number;
+};
+
+/** What `AfterEffects.activateDispatcher` reports once the heartbeat is fresh. */
+export type DispatcherActivation = {
+  /** The channel directory the dispatcher is answering on. */
+  readonly channelDir: string;
+  /** The dispatcher instance id from its heartbeat. */
+  readonly instance: string;
+  /** The After Effects version the dispatcher reports. */
+  readonly aeVersion: string;
+};
+
+/**
  * Options for `AfterEffects.resume`: the same session shape as `launch`,
  * except `sessionRoot` is required — it is the directory the original
  * `launch()` used, which holds the launch-provenance record resume checks.
