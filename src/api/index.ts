@@ -17,6 +17,7 @@
  * ```
  */
 
+import { rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import type { MacSession } from "../driver/mac-session.js";
@@ -37,9 +38,14 @@ import {
   EntityNotFoundError,
   ExtensionMethodNotFoundError,
   HostError,
+  HostNotOwnedError,
   contextualise,
 } from "./errors.js";
 import type { StopResult } from "../driver/driver.js";
+import {
+  defaultDispatcherChannelDir,
+  DispatcherTransport,
+} from "../driver/dispatcher-transport.js";
 import type { HostOwnership } from "../driver/transport.js";
 import { attachAfterEffects } from "./attach.js";
 import { openAfterEffects } from "./launch.js";
@@ -53,11 +59,13 @@ import {
 export type CloseResult = StopResult;
 export type { HostOwnership };
 import type {
+  ActivateDispatcherOptions,
   ApplicationInfo,
   AttachOptions,
   CommandExecution,
   CompInfo,
   DiagnosticsOptions,
+  DispatcherActivation,
   GuiStateReport,
   LaunchOptions,
   OpenProjectOptions,
@@ -391,6 +399,123 @@ export class AfterEffects {
       return null;
     }
     return this.#session.driver.recoveryTarget();
+  }
+
+  /**
+   * Activates the in-AE dispatcher inside the After Effects this session
+   * owns, so other sessions can `AfterEffects.attach` to it through the
+   * dispatcher channel (issue #276).
+   *
+   * Windows only: the delivery mechanism is `AfterFX.exe -r`, which hands
+   * the generated `activate.jsx` to the running instance. That launcher
+   * cannot name a pid, so the call is gated twice before anything is
+   * spawned — the session's ownership must be "owned" (the same live
+   * re-check `close()` uses: same process, and the only in-scope
+   * instance), and the file delivered must be the activation script this
+   * package generated, never arbitrary JSX.
+   *
+   * This does not weaken the human-activation boundary for foreign After
+   * Effects: an owned session already has full script control over that
+   * instance, so activating its dispatcher grants it nothing new. An
+   * attached or unknown session is refused outright — activation of an
+   * AE this session does not own stays a human action (Run Script File,
+   * or Startup install on a dedicated profile).
+   *
+   * Success is bound to *this* delivery, not to "a dispatcher answers the
+   * channel": the staged script carries a per-call nonce that the
+   * dispatcher records in its heartbeat, and the call only resolves once
+   * a fresh heartbeat reports that exact nonce — observed *after* the
+   * `-r` spawn. A dispatcher that was already answering (on this or any
+   * other After Effects sharing the channel) cannot satisfy it, and
+   * ownership is re-verified after the nonce appears, so a second
+   * in-scope instance appearing mid-delivery fails closed rather than
+   * attributing the activation to the owned AE. What remains unproven —
+   * honestly — is which OS process the `-r` hand-off reached in the
+   * instant between the pre-spawn census and AE reading the script; the
+   * nonce proves the script ran on *an* AE answering this channel, and
+   * the post-delivery census is what ties that to the owned instance.
+   *
+   * Resolves once that proof is observed. A timeout means the script may
+   * not have run — After Effects can show a script-trust or consent
+   * dialog that only a human can answer — and the error says so instead
+   * of reporting success.
+   */
+  async activateDispatcher(
+    options: ActivateDispatcherOptions = {},
+  ): Promise<DispatcherActivation> {
+    const op = "session.dispatcherActivate";
+    if (this.#closed) {
+      throw new AfterEffectsError("the session is closed", op);
+    }
+    const ownership = this.#session.driver.ownership();
+    if (ownership.kind !== "owned") {
+      throw new HostNotOwnedError(
+        op,
+        ownership.kind,
+        `${ownership.evidence}; dispatcher activation is only delivered to an After ` +
+          "Effects this session owns — activating a foreign instance stays a human action",
+      );
+    }
+    const transport = this.#session.driver.scriptTransport();
+    if (transport === null) {
+      throw new AfterEffectsError(
+        "only a session on the built-in script transport can deliver the " +
+          "dispatcher activation script; this session's transport cannot",
+        op,
+      );
+    }
+    const channelDir = options.channelDir ?? defaultDispatcherChannelDir();
+    const dispatcher = new DispatcherTransport({ channelDir });
+    await dispatcher.prepare();
+    const activation = await dispatcher.prepareActivationScript();
+    const timeoutMs = options.timeoutMs ?? 15_000;
+    let deliveredPath: string | null = null;
+    // The staged per-call file is always safe to remove: AE only ever
+    // reads the private copy `deliverActivationScript` returns. That copy
+    // must survive until AE has read it — proven by the nonce appearing —
+    // so on timeout it is left behind: a still-pending script-trust
+    // dialog may yet read it and complete the activation.
+    try {
+      // Pre-spawn refusals (ownership lost, non-canonical file) propagate
+      // as-is: nothing was delivered, so the timeout wording would lie.
+      deliveredPath = await transport.deliverActivationScript(activation.path);
+      // The nonce — not heartbeat freshness — is the proof: a dispatcher
+      // that was already answering the channel cannot carry this call's
+      // nonce, so a stale-but-fresh heartbeat fails closed here.
+      let beat: NonNullable<ReturnType<typeof dispatcher.status>["heartbeat"]>;
+      try {
+        beat = await dispatcher.waitForActivationNonce(activation.nonce, timeoutMs);
+      } catch (error) {
+        throw new AfterEffectsError(
+          `the activation script was delivered to the owned After Effects but ` +
+            `${errorMessage(error)}; After Effects may be showing a script-trust ` +
+            "or consent dialog, or the -r hand-off reached a different instance. " +
+            "If so, answer it, or run " +
+            `${dispatcher.activateScriptPath} via File > Scripts > Run Script File`,
+          op,
+        );
+      }
+      // The nonce proves the delivered script ran on an After Effects
+      // answering this channel. Bind it to the owned instance: if the
+      // census no longer proves a single owned in-scope process, the
+      // `-r` hand-off may have reached a different After Effects that
+      // started mid-delivery — fail closed rather than claim it.
+      const postDelivery = this.#session.driver.ownership();
+      if (postDelivery.kind !== "owned") {
+        throw new AfterEffectsError(
+          `the activation script ran, but the owned After Effects can no ` +
+            `longer be proven sole in-scope (${postDelivery.evidence}); ` +
+            "the dispatcher may have activated a different instance — " +
+            "inspect `ae-a8n dispatcher status` before attaching",
+          op,
+        );
+      }
+      rmSync(deliveredPath, { force: true });
+      deliveredPath = null;
+      return { channelDir, instance: beat.instance, aeVersion: beat.aeVersion };
+    } finally {
+      rmSync(activation.path, { force: true });
+    }
   }
 
   /**
