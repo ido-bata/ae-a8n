@@ -37,3 +37,15 @@ export {
   defaultMonitorPidStartedAt,
 } from "./lease.js";
 export { waitForSupervisionPhase, type WaitForPhaseOptions, type WaitOutcome } from "./wait.js";
+export {
+  mergeHostState,
+  snapshotToBlocking,
+  windowTier,
+} from "./probe.js";
+export type { GuiProbe, ProbeSnapshot } from "./probe.js";
+export {
+  SupervisionMonitor,
+  DEFAULT_MONITOR_INTERVAL_MS,
+  type SupervisionMonitorOptions,
+  type SupervisionMonitorStart,
+} from "./monitor.js";
