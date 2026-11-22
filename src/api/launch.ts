@@ -20,7 +20,10 @@ import {
 } from "../driver/mac-session.js";
 import { errorMessage } from "../errors.js";
 import { MacHostRecovery } from "../driver/recovery.js";
-import { SessionSupervision } from "../driver/supervision-session.js";
+import {
+  SessionSupervision,
+  attributeAeByCensus,
+} from "../driver/supervision-session.js";
 import type { LaunchProvenance } from "../driver/launch-provenance.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
 import {
@@ -486,6 +489,29 @@ export async function openAfterEffects(
       },
     });
     session.supervision = supervision;
+  } else if (process.platform === "darwin") {
+    // Transports that cannot self-report a pid (dispatcher, native channel)
+    // fall back to OS census correlation (#294): the channel runs inside an
+    // AE process owned by this OS user, so exactly one AE app instance in
+    // this Aqua session is attributable — and only for observation. The
+    // driver's own recovery path still requires `recoveryTarget()`, so a
+    // census-attributed monitor can report blocks but never press a button.
+    // Ambiguity (zero or several AE instances, session mismatch) yields no
+    // monitor and an honestly `unavailable` report.
+    const attributed = attributeAeByCensus();
+    if (attributed !== null) {
+      supervision = SessionSupervision.start({
+        sessionRoot,
+        pid: attributed.pid,
+        session: attributed.session,
+        verifyPid: attributed.verifyPid,
+        pendingRequests: () => {
+          const pending = driver.pendingRequest();
+          return pending === null ? [] : [pending];
+        },
+      });
+      session.supervision = supervision;
+    }
   }
   return { session, probe, extensionMethods };
 }

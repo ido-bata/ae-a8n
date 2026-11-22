@@ -20,6 +20,11 @@
  */
 
 import type { MacSession } from "./mac-session.js";
+import {
+  currentSession,
+  listAppInstances,
+  type MacAppInstance,
+} from "./mac-session.js";
 import { MacGuiRecovery } from "./gui-recovery.js";
 import { MacGuiProbe } from "../platform/darwin/gui-probe.js";
 import {
@@ -47,6 +52,89 @@ export type SessionSupervisionOptions = {
   readonly intervalMs?: number;
   readonly ownerId?: string;
 };
+
+/**
+ * A pid/session pair attributed to the After Effects process by OS census
+ * rather than by transport self-report (#294).
+ *
+ * Census correlation proves *which process to observe*, nothing more. It is
+ * not proof of ownership and grants no GUI mutation authority — the driver
+ * recovery path still requires its own `recoveryTarget()` attestation
+ * before it may press anything.
+ */
+export type CensusAttribution = {
+  readonly pid: number;
+  readonly session: MacSession;
+  /** Re-proves the pid still belongs to an AE app instance in this session. */
+  readonly verifyPid: (pid: number) => boolean;
+};
+
+function isAeAppInstance(app: MacAppInstance): boolean {
+  return /\bafter effects\b/i.test(app.name);
+}
+
+/**
+ * Build a `verifyPid` that re-runs the census: the pid keeps verifying only
+ * while it still belongs to an AE app instance owned by `session.uid` in
+ * `session.asid`. A recycled pid or a session move stops verifying on the
+ * next call. Shared by census attribution (#294) and the detached
+ * supervisor (#295), which observes a pid it did not launch.
+ */
+export function censusPidVerifier(
+  session: MacSession,
+  list: () => MacAppInstance[] = listAppInstances,
+): (pid: number) => boolean {
+  const uid = session.uid;
+  return (pid) =>
+    session.asid !== null &&
+    list().some(
+      (app) =>
+        app.pid === pid &&
+        app.uid === uid &&
+        app.asid === session.asid &&
+        isAeAppInstance(app),
+    );
+}
+
+/**
+ * Attribute the AE process for transports that cannot self-report a pid
+ * (dispatcher, native channel) by correlating the OS app census (#294).
+ *
+ * The dispatcher/native channel runs inside an After Effects process owned
+ * by the same OS user as this session, so the census is filtered to this
+ * uid. Attribution succeeds only when the census proves exactly one AE app
+ * instance in the caller's Aqua session:
+ *
+ *   - zero candidates  → AE is not running (or not a GUI app): `null`.
+ *   - several candidates → ambiguous (multiple AE versions/processes):
+ *     `null`. A single AE process is never treated as ownership proof on
+ *     its own — it is only an observation target, and only when it is the
+ *     *sole* candidate, because the channel gives no way to pick between
+ *     several.
+ *   - session id mismatch → the candidate lives in another login session:
+ *     `null`.
+ *
+ * `verifyPid` re-runs the census so a recycled pid belonging to a
+ * non-AE app — or an AE that moved sessions — stops verifying immediately.
+ */
+export function attributeAeByCensus(
+  list: () => MacAppInstance[] = listAppInstances,
+  session: MacSession = currentSession(),
+  selfUid: number = typeof process.getuid === "function" ? process.getuid() : -1,
+): CensusAttribution | null {
+  const uid = selfUid;
+  if (session.kind !== "Aqua" || session.uid !== uid || session.asid === null) {
+    return null;
+  }
+  const candidates = list().filter(
+    (app) => app.uid === uid && app.asid === session.asid && isAeAppInstance(app),
+  );
+  if (candidates.length !== 1) {
+    return null;
+  }
+  const pid = candidates[0]!.pid;
+  return { pid, session, verifyPid: censusPidVerifier(session, list) };
+}
 
 export class SessionSupervision {
   readonly #sessionRoot: string;
