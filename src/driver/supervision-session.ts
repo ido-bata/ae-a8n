@@ -74,6 +74,29 @@ function isAeAppInstance(app: MacAppInstance): boolean {
 }
 
 /**
+ * Build a `verifyPid` that re-runs the census: the pid keeps verifying only
+ * while it still belongs to an AE app instance owned by `session.uid` in
+ * `session.asid`. A recycled pid or a session move stops verifying on the
+ * next call. Shared by census attribution (#294) and the detached
+ * supervisor (#295), which observes a pid it did not launch.
+ */
+export function censusPidVerifier(
+  session: MacSession,
+  list: () => MacAppInstance[] = listAppInstances,
+): (pid: number) => boolean {
+  const uid = session.uid;
+  return (pid) =>
+    session.asid !== null &&
+    list().some(
+      (app) =>
+        app.pid === pid &&
+        app.uid === uid &&
+        app.asid === session.asid &&
+        isAeAppInstance(app),
+    );
+}
+
+/**
  * Attribute the AE process for transports that cannot self-report a pid
  * (dispatcher, native channel) by correlating the OS app census (#294).
  *
@@ -109,18 +132,7 @@ export function attributeAeByCensus(
     return null;
   }
   const pid = candidates[0]!.pid;
-  return {
-    pid,
-    session,
-    verifyPid: (candidatePid) =>
-      list().some(
-        (app) =>
-          app.pid === candidatePid &&
-          app.uid === uid &&
-          app.asid === session.asid &&
-          isAeAppInstance(app),
-      ),
-  };
+  return { pid, session, verifyPid: censusPidVerifier(session, list) };
 }
 
 export class SessionSupervision {
