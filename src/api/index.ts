@@ -33,6 +33,7 @@ import {
   type HandshakeResponse,
 } from "./capabilities.js";
 import { guiStateReport } from "./gui-state.js";
+import { supervisionReport, type SupervisionReport } from "../supervision/index.js";
 import {
   AfterEffectsError,
   EntityNotFoundError,
@@ -541,6 +542,26 @@ export class AfterEffects {
     // the target session); `.then` keeps even a synchronous failure a
     // rejection rather than a throw from a Promise-typed method.
     return Promise.resolve().then(() => guiStateReport(this.recoveryTarget()));
+  }
+
+  /**
+   * The session's durable supervision report (#287,
+   * `specs/gui-supervision/spec.md`): the phase the monitor last proved
+   * (`running`/`blocked`/`recovering`/`needs-human`/`quarantined`/`resumed`),
+   * the blocking windows and host-level state behind it, the in-flight
+   * request, and — separately — whether observation itself is healthy.
+   *
+   * This is a read of shared state, not a live probe: it answers even while
+   * After Effects is not answering scripts, which is exactly when callers
+   * need it. `status: "unavailable"` means no trustworthy state exists —
+   * supervision never ran, the state is corrupt, or the monitor's heartbeat
+   * is stale — and is never reported as a clean screen.
+   *
+   * CLI, MCP and VSCode consumers should read this rather than growing
+   * their own GUI checks; ae-devtools maps it to user-facing state.
+   */
+  supervisionState(): SupervisionReport {
+    return supervisionReport(this.#session.driver.sessionRoot);
   }
 
   /**
