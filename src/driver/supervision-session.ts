@@ -120,8 +120,9 @@ export function censusPidVerifier(
 export function attributeAeByCensus(
   list: () => MacAppInstance[] = listAppInstances,
   session: MacSession = currentSession(),
+  selfUid: number = typeof process.getuid === "function" ? process.getuid() : -1,
 ): CensusAttribution | null {
-  const uid = typeof process.getuid === "function" ? process.getuid() : -1;
+  const uid = selfUid;
   if (session.kind !== "Aqua" || session.uid !== uid || session.asid === null) {
     return null;
   }
