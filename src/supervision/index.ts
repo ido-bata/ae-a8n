@@ -1,0 +1,39 @@
+export * from "./types.js";
+export {
+  applySupervisionEvent,
+  initialSupervisionDoc,
+  DEFAULT_PHASE_DEADLINE_MS,
+  MAX_HISTORY,
+  type SupervisionEvent,
+  type TransitionResult,
+} from "./machine.js";
+export {
+  SUPERVISION_STATE_FILE,
+  DEFAULT_MONITOR_TTL_MS,
+  decodeSupervisionDoc,
+  evaluateObservationHealth,
+  readSupervisionState,
+  removeSupervisionState,
+  supervisionReport,
+  supervisionStatePath,
+  writeSupervisionState,
+  type ReadStateResult,
+} from "./state.js";
+export {
+  DEFAULT_MONITOR_LEASE_TTL_MS,
+  MONITOR_LEASE_FILE,
+  MONITOR_LEASE_SCHEMA_VERSION,
+  acquireMonitorLease,
+  decodeMonitorLease,
+  inspectMonitorLease,
+  monitorLeasePath,
+  type AcquireMonitorLeaseResult,
+  type MonitorLease,
+  type MonitorLeaseRecord,
+  type MonitorLeaseState,
+  type PidAliveProbe,
+  type PidStartProbe,
+  defaultMonitorPidAlive,
+  defaultMonitorPidStartedAt,
+} from "./lease.js";
+export { waitForSupervisionPhase, type WaitForPhaseOptions, type WaitOutcome } from "./wait.js";
