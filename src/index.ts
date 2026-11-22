@@ -297,6 +297,11 @@ export {
   type WaitForPhaseOptions,
   type WaitOutcome,
 } from "./supervision/index.js";
+export {
+  startDetachedSupervisor,
+  type DetachedSupervisor,
+  type DetachedSupervisorOptions,
+} from "./supervision/detached.js";
 export type {
   BlockingInfo,
   DialogTier,
