@@ -619,10 +619,15 @@ export class AfterEffects {
     try {
       const result = await this.#session.driver.stop(options);
       this.#closed = true;
+      // The monitor outlives the quit attempt on purpose: `app.quit` can
+      // raise the unsaved-changes dialog supervision exists to see. It is
+      // released only once the session is actually closed.
+      this.#session.supervision?.stop();
       return result;
     } catch (error) {
       if (!(error instanceof HostError && error.name === "UnsavedChangesError")) {
         this.#closed = true;
+        this.#session.supervision?.stop();
       }
       contextualise("session.close", error);
     }

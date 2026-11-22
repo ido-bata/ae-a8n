@@ -20,6 +20,7 @@ import {
 } from "../driver/mac-session.js";
 import { errorMessage } from "../errors.js";
 import { MacHostRecovery } from "../driver/recovery.js";
+import { SessionSupervision } from "../driver/supervision-session.js";
 import type { LaunchProvenance } from "../driver/launch-provenance.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
 import {
@@ -401,10 +402,15 @@ export async function openAfterEffects(
     extensionMethods = declared;
   }
 
+  // Supervision (#285) starts only after the probe proves the session is
+  // usable; the driver reads it lazily through this closure, so calls made
+  // during `driver.start()` itself simply see "no monitor yet".
+  let supervision: SessionSupervision | null = null;
   const driver = new AeDriver({
     transport,
     sessionRoot,
     trace,
+    supervision: { report: () => supervision?.report() ?? null },
     ...(hostScript === null ? {} : { hostScriptPath: hostScript }),
     ...(options.timeoutMs === undefined ? {} : { defaultTimeoutMs: options.timeoutMs }),
     ...(options.readinessTimeoutMs === undefined
@@ -461,6 +467,26 @@ export async function openAfterEffects(
   session.trace.record("session.authorization", "ok", 0, {
     result: { ownership: session.driver.ownership().kind, granted: [...grantedScopes(session)] },
   });
+  // GUI supervision begins only once the host answered its probe: before
+  // that there is no proven pid/session to observe, and a monitor started
+  // earlier could only report "unavailable" anyway. `recoveryTarget()` is
+  // the same attestation the recovery path uses — an attached or
+  // dispatcher session without one simply gets no monitor, and the durable
+  // report stays honestly unavailable.
+  const supervisionTarget = driver.recoveryTarget();
+  if (supervisionTarget !== null) {
+    supervision = SessionSupervision.start({
+      sessionRoot,
+      pid: supervisionTarget.pid,
+      session: supervisionTarget.session,
+      verifyPid: (pid) => driver.recoveryTarget()?.pid === pid,
+      pendingRequests: () => {
+        const pending = driver.pendingRequest();
+        return pending === null ? [] : [pending];
+      },
+    });
+    session.supervision = supervision;
+  }
   return { session, probe, extensionMethods };
 }
 

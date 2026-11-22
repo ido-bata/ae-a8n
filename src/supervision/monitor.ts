@@ -68,7 +68,12 @@ export type SupervisionMonitorStart =
   | { readonly ok: false; readonly reason: string };
 
 const defaultSleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+  new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    // A supervision monitor must never be the reason a CLI process stays
+    // alive: the loop is fire-and-forget inside the session's lifetime.
+    (timer as { unref?: () => void }).unref?.();
+  });
 
 function isBlockingPhase(phase: SupervisionPhase): boolean {
   return phase === "blocked" || phase === "recovering" || phase === "needs-human" || phase === "quarantined";
