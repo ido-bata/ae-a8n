@@ -1,5 +1,10 @@
 # Sessions: who owns After Effects, and what a timeout means
 
+> Continuous GUI supervision — detecting and recovering a blocked After
+> Effects as an explicit state rather than a timeout side effect — is
+> specified in [`specs/gui-supervision/spec.md`](../specs/gui-supervision/spec.md)
+> (ADR-0005, #278). This document remains the ownership/transport contract.
+
 ## Ownership
 
 A session either started the After Effects process it talks to, or found one
