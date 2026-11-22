@@ -5,18 +5,21 @@ import {
 } from "../src/driver/supervision-session.js";
 import type { MacAppInstance, MacSession } from "../src/driver/mac-session.js";
 
-const uid = typeof process.getuid === "function" ? process.getuid() : 501;
+// Fixed uid: the census contract compares the session uid against the
+// process uid, which tests inject explicitly so the suite runs identically
+// on hosts where `process.getuid` does not exist (Windows).
+const UID = 501;
 const ASID = 4242;
 
 function session(overrides: Partial<MacSession> = {}): MacSession {
-  return { uid, username: "tester", asid: ASID, kind: "Aqua", ...overrides };
+  return { uid: UID, username: "tester", asid: ASID, kind: "Aqua", ...overrides };
 }
 
 function app(overrides: Partial<MacAppInstance> = {}): MacAppInstance {
   return {
     name: "Adobe After Effects 2026",
     pid: 1234,
-    uid,
+    uid: UID,
     asid: ASID,
     ...overrides,
   };
@@ -26,11 +29,17 @@ function lister(apps: MacAppInstance[]) {
   return () => apps;
 }
 
+function attribute(
+  list: () => MacAppInstance[],
+  sess: MacSession = session(),
+): CensusAttribution | null {
+  return attributeAeByCensus(list, sess, UID);
+}
+
 describe("attributeAeByCensus (#294)", () => {
   it("attributes the sole AE app instance in the caller's Aqua session", () => {
-    const result = attributeAeByCensus(
+    const result = attribute(
       lister([app(), app({ name: "Safari", pid: 99 })]),
-      session(),
     );
     expect(result).not.toBeNull();
     expect(result!.pid).toBe(1234);
@@ -40,49 +49,37 @@ describe("attributeAeByCensus (#294)", () => {
   });
 
   it("returns null when no AE instance exists", () => {
-    expect(
-      attributeAeByCensus(lister([app({ name: "Safari" })]), session()),
-    ).toBeNull();
-    expect(attributeAeByCensus(lister([]), session())).toBeNull();
+    expect(attribute(lister([app({ name: "Safari" })]))).toBeNull();
+    expect(attribute(lister([]))).toBeNull();
   });
 
   it("fails closed on multiple AE instances — never guesses", () => {
-    const result = attributeAeByCensus(
+    const result = attribute(
       lister([
         app({ pid: 1111, name: "Adobe After Effects 2026" }),
         app({ pid: 2222, name: "Adobe After Effects 2027" }),
       ]),
-      session(),
     );
     expect(result).toBeNull();
   });
 
   it("ignores AE instances owned by other users or other sessions", () => {
-    const result = attributeAeByCensus(
-      lister([
-        app({ uid: uid + 1 }),
-        app({ pid: 2222, asid: ASID + 1 }),
-      ]),
-      session(),
+    const result = attribute(
+      lister([app({ uid: UID + 1 }), app({ pid: 2222, asid: ASID + 1 })]),
     );
     expect(result).toBeNull();
   });
 
   it("requires an Aqua session with a proven session id", () => {
     const apps = lister([app()]);
-    expect(
-      attributeAeByCensus(apps, session({ kind: "Background" })),
-    ).toBeNull();
-    expect(attributeAeByCensus(apps, session({ asid: null }))).toBeNull();
-    expect(
-      attributeAeByCensus(apps, session({ uid: uid + 1 })),
-    ).toBeNull();
+    expect(attribute(apps, session({ kind: "Background" }))).toBeNull();
+    expect(attribute(apps, session({ asid: null }))).toBeNull();
+    expect(attribute(apps, session({ uid: UID + 1 }))).toBeNull();
   });
 
   it("verifyPid stops verifying when the pid is recycled by a non-AE app", () => {
     let apps: MacAppInstance[] = [app()];
-    const mutable = () => apps;
-    const result: CensusAttribution = attributeAeByCensus(mutable, session())!;
+    const result: CensusAttribution = attribute(() => apps)!;
     expect(result.verifyPid(1234)).toBe(true);
     // AE exited and the pid now belongs to a different application.
     apps = [app({ name: "TextEdit", pid: 1234 })];
@@ -91,19 +88,16 @@ describe("attributeAeByCensus (#294)", () => {
 
   it("verifyPid stops verifying when the AE instance moves sessions", () => {
     let apps: MacAppInstance[] = [app()];
-    const result = attributeAeByCensus(() => apps, session())!;
+    const result = attribute(() => apps)!;
     apps = [app({ asid: ASID + 9 })];
     expect(result.verifyPid(1234)).toBe(false);
   });
 
   it("matches the app name loosely enough for versioned names only", () => {
-    const result = attributeAeByCensus(
-      lister([app({ name: "After Effects" })]),
-      session(),
-    );
+    const result = attribute(lister([app({ name: "After Effects" })]));
     expect(result).not.toBeNull();
     expect(
-      attributeAeByCensus(lister([app({ name: "Adobe Photoshop 2026" })]), session()),
+      attribute(lister([app({ name: "Adobe Photoshop 2026" })])),
     ).toBeNull();
   });
 });
