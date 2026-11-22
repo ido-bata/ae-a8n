@@ -742,9 +742,63 @@ export class AeDriver {
       // makes the transport stop waiting; the script itself runs on in AE.
       const deadline = Date.now() + timeoutMs;
       const abort = new AbortController();
-      const timer = setTimeout(() => abort.abort(), timeoutMs);
+      // One timer drives both the abort signal and the race's deadline leg:
+      // a transport that honours the signal rejects `invoke`; one that
+      // ignores it must still not hold the caller past the budget (#296).
+      let fireDeadline: () => void = () => {};
+      const deadlineReached = new Promise<"deadline">((resolve) => {
+        fireDeadline = () => resolve("deadline");
+      });
+      const timer = setTimeout(() => {
+        abort.abort();
+        fireDeadline();
+      }, timeoutMs);
+      // Supervision during the invoke wait (#296): transports differ in
+      // when invoke returns — the script lane only returns once AE finished
+      // the script, the dispatcher returns at enqueue. A proven blocking
+      // phase means the wait is already lost either way, so abort early and
+      // let the result wait below run recovery and late-result
+      // reconciliation inside the same deadline. Aborting stops *our* wait
+      // only; whatever AE is doing continues, and the result file — never a
+      // resend — remains the answer.
+      let invokeError: unknown = null;
+      let invokeRejected = false;
+      const invokeSettled = this.#transport
+        .invoke(entry, { signal: abort.signal })
+        .then(
+          () => undefined,
+          (error: unknown) => {
+            invokeRejected = true;
+            invokeError = error;
+          },
+        );
+      const watch = this.#invokeBlockWatch(abort);
       try {
-        await this.#transport.invoke(entry, { signal: abort.signal });
+        const winner = await Promise.race([
+          invokeSettled.then(() => "invoke" as const),
+          watch.fired,
+          deadlineReached,
+        ]);
+        if (winner === "blocked") {
+          // A transport that honours the abort rejects shortly; one that
+          // ignores it must not hold the caller. `invokeSettled` already
+          // absorbs the late rejection, and the result wait below takes
+          // over with whatever time the deadline still owes.
+          if (invokeError instanceof ScriptNotSentError) {
+            throw invokeError;
+          }
+        } else if (winner === "deadline") {
+          // The budget is spent whether or not the transport noticed the
+          // abort. A real invoke failure that landed first still wins.
+          if (invokeRejected) {
+            throw invokeError;
+          }
+          throw new TimeoutError(method, timeoutMs);
+        } else if (invokeRejected) {
+          throw invokeError;
+        }
+        // winner === "invoke" and no rejection: the transport returned and
+        // the result wait runs exactly as before.
       } catch (error) {
         // A call that never reached the host is not a timeout of the
         // operation: nothing ran, so there is nothing to recover from and
@@ -758,6 +812,7 @@ export class AeDriver {
         throw error;
       } finally {
         clearTimeout(timer);
+        watch.cancel();
       }
 
       const outcome = await this.#awaitResult(
@@ -956,6 +1011,44 @@ export class AeDriver {
       return { kind: "answered", error: result.error, detail: result.detail };
     }
     return { kind: "unresolved", sawWindow: attempt.sawWindow };
+  }
+
+  /**
+   * Watches the supervision report while `invoke` is awaited (#296).
+   * `fired` resolves `"blocked"` — after aborting the invoke wait — when the
+   * durable state proves a blocking phase, and stays pending otherwise:
+   * `cancel()` or a missing hook simply lets the invoke wait run to its own
+   * deadline. An absent or `unavailable` report never fires, so a dead
+   * monitor cannot fake a block or a clean screen.
+   */
+  #invokeBlockWatch(abort: AbortController): {
+    readonly fired: Promise<"blocked">;
+    readonly cancel: () => void;
+  } {
+    let cancelled = false;
+    const never = new Promise<"blocked">(() => {});
+    const fired = (async (): Promise<"blocked"> => {
+      const supervision = this.#supervision;
+      if (supervision === undefined) {
+        return never;
+      }
+      while (!cancelled && !abort.signal.aborted) {
+        await sleep(SUPERVISION_POLL_MS);
+        if (cancelled || abort.signal.aborted) {
+          return never;
+        }
+        const report = supervision.report();
+        if (
+          report?.status === "observed" &&
+          SUPERVISION_WAIT_PHASES.has(report.doc.phase)
+        ) {
+          abort.abort();
+          return "blocked";
+        }
+      }
+      return never;
+    })();
+    return { fired, cancel: () => { cancelled = true; } };
   }
 
   async #awaitResult(

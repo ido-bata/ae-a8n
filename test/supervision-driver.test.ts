@@ -36,9 +36,34 @@ class SlowTransport extends FakeAfterEffectsTransport {
    */
   override invoke(entryScriptPath: string, _options?: InvokeOptions): Promise<void> {
     setTimeout(() => {
-      void super.invoke(entryScriptPath).catch(() => undefined);
+      // `invoke` is not async and can throw synchronously; the deferred
+      // script is fire-and-forget either way — only its result file counts.
+      try {
+        void Promise.resolve(super.invoke(entryScriptPath)).catch(() => undefined);
+      } catch {
+        // A synchronous throw is the same dead end: no result will come.
+      }
     }, this.delayMs);
     return Promise.resolve();
+  }
+}
+
+/**
+ * A transport whose `invoke` never settles and ignores the abort signal —
+ * the worst case #296 covers: the caller must still be released at the
+ * deadline, and a proven block must release it earlier.
+ */
+class HangTransport extends FakeAfterEffectsTransport {
+  /** Invocations before the hang starts; the launch probe must pass. */
+  hangAfter = 1;
+  #count = 0;
+
+  override invoke(entryScriptPath: string, _options?: InvokeOptions): Promise<void> {
+    this.#count += 1;
+    if (this.#count > this.hangAfter) {
+      return new Promise<void>(() => {});
+    }
+    return super.invoke(entryScriptPath);
   }
 }
 
@@ -102,15 +127,20 @@ afterEach(() => {
   rmSync(sessionRoot, { recursive: true, force: true });
 });
 
-function makeDriver(recovery?: HostRecovery) {
+function makeDriver(
+  recovery?: HostRecovery,
+  options: { readonly hang?: boolean; readonly timeoutMs?: number } = {},
+) {
   const trace = new TraceRecorder({ file: join(sessionRoot, "trace.jsonl") });
+  const active = options.hang === true ? new HangTransport() : transport;
   return new AeDriver({
-    transport,
+    transport: active,
     sessionRoot,
     trace,
     supervision: { report: () => report },
     ...(recovery === undefined ? {} : { recovery }),
-    defaultTimeoutMs: 5_000,
+    defaultTimeoutMs: options.timeoutMs ?? 5_000,
+    recoveryGraceMs: 300,
   });
 }
 
@@ -169,4 +199,36 @@ describe("supervision-aware result waits (#285)", () => {
     expect(info.version).toBe("26.0.0");
     expect(attempts).toHaveLength(0);
   });
+});
+
+describe("invoke-internal hangs (#296)", () => {
+  it("releases an abort-ignoring transport at the deadline even with no supervision", async () => {
+    const driver = makeDriver(undefined, { hang: true, timeoutMs: 300 });
+    await driver.start();
+    const began = Date.now();
+    const error = await driver
+      .call("app.info", {}, { timeoutMs: 300 })
+      .then(() => null, (e: unknown) => e);
+    // Without the deadline race this wait would never return.
+    expect(Date.now() - began).toBeLessThan(10_000);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).name).toBe("TimeoutError");
+  });
+
+  it("moves to recovery before the deadline when supervision proves a block", async () => {
+    const driver = makeDriver(recovered, { hang: true, timeoutMs: 4_000 });
+    await driver.start();
+    report = blockedReport(blockedDoc());
+
+    const began = Date.now();
+    const error = await driver
+      .call("app.info", {}, { timeoutMs: 4_000 })
+      .then(() => null, (e: unknown) => e);
+    // The block was seen during the invoke wait: recovery ran and the
+    // caller got a bounded structured answer, not an infinite hang.
+    expect(Date.now() - began).toBeLessThan(10_000);
+    expect(attempts.length).toBeGreaterThanOrEqual(1);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).name).toBe("TimeoutError");
+  }, 20_000);
 });
