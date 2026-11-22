@@ -9,6 +9,7 @@
  */
 
 import type { AeDriver } from "../driver/driver.js";
+import type { SessionSupervision } from "../driver/supervision-session.js";
 import {
   AUTHORIZATION_SCOPES,
   type AuthorizationScope,
@@ -29,6 +30,13 @@ export class Session {
   readonly events: TraceEvent[] = [];
   /** The consumer's explicit grant for non-owned operations (#145). */
   readonly authorization: SessionAuthorization;
+  /**
+   * Live GUI supervision for this session (#285), when the platform and
+   * target allow honest observation. Set by session establishment; `close`
+   * stops it. Null means "no monitor" — the durable report stays
+   * `unavailable`, never a fabricated clean state.
+   */
+  supervision: SessionSupervision | null = null;
 
   constructor(driver: AeDriver, trace: TraceRecorder, authorization: SessionAuthorization = {}) {
     this.driver = driver;
