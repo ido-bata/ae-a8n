@@ -282,4 +282,33 @@ export {
   type WindowServerWindow,
 } from "./platform/darwin/window-census.js";
 
+/*
+ * GUI supervision contract (#278–#288, specs/gui-supervision/spec.md).
+ *
+ * `ae.supervisionState()` reads the live session's report; the standalone
+ * functions serve consumers that only know the session directory — a CLI
+ * or MCP client reconnecting to state a monitor wrote earlier. Everything
+ * here is platform-neutral; the OS probes live behind it.
+ */
+export {
+  supervisionReport,
+  supervisionStatePath,
+  waitForSupervisionPhase,
+  type WaitForPhaseOptions,
+  type WaitOutcome,
+} from "./supervision/index.js";
+export type {
+  BlockingInfo,
+  DialogTier,
+  HostLevelState,
+  MonitorRecord,
+  ObservationHealth,
+  PendingRequest,
+  SupervisionPhase,
+  SupervisionReport,
+  SupervisionStateDoc,
+  SupervisionTransition,
+  SupervisionWindow,
+} from "./supervision/types.js";
+
 export { A8N_VERSION } from "./version.js";
