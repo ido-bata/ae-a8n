@@ -411,7 +411,7 @@ describe("which window a recovery may act on", () => {
     expect(choice.index).toBe(2);
   });
 
-  it("ignores blocking windows the census attributes to another pid or to nothing (#330)", () => {
+  it("ignores blocking windows the census attributes to another pid (#330)", () => {
     // The bundle-confused listing: the foreign instance's dialog must not
     // read as this instance's blocker — not even as an unclassified one
     // that would quarantine the run.
@@ -419,11 +419,7 @@ describe("which window a recovery may act on", () => {
       ...dialog("Script"),
       censusAttribution: "foreign" as const,
     };
-    const unmatched = {
-      ...measuredAlert(),
-      censusAttribution: "unmatched" as const,
-    };
-    expect(chooseRecoveryWindow([foreign, unmatched])).toEqual({ kind: "none" });
+    expect(chooseRecoveryWindow([foreign])).toEqual({ kind: "none" });
     // Mixed with an owned measured alert, only the owned window is seen —
     // and its index stays the raw listing position for the press.
     const owned = { ...measuredAlert(), censusAttribution: "owned" as const };
@@ -431,6 +427,34 @@ describe("which window a recovery may act on", () => {
     expect(choice.kind).toBe("known");
     if (choice.kind !== "known") return;
     expect(choice.index).toBe(2);
+  });
+
+  it("vetoes every automatic press while an unmatched blocking window exists (#332)", () => {
+    // An unmatched window is unproven, not absent: a frameless or
+    // AX-phantom dialog of THIS instance reads exactly like this, so it
+    // must stop the measured-alert press the way a human-only window
+    // does. Only a fully attributed listing keeps the press path open.
+    const unmatchedAlert = {
+      ...measuredAlert(),
+      censusAttribution: "unmatched" as const,
+    };
+    const owned = { ...measuredAlert(), censusAttribution: "owned" as const };
+    const foreign = {
+      ...dialog("Script"),
+      censusAttribution: "foreign" as const,
+    };
+    // Alone, the unmatched blocker is still a blocker — never "none".
+    const alone = chooseRecoveryWindow([unmatchedAlert]);
+    expect(alone.kind).toBe("human-only");
+    // Beside a fully attributed measured alert it vetoes the press.
+    const mixed = chooseRecoveryWindow([owned, unmatchedAlert]);
+    expect(mixed.kind).toBe("human-only");
+    if (mixed.kind !== "human-only") return;
+    expect(mixed.index).toBe(2);
+    // Positively foreign windows still do not veto: they are another
+    // instance's windows, not this one's blocker.
+    const foreignOnly = chooseRecoveryWindow([foreign, owned]);
+    expect(foreignOnly.kind).toBe("known");
   });
 });
 

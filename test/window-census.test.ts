@@ -309,6 +309,29 @@ describe("assessGuiObservation — pid attribution of AX windows (#330)", () => 
     expect(state.axUnaccountedWindows).toHaveLength(1);
   });
 
+  it("marks a window unmatched when census windows of several pids share its frame (#332)", () => {
+    // Two instances holding same-geometry dialogs: the frame matches a
+    // census window of the target pid AND of another pid, so ownership
+    // cannot be proven. Ambiguous is unproven — never "owned", or the
+    // press path could click the foreign instance's dialog.
+    const twinCensus = win({
+      pid: FOREIGN_PID,
+      owner: "After Effects",
+      layer: 8,
+      onScreen: true,
+      name: "untitled",
+      bounds: { x: 0, y: 38, width: 1710, height: 1074 },
+    });
+    const census = { available: true as const, windows: [ownCensus, twinCensus] };
+    const state = assessGuiObservation(OWN_PID, true, [ownMain], census);
+    expect(state.windows[0]?.censusAttribution).toBe("unmatched");
+    expect(isPidAttributedWindow(state.windows[0]!)).toBe(false);
+    expect(state.axUnmatchedWindowCount).toBe(1);
+    // The ambiguous window is not evidence the pid's windows are
+    // AX-invisible either — but it is also not "owned".
+    expect(state.axSuspect).toBe(true);
+  });
+
   it("marks a window unmatched when no census window of any pid has its frame", () => {
     const ghost: GuiWindowInfo = { ...ownMain, frame: { x: 10, y: 10, width: 100, height: 100 } };
     const census = { available: true as const, windows: [ownCensus] };

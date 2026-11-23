@@ -231,7 +231,7 @@ if ($uiaState -eq 'ok') {
         $count = 0
         $queue = New-Object System.Collections.Queue
         $queue.Enqueue(@{ el = $el; depth = 0 })
-        while ($queue.Count -gt 0 -and $count -lt $script:maxUiaElements) {
+        while ($queue.Count -gt 0 -and $count -lt $script:maxUiaElements -and -not $script:uiaTimedOut) {
           if ([DateTime]::UtcNow -gt $script:deadline) { $script:uiaTimedOut = $true; break }
           $item = $queue.Dequeue()
           $node = $item.el
@@ -239,6 +239,9 @@ if ($uiaState -eq 'ok') {
           $child = $null
           try { $child = $walker.GetFirstChild($node) } catch { $child = $null }
           while ($null -ne $child -and $count -lt $script:maxUiaElements) {
+            # A sibling scan can run hundreds of elements; the deadline is
+            # re-checked inside it, not only between dequeues.
+            if ([DateTime]::UtcNow -gt $script:deadline) { $script:uiaTimedOut = $true; break }
             $count++
             $next = $null
             try {

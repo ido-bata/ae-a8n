@@ -535,6 +535,22 @@ describe("the pid attribution of a press target (#330)", () => {
     frame: { x: 650, y: 185, width: 410, height: 342 },
     censusAttribution: "owned" as const,
   };
+  // The listings `listWindows()` answers inside the press's own lease
+  // (#332): the re-attribution read and the coordinate fallback's re-list.
+  // The owned one frames the window where the census says the target pid's
+  // window is; the unmatched one frames it somewhere no census window is.
+  const OWNED_LISTING =
+    "FRONTMOST|1\n" +
+    "W||AXWindow|AXDialog\n" +
+    "G|650,185|410,342\n" +
+    "T|ae-a8n: close me\n" +
+    "B|OK||660,195|80,32\n";
+  const UNMATCHED_LISTING =
+    "FRONTMOST|1\n" +
+    "W||AXWindow|AXDialog\n" +
+    "G|10,10|100,100\n" +
+    "T|ae-a8n: close me\n" +
+    "B|OK||20,20|80,32\n";
 
   it("refuses to press a window the census attributes to another pid — before any session command", () => {
     let commands = 0;
@@ -581,13 +597,39 @@ describe("the pid attribution of a press target (#330)", () => {
       lease,
       runSession: (_s, _p, args) => {
         calls.push([...args]);
-        return { status: 0, stdout: "CLICKED", stderr: "", timedOut: false };
+        // First the re-attribution listing inside the lease, then the press.
+        return calls.length === 1
+          ? { status: 0, stdout: OWNED_LISTING, stderr: "", timedOut: false }
+          : { status: 0, stdout: "CLICKED", stderr: "", timedOut: false };
       },
     });
     expect(gui.pressButtonIn(1, "OK", ownedWindow, "ae-a8n:")).toBe(true);
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
     // argv: pid, index, title, expectedTitle, expectedSubrole, expectedText, expectedFrame
-    expect(calls[0]?.at(-1)).toBe("650,185,410,342");
+    expect(calls[1]?.at(-1)).toBe("650,185,410,342");
+  });
+
+  it("re-attributes the window at the index inside the lease before pressing (#332)", () => {
+    // The attribution `expected` carries was taken at the caller's listing;
+    // it can be stale. When the fresh listing inside the lease no longer
+    // attributes the window at that index to the target pid, the press —
+    // and its coordinate fallback — must not run at all.
+    let commands = 0;
+    const gui = new MacGuiRecovery({
+      session,
+      pid: 4242,
+      allowConsoleSession: true,
+      readTargetSession: readSession,
+      census: () => censusOwned,
+      lease,
+      runSession: () => {
+        commands += 1;
+        return { status: 0, stdout: UNMATCHED_LISTING, stderr: "", timedOut: false };
+      },
+    });
+    expect(gui.pressButtonIn(1, "OK", ownedWindow, "ae-a8n:")).toBe(false);
+    // Only the re-attribution listing ran: no press, no fallback listing.
+    expect(commands).toBe(1);
   });
 
   it("the coordinate fallback clicks nothing when the re-listed window is not pid-attributed", () => {
@@ -605,19 +647,24 @@ describe("the pid attribution of a press target (#330)", () => {
       lease,
       runSession: () => {
         commands += 1;
-        return commands === 1
-          ? { status: 0, stdout: "NOT_FOUND", stderr: "", timedOut: false }
-          : {
-              status: 0,
-              stdout: "W||AXWindow|AXDialog\nG|10,10|100,100\nT|ae-a8n: close me\n",
-              stderr: "",
-              timedOut: false,
-            };
+        // 1: the re-attribution listing (owned — the press may proceed);
+        // 2: the accessibility press answers NOT_FOUND; 3: the fallback's
+        // fresh listing shows the window where no census window is.
+        if (commands === 2) {
+          return { status: 0, stdout: "NOT_FOUND", stderr: "", timedOut: false };
+        }
+        return {
+          status: 0,
+          stdout: commands === 1 ? OWNED_LISTING : UNMATCHED_LISTING,
+          stderr: "",
+          timedOut: false,
+        };
       },
     });
     expect(gui.pressButtonIn(1, "OK", ownedWindow, "ae-a8n:")).toBe(false);
-    // press + one re-list; a clickAt would have been a third command.
-    expect(commands).toBe(2);
+    // re-list + press + fallback re-list; a clickAt would have been a
+    // fourth command.
+    expect(commands).toBe(3);
   });
 });
 
