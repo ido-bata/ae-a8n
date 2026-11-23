@@ -182,6 +182,16 @@ maps each verdict to a testcase, and a `blocked` or `unknown` verdict becomes an
 `<error>`, never a pass. A run that never wrote a report exits 1 and names
 `recover`: `report` never returns an empty success.
 
+## Supervision
+
+`ae-a8n supervise status --session-root <dir>` reads the durable
+supervision report a session publishes (`supervision.json`) — the same
+document `ae.supervisionState()` returns — and is strictly read-only: it
+never starts a monitor, presses a control or mutates the session.
+`ae-a8n supervise watch --session-root <dir>` polls and prints each
+phase/health transition until interrupted. Missing, corrupt or stale
+state is reported as `unavailable`/`monitor-lost`, never as healthy.
+
 `setup` is not implemented yet in this increment: it parses its contract flags
 and then fails closed with a notice. It does not report success for work it did
 not do.
@@ -228,6 +238,9 @@ unsaved edit in someone's open project is still their work.
 | `comp.openInViewer()`, `comp.selectLayers(names)` | make the comp active; select exactly these layers |
 | `layer.setEnabled(on)`, `layer.transform()`, `layer.shapePaths()` | video switch; transform values; a shape layer's paths in layer space |
 | `ae.close({ unsavedChanges? })` | → `{ quit, ownership, reason? }` |
+| `ae.supervisionState()` | → `SupervisionReport`: the durable GUI-supervision document (`ae-a8n.supervision/v1`) — phase, observation health, blocking evidence, pending requests. Absent/corrupt/stale state reports `unavailable`/`monitor-lost`, never a fabricated healthy state |
+| `AfterEffects.rebuild(options)` | verified relaunch after proven owned process loss; refuses attached/unknown ownership, PID reuse, residual instances and live monitor leases; reconciles pending requests without resending |
+| `startDetachedSupervisor(options)` | spawns an observation-only supervisor process that keeps the monitor lease/heartbeat after the caller exits; no GUI mutation authority |
 | `ae.diagnostics()` | → `SessionDiagnostics`: host crash reports, host logs and the trace collected into `ae.artifactsDir/diagnostics/`; `notes` says what could not be collected |
 | `ae.tracePath`, `ae.traceEvents`, `ae.artifactsDir` | evidence |
 
