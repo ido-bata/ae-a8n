@@ -31,6 +31,8 @@ import {
 } from "../src/api/capabilities.js";
 import { builtinMethodNames } from "../src/cli/extension.js";
 import { buildHostScript } from "../src/extensions/manifest.js";
+import { initialSupervisionDoc } from "../src/supervision/machine.js";
+import { writeSupervisionState } from "../src/supervision/state.js";
 import { FakeAfterEffectsTransport } from "../src/testing/index.js";
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -108,6 +110,48 @@ describe("capabilities() handshake", () => {
     expect(codes).toContain("catalog-manifest-not-supplied");
     expect(codes).toContain("supported-release-set-not-recorded");
     expect(codes).not.toContain("ownership-unproven");
+
+    await ae.close({ unsavedChanges: "discard" });
+  });
+
+  it("advertises supervision honestly: probe, platforms, monitoring, verification (#287)", async () => {
+    const ae = await launch();
+    const response = await ae.capabilities();
+
+    // The advertisement names what exists, not what is hoped for: only
+    // the macOS AX+WindowServer probe is implemented, and the verification
+    // level stays automated-fake until a real-host run records the
+    // monitor end to end.
+    expect(response.supervision).toEqual({
+      platforms: ["darwin"],
+      probe: "ax-windowserver",
+      monitoring: expect.any(Boolean),
+      verification: "automated-fake",
+      report: "ae.supervisionState()",
+    });
+    // A just-launched fake session has no live monitor and no durable
+    // state, so monitoring is honestly false — not a silent "yes".
+    expect(response.supervision.monitoring).toBe(false);
+
+    // Once durable state exists and its evaluated health is ok, the same
+    // handshake reports monitoring true — proven by the durable report,
+    // not assumed from the session object.
+    const now = new Date();
+    writeSupervisionState(
+      sessionRoot,
+      initialSupervisionDoc({
+        now,
+        monitor: {
+          ownerId: "monitor-1",
+          pid: 1,
+          pidStart: null,
+          acquiredAt: now.toISOString(),
+          heartbeatAt: now.toISOString(),
+        },
+      }),
+    );
+    const again = await ae.capabilities();
+    expect(again.supervision.monitoring).toBe(true);
 
     await ae.close({ unsavedChanges: "discard" });
   });

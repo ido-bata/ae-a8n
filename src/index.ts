@@ -76,6 +76,7 @@ export {
   type ProofLevel,
   type RefusalReason,
   type RowPersistence,
+  type SupervisionAdvertisement,
   type VerificationAxis,
 } from "./api/capabilities.js";
 

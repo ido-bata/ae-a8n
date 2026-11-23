@@ -96,6 +96,22 @@ export const DIAGNOSTIC_CODES = {
     severity: "blocker",
     title: "An After Effects dialog requires a human decision",
   },
+  "A8N-SUP-001": {
+    severity: "blocker",
+    title: "Supervision reports After Effects needs a human or is quarantined",
+  },
+  "A8N-SUP-002": {
+    severity: "warning",
+    title: "Supervision reports After Effects is blocked or recovering",
+  },
+  "A8N-SUP-003": {
+    severity: "warning",
+    title: "Supervision observation is degraded, unavailable, or the monitor is lost",
+  },
+  "A8N-SUP-004": {
+    severity: "info",
+    title: "Supervision is observing the session",
+  },
   "A8N-JOB-001": { severity: "blocker", title: "Job or result file failed ownership or integrity checks" },
   "A8N-JOB-002": { severity: "warning", title: "A prior run left a lock or quarantine state" },
   "A8N-JOB-003": { severity: "blocker", title: "Job or result is not from a trusted issuer" },
