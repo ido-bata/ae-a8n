@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assessGuiObservation,
+  isBlockingWindow,
   type GuiWindowInfo,
 } from "../src/driver/gui-recovery.js";
 import {
@@ -135,6 +136,24 @@ describe("assessGuiObservation — the AX-empty regression", () => {
     expect(state.axSuspect).toBe(false);
     expect(state.windowServer.available).toBe(false);
     expect(state.windowServer.reason).toBe("probe missing");
+  });
+
+  it("AE layout-area windows count as observed => healthy AE is not axSuspect (#304)", () => {
+    // Real AE 2026 vends its windows as UI-element AXLayoutArea records, not
+    // through the `windows` class. Once the listing includes them, a healthy
+    // instance must not look AX-unobservable.
+    const aeWindow: GuiWindowInfo = {
+      title: "Adobe After Effects 2026 - untitled *",
+      role: "AXLayoutArea",
+      subrole: "AXFloatingWindow",
+      buttons: [],
+      texts: [],
+    };
+    const census = { available: true as const, windows: parseWindowCensus(CENSUS_FIXTURE) };
+    const state = assessGuiObservation(63300, false, [aeWindow], census);
+    expect(state.axSuspect).toBe(false);
+    expect(state.windows).toHaveLength(1);
+    expect(isBlockingWindow(aeWindow)).toBe(false);
   });
 
   it("AX windows present => axSuspect false regardless of census", () => {

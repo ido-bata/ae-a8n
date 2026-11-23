@@ -182,9 +182,12 @@ describe("the GUI recovery", () => {
     // compile error, so osacompile cannot catch it — measured on a real
     // host, 2026-11-03.
     const text = LIST_WINDOWS_SCRIPT.join("\n");
-    // The only call site, so qualifying it is the whole fix.
-    expect(text.match(/a8nClean\(ttext\)/g)).toHaveLength(1);
-    expect(text).toContain("my a8nClean(ttext)");
+    // Two call sites — the `windows` listing and the `UI elements`
+    // fallback for apps like AE that vend windows as AXLayoutArea — and
+    // every one must be `my`-qualified.
+    const calls = text.match(/(?<!my )a8nClean\(ttext\)/g) ?? [];
+    expect(calls).toHaveLength(0);
+    expect(text.match(/my a8nClean\(ttext\)/g)).toHaveLength(2);
   });
 
   it("checks the window is still the one the caller chose before pressing", () => {
