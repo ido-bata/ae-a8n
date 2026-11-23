@@ -188,6 +188,51 @@ describe("SupervisionMonitor", () => {
     }
   });
 
+  it("re-blocks from recovering when a new block appears (#309)", async () => {
+    const dir = tmpSession();
+    try {
+      let windows: DialogWindow[] = [dialog({ title: "first block" })];
+      const probe: GuiProbe = {
+        observe(): ProbeSnapshot {
+          return { ok: true, host: "none", windows };
+        },
+      };
+      const started = SupervisionMonitor.start({
+        sessionDir: dir,
+        probe,
+        ownerId: "test-monitor",
+        pid: process.pid,
+        now: () => new Date("2026-01-01T00:00:00Z"),
+        sleep: async () => {},
+      });
+      expect(started.ok).toBe(true);
+      if (!started.ok) return;
+      const monitor = started.monitor;
+      try {
+        await monitor.tick();
+        expect(monitor.phase).toBe("blocked");
+        // Block clears: blocked → recovering, awaiting outcome.
+        windows = [];
+        await monitor.tick();
+        expect(monitor.phase).toBe("recovering");
+        // A *different* block during recovery must re-block, not stay
+        // invisible behind "recovering" (measured on a real host: a modal
+        // raised mid-recovery was never reported).
+        windows = [dialog({ title: "second block" })];
+        await monitor.tick();
+        expect(monitor.phase).toBe("blocked");
+        const report = monitor.report();
+        if (report.status === "observed") {
+          expect(report.doc.blocking?.detail).toContain("second block");
+        }
+      } finally {
+        monitor.stop();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("records degraded health when the probe fails", async () => {
     const dir = tmpSession();
     try {

@@ -351,6 +351,22 @@ export class SupervisionMonitor {
           ...pendingFields,
           reason: effective.detail,
         });
+      } else if (this.#doc.phase === "recovering" && !clear) {
+        // A block observed while recovering must not be swallowed: the
+        // machine accepts `blocking-observed` from `recovering` and
+        // re-enters `blocked` (#309 — measured on a real host, a modal
+        // raised mid-recovery stayed invisible). Evidence identical to
+        // what recovery is already addressing is not re-dispatched, or
+        // every tick would flap blocked<->recovering until the outcome
+        // event lands.
+        if (this.#doc.blocking?.detail !== effective.detail) {
+          this.#apply({
+            kind: "blocking-observed",
+            blocking: effective,
+            ...pendingFields,
+            reason: effective.detail,
+          });
+        }
       }
 
       // Observation health is orthogonal to phase: degraded evidence is
