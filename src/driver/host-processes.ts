@@ -203,6 +203,19 @@ function windowsInstallDirPrefix(installExecutable: string): string | null {
 }
 
 /**
+ * Whether a path segment is a DOS 8.3 short name (`ADOBEA~1`,
+ * `PROGRA~1.EXE`). Such a segment can spell the same directory as its
+ * long-name twin, so a prefix mismatch involving one is undecidable —
+ * never proof of a different install (#332).
+ */
+function hasDos8x3Segment(path: string): boolean {
+  return path
+    .replace(/\//g, "\\")
+    .split("\\")
+    .some((segment) => /^[^\\.~]{1,8}~\d+(\..*)?$/i.test(segment));
+}
+
+/**
  * Whether a Windows `AfterFX.exe` image path belongs to the install that
  * `installExecutable` (`<dir>\Support Files\AfterFX.exe`) names — the
  * install-dir scope the script transport and session rebuild apply (#323).
@@ -211,9 +224,11 @@ function windowsInstallDirPrefix(installExecutable: string): string | null {
  *  - `false`: the image is provably another install's AfterFX.exe — a
  *    different version's After Effects, which `-r` delivery is never
  *    handed to and which is never this session's host.
- *  - `null`: undecidable — the install path has an unrecognized shape, or
- *    Windows would not reveal the image path (`""`). Callers fail closed
- *    on `null`: it may be this install's, so it still counts.
+ *  - `null`: undecidable — the install path has an unrecognized shape, the
+ *    image path was not revealed (`""`), or either spelling carries a DOS
+ *    8.3 short-name segment that a text comparison cannot resolve.
+ *    Callers fail closed on `null`: it may be this install's, so it
+ *    still counts.
  */
 export function windowsSameInstall(imagePath: string, installExecutable: string): boolean | null {
   const prefix = windowsInstallDirPrefix(installExecutable);
@@ -224,7 +239,17 @@ export function windowsSameInstall(imagePath: string, installExecutable: string)
   if (image === "") {
     return null;
   }
-  return windowsPathKey(image).startsWith(prefix);
+  if (windowsPathKey(image).startsWith(prefix)) {
+    return true;
+  }
+  // A prefix miss is only proof of a different install when both spellings
+  // are comparable: an 8.3 segment (`C:\ADOBEA~1\...`) can name the very
+  // directory the long-name prefix does, and returning `false` there would
+  // exclude a live same-install instance from the census (#332).
+  if (hasDos8x3Segment(image) || hasDos8x3Segment(installExecutable)) {
+    return null;
+  }
+  return false;
 }
 
 /** Keeps a failure report bounded however much a process writes. */

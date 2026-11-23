@@ -620,4 +620,31 @@ describe("windowsGuiObserveScript", () => {
     // The per-window liveness probe keeps its own bound.
     expect(script).toContain("SendMessageTimeout");
   });
+
+  it("re-checks the deadline inside the sibling traversal loop (#332)", () => {
+    const script = windowsGuiObserveScript(4321);
+    // A sibling scan can run hundreds of elements between dequeues; the
+    // deadline must be checked inside that inner loop too, and expiry must
+    // leave both traversal loops.
+    const siblingWhile = script.indexOf(
+      "while ($null -ne $child -and $count -lt $script:maxUiaElements)",
+    );
+    expect(siblingWhile).toBeGreaterThan(-1);
+    const innerDeadline = script.indexOf(
+      "if ([DateTime]::UtcNow -gt $script:deadline) { $script:uiaTimedOut = $true; break }",
+      siblingWhile,
+    );
+    const countIncrement = script.indexOf("$count++", siblingWhile);
+    expect(innerDeadline).toBeGreaterThan(siblingWhile);
+    expect(innerDeadline).toBeLessThan(countIncrement);
+    // The outer queue loop also stops once uiaTimedOut is set.
+    expect(script).toContain("-and -not $script:uiaTimedOut");
+  });
+
+  it("contains only PowerShell comments — `//` is a parse error in PS 5.1 (#332)", () => {
+    const cStyle = windowsGuiObserveScript(4321)
+      .split("\n")
+      .filter((line) => /^\s*\/\//.test(line));
+    expect(cStyle).toEqual([]);
+  });
 });

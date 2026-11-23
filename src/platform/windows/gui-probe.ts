@@ -504,8 +504,10 @@ export class WindowsGuiProbe implements GuiProbe {
     // snapshot fails closed rather than hanging the monitor tick (#324).
     let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
     const deadline = new Promise<"deadline">((resolve) => {
+      // The timer stays referenced: an unref'd timer lets Node exit before
+      // the deadline fires, and `observe` would never return its failure
+      // snapshot when the runner channel stalls (#332).
       deadlineTimer = setTimeout(() => resolve("deadline"), this.#observeDeadlineMs);
-      (deadlineTimer as { unref?: () => void }).unref?.();
     });
     const outcome = await Promise.race([
       this.#runner.run(command).then(

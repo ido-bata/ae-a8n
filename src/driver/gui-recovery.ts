@@ -105,7 +105,9 @@ export type GuiWindowInfo = {
    *     windows. Foreign windows are never evidence about this pid.
    *   - `"unmatched"` — no census window of any pid has this frame (a
    *     frameless window, an AX phantom, or timing skew between the two
-   *     session commands). Unproven, so not evidence either.
+   *     session commands), or census windows of MORE THAN ONE pid share
+   *     it — an ambiguity no frame comparison can resolve (#332).
+   *     Unproven, so not evidence either.
    *
    * Absent when the census was unavailable: attribution is then
    * unproven, which the press path refuses on — see `pressButtonIn`.
@@ -254,14 +256,15 @@ function isAxUnaccountedWindow(
  * versions share `CFBundleIdentifier`, and System Events can answer
  * `windows of process` with the OTHER instance's windows (issue #330,
  * verified on a real host). The census is pid-accurate, so an AX
- * window's frame is the evidence: a frame that matches a census window
- * of the target pid is `"owned"`; one that matches only census windows
- * of other pids is `"foreign"`; one that matches nothing is `"unmatched"`.
+ * window's frame is the evidence: a frame that matches census windows
+ * of the target pid — and of no other pid — is `"owned"`; one that
+ * matches only census windows of other pids is `"foreign"`; anything
+ * else is `"unmatched"`.
  *
- * `"owned"` is checked first: a foreign window whose frame coincidentally
- * equals a target-pid census window's bounds reads as owned — the residual
- * risk is two instances with pixel-identical window geometry, which no
- * frame comparison can separate.
+ * A frame matched by census windows of MORE THAN ONE pid is ambiguous:
+ * two instances can hold same-geometry dialogs, and no frame comparison
+ * can separate them. It is `"unmatched"`, never `"owned"` — the press
+ * path refuses what it cannot prove (#332).
  *
  * Returns `undefined` when the census is unavailable: nothing can be
  * proven either way, and callers keep the legacy trust level while the
@@ -281,11 +284,13 @@ function attributeAxWindow(
   }
   const matches = (ws: WindowServerWindow): boolean =>
     ws.bounds !== null && framesMatch(frame, ws.bounds);
-  if (census.windows.some((ws) => ws.pid === pid && matches(ws))) {
-    return "owned";
-  }
-  if (census.windows.some((ws) => ws.pid !== pid && matches(ws))) {
-    return "foreign";
+  const ownedMatch = census.windows.some((ws) => ws.pid === pid && matches(ws));
+  const foreignMatch = census.windows.some((ws) => ws.pid !== pid && matches(ws));
+  // `"owned"` requires the frame to single out this pid: a match shared
+  // with another pid's census window is ambiguous, and ambiguous is
+  // unproven — the same refusal `"unmatched"` already carries (#332).
+  if (ownedMatch !== foreignMatch) {
+    return ownedMatch ? "owned" : "foreign";
   }
   return "unmatched";
 }
@@ -1306,6 +1311,20 @@ export class MacGuiRecovery {
     // held across the whole sequence so no other mutator can act between
     // the accessibility press failing and the click landing.
     return this.#mutate("pressButtonIn", () => {
+      if (expected !== undefined) {
+        // The attribution `expected` carries was taken at the caller's
+        // listing — it can predate a window change, and the press script's
+        // title/subrole/text/frame checks all read the same possibly
+        // bundle-confused listing. Re-attribute the window at this index
+        // now, inside the lease; anything but "owned" refuses the press
+        // (#332). The window between this re-check and the AX press is
+        // narrower but not removed — the in-session identity checks remain
+        // the last line.
+        const current = this.listWindows().windows[windowIndex - 1];
+        if (current?.censusAttribution !== "owned") {
+          return false;
+        }
+      }
       if (this.#pressButton(windowIndex, buttonTitle, expected, expectedText)) {
         return true;
       }

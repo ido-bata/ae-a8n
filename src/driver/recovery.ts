@@ -270,6 +270,23 @@ export function chooseRecoveryWindow(windows: readonly GuiWindowInfo[]): Recover
     .filter(
       ({ window }) => isBlockingWindow(window) && isPidAttributedWindow(window),
     );
+  // An unmatched blocking window is not proven foreign — it is unproven,
+  // and unproven is not "no blocker" (#332). A frameless or AX-phantom
+  // dialog of THIS instance reads exactly like this, so it vetoes every
+  // automatic press the way a human-only window does; only a census that
+  // attributes ALL blocking windows keeps the measured-alert path open.
+  // Positively foreign windows stay excluded above: they are another
+  // instance's, not this one's, blocker.
+  const unmatchedBlocking = windows.find(
+    (window) => isBlockingWindow(window) && window.censusAttribution === "unmatched",
+  );
+  if (unmatchedBlocking !== undefined) {
+    return {
+      kind: "human-only",
+      index: windows.indexOf(unmatchedBlocking) + 1,
+      window: unmatchedBlocking,
+    };
+  }
   if (blocking.length === 0) {
     return { kind: "none" };
   }

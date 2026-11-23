@@ -281,6 +281,32 @@ describe("windowsSameInstall", () => {
     expect(windowsSameInstall("   ", installExe)).toBeNull();
     expect(windowsSameInstall("D:\\x\\AfterFX.exe", "D:\\x\\AfterFX.exe")).toBeNull();
   });
+
+  it("answers null when a DOS 8.3 spelling could name the same install (#332)", () => {
+    // `ADOBEA~1` can be the 8.3 spelling of `Adobe After Effects 2026`:
+    // a text prefix miss is not proof of a different install, and `false`
+    // would drop a live same-install instance from the census.
+    expect(
+      windowsSameInstall(
+        "D:\\4_apps\\adobe\\ADOBEA~1\\Support Files\\AfterFX.exe",
+        installExe,
+      ),
+    ).toBeNull();
+    // The recorded install path itself can carry the short spelling.
+    expect(
+      windowsSameInstall(
+        "D:\\4_apps\\adobe\\Adobe After Effects 2026\\Support Files\\AfterFX.exe",
+        "D:\\4_apps\\adobe\\ADOBEA~1\\Support Files\\AfterFX.exe",
+      ),
+    ).toBeNull();
+    // A genuinely different install with no 8.3 ambiguity still answers false.
+    expect(
+      windowsSameInstall(
+        "C:\\Program Files\\Adobe\\Adobe After Effects 2027\\Support Files\\AfterFX.exe",
+        installExe,
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("a -r launcher is not a second AfterFX.exe", () => {

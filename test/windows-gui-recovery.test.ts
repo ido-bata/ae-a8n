@@ -671,6 +671,29 @@ describe("windowsGuiActScript", () => {
     }
   });
 
+  it("contains only PowerShell comments — `//` is a parse error in PS 5.1 (#332)", () => {
+    // Verified on a real Windows PowerShell 5.1 host: a `//` comment line
+    // inside the emitted script fails Parser::ParseInput for every mode.
+    for (const command of [
+      { mode: "list", pid: PID } as const,
+      {
+        mode: "press",
+        pid: PID,
+        windowIndex: 1,
+        buttonTitle: "OK",
+        expectedTitle: "",
+        expectedClass: "",
+        expectedText: "marker",
+      } as const,
+      { mode: "click", x: 1, y: 2 } as const,
+    ]) {
+      const cStyle = windowsGuiActScript(command)
+        .split("\n")
+        .filter((line) => /^\s*\/\//.test(line));
+      expect(cStyle).toEqual([]);
+    }
+  });
+
   it("rejects invalid parameters before interpolation", () => {
     expect(() => windowsGuiActScript({ mode: "list", pid: -1 })).toThrow(TypeError);
     expect(() =>

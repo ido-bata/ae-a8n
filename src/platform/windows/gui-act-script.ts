@@ -458,9 +458,9 @@ if ($script:expectedText -ne '') {
   try {
     $info = Get-UiaInfo $root
     foreach ($t in @($info.texts)) {
-      // Literal substring match, same as the macOS press's contains —
-      // -like would read the marker's own characters as wildcards.
-      if ([string]$t).Contains([string]$script:expectedText)) { $found = $true; break }
+      # Literal substring match, same as the macOS press's contains —
+      # -like would read the marker's own characters as wildcards.
+      if (([string]$t).Contains([string]$script:expectedText)) { $found = $true; break }
     }
   } catch {}
   if (-not $found) {
