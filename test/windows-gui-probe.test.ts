@@ -77,7 +77,17 @@ function uiaRecord(hwnd: string, overrides: Record<string, unknown> = {}): strin
 }
 
 function done(overrides: Record<string, unknown> = {}): string {
-  return line({ type: "done", windows: 1, uiaOk: 1, uiaFailed: 0, truncated: false, ...overrides });
+  return line({
+    type: "done",
+    windows: 1,
+    uiaOk: 1,
+    uiaFailed: 0,
+    truncated: false,
+    timedOut: false,
+    censusComplete: true,
+    uiaComplete: true,
+    ...overrides,
+  });
 }
 
 function census(overrides: Partial<WindowsWindowCensus> = {}): WindowsWindowCensus {
@@ -223,6 +233,8 @@ describe("windowsGuiHostState", () => {
     locked?: boolean | null;
     responding?: boolean | null;
     censusError?: string | null;
+    completed?: boolean;
+    censusComplete?: boolean;
   }): Parameters<typeof windowsGuiHostState>[0] {
     return {
       pid: 4321,
@@ -240,6 +252,10 @@ describe("windowsGuiHostState", () => {
       censusError: overrides.censusError ?? null,
       uiaUnavailable: null,
       truncated: false,
+      completed: overrides.completed ?? true,
+      timedOut: false,
+      censusComplete: overrides.censusComplete ?? true,
+      uiaComplete: true,
       malformedLines: 0,
     };
   }
@@ -259,6 +275,13 @@ describe("windowsGuiHostState", () => {
   it("reports unknown when the census failed or responsiveness is unreadable", () => {
     expect(windowsGuiHostState(observation({ censusError: "Add-Type failed" }))).toBe("unknown");
     expect(windowsGuiHostState(observation({ responding: null }))).toBe("unknown");
+  });
+
+  it("reports unknown — never none — when the census did not complete (#324)", () => {
+    // A killed observer leaves meta/session/window rows but no done record:
+    // "no blocking window seen so far" is not "no blocking window".
+    expect(windowsGuiHostState(observation({ completed: false }))).toBe("unknown");
+    expect(windowsGuiHostState(observation({ censusComplete: false }))).toBe("unknown");
   });
 
   it("reports none only when everything answered", () => {
@@ -412,9 +435,11 @@ describe("WindowsGuiProbe", () => {
     expect(snapshot.reason).toContain("no readable meta");
   });
 
-  it("uses partial NDJSON from a killed observer instead of failing outright", async () => {
+  it("uses partial NDJSON from a killed observer without fabricating a clean screen", async () => {
     // A timeout kill still leaves the records already proven on stdout;
-    // the probe must use them and flag the exit, never fabricate health.
+    // the probe must use them and flag the exit. But with no `done` record
+    // the census is incomplete, so host state is unknown — the rows seen so
+    // far are evidence, never proof that nothing blocks (#324).
     const probe = new WindowsGuiProbe(4321, {
       runner: fakeRunner(meta() + session() + windowRecord(), 124),
       platform: "win32",
@@ -424,8 +449,78 @@ describe("WindowsGuiProbe", () => {
     if (!snapshot.ok) {
       return;
     }
+    expect(snapshot.host).toBe("unknown");
+    expect(snapshot.windows).toHaveLength(1);
+    const degraded = snapshot.degraded?.join(" ") ?? "";
+    expect(degraded).toContain("observer exited 124");
+    expect(degraded).toContain("done record");
+  });
+
+  it("returns a bounded degraded snapshot when the observer hits its own deadline", async () => {
+    // The script's internal deadline fires mid-census: `done` arrives with
+    // timedOut/censusComplete=false. The probe reports the partial evidence
+    // honestly — host unknown, degraded notes — instead of none (#324).
+    const probe = new WindowsGuiProbe(4321, {
+      runner: fakeRunner(
+        meta() +
+          session() +
+          windowRecord() +
+          done({ timedOut: true, censusComplete: false, uiaComplete: false, windows: 3 }),
+        0,
+      ),
+      platform: "win32",
+    });
+    const snapshot = await probe.observe();
+    expect(snapshot.ok).toBe(true);
+    if (!snapshot.ok) {
+      return;
+    }
+    expect(snapshot.host).toBe("unknown");
+    expect(snapshot.windows).toHaveLength(1);
+    const degraded = snapshot.degraded?.join(" ") ?? "";
+    expect(degraded).toContain("time budget");
+    expect(degraded).toContain("did not cover every enumerated window");
+  });
+
+  it("keeps host none when only the UIA walk timed out — the census still completed", async () => {
+    const probe = new WindowsGuiProbe(4321, {
+      runner: fakeRunner(
+        meta() +
+          session() +
+          windowRecord() +
+          line({ type: "uia", hwnd: "65538", ok: false, error: "deadline" }) +
+          done({ timedOut: true, censusComplete: true, uiaComplete: false }),
+      ),
+      platform: "win32",
+    });
+    const snapshot = await probe.observe();
+    expect(snapshot.ok).toBe(true);
+    if (!snapshot.ok) {
+      return;
+    }
     expect(snapshot.host).toBe("none");
-    expect(snapshot.degraded?.join(" ")).toContain("observer exited 124");
+    const degraded = snapshot.degraded?.join(" ") ?? "";
+    expect(degraded).toContain("time budget");
+    expect(degraded).toContain("UIA walk");
+  });
+
+  it("fails closed in bounded time when the runner never answers", async () => {
+    // The real runner kills its child at its own timeout, but observe() must
+    // stay finite even if the channel itself stalls (#324).
+    const stalled: CommandRunner = { run: () => new Promise<CommandResult>(() => {}) };
+    const probe = new WindowsGuiProbe(4321, {
+      runner: stalled,
+      platform: "win32",
+      observeDeadlineMs: 50,
+    });
+    const began = Date.now();
+    const snapshot = await probe.observe();
+    expect(Date.now() - began).toBeLessThan(5_000);
+    expect(snapshot.ok).toBe(false);
+    if (snapshot.ok) {
+      return;
+    }
+    expect(snapshot.reason).toContain("did not finish within 50ms");
   });
 
   it("rejects an invalid pid before spawning", async () => {
@@ -510,5 +605,19 @@ describe("windowsGuiObserveScript", () => {
     ]) {
       expect(script).not.toContain(forbidden);
     }
+  });
+
+  it("bounds itself with an internal deadline and reports partial evidence (#324)", () => {
+    const script = windowsGuiObserveScript(4321);
+    // A wall-clock deadline checked before each census row and each UIA
+    // walk, and a `done` record that says whether the evidence is complete.
+    expect(script).toContain("$script:deadline");
+    expect(script).toContain("censusTimedOut");
+    expect(script).toContain("uiaTimedOut");
+    expect(script).toContain("timedOut");
+    expect(script).toContain("censusComplete");
+    expect(script).toContain("uiaComplete");
+    // The per-window liveness probe keeps its own bound.
+    expect(script).toContain("SendMessageTimeout");
   });
 });

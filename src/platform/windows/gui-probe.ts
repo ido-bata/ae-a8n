@@ -27,7 +27,7 @@
  * Win32 + UIA structured data only (spec prohibition).
  */
 
-import type { CommandResult, CommandRunner, ProbeCommand } from "./probe.js";
+import type { CommandRunner, ProbeCommand } from "./probe.js";
 import { SpawnCommandRunner } from "./spawn-runner.js";
 import { windowsGuiObserveScript } from "./gui-observe-script.js";
 import type { DialogWindow } from "../recovery-policy.js";
@@ -110,6 +110,19 @@ export type WindowsGuiObservation = {
   readonly uiaUnavailable: string | null;
   /** The census hit its window cap; rows beyond it were not observed. */
   readonly truncated: boolean;
+  /**
+   * A `done` record arrived: the observer reached its end and its counts
+   * are final. Without it the process was killed or died mid-run and every
+   * "absence" below is unproven — partial NDJSON is evidence, never a
+   * complete census (#324).
+   */
+  readonly completed: boolean;
+  /** The observer's own deadline stopped the census or the UIA walk early. */
+  readonly timedOut: boolean;
+  /** Every enumerated window got a census row before `done`. */
+  readonly censusComplete: boolean;
+  /** Every census window got a UIA record before `done`. */
+  readonly uiaComplete: boolean;
   /** NDJSON lines that failed to parse; counted, never silently dropped. */
   readonly malformedLines: number;
 };
@@ -230,6 +243,10 @@ export function parseWindowsGuiObservation(stdout: string): WindowsGuiObservatio
   let censusError: string | null = null;
   let uiaUnavailable: string | null = null;
   let truncated = false;
+  let sawDone = false;
+  let timedOut = false;
+  let censusComplete = false;
+  let uiaComplete = false;
   let malformedLines = 0;
   const windows: WindowsWindowCensus[] = [];
   const uia = new Map<string, WindowsUiaResult>();
@@ -295,7 +312,13 @@ export function parseWindowsGuiObservation(stdout: string): WindowsGuiObservatio
         break;
       }
       case "done": {
+        sawDone = true;
         truncated = asBoolean(record.truncated) ?? truncated;
+        timedOut = asBoolean(record.timedOut) ?? timedOut;
+        // Absent flags fail closed: a `done` that does not say the census
+        // finished is not proof that it did.
+        censusComplete = asBoolean(record.censusComplete) ?? false;
+        uiaComplete = asBoolean(record.uiaComplete) ?? false;
         break;
       }
       default:
@@ -322,6 +345,10 @@ export function parseWindowsGuiObservation(stdout: string): WindowsGuiObservatio
     censusError,
     uiaUnavailable,
     truncated,
+    completed: sawDone,
+    timedOut,
+    censusComplete,
+    uiaComplete,
     malformedLines,
   };
 }
@@ -395,10 +422,16 @@ export function windowsGuiHostState(observation: WindowsGuiObservation): HostLev
   if (observation.process.responding === false) {
     return "not-responding";
   }
-  // The census is the only window-level evidence: without it, or without a
-  // readable responsiveness answer and no proven host state, "clean" is
-  // unproven — report unknown, never none.
-  if (observation.censusError !== null || observation.process.responding === null) {
+  // The census is the only window-level evidence: without a completed
+  // census — no `done` record, a deadline stop, or a census error — or
+  // without a readable responsiveness answer and no proven host state,
+  // "clean" is unproven. Report unknown, never none (#324).
+  if (
+    !observation.completed ||
+    !observation.censusComplete ||
+    observation.censusError !== null ||
+    observation.process.responding === null
+  ) {
     return "unknown";
   }
   return "none";
@@ -419,9 +452,22 @@ export type WindowsGuiProbeOptions = {
    * id is degraded evidence, never a match and never a refusal by itself.
    */
   readonly expectedSessionId?: number;
+  /**
+   * Wall-clock bound on one `observe()`, independent of the runner's own
+   * command timeout (#324). The runner is expected to kill its child at its
+   * configured timeout; this deadline is the backstop that keeps `observe`
+   * finite even when the channel never answers. Mainly a test seam.
+   */
+  readonly observeDeadlineMs?: number;
 };
 
 const OBSERVER_TIMEOUT_MS = 30_000;
+/**
+ * The runner kills the observer at `OBSERVER_TIMEOUT_MS`; this probe-side
+ * deadline adds teardown margin so a slow kill still resolves as a result
+ * (with its partial NDJSON) rather than as a probe failure.
+ */
+const OBSERVER_DEADLINE_MS = OBSERVER_TIMEOUT_MS + 10_000;
 const OBSERVER_MAX_BUFFER = 4 * 1024 * 1024;
 
 export class WindowsGuiProbe implements GuiProbe {
@@ -429,11 +475,13 @@ export class WindowsGuiProbe implements GuiProbe {
   readonly #runner: CommandRunner;
   readonly #platform: NodeJS.Platform;
   readonly #expectedSessionId: number | undefined;
+  readonly #observeDeadlineMs: number;
 
   constructor(pid: number, options: WindowsGuiProbeOptions = {}) {
     this.#pid = pid;
     this.#platform = options.platform ?? process.platform;
     this.#expectedSessionId = options.expectedSessionId;
+    this.#observeDeadlineMs = options.observeDeadlineMs ?? OBSERVER_DEADLINE_MS;
     this.#runner =
       options.runner ??
       new SpawnCommandRunner({ timeoutMs: OBSERVER_TIMEOUT_MS, maxBuffer: OBSERVER_MAX_BUFFER });
@@ -451,15 +499,39 @@ export class WindowsGuiProbe implements GuiProbe {
       program: "powershell.exe",
       args: ["-NoProfile", "-NonInteractive", "-Command", windowsGuiObserveScript(this.#pid)],
     };
-    let result: CommandResult;
-    try {
-      result = await this.#runner.run(command);
-    } catch (error) {
+    // The runner is expected to bound the child itself, but `observe` must
+    // stay finite even when the channel does not: past the deadline the
+    // snapshot fails closed rather than hanging the monitor tick (#324).
+    let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
+    const deadline = new Promise<"deadline">((resolve) => {
+      deadlineTimer = setTimeout(() => resolve("deadline"), this.#observeDeadlineMs);
+      (deadlineTimer as { unref?: () => void }).unref?.();
+    });
+    const outcome = await Promise.race([
+      this.#runner.run(command).then(
+        (value) => ({ kind: "result" as const, value }),
+        (error: unknown) => ({ kind: "threw" as const, error }),
+      ),
+      deadline.then(() => ({ kind: "deadline" as const })),
+    ]);
+    if (deadlineTimer !== null) {
+      clearTimeout(deadlineTimer);
+    }
+    if (outcome.kind === "deadline") {
       return {
         ok: false,
-        reason: `observer could not run: ${error instanceof Error ? error.message : String(error)}`,
+        reason: `observer did not finish within ${this.#observeDeadlineMs}ms`,
       };
     }
+    if (outcome.kind === "threw") {
+      return {
+        ok: false,
+        reason: `observer could not run: ${
+          outcome.error instanceof Error ? outcome.error.message : String(outcome.error)
+        }`,
+      };
+    }
+    const result = outcome.value;
 
     const observation = parseWindowsGuiObservation(result.stdout);
     if (observation === null) {
@@ -523,6 +595,21 @@ export class WindowsGuiProbe implements GuiProbe {
     }
     if (observation.truncated) {
       degraded.push(`window census truncated at ${MAX_WINDOWS} windows`);
+    }
+    if (!observation.completed) {
+      degraded.push(
+        "observer ended without a done record; the observation is incomplete",
+      );
+    } else {
+      if (observation.timedOut) {
+        degraded.push("observer reached its time budget; window/UIA evidence is partial");
+      }
+      if (!observation.censusComplete) {
+        degraded.push("Win32 window census did not cover every enumerated window");
+      }
+      if (!observation.uiaComplete) {
+        degraded.push("UIA walk did not cover every window");
+      }
     }
     if (observation.malformedLines > 0) {
       degraded.push(`${observation.malformedLines} malformed observer line(s) ignored`);

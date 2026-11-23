@@ -107,17 +107,33 @@ export class TimeoutError extends Error {
   readonly timeoutMs: number;
   /** What the host looked like at the deadline, when the driver could classify it. */
   readonly hostCondition?: HostCondition;
+  /**
+   * Wall-clock milliseconds the call took until this error was built —
+   * the operation budget *plus* whatever the post-timeout checks (recovery
+   * wait, host-state census) added (#324). Reported so the message never
+   * implies the whole call fit inside `timeoutMs`.
+   */
+  readonly elapsedMs?: number;
 
-  constructor(method: string, timeoutMs: number, hostCondition?: HostCondition) {
+  constructor(
+    method: string,
+    timeoutMs: number,
+    hostCondition?: HostCondition,
+    elapsedMs?: number,
+  ) {
     super(
       `After Effects did not answer ${method} within ${timeoutMs}ms` +
-        (hostCondition === undefined ? "" : HOST_CONDITION_NOTES[hostCondition]),
+        (hostCondition === undefined ? "" : HOST_CONDITION_NOTES[hostCondition]) +
+        (elapsedMs === undefined ? "" : `; the call took ${elapsedMs}ms in total`),
     );
     this.name = "TimeoutError";
     this.method = method;
     this.timeoutMs = timeoutMs;
     if (hostCondition !== undefined) {
       this.hostCondition = hostCondition;
+    }
+    if (elapsedMs !== undefined) {
+      this.elapsedMs = elapsedMs;
     }
   }
 }
@@ -722,6 +738,11 @@ export class AeDriver {
     request: RequestEnvelope,
     timeoutMs: number,
   ): Promise<SettledCall> {
+    // Wall-clock origin for the timeout report: the budget covers the
+    // invoke and the result wait, and the post-timeout checks below can add
+    // real time on top — the error must say what the call actually took
+    // (#324).
+    const began = Date.now();
     // When #awaitResult produced an error outcome, its detail is kept for
     // the trace record: it carries the method, request id and timeout the
     // generic failure path cannot rebuild.
@@ -868,7 +889,12 @@ export class AeDriver {
         // A timeout is not a diagnosis. Before reporting it, ask what the
         // host looked like: a dead process, a live-but-blocked one, a modal
         // window the recovery saw, or honestly unknown.
-        failure = new TimeoutError(error.method, error.timeoutMs, this.#timeoutHostCondition(sawWindow));
+        failure = new TimeoutError(
+          error.method,
+          error.timeoutMs,
+          this.#timeoutHostCondition(sawWindow),
+          Date.now() - began,
+        );
       }
       const status: TraceStatus = failure instanceof TimeoutError ? "timeout" : "error";
       return {
