@@ -3,7 +3,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DialogWindow } from "../src/platform/recovery-policy.js";
-import { MacGuiProbe } from "../src/platform/darwin/gui-probe.js";
+import {
+  AX_SUSPECT_STARTUP_GRACE_MS,
+  MacGuiProbe,
+  parseElapsedMs,
+} from "../src/platform/darwin/gui-probe.js";
 import type { GuiAppState } from "../src/driver/gui-recovery.js";
 import {
   SupervisionMonitor,
@@ -108,6 +112,8 @@ describe("MacGuiProbe", () => {
           windowServer: { available: true, reason: null, windowCount: 2, onScreenCount: 1 },
         }),
       pidAlive: () => true,
+      // An unprovable age fails closed: no grace, blocking evidence now.
+      processAgeMs: () => null,
     });
     const snap = probe.observe();
     expect(snap.ok).toBe(true);
@@ -208,6 +214,7 @@ describe("MacGuiProbe", () => {
           ],
         }),
       pidAlive: () => true,
+      processAgeMs: () => null,
     });
     probe.observe();
     const snap = probe.observe();
@@ -218,9 +225,219 @@ describe("MacGuiProbe", () => {
       expect(snap.windows.filter((w) => w.title === "<unobservable window>")).toHaveLength(1);
     }
   });
+
+  it("defers axSuspect blocking evidence inside the startup grace, then blocks (#322)", () => {
+    // The AE 2027 first-launch shape: AX answers zero windows while the
+    // census lists several, for minutes while the process is still young.
+    let ageMs = 60_000;
+    const probe = new MacGuiProbe(42, {
+      listWindows: () =>
+        appState({
+          axSuspect: true,
+          windowServer: { available: true, reason: null, windowCount: 7, onScreenCount: 3 },
+        }),
+      pidAlive: () => true,
+      processAgeMs: () => ageMs,
+    });
+
+    // Inside the grace the suspect is degraded evidence only — no blocking
+    // window, so supervision can stay `running`.
+    const young = probe.observe();
+    expect(young.ok).toBe(true);
+    if (young.ok) {
+      expect(young.windows.some((w) => w.title === "<unobservable window>")).toBe(false);
+      expect(young.degraded?.join("\n")).toContain("startup grace");
+    }
+
+    // The grace is bounded by process age, not by observation count: the
+    // same persistent emptiness becomes blocking evidence the moment the
+    // process is older than the grace — finite time, never silent running.
+    ageMs = AX_SUSPECT_STARTUP_GRACE_MS;
+    const old = probe.observe();
+    expect(old.ok).toBe(true);
+    if (old.ok) {
+      const synthetic = old.windows.find((w) => w.title === "<unobservable window>");
+      expect(synthetic?.blocking).toBe(true);
+    }
+  });
+
+  it("recovers to a clean observation when AX populates inside the grace (#322)", () => {
+    let axEmpty = true;
+    const probe = new MacGuiProbe(42, {
+      listWindows: () =>
+        axEmpty
+          ? appState({
+              axSuspect: true,
+              windowServer: { available: true, reason: null, windowCount: 6, onScreenCount: 4 },
+            })
+          : appState({
+              windows: [
+                {
+                  title: "comp",
+                  role: "AXLayoutArea",
+                  subrole: "AXFloatingWindow",
+                  buttons: [],
+                  texts: [],
+                  frame: { x: 0, y: 0, width: 100, height: 100 },
+                },
+              ],
+            }),
+      pidAlive: () => true,
+      processAgeMs: () => 30_000,
+    });
+
+    const empty = probe.observe();
+    expect(empty.ok && empty.windows.length === 0).toBe(true);
+    axEmpty = false;
+    const populated = probe.observe();
+    expect(populated.ok).toBe(true);
+    if (populated.ok) {
+      expect(populated.windows).toHaveLength(1);
+      expect(populated.windows.some((w) => w.blocking)).toBe(false);
+      expect(populated.degraded ?? []).toHaveLength(0);
+    }
+  });
+
+  it("does not let the startup grace suppress the unaccounted-windows path (#321)", () => {
+    // Grace applies only to total AX emptiness (axSuspect). A young process
+    // whose AX lists windows but misses an on-screen census window must
+    // still confirm and report it exactly as before.
+    const unaccounted = [
+      {
+        pid: 42,
+        owner: "After Effects",
+        layer: 8,
+        onScreen: true,
+        name: "",
+        bounds: { x: 650, y: 185, width: 410, height: 342 },
+      },
+    ];
+    const probe = new MacGuiProbe(42, {
+      listWindows: () =>
+        appState({
+          windows: [
+            {
+              title: "main",
+              role: "AXLayoutArea",
+              subrole: "AXFloatingWindow",
+              buttons: [],
+              texts: [],
+              frame: { x: 0, y: 39, width: 1710, height: 1073 },
+            },
+          ],
+          axUnaccountedWindows: unaccounted,
+        }),
+      pidAlive: () => true,
+      processAgeMs: () => 10_000,
+    });
+
+    const first = probe.observe();
+    expect(first.ok && first.windows.some((w) => w.title === "<unobservable window>")).toBe(false);
+    const second = probe.observe();
+    expect(second.ok).toBe(true);
+    if (second.ok) {
+      expect(second.windows.some((w) => w.title === "<unobservable window>")).toBe(true);
+    }
+  });
+});
+
+describe("parseElapsedMs", () => {
+  it("parses ps etime output", () => {
+    expect(parseElapsedMs("00:00")).toBe(0);
+    expect(parseElapsedMs("03:25")).toBe(205_000);
+    expect(parseElapsedMs("01:02:03")).toBe(3_723_000);
+    expect(parseElapsedMs("03-18:40:36")).toBe((3 * 24 + 18) * 3_600_000 + 40 * 60_000 + 36_000);
+  });
+
+  it("rejects unrecognised input", () => {
+    expect(parseElapsedMs("")).toBeNull();
+    expect(parseElapsedMs("   ")).toBeNull();
+    expect(parseElapsedMs("abc")).toBeNull();
+    expect(parseElapsedMs("1:2:3:4")).toBeNull();
+    expect(parseElapsedMs("-05:00")).toBeNull();
+    expect(parseElapsedMs("soon")).toBeNull();
+  });
 });
 
 describe("SupervisionMonitor", () => {
+  it("stays running through launch-transient AX emptiness, then blocks when it persists (#322)", async () => {
+    const dir = tmpSession();
+    try {
+      let ageMs = 60_000;
+      let axEmpty = true;
+      const suspectState: GuiAppState = {
+        pid: 42,
+        frontmost: false,
+        windows: [],
+        windowServer: { available: true, reason: null, windowCount: 7, onScreenCount: 3 },
+        axSuspect: true,
+        axUnaccountedWindows: [],
+      };
+      const healthyState: GuiAppState = {
+        pid: 42,
+        frontmost: true,
+        windows: [
+          {
+            title: "comp",
+            role: "AXLayoutArea",
+            subrole: "AXFloatingWindow",
+            buttons: [],
+            texts: [],
+            frame: { x: 0, y: 0, width: 100, height: 100 },
+          },
+        ],
+        windowServer: { available: true, reason: null, windowCount: 1, onScreenCount: 1 },
+        axSuspect: false,
+        axUnaccountedWindows: [],
+      };
+      const probe = new MacGuiProbe(42, {
+        listWindows: () => (axEmpty ? suspectState : healthyState),
+        pidAlive: () => true,
+        processAgeMs: () => ageMs,
+      });
+      const started = SupervisionMonitor.start({
+        sessionDir: dir,
+        probe,
+        ownerId: "test-monitor",
+        pid: process.pid,
+        now: () => new Date("2026-01-01T00:00:00Z"),
+        sleep: async () => {},
+      });
+      expect(started.ok).toBe(true);
+      if (!started.ok) return;
+      const monitor = started.monitor;
+      try {
+        // Young process + empty AX: degraded observation, phase running —
+        // the launch-transient case that used to pin `blocked` for minutes.
+        await monitor.tick();
+        expect(monitor.phase).toBe("running");
+        const during = monitor.report();
+        if (during.status === "observed") {
+          expect(during.health).toBe("degraded");
+        }
+
+        // AX populates inside the grace: fully clean, health back to ok.
+        axEmpty = false;
+        await monitor.tick();
+        expect(monitor.phase).toBe("running");
+        const recovered = monitor.report();
+        if (recovered.status === "observed") {
+          expect(recovered.health).toBe("ok");
+        }
+
+        // Persistent emptiness past the grace still reaches `blocked`.
+        axEmpty = true;
+        ageMs = AX_SUSPECT_STARTUP_GRACE_MS + 1;
+        await monitor.tick();
+        expect(monitor.phase).toBe("blocked");
+      } finally {
+        monitor.stop();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("enters blocked on a blocking snapshot and resumes when clear", async () => {
     const dir = tmpSession();
     try {
