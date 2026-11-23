@@ -127,6 +127,27 @@ describe("what the accessibility query reports", () => {
     const parsed = parseUiListing(listing);
     expect(parsed.windows[1]?.texts).toEqual([]);
   });
+
+  it("reads the G frame record onto the window it follows (#321)", () => {
+    const parsed = parseUiListing(
+      [
+        "W||AXWindow|AXDialog",
+        "G|640,480|410,342",
+        "B|OK|||",
+        "W|Main|AXLayoutArea|AXFloatingWindow",
+        "G|0,39|1710,1073",
+      ].join("\n"),
+    );
+    expect(parsed.windows[0]?.frame).toEqual({ x: 640, y: 480, width: 410, height: 342 });
+    expect(parsed.windows[1]?.frame).toEqual({ x: 0, y: 39, width: 1710, height: 1073 });
+    // Buttons still attach to their own window.
+    expect(parsed.windows[0]?.buttons[0]?.title).toBe("OK");
+  });
+
+  it("leaves frame unset on a malformed G record — never a wrong match", () => {
+    const parsed = parseUiListing("W||AXWindow|AXDialog\nG|garbage\nG|1,2\n");
+    expect(parsed.windows[0]?.frame).toBeUndefined();
+  });
 });
 
 describe("what the recovery may press", () => {
@@ -207,6 +228,16 @@ describe("the GUI recovery", () => {
     expect(text).toContain("set expectedText to item 6 of argv");
     expect(text).toContain("contains expectedText then set found to true");
     expect(text).toContain('if not found then return "CHANGED"');
+  });
+
+  it("emits a G frame record for both the windows and UI-elements listings (#321)", () => {
+    // Census reconciliation needs every listed window's geometry; AE's
+    // real windows arrive through the UI-elements path, so both loops
+    // must emit `G|x,y|w,h`.
+    const text = LIST_WINDOWS_SCRIPT.join("\n");
+    expect(text.match(/set report to report & "G\|"/g)).toHaveLength(2);
+    expect(text).toContain("get position of w");
+    expect(text).toContain("get position of e");
   });
 
   it("cleans every label that goes into a listing line", () => {

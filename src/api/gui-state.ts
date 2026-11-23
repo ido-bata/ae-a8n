@@ -94,6 +94,7 @@ function toWindowReport(window: GuiWindowInfo, index: number): GuiWindowReport {
     texts: window.texts,
     buttons: window.buttons.map((button) => button.title),
     blocking: isBlockingWindow(window),
+    frame: window.frame ?? null,
     classification: classifyGuiWindow(window),
   };
 }
@@ -169,6 +170,12 @@ export function guiStateObservation(
     windows: state.windows.map((window, index) => toWindowReport(window, index + 1)),
     windowServer: state.windowServer,
     axSuspect: state.axSuspect,
+    axUnaccountedWindows: state.axUnaccountedWindows.map((ws) => ({
+      layer: ws.layer,
+      onScreen: ws.onScreen,
+      name: ws.name,
+      bounds: ws.bounds,
+    })),
     assessment: assessGuiWindows(state.windows),
     observedAt,
   };

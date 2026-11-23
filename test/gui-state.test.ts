@@ -66,6 +66,7 @@ function state(windows: readonly GuiWindowInfo[], over: Partial<GuiAppState> = {
       onScreenCount: windows.length,
     },
     axSuspect: false,
+    axUnaccountedWindows: [],
     ...over,
   };
 }
