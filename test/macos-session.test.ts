@@ -65,7 +65,7 @@ describe("the applications of the window server", () => {
   it("reads the pid, the user and the session of every application", () => {
     const apps = parseLsappinfo(listing);
     expect(apps).toEqual([
-      { name: "Finder", pid: 689, asid: 100021, uid: 501 },
+      { name: "Finder", pid: 689, asid: 100021, uid: 501, bundleId: "com.apple.finder" },
       { name: "Adobe After Effects 2026", pid: 4242, asid: 100040, uid: 502 },
       { name: "Helper", pid: 4243, asid: null, uid: -1 },
     ]);
