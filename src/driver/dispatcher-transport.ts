@@ -13,9 +13,15 @@
  * - It never launches or quits After Effects. The host must already be
  *   running with the dispatcher activated; `launch()` only prepares the
  *   channel and refuses while no dispatcher heartbeat is fresh.
- * - It cannot prove which After Effects process the dispatcher lives in.
- *   Ownership is always "attached"; `ae.call`, `hostEnvironment` and
- *   owned-only teardown refuse, exactly as for any unattested host.
+ * - It cannot prove which After Effects process the dispatcher lives in
+ *   by itself. Ownership is always "attached"; `ae.call`,
+ *   `hostEnvironment` and owned-only teardown refuse, exactly as for
+ *   any unattested host. The one exception is *observation* evidence:
+ *   when an owned `activateDispatcher()` delivery recorded which process
+ *   it proved the activation ran in (`provenance.json`, #294), and that
+ *   record still matches the live heartbeat and the OS process census,
+ *   `attestation()`/`hostPid()` may name that pid — for monitoring and
+ *   diagnostics only, never for ownership or GUI mutation.
  * - The channel is private to the OS user (0700 / verified ACLs), which
  *   stops other users — it is NOT same-user authentication. The token
  *   filters accidental writers, not a malicious process running as the
@@ -51,6 +57,20 @@ import {
   isDispatcherActivationScript,
 } from "./dispatcher-activation.js";
 import { HostUnavailableError } from "./driver.js";
+import {
+  readDispatcherProvenance,
+  type DispatcherProvenance,
+} from "./dispatcher-provenance.js";
+import {
+  listAppInstances,
+  type MacAppInstance,
+} from "./mac-session.js";
+import {
+  psProcesses,
+  sameProcess,
+  windowsProcesses,
+  type HostProcess,
+} from "./host-processes.js";
 import { readExtensionManifest, type ExtensionManifest } from "../extensions/manifest.js";
 import {
   channelAclVerdict,
@@ -137,6 +157,20 @@ export type DispatcherTransportOptions = {
    * would pass.
    */
   readonly expectedAeVersion?: string;
+  /**
+   * Test seam: the OS process census `attestation()` re-proves a recorded
+   * activation pid against (#294). Defaults to `windowsProcesses()` on
+   * win32 and `psProcesses()` elsewhere — the real host, never the
+   * `platform` target seam, because the census describes this machine.
+   */
+  readonly processes?: () => HostProcess[];
+  /**
+   * Test seam: the window-server app census `attestation()` uses to
+   * re-prove a recorded session (#294). Defaults to `listAppInstances()`
+   * (macOS `lsappinfo`); consulted only when the provenance record
+   * carries a session — Windows records carry none.
+   */
+  readonly appInstances?: () => MacAppInstance[];
 };
 
 /** What `state.json` says about the activated dispatcher. */
@@ -351,6 +385,8 @@ export class DispatcherTransport implements HostTransport {
   readonly #expectedInstance: string | undefined;
   readonly #hostScriptPath: string | undefined;
   readonly #expectedAeVersionParts: readonly number[] | undefined;
+  readonly #processes: (() => HostProcess[]) | undefined;
+  readonly #appInstances: (() => MacAppInstance[]) | undefined;
 
   #prepared = false;
   #token: string | null = null;
@@ -390,6 +426,8 @@ export class DispatcherTransport implements HostTransport {
       options.expectedAeVersion === undefined
         ? undefined
         : aeVersionParts(options.expectedAeVersion);
+    this.#processes = options.processes;
+    this.#appInstances = options.appInstances;
   }
 
   get channelDir(): string {
@@ -1231,22 +1269,157 @@ export class DispatcherTransport implements HostTransport {
   }
 
   /**
+   * The OS process census for this machine — `windowsProcesses()` on
+   * win32, `psProcesses()` elsewhere. Follows `process.platform`, never
+   * the `#platform` target seam: the census describes the host the
+   * channel lives on.
+   */
+  #hostProcesses(): HostProcess[] {
+    const list = this.#processes ?? (process.platform === "win32" ? windowsProcesses : psProcesses);
+    return list();
+  }
+
+  /**
+   * The After Effects process this session's dispatcher provably runs
+   * in, or null when nothing proves it (#294).
+   *
+   * Three independent facts must all hold; any one failing means
+   * "unattested", never a guess:
+   *
+   *   1. `provenance.json` exists and parses — written only by an owned
+   *      `activateDispatcher()` delivery, which knew the pid it started.
+   *      Its `host.platform` must be this machine's platform: a record
+   *      written elsewhere names a process that cannot exist here.
+   *   2. The answering heartbeat still reports the exact activation the
+   *      record is bound to (`instance` + `activatedAt` +
+   *      `activationNonce`). A human re-activation or a second AE taking
+   *      the channel over changes these and invalidates the record.
+   *      Freshness is deliberately NOT required: a stale heartbeat while
+   *      AE is wedged is exactly when supervision needs the pid.
+   *   3. The OS census still shows that pid as the same process — same
+   *      pid *and* start identity (`sameProcess`: Windows creation time,
+   *      POSIX start time within `ps`' one-second resolution). A reused
+   *      pid is a different process and attests nothing. When the record
+   *      carries a GUI session, the window-server census must still place
+   *      that pid in it — a session move fails closed the same way.
+   *
+   * What this is NOT: ownership. The record proves which process the
+   * activation ran in; it does not prove this session may mutate it.
+   * GUI mutation authority stays with the script transport's own
+   * attestation. A census or provenance that cannot be read fails
+   * closed to null.
+   */
+  #attestedHost(): {
+    readonly pid: number;
+    readonly sessionUid: number | null;
+    readonly sessionAsid: number | null;
+    readonly sessionUser: string | null;
+  } | null {
+    // Same lazy token load `status()` does: attestation must work for a
+    // transport that never ran prepare() itself.
+    this.#token ??= this.#storedToken();
+    let provenance: DispatcherProvenance | null;
+    try {
+      provenance = readDispatcherProvenance(this.#channelDir);
+    } catch {
+      // Unreadable or foreign provenance is "unusable", not "absent" —
+      // either way nothing may be attested from it.
+      return null;
+    }
+    if (provenance === null || provenance.host.platform !== process.platform) {
+      return null;
+    }
+    const beat = this.#readHeartbeat();
+    if (
+      beat === null ||
+      beat.instance !== provenance.instance ||
+      beat.activatedAt !== provenance.activatedAt ||
+      (beat.activationNonce ?? null) !== provenance.activationNonce
+    ) {
+      return null;
+    }
+    const known: HostProcess = {
+      pid: provenance.host.pid,
+      startedAt: provenance.host.startedAt,
+      executable: provenance.host.executable,
+      ...(provenance.host.identity === null
+        ? {}
+        : { identity: provenance.host.identity }),
+    };
+    let census: HostProcess[];
+    try {
+      census = this.#hostProcesses();
+    } catch {
+      return null;
+    }
+    if (!census.some((p) => sameProcess(process.platform, p, known))) {
+      return null;
+    }
+    // A recorded session must still be the process's session: the pid can
+    // survive a GUI-session move (fast user switching), and attesting the
+    // stale session would point supervision at a screen the process no
+    // longer owns. `ps` cannot see the login session, so the window
+    // server's app census answers it — same fail-closed rule as the
+    // pid check: unreadable or absent means unattested.
+    const session = provenance.session;
+    if (session !== null) {
+      if (session.asid === null) {
+        return null;
+      }
+      let apps: MacAppInstance[];
+      try {
+        apps = (this.#appInstances ?? listAppInstances)();
+      } catch {
+        return null;
+      }
+      const inSession = apps.some(
+        (app) =>
+          app.pid === provenance.host.pid &&
+          app.uid === session.uid &&
+          app.asid === session.asid,
+      );
+      if (!inSession) {
+        return null;
+      }
+    }
+    return {
+      pid: provenance.host.pid,
+      sessionUid: provenance.session?.uid ?? null,
+      sessionAsid: provenance.session?.asid ?? null,
+      sessionUser: provenance.session?.user ?? null,
+    };
+  }
+
+  /**
+   * The pid of the host process, when recorded activation provenance
+   * still proves it (#294). Diagnostics/monitoring evidence only —
+   * never authority for ownership or for addressing a process.
+   */
+  hostPid(): number | null {
+    return this.#attestedHost()?.pid ?? null;
+  }
+
+  /**
    * What the transport can attest: the dispatch executes inside an After
-   * Effects on this machine under this OS user (the private channel is the
-   * evidence), in "local" mode per ADR-0003. It cannot name a pid, a
-   * session, or the process — those stay null rather than borrowed.
+   * Effects on this machine under this OS user (the private channel is
+   * the evidence), in "local" mode per ADR-0003. The pid and GUI session
+   * are named only when recorded activation provenance still verifies
+   * against the live heartbeat and process census (#294); otherwise they
+   * stay null rather than borrowed.
    */
   attestation(): Partial<HostAttestation> {
+    const host = this.#attestedHost();
     return {
-      pid: null,
+      pid: host?.pid ?? null,
       ownedProcess: null,
       platform:
         this.#platform === "win32" || this.#platform === "darwin"
           ? { os: this.#platform, arch: "unknown" }
           : null,
       executionMode: "local",
-      sessionUid: null,
-      sessionAsid: null,
+      sessionUid: host?.sessionUid ?? null,
+      sessionAsid: host?.sessionAsid ?? null,
+      sessionUser: host?.sessionUser ?? null,
       targetInstance: this.#boundInstance,
     };
   }

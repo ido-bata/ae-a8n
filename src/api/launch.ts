@@ -14,6 +14,7 @@ import { join, resolve } from "node:path";
 
 import { AeDriver, HostUnavailableError, TimeoutError } from "../driver/driver.js";
 import {
+  currentSession,
   readGuiSession,
   readGuiSessionFailure,
   type MacSession,
@@ -493,23 +494,30 @@ export async function openAfterEffects(
     });
     session.supervision = supervision;
   } else if (process.platform === "darwin" && transport instanceof DispatcherTransport) {
-    // The dispatcher runs inside an After Effects process owned by this OS
-    // user, so OS census correlation (#294) can attribute it — and only it.
-    // A caller-supplied HostTransport may be remote or fake; attributing a
-    // local AE census to it would watch the wrong process, so the fallback
-    // is restricted to the transport that provably executes inside a local
-    // AE instance. The driver's own recovery path still requires
-    // `recoveryTarget()`, so a census-attributed monitor can report blocks
-    // but never press a button. Ambiguity (zero or several AE instances,
-    // session mismatch) yields no monitor and an honestly `unavailable`
-    // report.
-    const attributed = attributeAeByCensus();
-    if (attributed !== null) {
+    // Recorded activation provenance (#294) is the stronger evidence:
+    // an owned `activateDispatcher()` delivery named the exact process
+    // the dispatcher activated in — including when several AE instances
+    // share the machine, where census correlation below must fail
+    // closed. The attested pid is still observation only: the driver's
+    // recovery path keeps its own `recoveryTarget()` attestation, so a
+    // provenance-backed monitor can report blocks but never press a
+    // button. The session is the caller's own — the channel is private
+    // to this OS user, so the attested uid/asid must be it.
+    const attested = driver.hostAttestation();
+    const guiSession = currentSession();
+    if (
+      attested.pid !== null &&
+      attested.sessionUid !== null &&
+      attested.sessionAsid !== null &&
+      guiSession.kind === "Aqua" &&
+      guiSession.uid === attested.sessionUid &&
+      guiSession.asid === attested.sessionAsid
+    ) {
       supervision = SessionSupervision.start({
         sessionRoot,
-        pid: attributed.pid,
-        session: attributed.session,
-        verifyPid: attributed.verifyPid,
+        pid: attested.pid,
+        session: guiSession,
+        verifyPid: (pid) => driver.hostAttestation().pid === pid,
         pendingRequests: () => {
           const pending = driver.pendingRequest();
           return pending === null ? [] : [pending];
@@ -517,6 +525,33 @@ export async function openAfterEffects(
         trace,
       });
       session.supervision = supervision;
+    }
+    if (supervision === null) {
+      // The dispatcher runs inside an After Effects process owned by this
+      // OS user, so OS census correlation (#294) can attribute it — and
+      // only it. A caller-supplied HostTransport may be remote or fake;
+      // attributing a local AE census to it would watch the wrong process,
+      // so the fallback is restricted to the transport that provably
+      // executes inside a local AE instance. The driver's own recovery
+      // path still requires `recoveryTarget()`, so a census-attributed
+      // monitor can report blocks but never press a button. Ambiguity
+      // (zero or several AE instances, session mismatch) yields no
+      // monitor and an honestly `unavailable` report.
+      const attributed = attributeAeByCensus();
+      if (attributed !== null) {
+        supervision = SessionSupervision.start({
+          sessionRoot,
+          pid: attributed.pid,
+          session: attributed.session,
+          verifyPid: attributed.verifyPid,
+          pendingRequests: () => {
+            const pending = driver.pendingRequest();
+            return pending === null ? [] : [pending];
+          },
+          trace,
+        });
+        session.supervision = supervision;
+      }
     }
   }
   return { session, probe, extensionMethods };

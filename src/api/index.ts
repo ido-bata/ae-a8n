@@ -47,6 +47,7 @@ import {
   defaultDispatcherChannelDir,
   DispatcherTransport,
 } from "../driver/dispatcher-transport.js";
+import { recordDispatcherProvenance } from "../driver/dispatcher-provenance.js";
 import type { HostOwnership } from "../driver/transport.js";
 import { attachAfterEffects } from "./attach.js";
 import { openAfterEffects } from "./launch.js";
@@ -557,6 +558,39 @@ export class AfterEffects {
             "inspect `ae-a8n dispatcher status` before attaching",
           op,
         );
+      }
+      // Record which owned process the nonce proved the dispatcher
+      // activated in (#294): later attach sessions through this channel
+      // attest pid/session from this record — re-verified live against
+      // the heartbeat and the OS census — instead of reporting nothing.
+      // Evidence only: it never grants this session ownership of that
+      // process, and a failed write must not fail a proven activation.
+      const ownedHost = transport.ownedProcess();
+      if (ownedHost !== null) {
+        const targetSession = transport.targetSession;
+        try {
+          recordDispatcherProvenance(channelDir, {
+            host: ownedHost,
+            instance: beat.instance,
+            activatedAt: beat.activatedAt,
+            activationNonce: activation.nonce,
+            session:
+              targetSession === null
+                ? null
+                : {
+                    uid: targetSession.uid,
+                    asid: targetSession.asid,
+                    user: targetSession.username,
+                  },
+          });
+        } catch (error) {
+          this.#session.trace.record("session.dispatcherProvenance", "error", 0, {
+            error: {
+              name: error instanceof Error ? error.name : "Error",
+              message: errorMessage(error),
+            },
+          });
+        }
       }
       rmSync(deliveredPath, { force: true });
       deliveredPath = null;

@@ -126,11 +126,17 @@ export type NativeDispatchResult = {
   detail?: string;
 };
 
-/** Session-binding attestation the plug-in writes beside the result. */
+/**
+ * Session-binding attestation the plug-in writes beside the result.
+ * `pid` is present only when the plug-in can name the After Effects
+ * process it runs in; absent means unproven — never guessed client-side
+ * (#294).
+ */
 export type NativeHostAttestation = {
   plugin: string;
   pluginId: number;
   aeVersion: string;
+  pid?: number;
 };
 
 /** A collected result: the typed dispatch result plus who answered. */
@@ -140,13 +146,18 @@ export type NativeResultDelivery = {
   result: NativeDispatchResult;
 };
 
-/** `state.json` heartbeat written by the plug-in on its idle ticks. */
+/**
+ * `state.json` heartbeat written by the plug-in on its idle ticks.
+ * `pid` is the AE process the plug-in reports running in, when it can
+ * name one; absent means unproven (#294).
+ */
 export type NativeChannelState = {
   instance: string;
   pluginId: number;
   /** Epoch milliseconds of the last heartbeat write. */
   lastTick: number;
   aeVersion?: string;
+  pid?: number;
   allowlist: string[];
 };
 
@@ -768,6 +779,12 @@ export function readNativeChannelState(root: string): NativeChannelState | null 
   if (typeof doc.aeVersion === "string") {
     state.aeVersion = doc.aeVersion;
   }
+  /* pid is optional plug-in-reported evidence: surfaced only when it is
+     a valid pid, ignored otherwise — a malformed value must not
+     invalidate the heartbeat, and absence is never filled in. */
+  if (typeof doc.pid === "number" && Number.isInteger(doc.pid) && doc.pid > 0) {
+    state.pid = doc.pid;
+  }
   return state;
 }
 
@@ -1028,6 +1045,11 @@ function validateResultEnvelope(
       plugin: host.plugin,
       pluginId: host.pluginId,
       aeVersion: host.aeVersion,
+      // Optional plug-in-reported pid (#294): carried through only when
+      // valid; the client never derives one itself.
+      ...(typeof host.pid === "number" && Number.isInteger(host.pid) && host.pid > 0
+        ? { pid: host.pid }
+        : {}),
     },
     result: result as unknown as NativeDispatchResult,
   };
