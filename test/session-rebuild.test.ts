@@ -17,7 +17,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { openRebuiltSession, type RebuildDeps } from "../src/api/rebuild.js";
 import { AfterEffectsError } from "../src/api/errors.js";
-import { recordLaunchProvenance } from "../src/driver/launch-provenance.js";
+import { recordLaunchProvenance, type LaunchProvenance } from "../src/driver/launch-provenance.js";
+import { verifyRebuildHost } from "../src/driver/session-rebuild.js";
 import type { HostProcess } from "../src/driver/host-processes.js";
 import type { MacSession } from "../src/driver/mac-session.js";
 import { FakeAfterEffectsTransport } from "../src/testing/index.js";
@@ -408,5 +409,49 @@ describe("openRebuiltSession", () => {
     expect(reasons).toContain("verified rebuild");
     expect(reasons).toContain("rebuild failed");
     expect(["blocked", "needs-human"]).toContain(doc.phase);
+  });
+});
+
+describe("verifyRebuildHost on Windows scopes the census by install (#323)", () => {
+  const WIN_EXE = "D:\\4_apps\\adobe\\Adobe After Effects 2026\\Support Files\\AfterFX.exe";
+  const WIN_EXE_2027 = "C:\\Program Files\\Adobe\\Adobe After Effects 2027\\Support Files\\AfterFX.exe";
+  const provenance: LaunchProvenance = {
+    schema: "a8n.launch-provenance/v1",
+    recordedAt: "2026-11-01T00:00:00.000Z",
+    a8nVersion: "0.0.0-test",
+    transport: "script-invocation",
+    host: {
+      pid: OLD_PID,
+      startedAt: OLD_STARTED_AT,
+      identity: "2026-10-15T00:00:05.0000000Z",
+      executable: WIN_EXE,
+      platform: "win32",
+    },
+  };
+  const win = (pid: number, executable: string): HostProcess => ({
+    pid,
+    startedAt: T0 + 30_000,
+    executable,
+    identity: `id-${pid}`,
+  });
+  const check = (processes: readonly HostProcess[]) =>
+    verifyRebuildHost({ platform: "win32", provenance, processes, sessionUid: 0 });
+
+  it("does not count another version's AfterFX.exe as a sibling instance", () => {
+    const verdict = check([win(46800, WIN_EXE_2027)]);
+    expect(verdict.ok).toBe(true);
+  });
+
+  it("still refuses on a second instance of the SAME install", () => {
+    const verdict = check([win(2222, WIN_EXE)]);
+    expect(verdict.ok).toBe(false);
+    if (!verdict.ok) {
+      expect(verdict.reason).toMatch(/other instance/i);
+    }
+  });
+
+  it("still refuses on an AfterFX.exe whose image path is unreadable", () => {
+    const verdict = check([win(77, "")]);
+    expect(verdict.ok).toBe(false);
   });
 });

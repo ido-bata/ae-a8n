@@ -33,6 +33,7 @@ import {
   psProcesses,
   sameProcess,
   windowsProcesses,
+  windowsSameInstall,
   type HostProcess,
 } from "./host-processes.js";
 import type { PendingRequest } from "../supervision/types.js";
@@ -57,10 +58,13 @@ export type RebuildHostVerdict =
  * enough to count as "another instance of the same After Effects".
  *
  * macOS compares full paths (the transport scopes further by uid, applied
- * by the caller's filter). Windows script delivery hands `-r` to *any*
- * AfterFX.exe, so every AfterFX.exe image counts as in-scope — the same
- * conservatism `ScriptInvocationTransport` applies. Other platforms match
- * the recorded executable path only.
+ * by the caller's filter). Windows scopes by install directory: `-r`
+ * delivery is per install, so another version's AfterFX.exe is a different
+ * product, not a sibling instance (#323) — the same rule
+ * `ScriptInvocationTransport` applies. An image path Windows would not
+ * reveal, or an install path of unrecognized shape, stays in scope:
+ * neither can be proven foreign. Other platforms match the recorded
+ * executable path only.
  */
 function isInstallInstance(
   candidate: HostProcess,
@@ -71,7 +75,7 @@ function isInstallInstance(
     return true;
   }
   if (platform === "win32") {
-    return /afterfx\.exe$/i.test(candidate.executable.trim());
+    return windowsSameInstall(candidate.executable, recordedExecutable) !== false;
   }
   return false;
 }
