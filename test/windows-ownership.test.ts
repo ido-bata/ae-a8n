@@ -16,6 +16,7 @@ import {
   ScriptInvocationTransport,
   parseWindowsProcessList,
   windowsProcesses,
+  windowsSameInstall,
   type HostProcess,
   type SpawnLauncher,
 } from "../src/driver/script-invocation.js";
@@ -60,7 +61,19 @@ function launcherSequence(pids: number[]): SpawnLauncher {
 }
 
 /** Sees `lists[0]` at launch, `lists[1]` at confirmation, and so on; the last repeats. */
-function transportSeeing(spawnedPid: number | undefined, ...lists: HostProcess[][]): ScriptInvocationTransport {
+function transportSeeing(
+  spawnedPid: number | undefined,
+  ...lists: HostProcess[][]
+): ScriptInvocationTransport {
+  return transportSeeingInstall(install, spawnedPid, ...lists);
+}
+
+/** `transportSeeing` against a caller-named install. */
+function transportSeeingInstall(
+  install: { executable: string; versionName: string; renderExecutable: string | null },
+  spawnedPid: number | undefined,
+  ...lists: HostProcess[][]
+): ScriptInvocationTransport {
   let i = 0;
   return new ScriptInvocationTransport({
     platform: "win32",
@@ -97,11 +110,15 @@ describe("Windows ownership", () => {
     expect(t.ownership()).toMatchObject({ kind: "attached" });
   });
 
-  it("is attached even if the pre-existing AE is a different install's", async () => {
-    // Another instance may be what `-r` is handed to; never claim the machine.
+  it("is owned even while a different install's AE runs: -r is never handed to it (#323)", async () => {
+    // AE 2025 running beside the AE 2026 this session starts is a different
+    // product, not a sibling instance: the foreign process is out of scope,
+    // so the spawned host is provably ours and close() may quit it — while
+    // the foreign AE is never named as this install's host.
     const other = ae(7, T0 - 60_000, "C:\\Adobe\\Adobe After Effects 2025\\Support Files\\AfterFX.exe");
     const t = await started(transportSeeing(42, [other], [other, ae(42)], [other, ae(42)]));
-    expect(t.ownership().kind).toBe("attached");
+    expect(t.ownership().kind).toBe("owned");
+    expect(t.recoveryTargetPid()).toBe(42);
   });
 
   it("is unknown when two AEs appear at start", async () => {
@@ -167,6 +184,102 @@ describe("Windows ownership", () => {
   it("stops owning when the process it started is gone", async () => {
     const t = await started(transportSeeing(42, [], [ae(42)], []));
     expect(t.ownership().kind).toBe("unknown");
+  });
+});
+
+describe("a second AfterFX.exe of another version is out of scope (#323)", () => {
+  // The real-host shape: AE 2026 pinned by installDir on D:, AE 2027 already
+  // running from Program Files. Only the image path tells them apart.
+  const EXE_2026 = "D:\\4_apps\\adobe\\Adobe After Effects 2026\\Support Files\\AfterFX.exe";
+  const EXE_2027 = "C:\\Program Files\\Adobe\\Adobe After Effects 2027\\Support Files\\AfterFX.exe";
+  const install2026 = { executable: EXE_2026, versionName: "Adobe After Effects 2026", renderExecutable: null };
+  const ae2027 = (pid: number): HostProcess =>
+    ae(pid, T0 - 3_600_000, EXE_2027, `t${T0 - 3_600_000}`, 1);
+
+  it("owns the spawned AE 2026 and reports it as the recovery target while AE 2027 runs", async () => {
+    const foreign = ae2027(46800);
+    const ours = ae(42, T0 + 1_000, EXE_2026);
+    const t = await started(
+      transportSeeingInstall(install2026, 42, [foreign], [foreign, ours], [foreign, ours]),
+    );
+    expect(t.ownership().kind).toBe("owned");
+    // The supervision gate: the pid must be provable on every re-read, not
+    // just once — a foreign AfterFX.exe in the census must not count.
+    expect(t.recoveryTargetPid()).toBe(42);
+    expect(t.ownership().evidence).not.toContain("46800");
+  });
+
+  it("stays attached to a same-install AE that was already running, foreign version aside", async () => {
+    const foreign = ae2027(46800);
+    const running = ae(7, T0 - 60_000, EXE_2026);
+    const t = await started(
+      transportSeeingInstall(install2026, 99, [foreign, running], [foreign, running], [foreign, running]),
+    );
+    expect(t.ownership().kind).toBe("attached");
+    // Attached is never a recovery target: the pid is not this session's.
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("is still ambiguous when a second instance of the SAME install runs", async () => {
+    const foreign = ae2027(46800);
+    const sibling = ae(43, T0 + 2_000, EXE_2026);
+    const t = await started(
+      transportSeeingInstall(install2026, 42, [foreign], [foreign, ae(42, T0 + 1_000, EXE_2026), sibling], [foreign, ae(42, T0 + 1_000, EXE_2026), sibling]),
+    );
+    expect(t.ownership().kind).toBe("unknown");
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("still counts an AfterFX.exe whose image path Windows would not reveal", async () => {
+    // "" cannot be proven foreign — it may be this install's elevated AE —
+    // so it keeps the census ambiguous rather than being guessed away.
+    const foreign = ae2027(46800);
+    const unreadable = ae(77, T0 + 5_000, "", "unreadable", 1);
+    const ours = ae(42, T0 + 1_000, EXE_2026);
+    const t = await started(
+      transportSeeingInstall(install2026, 42, [foreign], [foreign, ours, unreadable], [foreign, ours, unreadable]),
+    );
+    expect(t.ownership().kind).toBe("unknown");
+    expect(t.recoveryTargetPid()).toBeNull();
+  });
+
+  it("does not let another version's -r launcher count as a sibling", async () => {
+    // A foreign -r shows as a second AfterFX.exe under the foreign install;
+    // out of scope before the launcher-pid exclusion is even consulted.
+    const foreign = ae2027(46800);
+    const foreignLauncher = ae(46801, T0 + 5_000, EXE_2027, "foreign-launcher", SELF);
+    const ours = ae(42, T0 + 1_000, EXE_2026);
+    const t = await started(
+      transportSeeingInstall(install2026, 42, [foreign], [foreign, ours], [foreign, foreignLauncher, ours]),
+    );
+    expect(t.ownership().kind).toBe("owned");
+    expect(t.recoveryTargetPid()).toBe(42);
+  });
+});
+
+describe("windowsSameInstall", () => {
+  const installExe = "D:\\4_apps\\adobe\\Adobe After Effects 2026\\Support Files\\AfterFX.exe";
+
+  it("accepts an image under the install directory, case and slash tolerant", () => {
+    expect(
+      windowsSameInstall("d:/4_apps/adobe/adobe after effects 2026/support files/afterfx.exe", installExe),
+    ).toBe(true);
+  });
+
+  it("rejects another version's AfterFX.exe", () => {
+    expect(
+      windowsSameInstall("C:\\Program Files\\Adobe\\Adobe After Effects 2027\\Support Files\\AfterFX.exe", installExe),
+    ).toBe(false);
+    // A prefix sibling is not the install: the directory boundary matters.
+    expect(
+      windowsSameInstall("D:\\4_apps\\adobe\\Adobe After Effects 2026 Beta\\Support Files\\AfterFX.exe", installExe),
+    ).toBe(false);
+  });
+
+  it("answers null — undecidable, fail closed — for an unreadable image or unplaceable install", () => {
+    expect(windowsSameInstall("", installExe)).toBeNull();
+    expect(windowsSameInstall("   ", installExe)).toBeNull();
+    expect(windowsSameInstall("D:\\x\\AfterFX.exe", "D:\\x\\AfterFX.exe")).toBeNull();
   });
 });
 

@@ -75,6 +75,7 @@ import {
   sameWindowsPath,
   summariseProcessOutput,
   windowsProcesses,
+  windowsSameInstall,
   type HostProcess,
 } from "./host-processes.js";
 
@@ -86,6 +87,7 @@ export {
   sameWindowsPath,
   summariseProcessOutput,
   windowsProcesses,
+  windowsSameInstall,
 } from "./host-processes.js";
 export type { HostProcess } from "./host-processes.js";
 
@@ -1258,7 +1260,14 @@ export class ScriptInvocationTransport implements HostTransport {
     if (this.#preexisting.length > 0) {
       this.#ownershipAtLaunch = {
         kind: "attached",
-        evidence: `already running before launch: pid ${this.#preexisting.map((p) => p.pid).join(", ")}`,
+        // The image path rides along so the evidence names *which* install's
+        // After Effects was already running — on Windows the census can hold
+        // another version's AfterFX.exe beside this install's (#323).
+        evidence:
+          `already running before launch: ` +
+          this.#preexisting
+            .map((p) => `pid ${p.pid} (${p.executable.trim() === "" ? "image path unreadable" : p.executable})`)
+            .join(", "),
       };
       return;
     }
@@ -1323,23 +1332,23 @@ export class ScriptInvocationTransport implements HostTransport {
       if (!sameWindowsPath(only.executable, this.#install.executable)) {
         this.#ownershipAtLaunch = {
           kind: "unknown",
-          evidence: `the only AfterFX.exe (pid ${only.pid}) is ${only.executable || "of unreadable path"}, not ${this.#install.executable}`,
+          evidence: `the only in-scope AfterFX.exe (pid ${only.pid}) is ${only.executable || "of unreadable path"}, not ${this.#install.executable}`,
         };
         return;
       }
       // Without the pid of the process this transport spawned, "the only
-      // AfterFX.exe" could be anyone's, so nothing is claimed.
+      // in-scope AfterFX.exe" could be anyone's, so nothing is claimed.
       if (this.#spawnedPid === undefined) {
         this.#ownershipAtLaunch = {
           kind: "unknown",
-          evidence: `the launcher reported no pid, so the only AfterFX.exe (pid ${only.pid}) cannot be tied to this session`,
+          evidence: `the launcher reported no pid, so the only in-scope AfterFX.exe (pid ${only.pid}) cannot be tied to this session`,
         };
         return;
       }
       if (this.#spawnedPid !== only.pid) {
         this.#ownershipAtLaunch = {
           kind: "unknown",
-          evidence: `the only AfterFX.exe is pid ${only.pid}, not pid ${this.#spawnedPid}, which this session started`,
+          evidence: `the only in-scope AfterFX.exe is pid ${only.pid}, not pid ${this.#spawnedPid}, which this session started`,
         };
         return;
       }
@@ -1421,12 +1430,26 @@ export class ScriptInvocationTransport implements HostTransport {
     if (this.#platform !== "win32") {
       return all.filter((p) => p.executable === this.#install.executable);
     }
+    // Windows: only images under this install's own directory are this
+    // install's instances. `-r` delivery spawns this install's
+    // AfterFX.exe, and an instance of another version is a different
+    // product it is never handed to — counting every AfterFX.exe made
+    // any multi-version machine look ambiguous, so `now.length === 1`
+    // could never hold and supervision never started (#323).
+    // `windowsSameInstall` answers null for an image path Windows would
+    // not reveal and for an install shape it cannot place: neither can
+    // be proven foreign, so both still count — fail closed.
+    const installExecutable = this.#install.executable;
     // A `-r` launcher shows as a second AfterFX.exe for 0.3-0.7 s (measured) and
     // would make a quit right after a call look like "two instances". Only a
     // process this one spawned (known pid) and that is still its child is left
     // out; the AE this transport started is never one of them, and a stranger
     // that merely reuses a launcher's pid has another parent and still counts.
-    return all.filter((p) => !(p.parentPid === this.#selfPid && this.#launcherPids.has(p.pid)));
+    return all.filter(
+      (p) =>
+        windowsSameInstall(p.executable, installExecutable) !== false &&
+        !(p.parentPid === this.#selfPid && this.#launcherPids.has(p.pid)),
+    );
   }
 
   async invoke(entryScriptPath: string, options: InvokeOptions = {}): Promise<void> {
