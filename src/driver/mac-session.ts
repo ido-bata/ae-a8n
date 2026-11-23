@@ -38,12 +38,20 @@ export type MacSession = {
 
 /** A running application that owns a GUI connection. */
 export type MacAppInstance = {
-  /** The application name as the window server knows it (`Adobe After Effects 2026`). */
+  /** The application name as the window server knows it (`After Effects`). */
   readonly name: string;
   readonly pid: number;
   readonly uid: number;
   /** The login session id the application lives in. */
   readonly asid: number | null;
+  /**
+   * The bundle identifier when `lsappinfo` reports one
+   * (`com.adobe.AfterEffects.application`). Helpers that merely mention
+   * "After Effects" in their name — e.g. Safari autofill helpers — carry
+   * unrelated bundle ids, which is what lets census attribution tell the
+   * real application apart from its bystanders.
+   */
+  readonly bundleId?: string;
 };
 
 export class MacSessionError extends Error {
@@ -92,10 +100,17 @@ export function parseLaunchctlGuiSession(text: string): { asid: number | null; k
 export function parseLsappinfo(text: string): MacAppInstance[] {
   const apps: MacAppInstance[] = [];
   let name: string | null = null;
+  let bundleId: string | undefined;
   for (const line of text.split("\n")) {
     const header = /^\s*\d+\) "(.*)" ASN:/.exec(line);
     if (header !== null) {
       name = header[1] as string;
+      bundleId = undefined;
+      continue;
+    }
+    const bundle = /^\s*bundleID="([^"]*)"/.exec(line);
+    if (bundle !== null) {
+      bundleId = bundle[1];
       continue;
     }
     const entry = /^\s*pid = (\d+)(?: token=\[sess=(\d+) pid=\d+ uid:(\d+))?/.exec(line);
@@ -107,6 +122,7 @@ export function parseLsappinfo(text: string): MacAppInstance[] {
       pid: Number(entry[1]),
       asid: entry[2] === undefined ? null : Number(entry[2]),
       uid: entry[3] === undefined ? -1 : Number(entry[3]),
+      ...(bundleId === undefined || bundleId === "" ? {} : { bundleId }),
     });
   }
   return apps;

@@ -100,4 +100,34 @@ describe("attributeAeByCensus (#294)", () => {
       attribute(lister([app({ name: "Adobe Photoshop 2026" })])),
     ).toBeNull();
   });
+
+  it("does not count helpers that merely mention After Effects in their name", () => {
+    // Real-host observation: Safari autofill helpers are named
+    // "自動入力（After Effects）" and would previously inflate the
+    // candidate count into a false ambiguity — or worse, be attributed.
+    const result = attribute(
+      lister([
+        app({ name: "After Effects", bundleId: "com.adobe.AfterEffects.application" }),
+        app({
+          name: "自動入力（After Effects）",
+          pid: 64632,
+          bundleId: "com.apple.SafariPlatformSupport.Helper",
+        }),
+        app({
+          name: "Adobe TeamProjectsLocalHub 2027",
+          pid: 64613,
+          bundleId: "com.adobe.TeamProjectsLocalHub.application",
+        }),
+      ]),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.pid).toBe(1234);
+  });
+
+  it("a non-AE bundle id disqualifies even an AE-looking name", () => {
+    const result = attribute(
+      lister([app({ name: "After Effects", bundleId: "com.example.Impostor" })]),
+    );
+    expect(result).toBeNull();
+  });
 });

@@ -489,15 +489,17 @@ export async function openAfterEffects(
       },
     });
     session.supervision = supervision;
-  } else if (process.platform === "darwin") {
-    // Transports that cannot self-report a pid (dispatcher, native channel)
-    // fall back to OS census correlation (#294): the channel runs inside an
-    // AE process owned by this OS user, so exactly one AE app instance in
-    // this Aqua session is attributable — and only for observation. The
-    // driver's own recovery path still requires `recoveryTarget()`, so a
-    // census-attributed monitor can report blocks but never press a button.
-    // Ambiguity (zero or several AE instances, session mismatch) yields no
-    // monitor and an honestly `unavailable` report.
+  } else if (process.platform === "darwin" && transport instanceof DispatcherTransport) {
+    // The dispatcher runs inside an After Effects process owned by this OS
+    // user, so OS census correlation (#294) can attribute it — and only it.
+    // A caller-supplied HostTransport may be remote or fake; attributing a
+    // local AE census to it would watch the wrong process, so the fallback
+    // is restricted to the transport that provably executes inside a local
+    // AE instance. The driver's own recovery path still requires
+    // `recoveryTarget()`, so a census-attributed monitor can report blocks
+    // but never press a button. Ambiguity (zero or several AE instances,
+    // session mismatch) yields no monitor and an honestly `unavailable`
+    // report.
     const attributed = attributeAeByCensus();
     if (attributed !== null) {
       supervision = SessionSupervision.start({

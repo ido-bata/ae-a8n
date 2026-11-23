@@ -69,8 +69,29 @@ export type CensusAttribution = {
   readonly verifyPid: (pid: number) => boolean;
 };
 
+/**
+ * The After Effects bundle id family (`com.adobe.AfterEffects.application`
+ * on observed hosts). Bundle id is the strong signal: processes that only
+ * *mention* After Effects — autofill helpers, hubs — carry unrelated ids.
+ */
+const AE_BUNDLE_ID = "com.adobe.AfterEffects";
+
+/**
+ * Whether a census entry is the After Effects application itself.
+ *
+ * With a bundle id the prefix decides. Without one (older parsers, test
+ * fixtures) the name must *start* with the app name — "After Effects" or
+ * "Adobe After Effects <version>" — so "自動入力（After Effects）"-style
+ * helpers that merely contain the words do not count.
+ */
 function isAeAppInstance(app: MacAppInstance): boolean {
-  return /\bafter effects\b/i.test(app.name);
+  if (app.bundleId !== undefined) {
+    return (
+      app.bundleId === AE_BUNDLE_ID ||
+      app.bundleId.startsWith(`${AE_BUNDLE_ID}.`)
+    );
+  }
+  return /^(?:adobe\s+)?after effects\b/i.test(app.name.trim());
 }
 
 /**
@@ -162,6 +183,12 @@ export class SessionSupervision {
         session: options.session,
         pid: options.pid,
         verifyProcess: verifyPid,
+        // Observation only: this instance exists to feed `listWindows()` to
+        // the probe and never presses anything, so the console-session
+        // mutation guard must not silence it — the console session is the
+        // common case a supervised AE lives in. Same allowance as
+        // `ae.guiState()`.
+        allowConsoleSession: true,
       });
     } catch {
       return null;
