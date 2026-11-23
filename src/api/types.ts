@@ -345,7 +345,8 @@ export type LaunchOptions = {
    */
   readonly authorization?: SessionAuthorization;
   /**
-   * The macOS login session the After Effects lives in.
+   * The login session the After Effects lives in (macOS); on Windows the
+   * interactive session this process measured.
    *
    * The default is the session this process runs in. A test that runs inside
    * an isolated OS user's session names that user here: the Apple Event is
@@ -357,7 +358,15 @@ export type LaunchOptions = {
    * operation that timed out is never sent again.
    */
   readonly session?: {
-    /** The OS user whose login session owns the After Effects. */
+    /**
+     * The OS user whose login session owns the After Effects (macOS).
+     *
+     * On Windows this field is not consulted: there is no per-user login
+     * session to name — `session.recover` acts in the interactive session
+     * this process measured, which is the session `AfterFX.exe -r`
+     * delivery also runs in. It stays required so the option shape is the
+     * same on every platform; pass any positive integer.
+     */
     readonly uid: number;
     /**
      * Whether a modal dialog may be closed by GUI automation when it blocks

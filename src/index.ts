@@ -255,6 +255,16 @@ export {
   type RecoveryWindowChoice,
 } from "./driver/recovery.js";
 export {
+  createHostRecovery,
+  type CreateHostRecoveryOptions,
+  type HostRecoveryTarget,
+} from "./driver/host-recovery.js";
+export {
+  WindowsHostRecovery,
+  type WindowsHostRecoveryOptions,
+} from "./driver/windows-host-recovery.js";
+export type { WindowsGuiSession } from "./driver/windows-gui-recovery.js";
+export {
   listAppInstances,
   MacSessionError,
   parseLsappinfo,

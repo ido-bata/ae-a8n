@@ -44,10 +44,12 @@
  *     pressed is the caller's policy (`chooseRecoveryWindow` and the
  *     measured-class taxonomy); on Windows today every class is
  *     unmeasured, so every blocking window is quarantine/report-only.
- *   - It is not wired into `HostRecovery` or the Windows adapter yet —
- *     see the PR for #283. Attached/read-only targets are refused at
- *     construction (`attached: true`), so observation-only consumers can
- *     never gain mutation through this class.
+ *   - `WindowsHostRecovery` (`windows-host-recovery.ts`) is the
+ *     `HostRecovery` wiring: it feeds this listing through the shared
+ *     `chooseRecoveryWindow` policy, so the measured-class gate applies
+ *     unchanged. Attached/read-only targets are refused at construction
+ *     (`attached: true`), so observation-only consumers can never gain
+ *     mutation through this class.
  */
 
 import { errorMessage } from "../errors.js";
@@ -133,10 +135,10 @@ export type WindowsGuiAppState = {
  * is written against. `role` carries the Win32 class name and `subrole`
  * the UIA control type — the closest honest analogs of AX role/subrole.
  *
- * Note for the future wiring: `isBlockingWindow` reads AX role words
- * ("dialog", "sheet", "alert") and will NOT recognise `#32770`; the
- * Windows blocking verdict lives on `WindowsGuiWindow.blocking`. A policy
- * adapter must carry that verdict across rather than re-deriving it.
+ * `blocking` carries the census verdict (`isBlockingWindowsWindow`)
+ * across: `isBlockingWindow` honours an explicit verdict, so the shared
+ * policy sees Windows windows exactly as the census measured them rather
+ * than re-deriving modality from AX role words that do not exist here.
  */
 export function windowsGuiWindowToGuiInfo(window: WindowsGuiWindow): GuiWindowInfo {
   return {
@@ -144,6 +146,7 @@ export function windowsGuiWindowToGuiInfo(window: WindowsGuiWindow): GuiWindowIn
     role: window.className === "" ? "Window" : window.className,
     subrole: window.controlType,
     texts: window.texts,
+    blocking: window.blocking,
     buttons: window.buttons.map((button) => ({
       title: button.title,
       description: "",
