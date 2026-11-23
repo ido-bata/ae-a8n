@@ -34,6 +34,7 @@ import {
   type SupervisionReport,
 } from "../supervision/index.js";
 import type { PendingRequest } from "../supervision/types.js";
+import type { SupervisionEvent } from "../supervision/machine.js";
 
 export type SessionSupervisionOptions = {
   /** The driver's session root — the same directory supervision state lives in. */
@@ -225,6 +226,25 @@ export class SessionSupervision {
   /** The live phase, for callers that only need the headline. */
   get phase(): string {
     return this.#monitor.phase;
+  }
+
+  /**
+   * Apply a supervision event outside the monitor's tick loop (#286) —
+   * the rebuild path records its recovery transitions through here so the
+   * durable document and the live monitor never disagree. Returns whether
+   * the machine accepted the transition.
+   */
+  dispatch(event: SupervisionEvent): boolean {
+    return this.#monitor.dispatch(event);
+  }
+
+  /**
+   * Replace the pending-request list (#286): rebuild reconciliation marks
+   * crashed-session requests resolved-or-unknown, which the tick merge
+   * cannot express.
+   */
+  setPendingRequests(requests: readonly PendingRequest[]): void {
+    this.#monitor.setPendingRequests(requests);
   }
 
   /** Stop monitoring and release the lease. Idempotent. */

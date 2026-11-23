@@ -50,6 +50,7 @@ import {
 import type { HostOwnership } from "../driver/transport.js";
 import { attachAfterEffects } from "./attach.js";
 import { openAfterEffects } from "./launch.js";
+import { openRebuiltSession } from "./rebuild.js";
 import {
   grantedScopes,
   requireAuthorized,
@@ -71,6 +72,7 @@ import type {
   LaunchOptions,
   OpenProjectOptions,
   OperationOptions,
+  RebuildOptions,
   ResumeOptions,
   ProjectInfo,
   SessionDiagnostics,
@@ -217,6 +219,42 @@ export class AfterEffects {
     }
     const opened = await openAfterEffects({ ...options, sessionRoot }, provenance, "session.resume");
     return new AfterEffects(opened.session, opened.probe, opened.extensionMethods);
+  }
+
+  /**
+   * Rebuilds the session `options.sessionRoot` names after its owned
+   * After Effects process is proven gone (#286,
+   * `specs/gui-supervision/spec.md` US5).
+   *
+   * Unlike `resume` — which rebinds to a host that is still running —
+   * `rebuild` relaunches After Effects through the ordinary launch path,
+   * and only after every proof holds:
+   *
+   *   - the durable supervision document shows `blocked` with host
+   *     `process-gone` (a quarantined or needs-human session refuses);
+   *   - no live monitor still observes the dead pid;
+   *   - launch provenance proves an earlier session *owned* the host —
+   *     attached and unknown sessions have none and are never restarted;
+   *   - a fresh process census proves the recorded pid+start identity is
+   *     gone and that no other instance of the install is running;
+   *   - on macOS the target uid still has an Aqua login session.
+   *
+   * The launch itself re-proves pid identity, single instance, readiness
+   * and provenance, and ownership is verified *again* afterwards: anything
+   * short of `owned` fails closed — the instance is left running
+   * untouched, never quit, because it may hold someone else's unsaved
+   * work. Pending requests the crashed session left behind are reconciled
+   * against their recorded results and otherwise stay `unknown`; nothing
+   * is ever resent.
+   *
+   * The supervision document records the whole recovery
+   * (`recovering` → `resumed`, or the phase a live monitor already moved
+   * it to), and the returned session's `supervisionState()` is the same
+   * durable report every other client reads.
+   */
+  static async rebuild(options: RebuildOptions): Promise<AfterEffects> {
+    const rebuilt = await openRebuiltSession(options);
+    return new AfterEffects(rebuilt.session, rebuilt.probe, rebuilt.extensionMethods);
   }
 
   /**

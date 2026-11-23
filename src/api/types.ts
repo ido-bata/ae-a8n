@@ -447,6 +447,40 @@ export type ResumeOptions = Omit<LaunchOptions, "sessionRoot"> & {
   readonly sessionRoot: string;
 };
 
+/**
+ * Options for `AfterEffects.rebuild` (#286): the same session shape as
+ * `resume` — `sessionRoot` is required and names the directory the crashed
+ * session used, which holds both the supervision state that proved
+ * `process-gone` and the launch-provenance record that proved ownership.
+ * Rebuild relaunches After Effects through the ordinary launch path; it
+ * never attaches to, kills, or mutates a process it cannot prove was the
+ * owned one.
+ */
+export type RebuildOptions = ResumeOptions;
+
+/**
+ * What `AfterEffects.rebuild` did, for the caller and the trace. The
+ * returned `AfterEffects` session is the authority on the new host; this
+ * report is the audit of the transition itself.
+ */
+export type SessionRebuildReport = {
+  /** The pid the launch-provenance record named before the crash. */
+  readonly previousPid: number;
+  /** The pid the rebuilt session proved it owns, when one was proven. */
+  readonly pid: number | null;
+  /**
+   * The supervision phase after the rebuild was recorded — `resumed` when
+   * the machine accepted recovery success, or whatever the monitor had
+   * already moved the session to (e.g. `blocked` behind a crash-repair
+   * dialog the rebuilt AE is showing).
+   */
+  readonly phase: string | null;
+  /** Pending requests whose recorded result proved an outcome. */
+  readonly pendingResolved: number;
+  /** Pending requests left `unknown` — never resent. */
+  readonly pendingUnknown: number;
+};
+
 /*
  * Read-only GUI observation (#109).
  *

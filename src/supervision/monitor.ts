@@ -165,6 +165,35 @@ export class SupervisionMonitor {
     await this.#tick();
   }
 
+  /**
+   * Apply one supervision event outside the tick loop and publish the
+   * result (#286). Recovery actions — a verified session rebuild recording
+   * `recovery-started`/`recovery-succeeded`/`recovery-failed` — are driven
+   * by the caller, not by observation, so they enter through here rather
+   * than waiting for the next tick. Refused transitions change nothing
+   * and return false; the machine's own rules decide what is legal.
+   */
+  dispatch(event: SupervisionEvent): boolean {
+    const before = this.#doc;
+    this.#apply(event);
+    if (this.#doc === before) {
+      return false;
+    }
+    this.#publish();
+    return true;
+  }
+
+  /**
+   * Replace the pending-request list and publish (#286). Used by rebuild
+   * reconciliation: requests proven resolved leave the list, unproven ones
+   * are marked `unknown` — the monitor's own tick merge only *adds* the
+   * live driver's in-flight request, so it cannot express this.
+   */
+  setPendingRequests(requests: readonly PendingRequest[]): void {
+    this.#doc = { ...this.#doc, pendingRequests: requests };
+    this.#publish();
+  }
+
   /** Stop the loop and release the lease. Idempotent. */
   stop(): void {
     this.#stopped = true;
