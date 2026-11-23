@@ -7,7 +7,7 @@
 ## 1. Commands
 
 ```text
-ae-a8n doctor   [--json] [--target <name>] [--verbose]
+ae-a8n doctor   [--json] [--target <name>] [--verbose] [--session-root <dir>]
 ae-a8n setup    [--json] [--target <name>] [--yes] [--resume] [--dry-run]
 ae-a8n test     [--json] [--target <name>] [--timeout <ms>] [--keep] -- <command...>
 ae-a8n recover  [--json] [--target <name>] [--run <id>] [--dry-run] [--force]
@@ -82,7 +82,7 @@ not 6.
 ## 5. Diagnostic codes
 
 Format: `A8N-<AREA>-<NNN>`. Areas: `ENV`, `SESSION`, `PERM`, `AE`, `JOB`,
-`SEC`, `EXT`, `RELEASE`.
+`SEC`, `EXT`, `RELEASE`, `SUP`.
 
 Each check:
 
@@ -135,6 +135,13 @@ Initial set:
 | `A8N-AE-007` | warning | The AE scripting component is unproven (presence does not prove it loads) |
 | `A8N-AE-008` | info | Per-user Scripts/Startup folder state (informational; unproven where untested) |
 | `A8N-AE-009` | info | After Effects is already running and a local launch will attach to it |
+| `A8N-AE-010` | blocker | An After Effects script error dialog is present (never pressed) |
+| `A8N-AE-011` | blocker | An After Effects unsaved-changes dialog is present (never pressed) |
+| `A8N-AE-012` | blocker | An After Effects dialog requires a human decision (never pressed) |
+| `A8N-SUP-001` | blocker | Supervision reports AE needs a human or is quarantined |
+| `A8N-SUP-002` | warning | Supervision reports AE is blocked or recovering |
+| `A8N-SUP-003` | warning | Supervision observation is degraded/unavailable or the monitor is lost |
+| `A8N-SUP-004` | info | Supervision is observing the session |
 | `A8N-JOB-001` | blocker | Job or result file failed ownership/integrity checks |
 | `A8N-JOB-002` | warning | Prior run left a lock or quarantine state |
 | `A8N-JOB-003` | blocker | Job or result is not from a trusted issuer (nothing executed/accepted) |
@@ -164,6 +171,14 @@ path — the caller's own session is the target, so session-separation checks
 `--target`, `--user` or `--host` probes the **session** path and keeps the
 isolated-session checks. `setup`, `test` and `recover` always probe with
 session intent.
+
+Supervision: `--session-root <dir>` adds one check (`A8N-SUP-001`…`004`)
+read from the session's durable `supervision.json` — the same document
+`ae.supervisionState()` and `ae-a8n supervise` read. A `needs-human` or
+`quarantined` phase is a blocker, a blocked/recovering phase or degraded,
+unavailable or monitor-lost observation is a warning, and a healthy
+`running`/`resumed` phase is info. Absent or corrupt state is a warning,
+never a healthy report. The check is read-only and writes nothing.
 
 Shared-root leftovers: on macOS, `doctor` also inspects the isolated-session
 shared root (`/Users/Shared/ae-a8n` by default) read-only and reports what a
@@ -330,7 +345,36 @@ never modifies the run.
   match the run-id format (`YYYYMMDDTHHMMSSZ-<8 hex>`); anything else, including
   a path fragment, is a usage error. This applies to `recover` too.
 
-## 11. Versioning
+## 11. `supervise`
+
+Reads a session's durable supervision state — the same `supervision.json`
+`ae.supervisionState()` reads. It is outside the five contract commands and
+exists so any client (shell, editor, MCP) can observe supervision without
+importing the API.
+
+```text
+ae-a8n supervise status --session-root <dir> [--json]
+ae-a8n supervise watch  --session-root <dir> [--json] [--interval-ms <ms>]
+```
+
+- `status` prints one report: phase, evaluated observation health, blocking
+  evidence, pending requests, deadline, monitor heartbeat and next actions.
+  `--json` prints the common envelope with the report under `facts`.
+- `watch` polls the same document (default 2000 ms, minimum 50) and prints
+  only when the phase or the evaluated health changes — `running → blocked →
+  recovering → resumed`, a slide into `needs-human`/`quarantined`, or the
+  monitor going `monitor-lost`. Human output is one timestamped line per
+  change; `--json` emits NDJSON, one event per line carrying the full
+  report and the state machine's transition record. Silence means nothing
+  changed. `watch` exits with the last observed report's exit code on
+  SIGINT.
+- Both are read-only: they never start a monitor, never touch After
+  Effects, and never mutate the session they report on.
+- Exit codes match the supervision verdict: 0 `running`/`resumed`, 3
+  `blocked`/`recovering`/`needs-human`, 4 `quarantined`, 6 `unknown`
+  (absent, corrupt, or `monitor-lost` state — never a clean bill).
+
+## 12. Versioning
 
 The CLI contract follows the package's semver. `schemaVersion` is independent:
 an additive field does not bump it; removing/renaming a field or changing an

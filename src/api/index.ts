@@ -32,6 +32,7 @@ import {
   type HandshakeResponse,
 } from "./capabilities.js";
 import { guiStateReport } from "./gui-state.js";
+import { supervisionReport, type SupervisionReport } from "../supervision/index.js";
 import {
   AfterEffectsError,
   EntityNotFoundError,
@@ -41,8 +42,10 @@ import {
 } from "./errors.js";
 import type { StopResult } from "../driver/driver.js";
 import type { HostOwnership } from "../driver/transport.js";
+import { activateDispatcherForSession } from "./dispatcher-activation.js";
 import { attachAfterEffects } from "./attach.js";
 import { openAfterEffects } from "./launch.js";
+import { openRebuiltSession } from "./rebuild.js";
 import {
   grantedScopes,
   requireAuthorized,
@@ -53,15 +56,18 @@ import {
 export type CloseResult = StopResult;
 export type { HostOwnership };
 import type {
+  ActivateDispatcherOptions,
   ApplicationInfo,
   AttachOptions,
   CommandExecution,
   CompInfo,
   DiagnosticsOptions,
+  DispatcherActivation,
   GuiStateReport,
   LaunchOptions,
   OpenProjectOptions,
   OperationOptions,
+  RebuildOptions,
   ResumeOptions,
   ProjectInfo,
   SessionDiagnostics,
@@ -211,6 +217,42 @@ export class AfterEffects {
   }
 
   /**
+   * Rebuilds the session `options.sessionRoot` names after its owned
+   * After Effects process is proven gone (#286,
+   * `specs/gui-supervision/spec.md` US5).
+   *
+   * Unlike `resume` — which rebinds to a host that is still running —
+   * `rebuild` relaunches After Effects through the ordinary launch path,
+   * and only after every proof holds:
+   *
+   *   - the durable supervision document shows `blocked` with host
+   *     `process-gone` (a quarantined or needs-human session refuses);
+   *   - no live monitor still observes the dead pid;
+   *   - launch provenance proves an earlier session *owned* the host —
+   *     attached and unknown sessions have none and are never restarted;
+   *   - a fresh process census proves the recorded pid+start identity is
+   *     gone and that no other instance of the install is running;
+   *   - on macOS the target uid still has an Aqua login session.
+   *
+   * The launch itself re-proves pid identity, single instance, readiness
+   * and provenance, and ownership is verified *again* afterwards: anything
+   * short of `owned` fails closed — the instance is left running
+   * untouched, never quit, because it may hold someone else's unsaved
+   * work. Pending requests the crashed session left behind are reconciled
+   * against their recorded results and otherwise stay `unknown`; nothing
+   * is ever resent.
+   *
+   * The supervision document records the whole recovery
+   * (`recovering` → `resumed`, or the phase a live monitor already moved
+   * it to), and the returned session's `supervisionState()` is the same
+   * durable report every other client reads.
+   */
+  static async rebuild(options: RebuildOptions): Promise<AfterEffects> {
+    const rebuilt = await openRebuiltSession(options);
+    return new AfterEffects(rebuilt.session, rebuilt.probe, rebuilt.extensionMethods);
+  }
+
+  /**
    * Host version and build, as reported by the launch readiness probe. Free:
    * no round trip, because launch already had to ask.
    */
@@ -276,6 +318,14 @@ export class AfterEffects {
    */
   capabilities(): Promise<HandshakeResponse> {
     const driver = this.#session.driver;
+    // "Monitoring" is proven, not assumed (#287): an in-process monitor on
+    // this session, or durable state whose evaluated health is still `ok`
+    // (a detached supervisor keeps writing after this process would have
+    // stopped mattering). Anything less reports false — honest absence.
+    const durable = supervisionReport(driver.sessionRoot);
+    const monitoring =
+      this.#session.supervision !== null ||
+      (durable.status === "observed" && durable.health === "ok");
     return Promise.resolve(
       buildCapabilityHandshake({
         ae: this.#probe,
@@ -284,6 +334,7 @@ export class AfterEffects {
         ownership: driver.ownership(),
         extensionMethods: this.#extensionMethods,
         grantedOperations: grantedScopes(this.#session),
+        supervisionMonitoring: monitoring,
         hostNonce: this.#hostNonce,
         generatedAt: new Date().toISOString(),
       }),
@@ -394,6 +445,58 @@ export class AfterEffects {
   }
 
   /**
+   * Activates the in-AE dispatcher inside the After Effects this session
+   * owns, so other sessions can `AfterEffects.attach` to it through the
+   * dispatcher channel (issue #276).
+   *
+   * Windows only: the delivery mechanism is `AfterFX.exe -r`, which hands
+   * the generated `activate.jsx` to the running instance. That launcher
+   * cannot name a pid, so the call is gated twice before anything is
+   * spawned — the session's ownership must be "owned" (the same live
+   * re-check `close()` uses: same process, and the only in-scope
+   * instance), and the file delivered must be the activation script this
+   * package generated, never arbitrary JSX.
+   *
+   * This does not weaken the human-activation boundary for foreign After
+   * Effects: an owned session already has full script control over that
+   * instance, so activating its dispatcher grants it nothing new. An
+   * attached or unknown session is refused outright — activation of an
+   * AE this session does not own stays a human action (Run Script File,
+   * or Startup install on a dedicated profile).
+   *
+   * Success is bound to *this* delivery, not to "a dispatcher answers the
+   * channel": the staged script carries a per-call nonce that the
+   * dispatcher records in its heartbeat, and the call only resolves once
+   * a fresh heartbeat reports that exact nonce — observed *after* the
+   * `-r` spawn. A dispatcher that was already answering (on this or any
+   * other After Effects sharing the channel) cannot satisfy it, and
+   * ownership is re-verified after the nonce appears, so a second
+   * in-scope instance appearing mid-delivery fails closed rather than
+   * attributing the activation to the owned AE. What remains unproven —
+   * honestly — is which OS process the `-r` hand-off reached in the
+   * instant between the pre-spawn census and AE reading the script; the
+   * nonce proves the script ran on *an* AE answering this channel, and
+   * the post-delivery census is what ties that to the owned instance.
+   *
+   * Resolves once that proof is observed. A timeout means the script may
+   * not have run — After Effects can show a script-trust or consent
+   * dialog that only a human can answer — and the error says so instead
+   * of reporting success.
+   */
+  async activateDispatcher(
+    options: ActivateDispatcherOptions = {},
+  ): Promise<DispatcherActivation> {
+    const op = "session.dispatcherActivate";
+    if (this.#closed) {
+      throw new AfterEffectsError("the session is closed", op);
+    }
+    // The delivery core is shared with the verified rebuild's transport
+    // re-staging (#313): same ownership gate, same nonce proof, same
+    // provenance record — never a second, weaker copy.
+    return activateDispatcherForSession(this.#session, options, op);
+  }
+
+  /**
    * What the owned After Effects instance's screen currently shows
    * (ae-a8n #109): its windows, each classified against the measured
    * recovery policy, and the aggregate verdict — without pressing anything.
@@ -416,6 +519,26 @@ export class AfterEffects {
     // the target session); `.then` keeps even a synchronous failure a
     // rejection rather than a throw from a Promise-typed method.
     return Promise.resolve().then(() => guiStateReport(this.recoveryTarget()));
+  }
+
+  /**
+   * The session's durable supervision report (#287,
+   * `specs/gui-supervision/spec.md`): the phase the monitor last proved
+   * (`running`/`blocked`/`recovering`/`needs-human`/`quarantined`/`resumed`),
+   * the blocking windows and host-level state behind it, the in-flight
+   * request, and — separately — whether observation itself is healthy.
+   *
+   * This is a read of shared state, not a live probe: it answers even while
+   * After Effects is not answering scripts, which is exactly when callers
+   * need it. `status: "unavailable"` means no trustworthy state exists —
+   * supervision never ran, the state is corrupt, or the monitor's heartbeat
+   * is stale — and is never reported as a clean screen.
+   *
+   * CLI, MCP and VSCode consumers should read this rather than growing
+   * their own GUI checks; ae-devtools maps it to user-facing state.
+   */
+  supervisionState(): SupervisionReport {
+    return supervisionReport(this.#session.driver.sessionRoot);
   }
 
   /**
@@ -494,10 +617,15 @@ export class AfterEffects {
     try {
       const result = await this.#session.driver.stop(options);
       this.#closed = true;
+      // The monitor outlives the quit attempt on purpose: `app.quit` can
+      // raise the unsaved-changes dialog supervision exists to see. It is
+      // released only once the session is actually closed.
+      this.#session.supervision?.stop();
       return result;
     } catch (error) {
       if (!(error instanceof HostError && error.name === "UnsavedChangesError")) {
         this.#closed = true;
+        this.#session.supervision?.stop();
       }
       contextualise("session.close", error);
     }

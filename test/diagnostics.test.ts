@@ -52,7 +52,7 @@ describe("diagnostic registry", () => {
 
   it("uses the documented code format and a non-empty title", () => {
     for (const [code, entry] of Object.entries(DIAGNOSTIC_CODES)) {
-      expect(code).toMatch(/^A8N-(ENV|SESSION|PERM|AE|JOB|SEC|EXT|RELEASE)-\d{3}$/);
+      expect(code).toMatch(/^A8N-(ENV|SESSION|PERM|AE|JOB|SEC|EXT|RELEASE|SUP)-\d{3}$/);
       expect(SEVERITIES).toContain(entry.severity);
       expect(entry.title.length).toBeGreaterThan(0);
     }

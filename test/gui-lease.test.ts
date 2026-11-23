@@ -533,7 +533,7 @@ describe("review fixes", () => {
     mkdirSync(join(stateRoot, "gui-audit.jsonl"), { recursive: true });
     const controller = defaultLeaseController({
       stateRoot,
-      session: { uid: 501, asid: 100015, username: "tester", kind: "Aqua" },
+      session: { uid: 501, asid: 100015 },
       ownerId: "agent-a",
     });
     expect(() => controller.acquire("pressButton")).toThrow(/audit record could not be written/);

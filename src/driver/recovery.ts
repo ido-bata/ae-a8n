@@ -18,11 +18,15 @@
 
 import { join } from "node:path";
 
+import { DIALOG_TAXONOMY } from "../platform/dialog-taxonomy.js";
+import type { DialogWindow } from "../platform/recovery-policy.js";
 import {
+  GuiAttributionError,
   GuiMutationError,
   GuiRecoveryError,
   MacGuiRecovery,
   isBlockingWindow,
+  isPidAttributedWindow,
   type GuiWindowInfo,
 } from "./gui-recovery.js";
 import { errorMessage } from "../errors.js";
@@ -126,28 +130,43 @@ export type KnownDialogClass = {
 };
 
 /**
+ * Adapt the driver's window shape to the platform-neutral `DialogWindow`
+ * the taxonomy matchers are written against. `blocking` is the caller's
+ * measured answer (`isBlockingWindow`); the matchers never read it.
+ */
+function asDialogWindow(window: GuiWindowInfo): DialogWindow {
+  return {
+    title: window.title,
+    role: window.role,
+    subrole: window.subrole,
+    texts: window.texts,
+    buttons: window.buttons.map((button) => button.title),
+    blocking: isBlockingWindow(window),
+  };
+}
+
+/**
  * Dialog classes a recovery may press a button in.
  *
- * This list is deliberately short. The one measured class is the native alert
- * the run itself raises with `ui.alert`: on the real host (2026-11-03,
- * docs/offstage-macos.md §10.14) it was an `AXWindow` / `AXDialog` with an
- * empty title, the run's own `ae-a8n:` message among its static texts, and an
- * `OK` button; pressing `OK` closed it and the original call completed.
+ * This list is deliberately short and is derived from the canonical
+ * `DIALOG_TAXONOMY` registry (#284): only `auto-safe` entries appear here.
+ * The one measured class is the native alert the run itself raises with
+ * `ui.alert`: on the real host (2026-11-03, docs/offstage-macos.md §10.14)
+ * it was an `AXWindow` / `AXDialog` with an empty title, the run's own
+ * `ae-a8n:` message among its static texts, and an `OK` button; pressing
+ * `OK` closed it and the original call completed.
  *
  * AE's start-up `警告` dialog is *not* here. Its Axis title is also empty, so
  * matching on shape alone would press it; what it says (a sign-in, licence or
  * script-permission decision) belongs to a human. It is therefore
  * unclassified, and the run is quarantined.
  */
-export const KNOWN_DIALOG_CLASSES: readonly KnownDialogClass[] = [
-  {
-    name: "ae-a8n ui.alert",
-    matches: (window) =>
-      (window.subrole ?? "").toLowerCase() === "axdialog" &&
-      window.title.trim() === "" &&
-      window.texts.some((text) => /^\s*ae-a8n:/.test(text)),
-  },
-];
+export const KNOWN_DIALOG_CLASSES: readonly KnownDialogClass[] = DIALOG_TAXONOMY.filter(
+  (spec) => spec.tier === "auto-safe",
+).map((spec) => ({
+  name: spec.name,
+  matches: (window: GuiWindowInfo) => spec.matches(asDialogWindow(window)),
+}));
 
 /** The measured class a window belongs to, or null when it is unknown. */
 export function classifyDialog(window: GuiWindowInfo): KnownDialogClass | null {
@@ -157,12 +176,17 @@ export function classifyDialog(window: GuiWindowInfo): KnownDialogClass | null {
 /**
  * Dialog classes that are recognised by name but may never be pressed.
  *
- * These were observed on a real host (2026-11-15, AE 26.5.3): the crash
- * repair options dialog, the AppDirs/Required Dir startup warning, and the
- * crash-recovery project window. Each offers choices — repair method, report
- * submission, settings — that are a human's decision, and none has a measured
- * safe button. Naming them keeps the evidence specific; the outcome is the
- * same refusal an unclassified window gets, minus the "unknown" claim.
+ * Derived from the canonical `DIALOG_TAXONOMY` registry (#284): every
+ * non-`auto-safe` entry lands here, so the crash repair options dialog, the
+ * AppDirs/Required Dir startup warning, the crash-recovery project window,
+ * the script file/network permission prompt, the script-error and
+ * unsaved-changes dialogs, the multi-script contention dialog, and the
+ * account/licence classes are all named for what they are. Each offers
+ * choices — repair method, report submission, settings, a human decision —
+ * that automation must not take, and none but the measured `ui.alert` has a
+ * verified safe button. Naming them keeps the evidence specific; the
+ * outcome is the same refusal an unclassified window gets, minus the
+ * "unknown" claim.
  */
 export type UnpressableDialogClass = {
   /** What the evidence calls this class. */
@@ -172,43 +196,13 @@ export type UnpressableDialogClass = {
   readonly matches: (window: GuiWindowInfo) => boolean;
 };
 
-const unpressableText = (window: GuiWindowInfo): string =>
-  [window.title, window.role, window.subrole ?? "", ...window.texts].join(" ");
-
-export const UNPRESSABLE_DIALOG_CLASSES: readonly UnpressableDialogClass[] = [
-  {
-    name: "ae crash-repair options",
-    reason:
-      "the crash repair dialog offers repair and report-submission choices; sending a report or " +
-      "changing repair settings is a human's decision",
-    matches: (window) => /クラッシュ修復|crash[ -]?repair|repair options/i.test(unpressableText(window)),
-  },
-  {
-    name: "ae startup directory warning",
-    reason:
-      "the AppDirs/Required Dir warning reports an application-directory problem at launch; " +
-      "its choices change how After Effects starts and are a human's decision",
-    matches: (window) => /AppDirs|Required Dir/.test(unpressableText(window)),
-  },
-  {
-    name: "ae crash-recovery project",
-    reason:
-      "the crash-recovery project window decides whether a recovered project is generated or " +
-      "discarded; discarding unsaved work is a human's decision",
-    matches: (window) =>
-      /リカバリプロジェクト|recovery project|crash[_ ]?\d+\.aep/i.test(unpressableText(window)),
-  },
-  {
-    name: "ae script file/network permission",
-    reason:
-      "the scripting file/network permission prompt changes a security setting; granting it is " +
-      "a human's decision (observed as a startup blocker on AE 26.5, G0 evidence 2026-11-16)",
-    matches: (window) =>
-      /allow scripts to write|scripts? to write files|file and network access/i.test(
-        unpressableText(window),
-      ),
-  },
-];
+export const UNPRESSABLE_DIALOG_CLASSES: readonly UnpressableDialogClass[] = DIALOG_TAXONOMY.filter(
+  (spec) => spec.tier !== "auto-safe",
+).map((spec) => ({
+  name: spec.name,
+  reason: spec.pressPolicy,
+  matches: (window: GuiWindowInfo) => spec.matches(asDialogWindow(window)),
+}));
 
 /** The recognised-but-never-pressable class a window belongs to, or null. */
 export function classifyUnpressable(window: GuiWindowInfo): UnpressableDialogClass | null {
@@ -267,7 +261,32 @@ export type RecoveryWindowChoice =
 export function chooseRecoveryWindow(windows: readonly GuiWindowInfo[]): RecoveryWindowChoice {
   const blocking = windows
     .map((window, index) => ({ window, index: index + 1 }))
-    .filter(({ window }) => isBlockingWindow(window));
+    // Only pid-attributed windows are evidence (#330): on a multi-install
+    // host the AX listing can enumerate ANOTHER same-bundle-id instance's
+    // windows, and a foreign dialog must neither read as this instance's
+    // blocker nor receive its press. The index is still the raw listing
+    // position, so the press stays addressed to the same `windows of p`
+    // entry the listing saw.
+    .filter(
+      ({ window }) => isBlockingWindow(window) && isPidAttributedWindow(window),
+    );
+  // An unmatched blocking window is not proven foreign — it is unproven,
+  // and unproven is not "no blocker" (#332). A frameless or AX-phantom
+  // dialog of THIS instance reads exactly like this, so it vetoes every
+  // automatic press the way a human-only window does; only a census that
+  // attributes ALL blocking windows keeps the measured-alert path open.
+  // Positively foreign windows stay excluded above: they are another
+  // instance's, not this one's, blocker.
+  const unmatchedBlocking = windows.find(
+    (window) => isBlockingWindow(window) && window.censusAttribution === "unmatched",
+  );
+  if (unmatchedBlocking !== undefined) {
+    return {
+      kind: "human-only",
+      index: windows.indexOf(unmatchedBlocking) + 1,
+      window: unmatchedBlocking,
+    };
+  }
   if (blocking.length === 0) {
     return { kind: "none" };
   }
@@ -402,17 +421,28 @@ export class MacHostRecovery implements HostRecovery {
       // lists windows for this pid, the AX tree is unserviceable and "no
       // modal window" cannot be concluded. Still refuse and click nothing —
       // the evidence just stops claiming what it cannot know.
+      // AX windows the census could not attribute to this pid are not
+      // evidence either way (#330): they are named here so "no modal
+      // window" never silently hides that part of the listing was
+      // untrusted.
+      const unattributed =
+        state.axForeignWindowCount + state.axUnmatchedWindowCount > 0
+          ? ` The AX listing also held ${state.axForeignWindowCount} window(s) belonging to ` +
+            `other processes and ${state.axUnmatchedWindowCount} unattributed window(s); ` +
+            "those were excluded as untrusted (#330)."
+          : "";
       const evidence = state.axSuspect
-        ? `After Effects ${pid}: the Accessibility API reported no windows, but the window server lists ` +
+        ? `After Effects ${pid}: the Accessibility API reported no window attributable to this ` +
+          `process, but the window server lists ` +
           `${state.windowServer.windowCount} window(s) for it (${state.windowServer.onScreenCount} on-screen) — ` +
           `the AX tree is not answering, so whether a modal window is up cannot be determined. ` +
-          `${context.method} (${context.requestId}) timed out; nothing was clicked`
+          `${context.method} (${context.requestId}) timed out; nothing was clicked${unattributed}`
         : state.windowServer.available === false
           ? `After Effects ${pid}: window observation is degraded (${state.windowServer.reason ?? "census unavailable"}) ` +
             `and the Accessibility API reported no windows; ${context.method} (${context.requestId}) timed out for ` +
-            "another reason, and nothing was clicked"
+            `another reason, and nothing was clicked${unattributed}`
           : `After Effects ${pid} has no modal window; ${context.method} (${context.requestId}) timed out for another ` +
-            "reason, and nothing was clicked";
+            `reason, and nothing was clicked${unattributed}`;
       return {
         recovered: false,
         outcome: "refused",
@@ -473,6 +503,7 @@ export class MacHostRecovery implements HostRecovery {
     // class was matched on. The press re-checks it inside the target session.
     const marker = window.texts.find((text) => /^\s*ae-a8n:/.test(text)) ?? "";
     let leaseRefusal: string | null = null;
+    let attributionRefusal: string | null = null;
     let refusalCode: "A8N-AE-004" | undefined;
     let unknownMutation: string | null = null;
     for (const title of this.#buttons) {
@@ -490,6 +521,12 @@ export class MacHostRecovery implements HostRecovery {
           // is unknown, so this is quarantine — never "nothing was done",
           // and never a retry.
           unknownMutation = error.message;
+        } else if (error instanceof GuiAttributionError) {
+          // The window's pid attribution could not be proven (#330): the
+          // refusal was raised before the lease and before any session
+          // command, so nothing was pressed — but it is NOT a lease
+          // problem, and saying so would send the reader the wrong way.
+          attributionRefusal = errorMessage(error);
         } else {
           // A refused GUI lease is not "the button was unavailable": another
           // owner holds the session's mutation lease. Report who, and stop —
@@ -528,6 +565,19 @@ export class MacHostRecovery implements HostRecovery {
           `unknown result: ${unknownMutation}. Whether the button was pressed cannot be ` +
           "determined from here, so the run is quarantined: re-observe the screen before " +
           "retrying anything, and do not assume the dialog is still up or already gone.",
+        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        window: description,
+      };
+    }
+    if (attributionRefusal !== null) {
+      return {
+        recovered: false,
+        outcome: "refused",
+        evidence:
+          `After Effects ${pid} shows "${description}", but no GUI mutation was attempted: ` +
+          `${attributionRefusal}. The window could not be proven to belong to this ` +
+          "After Effects instance, so nothing was pressed — pressing it could have " +
+          "clicked another instance's dialog.",
         ...(shot === undefined ? {} : { screenshotPath: shot }),
         window: description,
       };

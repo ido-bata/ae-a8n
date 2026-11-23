@@ -280,6 +280,29 @@ describe("readNativeChannelState", () => {
     writeFileSync(join(root, "state.json"), "{not json", { mode: 0o600 });
     expect(readNativeChannelState(root)).toBeNull();
   });
+
+  it("surfaces a plug-in-reported pid and ignores a malformed one (#294)", () => {
+    const root = join(tmpRoot(), "chan");
+    prepareNativeChannel(root);
+    const statePath = join(root, "state.json");
+    const base = {
+      v: 1,
+      instance: "inst-9",
+      pluginId: 4242,
+      lastTick: 1_700_000_000_000,
+      allowlist: [],
+    };
+    writeFileSync(statePath, JSON.stringify({ ...base, pid: 4242 }), { mode: 0o600 });
+    expect(readNativeChannelState(root)?.pid).toBe(4242);
+    // A malformed pid is dropped, never guessed — and never invalidates
+    // the heartbeat itself.
+    for (const bad of ["4242", -1, 0, 1.5]) {
+      writeFileSync(statePath, JSON.stringify({ ...base, pid: bad }), { mode: 0o600 });
+      const state = readNativeChannelState(root);
+      expect(state?.instance).toBe("inst-9");
+      expect(state?.pid).toBeUndefined();
+    }
+  });
 });
 
 describe("publishNativeRequest", () => {
@@ -405,8 +428,43 @@ describe("awaitNativeResult", () => {
     const delivery = await awaitNativeResult(channel, "req-001", 5_000, FAST);
     expect(delivery.instance).toBe("inst-1");
     expect(delivery.host.pluginId).toBe(4242);
+    expect(delivery.host.pid).toBeUndefined();
     expect(delivery.result.outcome).toBe("completed");
     expect(delivery.result.result).toEqual({ numProjects: 1 });
+  });
+
+  it("carries a valid plug-in-reported host pid through; drops a malformed one (#294)", async () => {
+    const channel = prepareNativeChannel(join(tmpRoot(), "chan"));
+    publishNativeRequest(channel, baseInput());
+    const path = join(channel.outbox, `req-001${NATIVE_RESULT_SUFFIX}`);
+    const doc = {
+      v: 1,
+      instance: "inst-1",
+      host: { plugin: "ae-a8n NativeProbe", pluginId: 4242, aeVersion: "26.5", pid: 5150 },
+      result: {
+        schema: NATIVE_DISPATCH_SCHEMA,
+        requestId: "req-001",
+        outcome: "completed",
+        result: {},
+      },
+    };
+    writeFileSync(path, `${JSON.stringify(doc)}\n`, { mode: 0o600 });
+    const delivery = await awaitNativeResult(channel, "req-001", 5_000, FAST);
+    expect(delivery.host.pid).toBe(5150);
+
+    // A malformed pid must not invalidate the delivery — it is simply
+    // absent, i.e. unproven.
+    const channel2 = prepareNativeChannel(join(tmpRoot(), "chan2"));
+    publishNativeRequest(channel2, baseInput());
+    const path2 = join(channel2.outbox, `req-001${NATIVE_RESULT_SUFFIX}`);
+    writeFileSync(
+      path2,
+      `${JSON.stringify({ ...doc, host: { ...doc.host, pid: "5150" } })}\n`,
+      { mode: 0o600 },
+    );
+    const delivery2 = await awaitNativeResult(channel2, "req-001", 5_000, FAST);
+    expect(delivery2.host.pid).toBeUndefined();
+    expect(delivery2.result.outcome).toBe("completed");
   });
 
   it("collects refused/failed/not-sent verdicts as typed results", async () => {

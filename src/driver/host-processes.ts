@@ -73,7 +73,12 @@ export function parsePsProcesses(text: string): HostProcess[] {
 /**
  * Every `AfterFX.exe` on Windows, with the process creation time and the path
  * of its image ("" when Windows will not say, as for an elevated process).
- * Not filtered by path: any AfterFX.exe might be what a `-r` is handed to.
+ *
+ * The census itself is deliberately unfiltered: it answers "which
+ * AfterFX.exe images exist", and *which install* an image belongs to is the
+ * consumer's question — `windowsSameInstall` scopes it. `AfterFX.exe -r`
+ * delivery is per install: a running instance of another version is a
+ * different product the script is never handed to (#323).
  *
  * Fail-closed. PowerShell returns one JSON document, `{"v":1,"processes":[...]}`,
  * and this validates every entry. An empty list is a real answer ("none running");
@@ -159,6 +164,92 @@ export function sameProcess(platform: NodeJS.Platform, candidate: HostProcess, k
 export function sameWindowsPath(a: string, b: string): boolean {
   const norm = (p: string) => p.replace(/\//g, "\\").toLowerCase();
   return a.length > 0 && norm(a) === norm(b);
+}
+
+/**
+ * Comparison key for a Windows path: `\` separators, empty segments
+ * dropped, lowercase — the tolerance `sameWindowsPath` gives a pair,
+ * applied where a prefix test is needed.
+ */
+function windowsPathKey(path: string): string {
+  return path
+    .replace(/\//g, "\\")
+    .split("\\")
+    .filter((segment) => segment.length > 0)
+    .join("\\")
+    .toLowerCase();
+}
+
+/**
+ * The install directory prefix (`<dir>\`, normalized) that a Windows
+ * install's `AfterFX.exe` lives under, or null when `installExecutable`
+ * does not have the `<dir>\Support Files\AfterFX.exe` shape `resolveInstall`
+ * always produces. Null means "cannot place the install", and callers fail
+ * closed on it.
+ */
+function windowsInstallDirPrefix(installExecutable: string): string | null {
+  const segments = installExecutable
+    .replace(/\//g, "\\")
+    .split("\\")
+    .filter((segment) => segment.length > 0);
+  if (
+    segments.length < 3 ||
+    segments[segments.length - 1]?.toLowerCase() !== "afterfx.exe" ||
+    segments[segments.length - 2]?.toLowerCase() !== "support files"
+  ) {
+    return null;
+  }
+  return `${segments.slice(0, -2).join("\\").toLowerCase()}\\`;
+}
+
+/**
+ * Whether a path segment is a DOS 8.3 short name (`ADOBEA~1`,
+ * `PROGRA~1.EXE`). Such a segment can spell the same directory as its
+ * long-name twin, so a prefix mismatch involving one is undecidable —
+ * never proof of a different install (#332).
+ */
+function hasDos8x3Segment(path: string): boolean {
+  return path
+    .replace(/\//g, "\\")
+    .split("\\")
+    .some((segment) => /^[^\\.~]{1,8}~\d+(\..*)?$/i.test(segment));
+}
+
+/**
+ * Whether a Windows `AfterFX.exe` image path belongs to the install that
+ * `installExecutable` (`<dir>\Support Files\AfterFX.exe`) names — the
+ * install-dir scope the script transport and session rebuild apply (#323).
+ *
+ *  - `true`: the image is under that install directory.
+ *  - `false`: the image is provably another install's AfterFX.exe — a
+ *    different version's After Effects, which `-r` delivery is never
+ *    handed to and which is never this session's host.
+ *  - `null`: undecidable — the install path has an unrecognized shape, the
+ *    image path was not revealed (`""`), or either spelling carries a DOS
+ *    8.3 short-name segment that a text comparison cannot resolve.
+ *    Callers fail closed on `null`: it may be this install's, so it
+ *    still counts.
+ */
+export function windowsSameInstall(imagePath: string, installExecutable: string): boolean | null {
+  const prefix = windowsInstallDirPrefix(installExecutable);
+  if (prefix === null) {
+    return null;
+  }
+  const image = imagePath.trim();
+  if (image === "") {
+    return null;
+  }
+  if (windowsPathKey(image).startsWith(prefix)) {
+    return true;
+  }
+  // A prefix miss is only proof of a different install when both spellings
+  // are comparable: an 8.3 segment (`C:\ADOBEA~1\...`) can name the very
+  // directory the long-name prefix does, and returning `false` there would
+  // exclude a live same-install instance from the census (#332).
+  if (hasDos8x3Segment(image) || hasDos8x3Segment(installExecutable)) {
+    return null;
+  }
+  return false;
 }
 
 /** Keeps a failure report bounded however much a process writes. */

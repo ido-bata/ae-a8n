@@ -19,9 +19,21 @@ Tracking: [#127](https://github.com/ido-bata/ae-a8n/issues/127)。前提とな�
 
 同一 AE 内で二重に有効化しようとすると `__a8nDispatcherTask` ガードにより拒否される。
 
+### owned session の自動 activation（#276・Windows のみ）
+
+`AfterFX.exe -r <activate.jsx>` は、起動済みの AE があると script を対話 instance へ hand-off する（launcher は transient で即終了）。この経路を使う自動 activation は **session がその AE を所有している時だけ** `ae.activateDispatcher({ channelDir? })` が行う。
+
+- gate は三重: session の ownership が live に "owned"（`close()` と同じ再検証: 同一 pid・同一 start/creation identity・in-scope instance が 1 つだけ）であること、配送する file がこの package の generator が出力する byte 列と完全一致すること（marker 入りの任意 JSX・1 byte の改変・別 channel/token を指す生成物はすべて拒否）、かつ配送前に private copy（予測不能な名前・0600）を検証済み bytes から作り直して `-r` に渡すこと。`-r` は pid を指定できないため、所有証明が立たない限り spawn 自体を行わない。attached / unknown / 2 つ目の instance 出現時は拒否される。
+- owned session は既にその AE に対して任意 script を実行できるため、dispatcher の有効化は新しい権限を与えない。**他人・ユーザー所有の AE の activation は従来どおり人間の操作**（Run Script File、または専用 profile での Startup install）であり、この API はそれを自動化しない。
+- 成功判定は「今回の配送」に束縛される: 配送ごとに生成する per-call nonce を dispatcher が heartbeat の `activationNonce` に記録し、`-r` spawn **後**に fresh かつ nonce 一致の heartbeat を観測した時だけ成功を返す。配送前から fresh だった heartbeat（別 AE の dispatcher を含む）は証拠にならず fail-closed。dispatcher が既に動いている AE への再配送は nonce を更新するだけで二重起動しない。nonce 観測後に ownership を再検証し、in-scope instance が増えていれば失敗とする。
+- 正直な残余リスク: `-r` の hand-off が census 直後〜AE が script を読むまでの間に別 AE が起動した場合、受け取り先を完全には確定できない（TOCTOU）。nonce は「この channel に答える AE のどれかで script が走った」ことの証明であり、配送後の ownership 再検証が owned instance への帰属を補強するが、原子的な target 固定ではない。同一ユーザーの悪意プロセスが private copy を読み取り前に差し替える race も同様に残る（そのプロセスは `channel.json` の token も読めるため、既に trust boundary の内側）。
+- heartbeat が `timeoutMs`（既定 15 秒）以内に nonce 一致で fresh にならなければ `AfterEffectsError` で失敗する。AE が script-trust / consent dialog を出している可能性、または `-r` が別 instance に届いた可能性を error message が明示し、人間の操作に戻る。
+- **実機検証（Windows）**: `device-windows`・AE 2026 `26.5.3x9`（`D:\4_apps\adobe\Adobe After Effects 2026`）で `dispatcher prepare` → `AfterFX.exe -r activate.jsx` → heartbeat → `AfterEffects.attach({ transport: "in-ae-dispatcher" })` 成功・`close()` が AE を終了しないことを確認済み（2026-11-19 頃、対話ユーザー profile 上）。`ae.activateDispatcher()` の fail-closed 側も実機確認済み: 別 version の AfterFX.exe（AE 2027）が動作中は census が "attached" を返し、`activateDispatcher` は `HostNotOwnedError` で拒否・`close()` も quit しない（2026-11-21、PR #277 branch build）。一方で **nonce 束縛を含む成功経路の `activateDispatcher` 実機 end-to-end は未検証** — owned launch が foreign instance 不在を要求するため、対話 AE が動く環境では成立しない。fresh/使い捨て profile での初回 `-r` に trust modal（-1708 系）が出るかも別軸で未計測。
+- macOS では実装しない: `-r` は Windows の機構であり、macOS の `-1708` trust gate は別途未計測のため fail-closed で拒否する。
+
 ## CLI lifecycle（#147）
 
-機械化できる部分は `ae-a8n dispatcher` が担う。**activation（AE 内での Run Script File）だけが人間の操作**で、それ以外の準備・確認・登録・解除は CLI が正確に案内する。
+機械化できる部分は `ae-a8n dispatcher` が担う。**activation（AE 内での Run Script File）だけが人間の操作**で、それ以外の準備・確認・登録・解除は CLI が正確に案内する。例外は owned session の `ae.activateDispatcher`（前節・Windows のみ）で、所有が証明できる AE に限り `-r` で生成済み activation script を配送する。
 
 ```sh
 ae-a8n dispatcher prepare [--channel-dir <dir>]    # channel 作成 + activate.jsx 生成（冪等）

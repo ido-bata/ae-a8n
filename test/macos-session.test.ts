@@ -65,7 +65,7 @@ describe("the applications of the window server", () => {
   it("reads the pid, the user and the session of every application", () => {
     const apps = parseLsappinfo(listing);
     expect(apps).toEqual([
-      { name: "Finder", pid: 689, asid: 100021, uid: 501 },
+      { name: "Finder", pid: 689, asid: 100021, uid: 501, bundleId: "com.apple.finder" },
       { name: "Adobe After Effects 2026", pid: 4242, asid: 100040, uid: 502 },
       { name: "Helper", pid: 4243, asid: null, uid: -1 },
     ]);
@@ -127,6 +127,27 @@ describe("what the accessibility query reports", () => {
     const parsed = parseUiListing(listing);
     expect(parsed.windows[1]?.texts).toEqual([]);
   });
+
+  it("reads the G frame record onto the window it follows (#321)", () => {
+    const parsed = parseUiListing(
+      [
+        "W||AXWindow|AXDialog",
+        "G|640,480|410,342",
+        "B|OK|||",
+        "W|Main|AXLayoutArea|AXFloatingWindow",
+        "G|0,39|1710,1073",
+      ].join("\n"),
+    );
+    expect(parsed.windows[0]?.frame).toEqual({ x: 640, y: 480, width: 410, height: 342 });
+    expect(parsed.windows[1]?.frame).toEqual({ x: 0, y: 39, width: 1710, height: 1073 });
+    // Buttons still attach to their own window.
+    expect(parsed.windows[0]?.buttons[0]?.title).toBe("OK");
+  });
+
+  it("leaves frame unset on a malformed G record — never a wrong match", () => {
+    const parsed = parseUiListing("W||AXWindow|AXDialog\nG|garbage\nG|1,2\n");
+    expect(parsed.windows[0]?.frame).toBeUndefined();
+  });
 });
 
 describe("what the recovery may press", () => {
@@ -182,9 +203,12 @@ describe("the GUI recovery", () => {
     // compile error, so osacompile cannot catch it — measured on a real
     // host, 2026-11-03.
     const text = LIST_WINDOWS_SCRIPT.join("\n");
-    // The only call site, so qualifying it is the whole fix.
-    expect(text.match(/a8nClean\(ttext\)/g)).toHaveLength(1);
-    expect(text).toContain("my a8nClean(ttext)");
+    // Two call sites — the `windows` listing and the `UI elements`
+    // fallback for apps like AE that vend windows as AXLayoutArea — and
+    // every one must be `my`-qualified.
+    const calls = text.match(/(?<!my )a8nClean\(ttext\)/g) ?? [];
+    expect(calls).toHaveLength(0);
+    expect(text.match(/my a8nClean\(ttext\)/g)).toHaveLength(2);
   });
 
   it("checks the window is still the one the caller chose before pressing", () => {
@@ -204,6 +228,34 @@ describe("the GUI recovery", () => {
     expect(text).toContain("set expectedText to item 6 of argv");
     expect(text).toContain("contains expectedText then set found to true");
     expect(text).toContain('if not found then return "CHANGED"');
+  });
+
+  it("re-verifies the window frame before pressing — the bundle-confused listing guard (#330)", () => {
+    // On multi-install hosts `windows of process` can enumerate ANOTHER
+    // same-bundle-id instance's windows, so title/subrole/text can all
+    // describe a foreign dialog. The caller passes the census-attributed
+    // frame; the window at the index must still occupy it or the press is
+    // refused as CHANGED — never clicked.
+    const text = PRESS_BUTTON_SCRIPT.join("\n");
+    expect(text).toContain("set expectedFrame to item 7 of argv");
+    expect(text).toContain("get position of w");
+    expect(text).toContain("get size of w");
+    expect(text).toContain("if not frameOk then return \"CHANGED\"");
+    // The check must run BEFORE the button loop that clicks.
+    const frameCheck = text.indexOf("if not frameOk then return \"CHANGED\"");
+    const click = text.indexOf("click b");
+    expect(frameCheck).toBeGreaterThan(-1);
+    expect(click).toBeGreaterThan(frameCheck);
+  });
+
+  it("emits a G frame record for both the windows and UI-elements listings (#321)", () => {
+    // Census reconciliation needs every listed window's geometry; AE's
+    // real windows arrive through the UI-elements path, so both loops
+    // must emit `G|x,y|w,h`.
+    const text = LIST_WINDOWS_SCRIPT.join("\n");
+    expect(text.match(/set report to report & "G\|"/g)).toHaveLength(2);
+    expect(text).toContain("get position of w");
+    expect(text).toContain("get position of e");
   });
 
   it("cleans every label that goes into a listing line", () => {
@@ -451,6 +503,168 @@ describe("the GUI recovery", () => {
     let reads = 0;
     const blind = mk(() => proven, () => (reads++ === 0 ? 1 : -1));
     expect(() => blind.listWindows()).toThrow(/console owner could not be read/);
+  });
+});
+
+describe("the pid attribution of a press target (#330)", () => {
+  const session = { uid: 502, username: "test", asid: 100040, kind: "Aqua" as const };
+  const readSession = () => session;
+  const lease = {
+    acquire: () => ({ path: "/fake/lease", release: () => {} }),
+    audit: () => {},
+  };
+  const censusOwned = {
+    available: true as const,
+    windows: [
+      {
+        pid: 4242,
+        owner: "After Effects",
+        layer: 0,
+        onScreen: true,
+        name: "dlg",
+        bounds: { x: 650, y: 185, width: 410, height: 342 },
+      },
+    ],
+  };
+  const ownedWindow = {
+    title: "",
+    role: "AXWindow",
+    subrole: "AXDialog",
+    buttons: [{ title: "OK", description: "", position: null, size: null }],
+    texts: ["ae-a8n: close me"],
+    frame: { x: 650, y: 185, width: 410, height: 342 },
+    censusAttribution: "owned" as const,
+  };
+  // The listings `listWindows()` answers inside the press's own lease
+  // (#332): the re-attribution read and the coordinate fallback's re-list.
+  // The owned one frames the window where the census says the target pid's
+  // window is; the unmatched one frames it somewhere no census window is.
+  const OWNED_LISTING =
+    "FRONTMOST|1\n" +
+    "W||AXWindow|AXDialog\n" +
+    "G|650,185|410,342\n" +
+    "T|ae-a8n: close me\n" +
+    "B|OK||660,195|80,32\n";
+  const UNMATCHED_LISTING =
+    "FRONTMOST|1\n" +
+    "W||AXWindow|AXDialog\n" +
+    "G|10,10|100,100\n" +
+    "T|ae-a8n: close me\n" +
+    "B|OK||20,20|80,32\n";
+
+  it("refuses to press a window the census attributes to another pid — before any session command", () => {
+    let commands = 0;
+    let acquisitions = 0;
+    const gui = new MacGuiRecovery({
+      session,
+      pid: 4242,
+      allowConsoleSession: true,
+      readTargetSession: readSession,
+      census: () => censusOwned,
+      lease: {
+        acquire: () => {
+          acquisitions += 1;
+          return { path: "/fake/lease", release: () => {} };
+        },
+        audit: () => {},
+      },
+      runSession: () => {
+        commands += 1;
+        return { status: 0, stdout: "", stderr: "", timedOut: false };
+      },
+    });
+    const foreign = { ...ownedWindow, censusAttribution: "foreign" as const };
+    const unmatched = { ...ownedWindow, censusAttribution: "unmatched" as const };
+    const { censusAttribution: _drop, ...unproven } = ownedWindow;
+    for (const bad of [foreign, unmatched, unproven]) {
+      expect(() => gui.pressButtonIn(1, "OK", bad, "ae-a8n:")).toThrow(/cannot be proven to belong/);
+      expect(() => gui.pressButton(1, "OK", bad)).toThrow(/cannot be proven to belong/);
+    }
+    // The refusal precedes the lease and every session command: provably
+    // nothing was pressed and nothing was even sent.
+    expect(commands).toBe(0);
+    expect(acquisitions).toBe(0);
+  });
+
+  it("passes the census-attributed frame to the press script as argv 7", () => {
+    const calls: string[][] = [];
+    const gui = new MacGuiRecovery({
+      session,
+      pid: 4242,
+      allowConsoleSession: true,
+      readTargetSession: readSession,
+      census: () => censusOwned,
+      lease,
+      runSession: (_s, _p, args) => {
+        calls.push([...args]);
+        // First the re-attribution listing inside the lease, then the press.
+        return calls.length === 1
+          ? { status: 0, stdout: OWNED_LISTING, stderr: "", timedOut: false }
+          : { status: 0, stdout: "CLICKED", stderr: "", timedOut: false };
+      },
+    });
+    expect(gui.pressButtonIn(1, "OK", ownedWindow, "ae-a8n:")).toBe(true);
+    expect(calls).toHaveLength(2);
+    // argv: pid, index, title, expectedTitle, expectedSubrole, expectedText, expectedFrame
+    expect(calls[1]?.at(-1)).toBe("650,185,410,342");
+  });
+
+  it("re-attributes the window at the index inside the lease before pressing (#332)", () => {
+    // The attribution `expected` carries was taken at the caller's listing;
+    // it can be stale. When the fresh listing inside the lease no longer
+    // attributes the window at that index to the target pid, the press —
+    // and its coordinate fallback — must not run at all.
+    let commands = 0;
+    const gui = new MacGuiRecovery({
+      session,
+      pid: 4242,
+      allowConsoleSession: true,
+      readTargetSession: readSession,
+      census: () => censusOwned,
+      lease,
+      runSession: () => {
+        commands += 1;
+        return { status: 0, stdout: UNMATCHED_LISTING, stderr: "", timedOut: false };
+      },
+    });
+    expect(gui.pressButtonIn(1, "OK", ownedWindow, "ae-a8n:")).toBe(false);
+    // Only the re-attribution listing ran: no press, no fallback listing.
+    expect(commands).toBe(1);
+  });
+
+  it("the coordinate fallback clicks nothing when the re-listed window is not pid-attributed", () => {
+    // The accessibility press answers NOT_FOUND; the fresh listing then
+    // shows the window at the index has a frame no census window owns.
+    // The fallback must refuse rather than click raw coordinates that
+    // could belong to another instance (#330).
+    let commands = 0;
+    const gui = new MacGuiRecovery({
+      session,
+      pid: 4242,
+      allowConsoleSession: true,
+      readTargetSession: readSession,
+      census: () => censusOwned,
+      lease,
+      runSession: () => {
+        commands += 1;
+        // 1: the re-attribution listing (owned — the press may proceed);
+        // 2: the accessibility press answers NOT_FOUND; 3: the fallback's
+        // fresh listing shows the window where no census window is.
+        if (commands === 2) {
+          return { status: 0, stdout: "NOT_FOUND", stderr: "", timedOut: false };
+        }
+        return {
+          status: 0,
+          stdout: commands === 1 ? OWNED_LISTING : UNMATCHED_LISTING,
+          stderr: "",
+          timedOut: false,
+        };
+      },
+    });
+    expect(gui.pressButtonIn(1, "OK", ownedWindow, "ae-a8n:")).toBe(false);
+    // re-list + press + fallback re-list; a clickAt would have been a
+    // fourth command.
+    expect(commands).toBe(3);
   });
 });
 

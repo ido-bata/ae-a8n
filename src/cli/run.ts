@@ -9,10 +9,12 @@
  */
 
 import { homedir, arch as osArch, platform as osPlatform, release as osRelease } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { A8N_VERSION } from "../index.js";
 import { runDoctor } from "../doctor/index.js";
+import { aggregateDiagnosticStatus } from "../doctor/diagnostics.js";
+import { supervisionChecks } from "../doctor/supervision.js";
 import type {
   AdapterProbe,
   PlatformAdapter,
@@ -48,6 +50,7 @@ import {
 } from "./envelope.js";
 import { runAgentCommand } from "./agent.js";
 import { runDispatcherCommand } from "./dispatcher.js";
+import { runSuperviseCommand } from "./supervise.js";
 import { runExtensionCommand } from "./extension.js";
 import { EXIT, type ExitCode } from "./exit-code.js";
 import {
@@ -68,6 +71,11 @@ export type CliDependencies = {
   readonly env?: NodeJS.ProcessEnv;
   /** Test seam: where run locks, quarantine records and run directories live. */
   readonly stateRoot?: string;
+  /** Test seam: bounds `supervise watch` so tests never poll forever. */
+  readonly superviseWatch?: {
+    readonly sleep?: (ms: number) => Promise<void>;
+    readonly maxTicks?: number;
+  };
 };
 
 type RequiredDependencies = {
@@ -430,17 +438,25 @@ async function doctor(
         ? "local"
         : "session";
     const result = await runDoctor(selection.adapter, target, intent);
-    const exitCode = result.status === "blocked" ? EXIT.blocked : EXIT.ok;
+    // `--session-root` adds the durable supervision report to the same
+    // checks[] every consumer reads (#287): a lost monitor or a
+    // needs-human phase is reported as what it is, never folded into ok.
+    const checks =
+      options.sessionRoot === null
+        ? result.checks
+        : [...result.checks, ...supervisionChecks(resolve(options.sessionRoot))];
+    const status = aggregateDiagnosticStatus(checks);
+    const exitCode = status === "blocked" ? EXIT.blocked : EXIT.ok;
     const facts = factsOf(result.probe);
     const envelope = buildEnvelope({
       command: "doctor",
-      status: result.status,
+      status,
       exitCode,
       startedAt,
       finishedAt: deps.now(),
       platform: platformFromProbe(selection.adapter, facts, target.host !== null),
       target: targetInfo(target),
-      checks: result.checks,
+      checks,
       facts,
       capabilities: result.probe.capabilities,
       ...(intent === "local"
@@ -848,6 +864,23 @@ export async function runCli(
     });
     return result.exitCode as ExitCode;
   }
+  // `supervise` is likewise outside the five contract commands: it reads
+  // the durable supervision state of a session directory (#287).
+  if (argv[0] === "supervise") {
+    const result = await runSuperviseCommand(argv.slice(1), {
+      ...(input.writeOut === undefined ? {} : { writeOut: input.writeOut }),
+      ...(input.writeErr === undefined ? {} : { writeErr: input.writeErr }),
+      ...(input.now === undefined ? {} : { now: input.now }),
+      ...(input.superviseWatch?.sleep === undefined
+        ? {}
+        : { sleep: input.superviseWatch.sleep }),
+      ...(input.superviseWatch?.maxTicks === undefined
+        ? {}
+        : { maxWatchTicks: input.superviseWatch.maxTicks }),
+    });
+    return result.exitCode as ExitCode;
+  }
+
   const deps = dependencies(input);
   const startedAt = deps.now();
   const parsed = parseArgs(argv);

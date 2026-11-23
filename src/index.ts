@@ -76,6 +76,7 @@ export {
   type ProofLevel,
   type RefusalReason,
   type RowPersistence,
+  type SupervisionAdvertisement,
   type VerificationAxis,
 } from "./api/capabilities.js";
 
@@ -213,18 +214,34 @@ export {
   assessGuiObservation,
   censusRunnerInSession,
   defaultLeaseController,
+  GuiAttributionError,
   GuiMutationError,
   GuiRecoveryError,
   isBlockingWindow,
+  isPidAttributedWindow,
   MacGuiRecovery,
   parseUiListing,
   screenshotLooksReal,
+  type AxWindowAttribution,
   type GuiAppState,
   type GuiButtonInfo,
+  type GuiFrame,
   type GuiLeaseController,
   type GuiRecoveryOptions,
   type GuiWindowInfo,
 } from "./driver/gui-recovery.js";
+export {
+  DIALOG_TAXONOMY,
+  describeDialogEvidence,
+  dialogClassByName,
+  extractDialogContent,
+  matchDialogClass,
+  type DialogClassSpec,
+  type DialogEvidence,
+  type DialogEvidenceLevel,
+  type RegisteredDialogTier,
+  type StructuredDialogContent,
+} from "./platform/dialog-taxonomy.js";
 export {
   chooseRecoveryWindow,
   classifyDialog,
@@ -241,6 +258,16 @@ export {
   type RecoveryOutcome,
   type RecoveryWindowChoice,
 } from "./driver/recovery.js";
+export {
+  createHostRecovery,
+  type CreateHostRecoveryOptions,
+  type HostRecoveryTarget,
+} from "./driver/host-recovery.js";
+export {
+  WindowsHostRecovery,
+  type WindowsHostRecoveryOptions,
+} from "./driver/windows-host-recovery.js";
+export type { WindowsGuiSession } from "./driver/windows-gui-recovery.js";
 export {
   listAppInstances,
   MacSessionError,
@@ -281,5 +308,39 @@ export {
   type WindowCensus,
   type WindowServerWindow,
 } from "./platform/darwin/window-census.js";
+
+/*
+ * GUI supervision contract (#278–#288, specs/gui-supervision/spec.md).
+ *
+ * `ae.supervisionState()` reads the live session's report; the standalone
+ * functions serve consumers that only know the session directory — a CLI
+ * or MCP client reconnecting to state a monitor wrote earlier. Everything
+ * here is platform-neutral; the OS probes live behind it.
+ */
+export {
+  supervisionReport,
+  supervisionStatePath,
+  waitForSupervisionPhase,
+  type WaitForPhaseOptions,
+  type WaitOutcome,
+} from "./supervision/index.js";
+export {
+  startDetachedSupervisor,
+  type DetachedSupervisor,
+  type DetachedSupervisorOptions,
+} from "./supervision/detached.js";
+export type {
+  BlockingInfo,
+  DialogTier,
+  HostLevelState,
+  MonitorRecord,
+  ObservationHealth,
+  PendingRequest,
+  SupervisionPhase,
+  SupervisionReport,
+  SupervisionStateDoc,
+  SupervisionTransition,
+  SupervisionWindow,
+} from "./supervision/types.js";
 
 export { A8N_VERSION } from "./version.js";

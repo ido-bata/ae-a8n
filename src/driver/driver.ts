@@ -64,6 +64,7 @@ import {
   type SessionPaths,
 } from "../protocol/workspace.js";
 import type { TraceRecorder, TraceStatus } from "../trace/trace.js";
+import type { PendingRequest, SupervisionPhase, SupervisionReport } from "../supervision/types.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -106,17 +107,33 @@ export class TimeoutError extends Error {
   readonly timeoutMs: number;
   /** What the host looked like at the deadline, when the driver could classify it. */
   readonly hostCondition?: HostCondition;
+  /**
+   * Wall-clock milliseconds the call took until this error was built —
+   * the operation budget *plus* whatever the post-timeout checks (recovery
+   * wait, host-state census) added (#324). Reported so the message never
+   * implies the whole call fit inside `timeoutMs`.
+   */
+  readonly elapsedMs?: number;
 
-  constructor(method: string, timeoutMs: number, hostCondition?: HostCondition) {
+  constructor(
+    method: string,
+    timeoutMs: number,
+    hostCondition?: HostCondition,
+    elapsedMs?: number,
+  ) {
     super(
       `After Effects did not answer ${method} within ${timeoutMs}ms` +
-        (hostCondition === undefined ? "" : HOST_CONDITION_NOTES[hostCondition]),
+        (hostCondition === undefined ? "" : HOST_CONDITION_NOTES[hostCondition]) +
+        (elapsedMs === undefined ? "" : `; the call took ${elapsedMs}ms in total`),
     );
     this.name = "TimeoutError";
     this.method = method;
     this.timeoutMs = timeoutMs;
     if (hostCondition !== undefined) {
       this.hostCondition = hostCondition;
+    }
+    if (elapsedMs !== undefined) {
+      this.elapsedMs = elapsedMs;
     }
   }
 }
@@ -208,6 +225,14 @@ export type DriverOptions = {
    * waits for it instead of sending it again.
    */
   readonly recoveryGraceMs?: number;
+  /**
+   * Live supervision report, when a monitor is running for this session
+   * (#285). Consulted while a request waits for its result: a blocking
+   * phase observed *before* the deadline triggers the same recovery the
+   * timeout path would run, so a dialog does not have to burn the whole
+   * budget first. The hook only reads; it never presses anything itself.
+   */
+  readonly supervision?: { report(): SupervisionReport | null };
 };
 
 export type CallOptions = {
@@ -219,6 +244,22 @@ export type CallOptions = {
 };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+
+/**
+ * Supervision phases where the host is known-or-suspected blocked. While a
+ * request waits for its result, observing one of these triggers the same
+ * recovery the post-timeout path runs — detection must not wait for the
+ * deadline (#285).
+ */
+const SUPERVISION_WAIT_PHASES: ReadonlySet<SupervisionPhase> = new Set([
+  "blocked",
+  "recovering",
+  "needs-human",
+  "quarantined",
+]);
+
+/** Minimum interval between supervision report reads inside a result wait. */
+const SUPERVISION_POLL_MS = 1_000;
 /** Least time the probe gets once the host has said it is ready. */
 const PROBE_AFTER_READY_MS = 10_000;
 
@@ -261,6 +302,9 @@ export class AeDriver {
   readonly #readinessTimeoutMs: number;
   readonly #recovery: HostRecovery | undefined;
   readonly #recoveryGraceMs: number;
+  readonly #supervision: { report(): SupervisionReport | null } | undefined;
+  /** The request currently inside `#settle`, for supervision's pending list. */
+  #inFlight: { readonly id: string; readonly method: string; readonly since: string } | null = null;
   #started = false;
   #closed = false;
   /**
@@ -285,6 +329,7 @@ export class AeDriver {
     this.#readinessTimeoutMs = options.readinessTimeoutMs ?? READINESS_TIMEOUT_MS;
     this.#recovery = options.recovery;
     this.#recoveryGraceMs = options.recoveryGraceMs ?? 60_000;
+    this.#supervision = options.supervision;
 
     if (!existsSync(this.#hostScriptPath)) {
       throw new HostUnavailableError(`host script not found: ${this.#hostScriptPath}`);
@@ -333,6 +378,17 @@ export class AeDriver {
       return null;
     }
     return { pid, session };
+  }
+
+  /**
+   * The script-invocation transport, when this session uses one — the only
+   * transport that can deliver the dispatcher activation script to a host
+   * it owns (`AfterFX.exe -r`, issue #276). Null for every other
+   * transport; callers must treat null as "this session cannot activate a
+   * dispatcher", never substitute another delivery path.
+   */
+  scriptTransport(): ScriptInvocationTransport | null {
+    return this.#transport instanceof ScriptInvocationTransport ? this.#transport : null;
   }
 
   /**
@@ -600,6 +656,25 @@ export class AeDriver {
     }
   }
 
+  /**
+   * The request this driver is currently waiting on, for supervision's
+   * pending-request list (#285). `null` when nothing is in flight. The
+   * record is evidence only: it never authorizes a resend.
+   */
+  pendingRequest(): PendingRequest | null {
+    const inFlight = this.#inFlight;
+    if (inFlight === null) {
+      return null;
+    }
+    return {
+      id: inFlight.id,
+      method: inFlight.method,
+      since: inFlight.since,
+      state: "in-flight",
+      transport: this.#transport.kind,
+    };
+  }
+
   /** Invoke a host method and return its result, unwrapped. */
   async call<T>(method: string, params: Record<string, unknown> = {}, options: CallOptions = {}): Promise<T> {
     return (await this.#call(method, params, options)) as T;
@@ -663,6 +738,11 @@ export class AeDriver {
     request: RequestEnvelope,
     timeoutMs: number,
   ): Promise<SettledCall> {
+    // Wall-clock origin for the timeout report: the budget covers the
+    // invoke and the result wait, and the post-timeout checks below can add
+    // real time on top — the error must say what the call actually took
+    // (#324).
+    const began = Date.now();
     // When #awaitResult produced an error outcome, its detail is kept for
     // the trace record: it carries the method, request id and timeout the
     // generic failure path cannot rebuild.
@@ -670,6 +750,7 @@ export class AeDriver {
       | { args: Record<string, unknown>; error: { name: string; message: string } }
       | undefined;
 
+    this.#inFlight = { id, method, since: new Date().toISOString() };
     try {
       writeRequest(this.#paths, request);
       const entry = entryScriptPath(this.#paths.root, id);
@@ -688,9 +769,63 @@ export class AeDriver {
       // makes the transport stop waiting; the script itself runs on in AE.
       const deadline = Date.now() + timeoutMs;
       const abort = new AbortController();
-      const timer = setTimeout(() => abort.abort(), timeoutMs);
+      // One timer drives both the abort signal and the race's deadline leg:
+      // a transport that honours the signal rejects `invoke`; one that
+      // ignores it must still not hold the caller past the budget (#296).
+      let fireDeadline: () => void = () => {};
+      const deadlineReached = new Promise<"deadline">((resolve) => {
+        fireDeadline = () => resolve("deadline");
+      });
+      const timer = setTimeout(() => {
+        abort.abort();
+        fireDeadline();
+      }, timeoutMs);
+      // Supervision during the invoke wait (#296): transports differ in
+      // when invoke returns — the script lane only returns once AE finished
+      // the script, the dispatcher returns at enqueue. A proven blocking
+      // phase means the wait is already lost either way, so abort early and
+      // let the result wait below run recovery and late-result
+      // reconciliation inside the same deadline. Aborting stops *our* wait
+      // only; whatever AE is doing continues, and the result file — never a
+      // resend — remains the answer.
+      let invokeError: unknown = null;
+      let invokeRejected = false;
+      const invokeSettled = this.#transport
+        .invoke(entry, { signal: abort.signal })
+        .then(
+          () => undefined,
+          (error: unknown) => {
+            invokeRejected = true;
+            invokeError = error;
+          },
+        );
+      const watch = this.#invokeBlockWatch(abort);
       try {
-        await this.#transport.invoke(entry, { signal: abort.signal });
+        const winner = await Promise.race([
+          invokeSettled.then(() => "invoke" as const),
+          watch.fired,
+          deadlineReached,
+        ]);
+        if (winner === "blocked") {
+          // A transport that honours the abort rejects shortly; one that
+          // ignores it must not hold the caller. `invokeSettled` already
+          // absorbs the late rejection, and the result wait below takes
+          // over with whatever time the deadline still owes.
+          if (invokeError instanceof ScriptNotSentError) {
+            throw invokeError;
+          }
+        } else if (winner === "deadline") {
+          // The budget is spent whether or not the transport noticed the
+          // abort. A real invoke failure that landed first still wins.
+          if (invokeRejected) {
+            throw invokeError;
+          }
+          throw new TimeoutError(method, timeoutMs);
+        } else if (invokeRejected) {
+          throw invokeError;
+        }
+        // winner === "invoke" and no rejection: the transport returned and
+        // the result wait runs exactly as before.
       } catch (error) {
         // A call that never reached the host is not a timeout of the
         // operation: nothing ran, so there is nothing to recover from and
@@ -704,6 +839,7 @@ export class AeDriver {
         throw error;
       } finally {
         clearTimeout(timer);
+        watch.cancel();
       }
 
       const outcome = await this.#awaitResult(
@@ -753,7 +889,12 @@ export class AeDriver {
         // A timeout is not a diagnosis. Before reporting it, ask what the
         // host looked like: a dead process, a live-but-blocked one, a modal
         // window the recovery saw, or honestly unknown.
-        failure = new TimeoutError(error.method, error.timeoutMs, this.#timeoutHostCondition(sawWindow));
+        failure = new TimeoutError(
+          error.method,
+          error.timeoutMs,
+          this.#timeoutHostCondition(sawWindow),
+          Date.now() - began,
+        );
       }
       const status: TraceStatus = failure instanceof TimeoutError ? "timeout" : "error";
       return {
@@ -767,7 +908,24 @@ export class AeDriver {
             : {}),
         },
       };
+    } finally {
+      this.#inFlight = null;
     }
+  }
+
+  /**
+   * One-line supervision summary for trace rows: `phase/health` when a
+   * report was observed, `unavailable:<source>` when it was not, and null
+   * when no supervision hook exists at all.
+   */
+  #supervisionReportSummary(): string | null {
+    const report = this.#supervision?.report() ?? null;
+    if (report === null) {
+      return null;
+    }
+    return report.status === "observed"
+      ? `${report.doc.phase}/${report.health}`
+      : `unavailable:${report.source}`;
   }
 
   /**
@@ -779,6 +937,19 @@ export class AeDriver {
     if (sawWindow) {
       return "modal";
     }
+    // Supervision may have seen the block the recovery never reached: a
+    // blocking phase or a blocking window in the durable report is the same
+    // evidence `sawWindow` carries, read from the shared state (#285).
+    const report = this.#supervision?.report() ?? null;
+    if (report?.status === "observed") {
+      const doc = report.doc;
+      if (
+        SUPERVISION_WAIT_PHASES.has(doc.phase) ||
+        (doc.blocking?.windows.some((window) => window.blocking) ?? false)
+      ) {
+        return "modal";
+      }
+    }
     const state = this.#transport.hostState?.();
     if (state === "gone") {
       return "gone";
@@ -787,6 +958,59 @@ export class AeDriver {
       return "unresponsive";
     }
     return "unknown";
+  }
+
+  /**
+   * One recovery attempt, traced once. Shared by the post-timeout path and
+   * the supervision early trigger (#285) so both record `session.recover`
+   * identically. "quarantined" carries the error the caller must surface;
+   * it is never retried and never re-sent.
+   */
+  async #tryRecovery(
+    id: string,
+    method: string,
+    timeoutMs: number,
+  ): Promise<
+    | { readonly kind: "recovered"; readonly sawWindow: boolean }
+    | { readonly kind: "unresolved"; readonly sawWindow: boolean }
+    | { readonly kind: "quarantined"; readonly error: HostQuarantinedError }
+  > {
+    const recovery = this.#recovery;
+    if (recovery === undefined) {
+      return { kind: "unresolved", sawWindow: false };
+    }
+    let outcome: Awaited<ReturnType<HostRecovery["attempt"]>>;
+    try {
+      outcome = await recovery.attempt({ requestId: id, method, timeoutMs });
+    } catch (error) {
+      this.#trace.record("session.recover", "error", 0, {
+        error: { name: nameOf(error), message: errorMessage(error) },
+      });
+      return { kind: "unresolved", sawWindow: false };
+    }
+    const sawWindow = outcome.window !== undefined;
+    // Supervision context on the recovery row (#287): which durable phase
+    // and observation health the attempt ran under, so the trace links the
+    // GUI mutation/audit record to the state that motivated it.
+    const supervision = this.#supervisionReportSummary();
+    this.#trace.record("session.recover", outcome.recovered ? "ok" : "error", 0, {
+      result: {
+        recovered: outcome.recovered,
+        evidence: outcome.evidence,
+        ...(supervision === null ? {} : { supervision }),
+        ...(outcome.outcome === undefined ? {} : { outcome: outcome.outcome }),
+        ...(outcome.code === undefined ? {} : { code: outcome.code }),
+        ...(outcome.window === undefined ? {} : { window: outcome.window }),
+        ...(outcome.screenshotPath === undefined ? {} : { screenshot: outcome.screenshotPath }),
+      },
+    });
+    if (!outcome.recovered) {
+      if (outcome.code !== undefined) {
+        return { kind: "quarantined", error: new HostQuarantinedError(outcome.evidence) };
+      }
+      return { kind: "unresolved", sawWindow };
+    }
+    return { kind: "recovered", sawWindow };
   }
 
   /**
@@ -816,36 +1040,17 @@ export class AeDriver {
     if (recovery === undefined) {
       return { kind: "unresolved", sawWindow: false };
     }
-    let outcome: Awaited<ReturnType<HostRecovery["attempt"]>>;
-    try {
-      outcome = await recovery.attempt({ requestId: id, method, timeoutMs });
-    } catch (error) {
-      this.#trace.record("session.recover", "error", 0, {
-        error: { name: nameOf(error), message: errorMessage(error) },
-      });
-      return { kind: "unresolved", sawWindow: false };
-    }
-    const sawWindow = outcome.window !== undefined;
-    this.#trace.record("session.recover", outcome.recovered ? "ok" : "error", 0, {
-      result: {
-        recovered: outcome.recovered,
-        evidence: outcome.evidence,
-        ...(outcome.outcome === undefined ? {} : { outcome: outcome.outcome }),
-        ...(outcome.code === undefined ? {} : { code: outcome.code }),
-        ...(outcome.window === undefined ? {} : { window: outcome.window }),
-        ...(outcome.screenshotPath === undefined ? {} : { screenshot: outcome.screenshotPath }),
-      },
-    });
-    if (!outcome.recovered) {
+    const attempt = await this.#tryRecovery(id, method, timeoutMs);
+    if (attempt.kind === "quarantined") {
       // A quarantined state is an answer, not a timeout: the blocking window
       // is a human's decision and the operation must not be retried. Throwing
       // here keeps the caller from reading a licence dialog as "try again".
-      if (outcome.code !== undefined) {
-        throw new HostQuarantinedError(outcome.evidence);
-      }
-      return { kind: "unresolved", sawWindow };
+      throw attempt.error;
     }
-    const result = await this.#awaitResult(id, method, params, this.#recoveryGraceMs, timeoutMs);
+    if (attempt.kind === "unresolved") {
+      return { kind: "unresolved", sawWindow: attempt.sawWindow };
+    }
+    const result = await this.#awaitResult(id, method, params, this.#recoveryGraceMs, timeoutMs, false);
     if (result.status === "ok") {
       return { kind: "resolved", value: result.value };
     }
@@ -857,7 +1062,45 @@ export class AeDriver {
     if (result.error instanceof HostError) {
       return { kind: "answered", error: result.error, detail: result.detail };
     }
-    return { kind: "unresolved", sawWindow };
+    return { kind: "unresolved", sawWindow: attempt.sawWindow };
+  }
+
+  /**
+   * Watches the supervision report while `invoke` is awaited (#296).
+   * `fired` resolves `"blocked"` — after aborting the invoke wait — when the
+   * durable state proves a blocking phase, and stays pending otherwise:
+   * `cancel()` or a missing hook simply lets the invoke wait run to its own
+   * deadline. An absent or `unavailable` report never fires, so a dead
+   * monitor cannot fake a block or a clean screen.
+   */
+  #invokeBlockWatch(abort: AbortController): {
+    readonly fired: Promise<"blocked">;
+    readonly cancel: () => void;
+  } {
+    let cancelled = false;
+    const never = new Promise<"blocked">(() => {});
+    const fired = (async (): Promise<"blocked"> => {
+      const supervision = this.#supervision;
+      if (supervision === undefined) {
+        return never;
+      }
+      while (!cancelled && !abort.signal.aborted) {
+        await sleep(SUPERVISION_POLL_MS);
+        if (cancelled || abort.signal.aborted) {
+          return never;
+        }
+        const report = supervision.report();
+        if (
+          report?.status === "observed" &&
+          SUPERVISION_WAIT_PHASES.has(report.doc.phase)
+        ) {
+          abort.abort();
+          return "blocked";
+        }
+      }
+      return never;
+    })();
+    return { fired, cancel: () => { cancelled = true; } };
   }
 
   async #awaitResult(
@@ -866,6 +1109,7 @@ export class AeDriver {
     params: Record<string, unknown>,
     remainingMs: number,
     timeoutMs: number,
+    allowEarlyRecovery = true,
   ): Promise<
     | {
         status: "ok";
@@ -884,6 +1128,12 @@ export class AeDriver {
     // cause instead of a bare timeout.
     let lastUnreadable: string | undefined;
     let lastUnreadableBytes: number | undefined;
+    // Supervision early trigger (#285): at most one attempt per wait, at
+    // most one report read per second. The original request is never
+    // resent — a recovered block simply lets its already-running script
+    // finish inside the same deadline.
+    let lastSupervisionCheck = 0;
+    let supervisionRecoveryTried = false;
 
     for (;;) {
       const probe = probeResult(this.#paths, id);
@@ -912,6 +1162,36 @@ export class AeDriver {
             error: { name: parsed.error.name, message: parsed.error.message },
           },
         };
+      }
+      if (
+        allowEarlyRecovery &&
+        !supervisionRecoveryTried &&
+        this.#recovery !== undefined &&
+        this.#supervision !== undefined &&
+        Date.now() - lastSupervisionCheck >= SUPERVISION_POLL_MS
+      ) {
+        lastSupervisionCheck = Date.now();
+        const report = this.#supervision.report();
+        if (
+          report?.status === "observed" &&
+          SUPERVISION_WAIT_PHASES.has(report.doc.phase)
+        ) {
+          supervisionRecoveryTried = true;
+          const attempt = await this.#tryRecovery(id, method, timeoutMs);
+          if (attempt.kind === "quarantined") {
+            return {
+              status: "error",
+              error: attempt.error,
+              detail: {
+                args: { method, ...params },
+                error: { name: attempt.error.name, message: attempt.error.message },
+              },
+            };
+          }
+          // "recovered" and "unresolved" both keep polling: the request may
+          // still finish inside the same deadline, and the timeout path
+          // remains the fallback if it does not.
+        }
       }
       if (Date.now() >= deadline) {
         // A file that never became readable is a publication problem, not a

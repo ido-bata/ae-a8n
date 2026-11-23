@@ -1,5 +1,99 @@
 # Changelog
 
+## 0.6.0
+
+Feature release on the `release-0-6-0` train: GUI Supervision (Epic #278)
+— durable, platform-native observation of an After Effects instance that
+is blocked by a dialog or otherwise unable to answer, with honest state
+reporting, measured safe recovery, verified rebuild, and read-only
+surfaces for CLI/MCP/VSCode consumers.
+
+### Added
+
+- **Supervision contract and durable state** (#280): platform-neutral
+  `SupervisionReport` / `SupervisionStateDoc` (`ae-a8n.supervision/v1`),
+  phases `init → running → blocked → recovering → resumed` plus
+  `needs-human` / `quarantined`, observation health
+  `ok / degraded / unavailable / monitor-lost`, monitor lease with
+  heartbeat and takeover, and `supervision.json` as the single durable
+  document every consumer reads.
+- **`ae.supervisionState()`** and **`ae-a8n supervise`** (#287): the API
+  and a read-only CLI report the same durable state. Absent, corrupt or
+  stale state is reported as `unavailable`/`monitor-lost`, never as a
+  fabricated healthy report. `ae-a8n supervise --watch` streams
+  transitions; `ae-a8n doctor --session-root` adds `A8N-SUP-001`…`004`
+  diagnostics.
+- **Detached supervisor** (#295): `startDetachedSupervisor()` spawns an
+  observation-only OS process that keeps the monitor lease and heartbeat
+  after the request-issuing process exits. It holds no GUI mutation
+  authority; duplicate starts are lease-safe; parent death is detected
+  as `monitor-lost`.
+- **macOS GUI probe** (#281): per-instance observation combining the
+  WindowServer census with Accessibility evidence — real dialog
+  structure, normal windows distinguished from blocking surfaces,
+  degraded reporting when AX cannot enumerate what WindowServer sees.
+- **Windows GUI observation** (#282): Win32 window census plus UI
+  Automation structural extraction in a PowerShell probe, matched to
+  the target pid / process identity / Windows session, with census-only
+  degraded fallback. Observation is read-only.
+- **Windows GUI recovery foundation** (#283): `WindowsGuiRecovery` with
+  the same lease / audit / pre-action revalidation contract as the macOS
+  path — UIA `InvokePattern` first, coordinate fallback at the element's
+  own frame, `GuiRecoveryError` before mutation vs `GuiMutationError`
+  after an attempted press, attached sessions structurally refused.
+  **No Windows dialog class is registered as auto-pressable**: every
+  blocking Windows window resolves to report-only / quarantine /
+  human-required until measured on a real host.
+- **Dialog taxonomy v2** (#284): evidence-tiered recovery classes with
+  structured dialog content; only measured classes are pressable.
+- **Verified session rebuild** (#286): `AfterEffects.rebuild()` relaunches
+  only after proven owned process loss — launch provenance, pid + start
+  time / creation identity re-proof, single-instance and session checks,
+  live-monitor-lease check — then re-verifies ownership and transitions
+  supervision `recovering → resumed`. Pending requests are reconciled
+  from result files only; nothing is resent. Attached or unknown
+  ownership refuses before any spawn.
+- **Transport re-staging after rebuild** (#313): dispatcher activations
+  bound to the crashed pid are re-staged through the recorded session
+  activation index and per-channel provenance; the rebuild report lists
+  each transport as `not-required` / `restaged` / `failed` / `unproven`
+  instead of claiming capability it did not prove.
+- **Dispatcher / native-channel attestation** (#294): owned dispatcher
+  activation records `provenance.json` (pid, start time, Windows creation
+  identity, GUI session) bound to the heartbeat identity; attach sessions
+  attest pid/session only while provenance, heartbeat binding and the OS
+  census all agree — multiple AE instances, PID reuse or session moves
+  fail closed. Native-channel state carries an optional pid.
+
+### Fixed
+
+- **macOS window enumeration** (#304): AE exposes windows under
+  `UI elements` (e.g. `AXLayoutArea`), not the `windows` class; a healthy
+  AE was permanently classified `axSuspect` and reported blocked.
+- **Recovery-phase observation** (#309): a new blocking window raised
+  while the session sat in `recovering` was swallowed; differing
+  blocking evidence now re-enters `blocked` without flapping on
+  identical evidence.
+- **Timeout-path integration** (#285): blocking is detected before the
+  invoke deadline, recovery transitions are recorded, late results are
+  matched to their request, and UNKNOWN requests are never resent.
+- **Census attribution scope** (#294/#300): macOS census fallback is
+  restricted to transports that provably execute inside a local AE
+  dispatcher — caller-supplied, fake or remote transports cannot be
+  attributed to an unrelated local AE.
+
+### Known limitations
+
+- Windows GUI *observation* and the recovery/mutation *machinery* are
+  implemented and contract-tested, but no Windows dialog class is
+  measured safe to press; Windows supervision observation coverage and
+  real-host behavior are verified per the release evidence record.
+- `ae.supervisionState()` reflects the durable report; consumers that
+  need supervision to outlive a single request process use
+  `startDetachedSupervisor()` (observation-only).
+- Attached sessions are read-only: they never gain quit, press, recover
+  or rebuild authority.
+
 ## 0.5.0
 
 Patch-level release on the `release-0-5-0` train: ExtendScript host

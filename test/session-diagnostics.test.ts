@@ -140,6 +140,28 @@ describe("timeout host classification", () => {
     expect(error.hostCondition).toBe("unknown");
   });
 
+  it("reports the real elapsed time when post-timeout checks run long (#324)", async () => {
+    // The Windows host-state census is a synchronous process listing that
+    // can stall for tens of seconds. The error must say what the call
+    // actually took — never imply the whole call fit inside the budget.
+    class SlowProbeTransport extends SilentTransport {
+      override hostState(): HostState {
+        const until = Date.now() + 80;
+        while (Date.now() < until) {
+          // Simulate the synchronous census stall.
+        }
+        return "alive";
+      }
+    }
+    const error = await timeoutOf(driverFor(new SlowProbeTransport()).call("app.info", {}));
+    expect(error.hostCondition).toBe("unresponsive");
+    expect(error.elapsedMs).toBeDefined();
+    expect(error.elapsedMs!).toBeGreaterThanOrEqual(200);
+    expect(error.message).toContain("within 150ms");
+    expect(error.message).toMatch(/the call took \d+ms in total/u);
+    expect(error.message).toContain(`${error.elapsedMs}ms in total`);
+  });
+
   it("reports modal when the recovery saw a blocking window, even over a live probe", async () => {
     const transport = new SilentTransport();
     transport.hostStateKind = "alive";

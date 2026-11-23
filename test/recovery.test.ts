@@ -387,19 +387,19 @@ describe("which window a recovery may act on", () => {
     const choice = chooseRecoveryWindow(windows);
     expect(choice.kind).toBe("unpressable");
     if (choice.kind !== "unpressable") return;
-    expect(choice.dialogClass.name).toBe("ae crash-repair options");
+    expect(choice.dialogClass.name).toBe("after-effects-crash-repair");
   });
 
   it("names the AppDirs/Required Dir startup warning and the recovery project window", () => {
     const warning = chooseRecoveryWindow([dialog("警告", "AppDirs <5> Required Dir = /Applications/Adobe After Effects 2026")]);
     expect(warning.kind).toBe("unpressable");
     if (warning.kind === "unpressable") {
-      expect(warning.dialogClass.name).toBe("ae startup directory warning");
+      expect(warning.dialogClass.name).toBe("after-effects-startup-directory-warning");
     }
     const recovery = chooseRecoveryWindow([dialog("リカバリプロジェクトを生成", "After Effects Crash_33.aep")]);
     expect(recovery.kind).toBe("unpressable");
     if (recovery.kind === "unpressable") {
-      expect(recovery.dialogClass.name).toBe("ae crash-recovery project");
+      expect(recovery.dialogClass.name).toBe("after-effects-crash-recovery-project");
     }
   });
 
@@ -409,6 +409,52 @@ describe("which window a recovery may act on", () => {
     expect(choice.kind).toBe("unpressable");
     if (choice.kind !== "unpressable") return;
     expect(choice.index).toBe(2);
+  });
+
+  it("ignores blocking windows the census attributes to another pid (#330)", () => {
+    // The bundle-confused listing: the foreign instance's dialog must not
+    // read as this instance's blocker — not even as an unclassified one
+    // that would quarantine the run.
+    const foreign = {
+      ...dialog("Script"),
+      censusAttribution: "foreign" as const,
+    };
+    expect(chooseRecoveryWindow([foreign])).toEqual({ kind: "none" });
+    // Mixed with an owned measured alert, only the owned window is seen —
+    // and its index stays the raw listing position for the press.
+    const owned = { ...measuredAlert(), censusAttribution: "owned" as const };
+    const choice = chooseRecoveryWindow([foreign, owned]);
+    expect(choice.kind).toBe("known");
+    if (choice.kind !== "known") return;
+    expect(choice.index).toBe(2);
+  });
+
+  it("vetoes every automatic press while an unmatched blocking window exists (#332)", () => {
+    // An unmatched window is unproven, not absent: a frameless or
+    // AX-phantom dialog of THIS instance reads exactly like this, so it
+    // must stop the measured-alert press the way a human-only window
+    // does. Only a fully attributed listing keeps the press path open.
+    const unmatchedAlert = {
+      ...measuredAlert(),
+      censusAttribution: "unmatched" as const,
+    };
+    const owned = { ...measuredAlert(), censusAttribution: "owned" as const };
+    const foreign = {
+      ...dialog("Script"),
+      censusAttribution: "foreign" as const,
+    };
+    // Alone, the unmatched blocker is still a blocker — never "none".
+    const alone = chooseRecoveryWindow([unmatchedAlert]);
+    expect(alone.kind).toBe("human-only");
+    // Beside a fully attributed measured alert it vetoes the press.
+    const mixed = chooseRecoveryWindow([owned, unmatchedAlert]);
+    expect(mixed.kind).toBe("human-only");
+    if (mixed.kind !== "human-only") return;
+    expect(mixed.index).toBe(2);
+    // Positively foreign windows still do not veto: they are another
+    // instance's windows, not this one's blocker.
+    const foreignOnly = chooseRecoveryWindow([foreign, owned]);
+    expect(foreignOnly.kind).toBe("known");
   });
 });
 

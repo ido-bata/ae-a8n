@@ -30,6 +30,11 @@ export type CommonOptions = {
 
 export type DoctorOptions = CommonOptions & {
   readonly verbose: boolean;
+  /**
+   * Session directory whose durable supervision state `doctor` also
+   * reports on (#287). Read-only; absent means no supervision checks.
+   */
+  readonly sessionRoot: string | null;
 };
 
 export type SetupOptions = CommonOptions & {
@@ -110,6 +115,7 @@ const VALUE_FLAGS = new Set([
   "--key-file",
   "--agent-id",
   "--host-config",
+  "--session-root",
 ]);
 
 /** The flags that describe how a named host is reached. */
@@ -125,6 +131,7 @@ const ALLOWED: Record<CommandName, ReadonlySet<string>> = {
     "--user",
     "--host",
     "--verbose",
+    "--session-root",
     ...CONNECTION_FLAGS,
   ]),
   setup: new Set([
@@ -175,6 +182,7 @@ type Mutable = {
   keyFile: string | null;
   agentId: string | null;
   hostConfig: string | null;
+  sessionRoot: string | null;
   verbose: boolean;
   yes: boolean;
   resume: boolean;
@@ -201,6 +209,7 @@ function optionsFor(command: CommandName, state: Mutable): CommandOptions {
         keyFile: state.keyFile,
         agentId: state.agentId,
         hostConfig: state.hostConfig,
+        sessionRoot: state.sessionRoot,
         verbose: state.verbose,
       };
     case "setup":
@@ -274,6 +283,7 @@ function parseCommand(
     keyFile: null,
     agentId: null,
     hostConfig: null,
+    sessionRoot: null,
     verbose: false,
     yes: false,
     resume: false,
@@ -386,6 +396,9 @@ function parseCommand(
         break;
       case "--host-config":
         state.hostConfig = value;
+        break;
+      case "--session-root":
+        state.sessionRoot = value;
         break;
       case "--run":
         if (!RUN_ID_PATTERN.test(value)) {

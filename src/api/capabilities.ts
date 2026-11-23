@@ -162,6 +162,43 @@ export type HostSessionEvidence = {
   readonly user: string | null;
 };
 
+/**
+ * What this build can say about GUI supervision (#287,
+ * specs/gui-supervision/spec.md §Capability contract). Supervision is not
+ * an `ae.operation.*` row — it is a session-level capability with its own
+ * honesty axes, reported separately from the dispatch table.
+ */
+export type SupervisionAdvertisement = {
+  /** Platforms with an implemented OS-native GUI probe. */
+  readonly platforms: readonly ("win32" | "darwin")[];
+  /**
+   * The observation mechanism on this host, or null when this platform
+   * has no implemented probe. On darwin it is the Accessibility tree plus
+   * the WindowServer window census — the same sources `ae.guiState()`
+   * uses, independent of AE's script path. On win32 it is the Win32
+   * window census plus UI Automation (#282/#316). Supervision is
+   * observation-only on every platform: no probe here presses anything,
+   * and no Windows dialog class is registered as pressable, so mutation
+   * stays unavailable rather than merely unadvertised.
+   */
+  readonly probe: "ax-windowserver" | "win32-uia" | null;
+  /**
+   * Whether durable supervision state for this session is being kept
+   * fresh right now — an in-process monitor or a detached supervisor
+   * whose heartbeat is still alive. `false` is honest absence, not a
+   * claim that the target is unblocked.
+   */
+  readonly monitoring: boolean;
+  /**
+   * Strongest evidence level for the supervision path on this build.
+   * `automated-fake` until a real-host run records the monitor end to end;
+   * never upgraded by hope.
+   */
+  readonly verification: VerificationAxis;
+  /** Where every consumer reads the same durable report. */
+  readonly report: "ae.supervisionState()";
+};
+
 export type HandshakeTarget = {
   identity: string | null;
   ownership: OwnershipEvidence;
@@ -212,6 +249,8 @@ export type HandshakeResponse = {
   /** The execution-mode guarantees this connection attests (#129). */
   execution: ExecutionGuarantees;
   target: HandshakeTarget;
+  /** GUI supervision support for this session (#287). */
+  supervision: SupervisionAdvertisement;
   inventorySupply: { scripting: SupplyState; tools: SupplyState; sdk: SupplyState };
   availableCapabilities: CapabilityAdvertisement[];
   diagnostics: HandshakeDiagnostic[];
@@ -313,6 +352,12 @@ export type CapabilityHandshakeInput = {
   readonly extensionMethods: readonly string[];
   /** Grant scopes the session may exercise on a non-owned host (#145). */
   readonly grantedOperations?: readonly string[];
+  /**
+   * Whether durable supervision state for this session is being kept
+   * fresh — computed by the caller from the live monitor and the durable
+   * report's evaluated health (#287). Absent means "not monitoring".
+   */
+  readonly supervisionMonitoring?: boolean;
   /** Per-session nonce used when no process identity can be attested. */
   readonly hostNonce: string;
   readonly generatedAt: string;
@@ -592,6 +637,26 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
       quitPolicy: "owned-only",
       grantedOperations: [...(input.grantedOperations ?? [])],
       dispatcherInstance,
+    },
+    supervision: {
+      // Both desktop probes are implemented and wired into session
+      // supervision (#285 darwin, #316 win32). The verification level is
+      // the strongest evidence the supervision path has — automated-fake
+      // until a real-host run records the monitor end to end, and the
+      // Windows lane's real-host check is tracked separately (#288).
+      platforms: ["darwin", "win32"],
+      // The mechanism is named for the host this session runs on; a
+      // platform with no probe reports null rather than borrowing the
+      // other platform's name.
+      probe:
+        attestation.platform?.os === "win32"
+          ? "win32-uia"
+          : attestation.platform?.os === "darwin"
+            ? "ax-windowserver"
+            : null,
+      monitoring: input.supervisionMonitoring === true,
+      verification: "automated-fake",
+      report: "ae.supervisionState()",
     },
     inventorySupply: { scripting: "not-supplied", tools: "not-supplied", sdk: "not-supplied" },
     availableCapabilities,

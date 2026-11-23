@@ -14,7 +14,8 @@
  * action) is the mitigation for that, not prevention. That limitation is
  * stated here so no caller mistakes the lease for a guarantee.
  *
- * Scope: the lease is per GUI session (`uid` + `asid`) and lives under the
+ * Scope: the lease is per GUI session — `uid` + `asid` on macOS, the session
+ * id on Windows (#283) — and lives under the
  * caller's ae-a8n state root (`~/.ae-a8n` by default). Callers running as the
  * same OS user share it; callers under a different state root do not — that
  * boundary is documented, not hidden.
@@ -54,16 +55,52 @@ export function defaultGuiLeaseRoot(): string {
   return join(homedir(), ".ae-a8n");
 }
 
-export type GuiLeaseSession = {
-  readonly uid: number;
-  readonly asid: number | null;
-};
+/**
+ * The GUI session a lease/audit scope belongs to.
+ *
+ * Two shapes share the same on-disk machinery:
+ *
+ *   - macOS: the login session, scoped by `uid` + `asid`. Two sessions of
+ *     the same user (different asid) do not share a lease.
+ *   - Windows (#283): the interactive session, scoped by its session id.
+ *     The ae-a8n agent runs inside the session it may mutate, so the session
+ *     id is the whole scope; window-station granularity is a future
+ *     refinement, not a silent assumption.
+ *
+ * The record format is identical for both; only the key and file name
+ * derivation differ, and a Windows scope can never collide with a macOS
+ * one (`win32:` keys and `gui-win32-` file names vs `uid:`/`gui-<n>-<n>`).
+ */
+export type GuiLeaseSession =
+  | {
+      readonly uid: number;
+      readonly asid: number | null;
+    }
+  | {
+      readonly platform: "win32";
+      readonly sessionId: number;
+    };
+
+/** The lease/audit scope for one interactive Windows session. */
+export function windowsGuiLeaseSession(sessionId: number): GuiLeaseSession {
+  return { platform: "win32", sessionId };
+}
+
+function isWindowsSession(session: GuiLeaseSession): session is {
+  readonly platform: "win32";
+  readonly sessionId: number;
+} {
+  return "sessionId" in session;
+}
 
 /**
  * The lease/audit scope for one GUI session. Two sessions of the same user
  * (different asid) do not share a lease.
  */
 export function guiSessionKey(session: GuiLeaseSession): string {
+  if (isWindowsSession(session)) {
+    return `win32:session:${session.sessionId}`;
+  }
   return `uid:${session.uid}:asid:${session.asid ?? "none"}`;
 }
 
@@ -80,6 +117,9 @@ export function guiLeasePaths(stateRoot: string): GuiLeasePaths {
 }
 
 function leaseFileName(session: GuiLeaseSession): string {
+  if (isWindowsSession(session)) {
+    return `gui-win32-${session.sessionId}.json`;
+  }
   return `gui-${session.uid}-${session.asid ?? "none"}.json`;
 }
 

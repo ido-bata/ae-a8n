@@ -345,7 +345,8 @@ export type LaunchOptions = {
    */
   readonly authorization?: SessionAuthorization;
   /**
-   * The macOS login session the After Effects lives in.
+   * The login session the After Effects lives in (macOS); on Windows the
+   * interactive session this process measured.
    *
    * The default is the session this process runs in. A test that runs inside
    * an isolated OS user's session names that user here: the Apple Event is
@@ -357,7 +358,15 @@ export type LaunchOptions = {
    * operation that timed out is never sent again.
    */
   readonly session?: {
-    /** The OS user whose login session owns the After Effects. */
+    /**
+     * The OS user whose login session owns the After Effects (macOS).
+     *
+     * On Windows this field is not consulted: there is no per-user login
+     * session to name — `session.recover` acts in the interactive session
+     * this process measured, which is the session `AfterFX.exe -r`
+     * delivery also runs in. It stays required so the option shape is the
+     * same on every platform; pass any positive integer.
+     */
     readonly uid: number;
     /**
      * Whether a modal dialog may be closed by GUI automation when it blocks
@@ -408,12 +417,123 @@ export type AttachOptions = Omit<LaunchOptions, "sessionRoot"> & {
 };
 
 /**
+ * Options for `AfterEffects.activateDispatcher` (#276): deliver the
+ * generated in-AE dispatcher activation script to the After Effects this
+ * session owns. Windows only — the delivery mechanism is `AfterFX.exe -r`.
+ */
+export type ActivateDispatcherOptions = {
+  /**
+   * The dispatcher channel directory to activate. Defaults to the
+   * per-user channel (`defaultDispatcherChannelDir()`); the directory is
+   * prepared first, exactly as `ae-a8n dispatcher prepare` does.
+   */
+  readonly channelDir?: string;
+  /**
+   * How long to wait for the dispatcher's heartbeat after the `-r`
+   * delivery. Default 15 s. A timeout is not proof of failure — After
+   * Effects may be showing a script-trust or consent dialog — so the
+   * error says so and names the manual activation path.
+   */
+  readonly timeoutMs?: number;
+};
+
+/** What `AfterEffects.activateDispatcher` reports once the heartbeat is fresh. */
+export type DispatcherActivation = {
+  /** The channel directory the dispatcher is answering on. */
+  readonly channelDir: string;
+  /** The dispatcher instance id from its heartbeat. */
+  readonly instance: string;
+  /** The After Effects version the dispatcher reports. */
+  readonly aeVersion: string;
+};
+
+/**
  * Options for `AfterEffects.resume`: the same session shape as `launch`,
  * except `sessionRoot` is required — it is the directory the original
  * `launch()` used, which holds the launch-provenance record resume checks.
  */
 export type ResumeOptions = Omit<LaunchOptions, "sessionRoot"> & {
   readonly sessionRoot: string;
+};
+
+/**
+ * Options for `AfterEffects.rebuild` (#286): the same session shape as
+ * `resume` — `sessionRoot` is required and names the directory the crashed
+ * session used, which holds both the supervision state that proved
+ * `process-gone` and the launch-provenance record that proved ownership.
+ * Rebuild relaunches After Effects through the ordinary launch path; it
+ * never attaches to, kills, or mutates a process it cannot prove was the
+ * owned one.
+ */
+export type RebuildOptions = ResumeOptions;
+
+/**
+ * What re-staging one transport surface of the rebuilt session did (#313).
+ *
+ * `resumed` describes the GUI-blocking lifecycle only; whether every
+ * delivery path the crashed session used exists again inside the new
+ * After Effects process is reported here, per surface, and never
+ * implied. `failed` and `unproven` are honest answers: the session is
+ * still usable through its own (probe-proven) transport, but the named
+ * surface was not re-established and a consumer must not assume it was.
+ */
+export type TransportRestage = {
+  /**
+   * The transport surface: the session transport's `kind`
+   * (e.g. `"script-invocation"`, `"in-ae-dispatcher"`), or
+   * `"in-ae-dispatcher"` for a dispatcher activation channel — `channelDir`
+   * then names which channel.
+   */
+  readonly transport: string;
+  /** The dispatcher channel directory, for activation entries. */
+  readonly channelDir?: string;
+  /**
+   * - `not-required`: nothing inside the new process needed staging —
+   *   the session transport delivers per call and its readiness probe
+   *   already proved it, or the surface was never bound to the crashed
+   *   process.
+   * - `restaged`: the surface was re-established and proven (e.g. a
+   *   dispatcher re-activation whose nonce heartbeat was observed).
+   * - `failed`: re-staging was attempted and did not complete; `detail`
+   *   says why. The surface is NOT available.
+   * - `unproven`: re-staging could not even be attempted honestly (e.g.
+   *   the activation index is corrupt, or the channel's provenance
+   *   cannot be read); availability is unknown, never assumed.
+   */
+  readonly status: "not-required" | "restaged" | "failed" | "unproven";
+  /** What was decided or what went wrong, for a human. */
+  readonly detail: string;
+};
+
+/**
+ * What `AfterEffects.rebuild` did, for the caller and the trace. The
+ * returned `AfterEffects` session is the authority on the new host; this
+ * report is the audit of the transition itself.
+ */
+export type SessionRebuildReport = {
+  /** The pid the launch-provenance record named before the crash. */
+  readonly previousPid: number;
+  /** The pid the rebuilt session proved it owns, when one was proven. */
+  readonly pid: number | null;
+  /**
+   * The supervision phase after the rebuild was recorded — `resumed` when
+   * the machine accepted recovery success, or whatever the monitor had
+   * already moved the session to (e.g. `blocked` behind a crash-repair
+   * dialog the rebuilt AE is showing).
+   */
+  readonly phase: string | null;
+  /** Pending requests whose recorded result proved an outcome. */
+  readonly pendingResolved: number;
+  /** Pending requests left `unknown` — never resent. */
+  readonly pendingUnknown: number;
+  /**
+   * Per-surface transport re-staging outcome (#313): the session's own
+   * transport plus every dispatcher channel the crashed session had
+   * activated. A `failed`/`unproven` entry means that surface is not
+   * proven available on the rebuilt process — read it before assuming
+   * the old session's delivery paths all came back.
+   */
+  readonly transports: readonly TransportRestage[];
 };
 
 /*
@@ -459,6 +579,25 @@ export type GuiWindowReport = {
   readonly texts: readonly string[];
   readonly buttons: readonly string[];
   readonly blocking: boolean;
+  /**
+   * The window frame in global screen coordinates, when AX reported one —
+   * the same space the `windowServer` census uses (#321).
+   */
+  readonly frame: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  } | null;
+  /**
+   * The WindowServer census's verdict on who this AX window belongs to
+   * (#330): `"owned"` — attributed to the target pid; `"foreign"` —
+   * attributed to another pid (the bundle-confused listing); `"unmatched"`
+   * — no census window accounts for it. `null` when the census could not
+   * run and attribution is unproven. Only `"owned"` windows count as
+   * blocking evidence.
+   */
+  readonly censusAttribution: "owned" | "foreign" | "unmatched" | null;
   readonly classification: GuiWindowClassification;
 };
 
@@ -501,6 +640,37 @@ export type GuiStateObservation = {
    * screen.
    */
   readonly axSuspect: boolean;
+  /**
+   * On-screen WindowServer windows for this pid that no Accessibility
+   * window accounts for (#321): surfaces the screen shows that the AX
+   * listing — and therefore `windows` and `assessment` — cannot see. A
+   * non-empty list means "clean" was never proven; the modal-dialog case
+   * this catches is exactly an AX-invisible window.
+   */
+  readonly axUnaccountedWindows: readonly {
+    readonly layer: number;
+    readonly onScreen: boolean;
+    readonly name: string;
+    readonly bounds: {
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+    } | null;
+  }[];
+  /**
+   * AX-listed windows the census attributes to OTHER pids (#330) — the
+   * bundle-confused listing of multi-install hosts. Excluded from
+   * `windows`' blocking verdicts; non-zero means part of the AX listing
+   * was untrusted.
+   */
+  readonly axForeignWindowCount: number;
+  /**
+   * AX-listed windows no census window of any pid accounts for (#330):
+   * frameless windows, AX phantoms, or timing skew. Also excluded from
+   * blocking verdicts — unproven is not owned.
+   */
+  readonly axUnmatchedWindowCount: number;
   readonly assessment: GuiAssessment;
   readonly observedAt: string;
 };
