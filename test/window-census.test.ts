@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assessGuiObservation,
+  framesMatch,
   isBlockingWindow,
   type GuiWindowInfo,
 } from "../src/driver/gui-recovery.js";
@@ -161,5 +162,78 @@ describe("assessGuiObservation — the AX-empty regression", () => {
     const state = assessGuiObservation(63300, true, [dialogWindow], census);
     expect(state.axSuspect).toBe(false);
     expect(state.windows).toHaveLength(1);
+  });
+});
+
+describe("assessGuiObservation — AX-invisible on-screen windows (#321)", () => {
+  // The measured AE 2027 shape: AX lists only the main window while the
+  // census also shows the modal dialog — layer 8, on-screen, 410x342.
+  const mainAx: GuiWindowInfo = {
+    title: "Adobe After Effects 2027 - untitled",
+    role: "AXLayoutArea",
+    subrole: "AXFloatingWindow",
+    buttons: [],
+    texts: [],
+    frame: { x: 0, y: 39, width: 1710, height: 1073 },
+  };
+  const modalWs = win({
+    layer: 8,
+    onScreen: true,
+    bounds: { x: 650, y: 185, width: 410, height: 342 },
+  });
+  const mainWs = win({
+    onScreen: true,
+    name: "untitled",
+    bounds: { x: 0, y: 38, width: 1710, height: 1074 },
+  });
+
+  it("an on-screen census window no AX frame accounts for is reported", () => {
+    const census = { available: true as const, windows: [mainWs, modalWs] };
+    const state = assessGuiObservation(63300, true, [mainAx], census);
+    expect(state.axSuspect).toBe(false);
+    expect(state.axUnaccountedWindows).toHaveLength(1);
+    expect(state.axUnaccountedWindows[0]).toMatchObject({ layer: 8 });
+  });
+
+  it("a matching frame accounts for the census window — healthy AE stays clean", () => {
+    // AX {0,39,1710,1073} vs census {0,38,1710,1074}: the 1px rounding
+    // difference measured on a real host must still match.
+    const census = { available: true as const, windows: [mainWs] };
+    const state = assessGuiObservation(63300, true, [mainAx], census);
+    expect(state.axUnaccountedWindows).toHaveLength(0);
+  });
+
+  it("off-screen census windows are not evidence about the visible screen", () => {
+    // A healthy AE owns several off-screen/other-Space windows AX never
+    // lists; they must not read as unaccounted.
+    const parked = win({ bounds: { x: 612, y: 500, width: 500, height: 500 } });
+    const strip = win({ bounds: { x: 0, y: 0, width: 1710, height: 38 } });
+    const census = { available: true as const, windows: [mainWs, parked, strip] };
+    const state = assessGuiObservation(63300, true, [mainAx], census);
+    expect(state.axUnaccountedWindows).toHaveLength(0);
+  });
+
+  it("an AX window without a frame cannot account for anything", () => {
+    const { frame: _frame, ...noFrame } = mainAx;
+    const census = { available: true as const, windows: [mainWs] };
+    const state = assessGuiObservation(63300, true, [noFrame], census);
+    expect(state.axUnaccountedWindows).toHaveLength(1);
+  });
+
+  it("an unavailable census reports nothing unaccounted — it is already degraded", () => {
+    const state = assessGuiObservation(63300, true, [mainAx], {
+      available: false,
+      reason: "probe missing",
+    });
+    expect(state.axUnaccountedWindows).toHaveLength(0);
+  });
+});
+
+describe("framesMatch", () => {
+  it("matches within the measured rounding tolerance and rejects real differences", () => {
+    const ws = { x: 0, y: 38, width: 1710, height: 1074 };
+    expect(framesMatch({ x: 0, y: 39, width: 1710, height: 1073 }, ws)).toBe(true);
+    expect(framesMatch({ x: 650, y: 185, width: 410, height: 342 }, ws)).toBe(false);
+    expect(framesMatch({ x: 5, y: 38, width: 1710, height: 1074 }, ws)).toBe(false);
   });
 });

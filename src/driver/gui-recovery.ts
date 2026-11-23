@@ -31,6 +31,7 @@ import {
   windowServerCensus,
   type CensusRunner,
   type WindowCensus,
+  type WindowServerWindow,
 } from "../platform/darwin/window-census.js";
 import { errorMessage } from "../errors.js";
 import {
@@ -81,6 +82,23 @@ export type GuiWindowInfo = {
    * recovery policy.
    */
   readonly blocking?: boolean;
+  /**
+   * The window's frame in global screen coordinates (points, top-left
+   * origin), when the Accessibility API reported one. The WindowServer
+   * census reports the same space, so frames are how an AX window is
+   * matched to the census window it accounts for (#321). Absent when the
+   * attribute could not be read — such a window can never "account for"
+   * a census window.
+   */
+  readonly frame?: GuiFrame | null;
+};
+
+/** A rectangle in global screen coordinates (points, top-left origin). */
+export type GuiFrame = {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 };
 
 export type GuiAppState = {
@@ -109,7 +127,65 @@ export type GuiAppState = {
    * AX tree is unserviceable and every AX-derived conclusion is suspect.
    */
   readonly axSuspect: boolean;
+  /**
+   * On-screen WindowServer windows for this pid that no Accessibility
+   * window accounts for (#321). AX can list the ordinary project windows
+   * while a modal dialog stays completely invisible — AE 2027 `ui.alert`
+   * measured 2026-11-23: census showed a 410x342 layer-8 window while the
+   * AX tree held only the main window. These are the census entries whose
+   * frame no AX window's `frame` matches; each is a surface the screen
+   * shows that AX-derived conclusions cannot see. Empty when the census
+   * is unavailable (already degraded) or every on-screen window is
+   * accounted for.
+   */
+  readonly axUnaccountedWindows: readonly WindowServerWindow[];
 };
+
+/**
+ * How far an AX frame may sit from its WindowServer census bounds and still
+ * be the same window. Measured on AE 2027 (2026-11-23, #321): AX reports
+ * {0,39,1710,1073} where the census reports {0,38,1710,1074} — a 1px
+ * rounding difference. The AX listing and the census are two separate
+ * session commands, so a window mid-drag or mid-resize can skew further;
+ * four points is generous for rounding and still far tighter than the
+ * distance between two distinct windows.
+ */
+export const AX_FRAME_MATCH_TOLERANCE = 4;
+
+/** Whether an AX-reported frame and census bounds name the same window. */
+export function framesMatch(ax: GuiFrame, ws: GuiFrame): boolean {
+  return (
+    Math.abs(ax.x - ws.x) <= AX_FRAME_MATCH_TOLERANCE &&
+    Math.abs(ax.y - ws.y) <= AX_FRAME_MATCH_TOLERANCE &&
+    Math.abs(ax.width - ws.width) <= AX_FRAME_MATCH_TOLERANCE &&
+    Math.abs(ax.height - ws.height) <= AX_FRAME_MATCH_TOLERANCE
+  );
+}
+
+/**
+ * Whether one census window is an on-screen surface no AX window accounts
+ * for. Only on-screen windows with real bounds count: the census also
+ * lists windows parked on other Spaces and minimized ones, which are not
+ * evidence about what is blocking the screen right now (a healthy AE owns
+ * several of those while AX shows only the visible window — measured
+ * 2026-11-23, #321).
+ */
+function isAxUnaccountedWindow(
+  ws: WindowServerWindow,
+  pid: number,
+  windows: readonly GuiWindowInfo[],
+): boolean {
+  if (ws.pid !== pid || !ws.onScreen) {
+    return false;
+  }
+  const bounds = ws.bounds;
+  if (bounds === null || bounds.width <= 0 || bounds.height <= 0) {
+    return false;
+  }
+  return !windows.some(
+    (ax) => ax.frame != null && framesMatch(ax.frame, bounds),
+  );
+}
 
 /**
  * Combine the AX listing with the WindowServer census into an honest
@@ -122,6 +198,9 @@ export function assessGuiObservation(
   census: WindowCensus,
 ): GuiAppState {
   const mine = censusForPid(census, pid);
+  const axUnaccountedWindows = census.available
+    ? census.windows.filter((ws) => isAxUnaccountedWindow(ws, pid, windows))
+    : [];
   return {
     pid,
     frontmost,
@@ -133,6 +212,7 @@ export function assessGuiObservation(
       onScreenCount: mine.onScreenCount,
     },
     axSuspect: windows.length === 0 && mine.windowCount > 0,
+    axUnaccountedWindows,
   };
 }
 
@@ -161,9 +241,14 @@ export function isBlockingWindow(window: GuiWindowInfo): boolean {
  * ```
  * FRONTMOST|1
  * W|After Effects|AXWindow|AXStandardWindow
+ * G|0,39|1710,1073
  * T|Adobe Creative Cloud にサインインしてください
  * B|OK||640,480|80,32
  * ```
+ *
+ * `G` carries the window frame (`x,y|w,h`) for census reconciliation; it
+ * is optional — older listings and windows whose geometry cannot be read
+ * simply have none.
  */
 export function parseUiListing(text: string): { frontmost: boolean; windows: GuiWindowInfo[] } {
   const windows: {
@@ -172,6 +257,7 @@ export function parseUiListing(text: string): { frontmost: boolean; windows: Gui
     subrole: string | null;
     buttons: GuiButtonInfo[];
     texts: string[];
+    frame?: GuiFrame;
   }[] = [];
   let frontmost = false;
   for (const line of text.split("\n")) {
@@ -192,6 +278,28 @@ export function parseUiListing(text: string): { frontmost: boolean; windows: Gui
         buttons: [],
         texts: [],
       });
+      continue;
+    }
+    // `G|x,y|w,h` — the window frame, emitted right after its `W` record so
+    // it attaches to that window. It is what lets the WindowServer census
+    // be reconciled against the AX listing (#321); a malformed or missing
+    // geometry line leaves the window without a frame, which only means it
+    // cannot account for a census window — never a wrong match.
+    if (parts[0] === "G") {
+      const current = windows[windows.length - 1];
+      if (current === undefined) {
+        continue;
+      }
+      const position = parsePoint(parts[1]);
+      const size = parseSize(parts[2]);
+      if (position !== null && size !== null) {
+        current.frame = {
+          x: position.x,
+          y: position.y,
+          width: size.width,
+          height: size.height,
+        };
+      }
       continue;
     }
     if (parts[0] === "T") {
@@ -280,6 +388,18 @@ export const LIST_WINDOWS_SCRIPT = [
   "        set wsub to (subrole of w) as string",
   "      end try",
   "      set report to report & \"W|\" & my a8nClean(wtitle) & \"|\" & wrole & \"|\" & wsub & linefeed",
+  // The window's frame, so the listing can be reconciled against the
+  // WindowServer census: an on-screen WS window no AX window accounts for
+  // is evidence of an AX-invisible surface (AE 2027 modal dialogs, issue
+  // #321). Emitted as `G|x,y|w,h` right after its `W` record; a window
+  // whose geometry cannot be read simply has no `G` line.
+  "      set wpos to \"\"",
+  "      set wsize to \"\"",
+  "      try",
+  "        set wpos to ((item 1 of (get position of w)) as string) & \",\" & ((item 2 of (get position of w)) as string)",
+  "        set wsize to ((item 1 of (get size of w)) as string) & \",\" & ((item 2 of (get size of w)) as string)",
+  "      end try",
+  "      if wpos is not \"\" and wsize is not \"\" then set report to report & \"G|\" & wpos & \"|\" & wsize & linefeed",
   "      set wtexts to {}",
   "      try",
   "        set wtexts to static texts of w",
@@ -350,6 +470,16 @@ export const LIST_WINDOWS_SCRIPT = [
   "          set esub to (subrole of e) as string",
   "        end try",
   "        set report to report & \"W|\" & my a8nClean(etitle) & \"|\" & erole & \"|\" & esub & linefeed",
+  // Same `G|x,y|w,h` geometry record as the `windows` loop above: AE vends
+  // its real windows as AXLayoutArea UI elements, so this is the path that
+  // matters for census reconciliation on AE (#321).
+  "        set epos to \"\"",
+  "        set esize to \"\"",
+  "        try",
+  "          set epos to ((item 1 of (get position of e)) as string) & \",\" & ((item 2 of (get position of e)) as string)",
+  "          set esize to ((item 1 of (get size of e)) as string) & \",\" & ((item 2 of (get size of e)) as string)",
+  "        end try",
+  "        if epos is not \"\" and esize is not \"\" then set report to report & \"G|\" & epos & \"|\" & esize & linefeed",
   // Only dialog-shaped UI elements get their children walked: an
   // AXLayoutArea's full subtree is the whole application UI and would make
   // the listing enormous. Dialog content still arrives through the

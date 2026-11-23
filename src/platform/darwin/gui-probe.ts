@@ -11,6 +11,14 @@
  *   - AX reporting zero windows while the WindowServer lists windows is
  *     `axSuspect`: a synthetic blocking window is emitted so supervision
  *     cannot mistake an unserviceable AX tree for a clean screen.
+ *   - AX reporting *some* windows is not proof the rest are visible
+ *     either: AE 2027 modal dialogs stay completely AX-invisible while
+ *     the ordinary windows list normally (issue #321). An on-screen
+ *     WindowServer window no AX window's frame accounts for is the same
+ *     kind of evidence — but only after it persists for
+ *     `UNACCOUNTED_CONFIRM_OBSERVATIONS` consecutive observations, so a
+ *     single mid-drag/mid-resize skew between the two session commands
+ *     cannot flap the phase.
  *   - A census that cannot run is degraded evidence, not "no windows".
  *   - A dead pid is `process-gone`; a gone GUI session is
  *     `gui-session-lost`. Both are host-level states, not windows.
@@ -18,6 +26,7 @@
 
 import type { GuiAppState, GuiWindowInfo } from "../../driver/gui-recovery.js";
 import { isBlockingWindow } from "../../driver/gui-recovery.js";
+import type { WindowServerWindow } from "./window-census.js";
 import type { DialogWindow } from "../recovery-policy.js";
 import type { GuiProbe, ProbeSnapshot } from "../../supervision/probe.js";
 import type { HostLevelState } from "../../supervision/types.js";
@@ -42,6 +51,31 @@ function toDialogWindow(window: GuiWindowInfo): DialogWindow {
   };
 }
 
+/**
+ * Consecutive observations an AX-unaccounted on-screen window must persist
+ * before it is reported as blocking. The AX listing and the WindowServer
+ * census are two separate session commands; a window being dragged or
+ * resized can skew their frames past the match tolerance for a moment.
+ * Two observations at the default 2s tick means ~4s of persistent
+ * evidence — fast enough for a modal that blocks indefinitely, slow
+ * enough to ignore a transient.
+ */
+export const UNACCOUNTED_CONFIRM_OBSERVATIONS = 2;
+
+function describeUnaccounted(window: WindowServerWindow): string {
+  const parts = [`layer ${window.layer}`];
+  if (window.bounds !== null) {
+    parts.push(
+      `${window.bounds.width}x${window.bounds.height} at ` +
+        `${window.bounds.x},${window.bounds.y}`,
+    );
+  }
+  if (window.name !== "") {
+    parts.push(`name "${window.name}"`);
+  }
+  return `on-screen window invisible to AX: ${parts.join(", ")}`;
+}
+
 function defaultPidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -54,6 +88,7 @@ function defaultPidAlive(pid: number): boolean {
 export class MacGuiProbe implements GuiProbe {
   readonly #deps: MacGuiProbeDeps;
   readonly #pid: number;
+  #unaccountedStreak = 0;
 
   constructor(pid: number, deps: MacGuiProbeDeps) {
     this.#pid = pid;
@@ -113,6 +148,35 @@ export class MacGuiProbe implements GuiProbe {
         buttons: [],
         blocking: true,
       });
+      this.#unaccountedStreak = 0;
+    } else {
+      // AX listed windows, but that does not prove it listed all of them:
+      // an on-screen WindowServer window no AX frame accounts for is the
+      // same unobservable-surface evidence as `axSuspect`, one window at a
+      // time. It is confirmed over consecutive observations before it is
+      // allowed to block — see UNACCOUNTED_CONFIRM_OBSERVATIONS.
+      const unaccounted = state.axUnaccountedWindows;
+      if (unaccounted.length === 0) {
+        this.#unaccountedStreak = 0;
+      } else {
+        this.#unaccountedStreak += 1;
+        degraded.push(
+          `WindowServer reports ${unaccounted.length} on-screen window(s) ` +
+            "the Accessibility API cannot account for",
+        );
+        if (this.#unaccountedStreak >= UNACCOUNTED_CONFIRM_OBSERVATIONS) {
+          for (const ws of unaccounted) {
+            windows.push({
+              title: "<unobservable window>",
+              role: "AXWindow",
+              subrole: null,
+              texts: [`WindowServer ${describeUnaccounted(ws)}`],
+              buttons: [],
+              blocking: true,
+            });
+          }
+        }
+      }
     }
 
     // No windows at all AND no census to corroborate = we cannot claim the

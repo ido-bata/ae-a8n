@@ -579,6 +579,16 @@ export type GuiWindowReport = {
   readonly texts: readonly string[];
   readonly buttons: readonly string[];
   readonly blocking: boolean;
+  /**
+   * The window frame in global screen coordinates, when AX reported one —
+   * the same space the `windowServer` census uses (#321).
+   */
+  readonly frame: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  } | null;
   readonly classification: GuiWindowClassification;
 };
 
@@ -621,6 +631,24 @@ export type GuiStateObservation = {
    * screen.
    */
   readonly axSuspect: boolean;
+  /**
+   * On-screen WindowServer windows for this pid that no Accessibility
+   * window accounts for (#321): surfaces the screen shows that the AX
+   * listing — and therefore `windows` and `assessment` — cannot see. A
+   * non-empty list means "clean" was never proven; the modal-dialog case
+   * this catches is exactly an AX-invisible window.
+   */
+  readonly axUnaccountedWindows: readonly {
+    readonly layer: number;
+    readonly onScreen: boolean;
+    readonly name: string;
+    readonly bounds: {
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+    } | null;
+  }[];
   readonly assessment: GuiAssessment;
   readonly observedAt: string;
 };

@@ -72,6 +72,7 @@ describe("MacGuiProbe", () => {
     windows: [],
     windowServer: { available: true, reason: null, windowCount: 0, onScreenCount: 0 },
     axSuspect: false,
+    axUnaccountedWindows: [],
     ...overrides,
   });
 
@@ -138,6 +139,84 @@ describe("MacGuiProbe", () => {
     });
     const snap = probe.observe();
     expect(snap.ok).toBe(false);
+  });
+
+  it("confirms an AX-unaccounted on-screen window before reporting it blocking (#321)", () => {
+    // The AE 2027 modal shape: AX lists the main window, the census also
+    // shows the dialog — one observation is degraded evidence only, the
+    // second consecutive one emits the synthetic blocking window.
+    const unaccounted = [
+      {
+        pid: 42,
+        owner: "After Effects",
+        layer: 8,
+        onScreen: true,
+        name: "",
+        bounds: { x: 650, y: 185, width: 410, height: 342 },
+      },
+    ];
+    let present = true;
+    const probe = new MacGuiProbe(42, {
+      listWindows: () =>
+        appState({
+          axUnaccountedWindows: present ? unaccounted : [],
+        }),
+      pidAlive: () => true,
+    });
+
+    const first = probe.observe();
+    expect(first.ok).toBe(true);
+    if (first.ok) {
+      expect(first.windows.some((w) => w.title === "<unobservable window>")).toBe(false);
+      expect(first.degraded?.join("\n")).toContain("cannot account for");
+    }
+
+    const second = probe.observe();
+    expect(second.ok).toBe(true);
+    if (second.ok) {
+      const synthetic = second.windows.find((w) => w.title === "<unobservable window>");
+      expect(synthetic?.blocking).toBe(true);
+      expect(synthetic?.texts.join(" ")).toContain("layer 8");
+    }
+
+    // Once the window is accounted for again the streak resets: a later
+    // reappearance needs the same two observations, not one.
+    present = false;
+    probe.observe();
+    present = true;
+    const third = probe.observe();
+    expect(third.ok && third.windows.some((w) => w.title === "<unobservable window>")).toBe(false);
+    const fourth = probe.observe();
+    expect(fourth.ok && fourth.windows.some((w) => w.title === "<unobservable window>")).toBe(true);
+  });
+
+  it("does not double-report when axSuspect already covers the census", () => {
+    const probe = new MacGuiProbe(42, {
+      listWindows: () =>
+        appState({
+          axSuspect: true,
+          windowServer: { available: true, reason: null, windowCount: 3, onScreenCount: 2 },
+          axUnaccountedWindows: [
+            {
+              pid: 42,
+              owner: "After Effects",
+              layer: 8,
+              onScreen: true,
+              name: "",
+              bounds: { x: 1, y: 2, width: 3, height: 4 },
+            },
+          ],
+        }),
+      pidAlive: () => true,
+    });
+    probe.observe();
+    const snap = probe.observe();
+    expect(snap.ok).toBe(true);
+    if (snap.ok) {
+      // Exactly one synthetic window — the axSuspect one — not one per
+      // census entry.
+      expect(snap.windows.filter((w) => w.title === "<unobservable window>")).toHaveLength(1);
+    }
   });
 });
 
