@@ -305,6 +305,78 @@ export const LIST_WINDOWS_SCRIPT = [
   "        set report to report & \"B|\" & my a8nClean(btitle) & \"|\" & my a8nClean(bdesc) & \"|\" & bpos & \"|\" & bsize & linefeed",
   "      end repeat",
   "    end repeat",
+  // After Effects does not vend its windows through the `windows` class or
+  // the AXWindows attribute — measured on AE 2026 (2026-11-23, issue #304):
+  // a healthy instance reports AXWindows=0 while WindowServer census sees
+  // every window, and its real windows appear as `UI elements` of role
+  // AXLayoutArea (subrole AXFloatingWindow). Without this second listing a
+  // healthy AE always looks AX-unobservable and supervision can never reach
+  // `running`. Window-like UI elements are appended AFTER the `windows`
+  // records so PRESS_BUTTON_SCRIPT's 1-based `windows`-class index is
+  // unchanged for the dialog classes it can press.
+  "    repeat with e in UI elements of p",
+  "      set erole to \"\"",
+  "      try",
+  "        set erole to (role of e) as string",
+  "      end try",
+  // AXWindow is deliberately absent: it is what the `windows` class already
+  // returns, and AE vends its modal dialog through both paths — listing it
+  // here too would report every dialog twice (measured 2026-11-23, #304).
+  "      if erole is \"AXLayoutArea\" or erole is \"AXSheet\" or erole is \"AXDialog\" or erole is \"AXSystemDialog\" then",
+  "        set etitle to \"\"",
+  "        try",
+  "          set etitle to (name of e) as string",
+  "        end try",
+  "        set esub to \"\"",
+  "        try",
+  "          set esub to (subrole of e) as string",
+  "        end try",
+  "        set report to report & \"W|\" & my a8nClean(etitle) & \"|\" & erole & \"|\" & esub & linefeed",
+  // Only dialog-shaped UI elements get their children walked: an
+  // AXLayoutArea's full subtree is the whole application UI and would make
+  // the listing enormous. Dialog content still arrives through the
+  // `windows` class whenever AX exposes it (observed for AXDialog).
+  "        if erole is \"AXSheet\" or erole is \"AXDialog\" or erole is \"AXSystemDialog\" or esub contains \"Dialog\" or esub contains \"Sheet\" or esub contains \"Alert\" then",
+  "          set etexts to {}",
+  "          try",
+  "            set etexts to static texts of e",
+  "          on error",
+  "            set etexts to {}",
+  "          end try",
+  "          repeat with t in etexts",
+  "            set ttext to \"\"",
+  "            try",
+  "              set ttext to (value of t) as string",
+  "            end try",
+  "            if ttext is \"\" then",
+  "              try",
+  "                set ttext to (name of t) as string",
+  "              end try",
+  "            end if",
+  "            if ttext is not \"\" then set report to report & \"T|\" & my a8nClean(ttext) & linefeed",
+  "          end repeat",
+  "          repeat with b in buttons of e",
+  "            set btitle to \"\"",
+  "            try",
+  "              set btitle to (name of b) as string",
+  "            end try",
+  "            set bdesc to \"\"",
+  "            try",
+  "              set bdesc to (description of b) as string",
+  "            end try",
+  "            set bpos to \"\"",
+  "            try",
+  "              set bpos to ((item 1 of (get position of b)) as string) & \",\" & ((item 2 of (get position of b)) as string)",
+  "            end try",
+  "            set bsize to \"\"",
+  "            try",
+  "              set bsize to ((item 1 of (get size of b)) as string) & \",\" & ((item 2 of (get size of b)) as string)",
+  "            end try",
+  "            set report to report & \"B|\" & my a8nClean(btitle) & \"|\" & my a8nClean(bdesc) & \"|\" & bpos & \"|\" & bsize & linefeed",
+  "          end repeat",
+  "        end if",
+  "      end if",
+  "    end repeat",
   "  end tell",
   "  return report",
   "end run",
