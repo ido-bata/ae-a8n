@@ -87,19 +87,19 @@ describe("classifyGuiWindow", () => {
   it("reports each measured unpressable class by name", () => {
     const cases: [string, GuiWindowInfo][] = [
       [
-        "ae crash-repair options",
+        "after-effects-crash-repair",
         dialog(["クラッシュ修復オプション", "レポートを送信しますか？"]),
       ],
       [
-        "ae startup directory warning",
+        "after-effects-startup-directory-warning",
         dialog(["AppDirs/Required Dir warning"]),
       ],
       [
-        "ae crash-recovery project",
+        "after-effects-crash-recovery-project",
         dialog(["リカバリプロジェクト crash_123.aep"]),
       ],
       [
-        "ae script file/network permission",
+        "script-file-network-permission",
         dialog(["Allow Scripts to Write Files and Access Network"]),
       ],
     ];
@@ -217,7 +217,7 @@ describe("assessGuiWindows", () => {
       dialog(["Allow Scripts to Write Files and Access Network"]),
     ]);
     expect(assessment.action).toBe("unpressable");
-    expect(assessment.detail).toContain("ae script file/network permission");
+    expect(assessment.detail).toContain("script-file-network-permission");
   });
 });
 

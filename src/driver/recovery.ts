@@ -18,6 +18,8 @@
 
 import { join } from "node:path";
 
+import { DIALOG_TAXONOMY } from "../platform/dialog-taxonomy.js";
+import type { DialogWindow } from "../platform/recovery-policy.js";
 import {
   GuiMutationError,
   GuiRecoveryError,
@@ -126,28 +128,43 @@ export type KnownDialogClass = {
 };
 
 /**
+ * Adapt the driver's window shape to the platform-neutral `DialogWindow`
+ * the taxonomy matchers are written against. `blocking` is the caller's
+ * measured answer (`isBlockingWindow`); the matchers never read it.
+ */
+function asDialogWindow(window: GuiWindowInfo): DialogWindow {
+  return {
+    title: window.title,
+    role: window.role,
+    subrole: window.subrole,
+    texts: window.texts,
+    buttons: window.buttons.map((button) => button.title),
+    blocking: isBlockingWindow(window),
+  };
+}
+
+/**
  * Dialog classes a recovery may press a button in.
  *
- * This list is deliberately short. The one measured class is the native alert
- * the run itself raises with `ui.alert`: on the real host (2026-11-03,
- * docs/offstage-macos.md §10.14) it was an `AXWindow` / `AXDialog` with an
- * empty title, the run's own `ae-a8n:` message among its static texts, and an
- * `OK` button; pressing `OK` closed it and the original call completed.
+ * This list is deliberately short and is derived from the canonical
+ * `DIALOG_TAXONOMY` registry (#284): only `auto-safe` entries appear here.
+ * The one measured class is the native alert the run itself raises with
+ * `ui.alert`: on the real host (2026-11-03, docs/offstage-macos.md §10.14)
+ * it was an `AXWindow` / `AXDialog` with an empty title, the run's own
+ * `ae-a8n:` message among its static texts, and an `OK` button; pressing
+ * `OK` closed it and the original call completed.
  *
  * AE's start-up `警告` dialog is *not* here. Its Axis title is also empty, so
  * matching on shape alone would press it; what it says (a sign-in, licence or
  * script-permission decision) belongs to a human. It is therefore
  * unclassified, and the run is quarantined.
  */
-export const KNOWN_DIALOG_CLASSES: readonly KnownDialogClass[] = [
-  {
-    name: "ae-a8n ui.alert",
-    matches: (window) =>
-      (window.subrole ?? "").toLowerCase() === "axdialog" &&
-      window.title.trim() === "" &&
-      window.texts.some((text) => /^\s*ae-a8n:/.test(text)),
-  },
-];
+export const KNOWN_DIALOG_CLASSES: readonly KnownDialogClass[] = DIALOG_TAXONOMY.filter(
+  (spec) => spec.tier === "auto-safe",
+).map((spec) => ({
+  name: spec.name,
+  matches: (window: GuiWindowInfo) => spec.matches(asDialogWindow(window)),
+}));
 
 /** The measured class a window belongs to, or null when it is unknown. */
 export function classifyDialog(window: GuiWindowInfo): KnownDialogClass | null {
@@ -157,12 +174,17 @@ export function classifyDialog(window: GuiWindowInfo): KnownDialogClass | null {
 /**
  * Dialog classes that are recognised by name but may never be pressed.
  *
- * These were observed on a real host (2026-11-15, AE 26.5.3): the crash
- * repair options dialog, the AppDirs/Required Dir startup warning, and the
- * crash-recovery project window. Each offers choices — repair method, report
- * submission, settings — that are a human's decision, and none has a measured
- * safe button. Naming them keeps the evidence specific; the outcome is the
- * same refusal an unclassified window gets, minus the "unknown" claim.
+ * Derived from the canonical `DIALOG_TAXONOMY` registry (#284): every
+ * non-`auto-safe` entry lands here, so the crash repair options dialog, the
+ * AppDirs/Required Dir startup warning, the crash-recovery project window,
+ * the script file/network permission prompt, the script-error and
+ * unsaved-changes dialogs, the multi-script contention dialog, and the
+ * account/licence classes are all named for what they are. Each offers
+ * choices — repair method, report submission, settings, a human decision —
+ * that automation must not take, and none but the measured `ui.alert` has a
+ * verified safe button. Naming them keeps the evidence specific; the
+ * outcome is the same refusal an unclassified window gets, minus the
+ * "unknown" claim.
  */
 export type UnpressableDialogClass = {
   /** What the evidence calls this class. */
@@ -172,43 +194,13 @@ export type UnpressableDialogClass = {
   readonly matches: (window: GuiWindowInfo) => boolean;
 };
 
-const unpressableText = (window: GuiWindowInfo): string =>
-  [window.title, window.role, window.subrole ?? "", ...window.texts].join(" ");
-
-export const UNPRESSABLE_DIALOG_CLASSES: readonly UnpressableDialogClass[] = [
-  {
-    name: "ae crash-repair options",
-    reason:
-      "the crash repair dialog offers repair and report-submission choices; sending a report or " +
-      "changing repair settings is a human's decision",
-    matches: (window) => /クラッシュ修復|crash[ -]?repair|repair options/i.test(unpressableText(window)),
-  },
-  {
-    name: "ae startup directory warning",
-    reason:
-      "the AppDirs/Required Dir warning reports an application-directory problem at launch; " +
-      "its choices change how After Effects starts and are a human's decision",
-    matches: (window) => /AppDirs|Required Dir/.test(unpressableText(window)),
-  },
-  {
-    name: "ae crash-recovery project",
-    reason:
-      "the crash-recovery project window decides whether a recovered project is generated or " +
-      "discarded; discarding unsaved work is a human's decision",
-    matches: (window) =>
-      /リカバリプロジェクト|recovery project|crash[_ ]?\d+\.aep/i.test(unpressableText(window)),
-  },
-  {
-    name: "ae script file/network permission",
-    reason:
-      "the scripting file/network permission prompt changes a security setting; granting it is " +
-      "a human's decision (observed as a startup blocker on AE 26.5, G0 evidence 2026-11-16)",
-    matches: (window) =>
-      /allow scripts to write|scripts? to write files|file and network access/i.test(
-        unpressableText(window),
-      ),
-  },
-];
+export const UNPRESSABLE_DIALOG_CLASSES: readonly UnpressableDialogClass[] = DIALOG_TAXONOMY.filter(
+  (spec) => spec.tier !== "auto-safe",
+).map((spec) => ({
+  name: spec.name,
+  reason: spec.pressPolicy,
+  matches: (window: GuiWindowInfo) => spec.matches(asDialogWindow(window)),
+}));
 
 /** The recognised-but-never-pressable class a window belongs to, or null. */
 export function classifyUnpressable(window: GuiWindowInfo): UnpressableDialogClass | null {

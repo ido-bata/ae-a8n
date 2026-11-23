@@ -14,6 +14,12 @@
  */
 
 import type { DiagnosticCode } from "../doctor/diagnostics.js";
+import {
+  DIALOG_TAXONOMY,
+  describeDialogEvidence,
+  type DialogClassSpec,
+  type RegisteredDialogTier,
+} from "./dialog-taxonomy.js";
 
 /** Buttons a recovery may press: they end a dialog without changing anything. */
 export const RECOVERY_BUTTONS = ["OK", "Cancel", "Close", "Dismiss"] as const;
@@ -43,12 +49,28 @@ export type DialogWindow = {
 export type DialogClass = {
   /** What the evidence calls this class. */
   readonly name: string;
+  /**
+   * The supervision tier (#284): `auto-safe` is the only tier that may be
+   * pressed; `human-required` and `report-only` are measured or
+   * policy-registered classes that are never pressed. Derived from the
+   * canonical `DIALOG_TAXONOMY` registry — `presses`/`button` below are the
+   * same fact in the older vocabulary.
+   */
+  readonly tier: RegisteredDialogTier;
   /** True only when a button in `RECOVERY_BUTTONS` was measured to close it safely. */
   readonly presses: boolean;
   /** The exact button to press; null when `presses` is false. */
   readonly button: RecoveryButton | null;
   /** The code reported when this class is present; null when it is pressable. */
   readonly code: DiagnosticCode | null;
+  /** Why automation may or may not press this class, in reportable words. */
+  readonly pressPolicy: string;
+  /**
+   * True for the multi-script contention class: the dialog is a symptom of
+   * a dispatch-level conflict, so reports carry the in-flight request and
+   * transport rather than treating it as a bare modal (#41).
+   */
+  readonly contention: boolean;
   /** Where the evidence comes from, so a later reader can check it. */
   readonly evidence: string;
   readonly matches: (window: DialogWindow) => boolean;
@@ -61,91 +83,33 @@ function windowText(window: DialogWindow): string {
 }
 
 /**
- * Dialog classes the project has measured.
+ * Dialog classes the project has measured — derived from the canonical
+ * `DIALOG_TAXONOMY` registry (#284), which is the single source of truth for
+ * class names, tiers, evidence provenance and matchers.
  *
- * Only `ae-a8n ui.alert` is pressable: its shape and `OK` button were observed
- * on a real After Effects. The other entries are measured shapes that must
- * never be pressed. In particular, crash repair was seen on Windows but no
- * button on it was ever measured as safe, and a sign-in or licence prompt is
- * always a human decision.
+ * Only the `auto-safe` entry (`ae-a8n ui.alert`) is pressable: its shape and
+ * `OK` button were observed on a real After Effects. Every other entry is a
+ * measured or policy-registered class that is reported and never pressed —
+ * in particular, crash repair was seen on Windows and macOS but no button on
+ * it was ever measured as safe, and a sign-in or licence prompt is always a
+ * human decision.
  */
-export const MEASURED_DIALOG_CLASSES: readonly DialogClass[] = [
-  {
-    name: "ae-a8n ui.alert",
-    presses: true,
-    button: "OK",
-    code: null,
-    evidence:
-      "macOS 26.5x89, 2026-11-03: AXWindow/AXDialog with an empty title, an " +
-      "`ae-a8n:` static text, and an OK button; pressing OK closed it and the " +
-      "original call completed.",
-    matches: (window) =>
-      (window.subrole ?? "").toLowerCase() === "axdialog" &&
-      window.title.trim() === "" &&
-      window.texts.some((text) => /^\s*ae-a8n:/u.test(text)),
-  },
-  {
-    name: "after-effects-crash-repair",
-    presses: false,
-    button: null,
-    code: "A8N-SEC-001",
-    evidence:
-      "Observed on Windows AE 26.5x89 (docs/windows-verification.md: an unclean " +
-      "exit makes the next start show Crash Repair Options). No button on it " +
-      "was measured as safe, so it is reported and never pressed.",
-    matches: (window) =>
-      /crash[ -]?repair|crash[ -]?recovery|recover unsaved/u.test(windowText(window)),
-  },
-  {
-    name: "after-effects-second-script",
-    presses: false,
-    button: null,
-    code: "A8N-AE-004",
-    evidence:
-      "Windows AE 26.5x89, 2026-10-16: the full dialog text was read and is " +
-      "recorded in docs/windows-verification.md. A script may still be running, " +
-      "so it is reported and never pressed.",
-    matches: (window) =>
-      /second script while another script|another script was already running/u.test(
-        windowText(window),
-      ),
-  },
-  {
-    name: "adobe-sign-in",
-    presses: false,
-    button: null,
-    code: "A8N-PERM-004",
-    evidence:
-      "Policy requirement: an Adobe sign-in or account window is always a human " +
-      "decision, in every UI language.",
-    matches: (window) =>
-      /sign[ -]?in|sign[ -]?out|log[ -]?in|adobe ?id|creative ?cloud|サインイン|サインアウト|ログイン/u.test(
-        windowText(window),
-      ),
-  },
-  {
-    name: "adobe-licence",
-    presses: false,
-    button: null,
-    code: "A8N-SEC-001",
-    evidence: "Policy requirement: a licence or activation window is always a human decision.",
-    matches: (window) =>
-      /licen[cs]|activat|deactivat|ライセンス|認証|アクティベーション/u.test(windowText(window)),
-  },
-  {
-    name: "script-file-network-permission",
-    presses: false,
-    button: null,
-    code: "A8N-PERM-003",
-    evidence:
-      "Policy requirement: an AE scripting file/network permission prompt changes " +
-      "a security setting and is never pressed by the runner.",
-    matches: (window) =>
-      /allow scripts to write|script.*(file|network)|file and network access/u.test(
-        windowText(window),
-      ),
-  },
-];
+function toDialogClass(spec: DialogClassSpec): DialogClass {
+  return {
+    name: spec.name,
+    tier: spec.tier,
+    presses: spec.tier === "auto-safe",
+    button: spec.tier === "auto-safe" ? spec.button : null,
+    code: spec.code,
+    pressPolicy: spec.pressPolicy,
+    contention: spec.contention === true,
+    evidence: describeDialogEvidence(spec.evidence),
+    matches: spec.matches,
+  };
+}
+
+export const MEASURED_DIALOG_CLASSES: readonly DialogClass[] =
+  DIALOG_TAXONOMY.map(toDialogClass);
 
 /**
  * Windows the recovery must not touch.

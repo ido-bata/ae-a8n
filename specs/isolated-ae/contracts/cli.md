@@ -135,6 +135,9 @@ Initial set:
 | `A8N-AE-007` | warning | The AE scripting component is unproven (presence does not prove it loads) |
 | `A8N-AE-008` | info | Per-user Scripts/Startup folder state (informational; unproven where untested) |
 | `A8N-AE-009` | info | After Effects is already running and a local launch will attach to it |
+| `A8N-AE-010` | blocker | An After Effects script error dialog is present (never pressed) |
+| `A8N-AE-011` | blocker | An After Effects unsaved-changes dialog is present (never pressed) |
+| `A8N-AE-012` | blocker | An After Effects dialog requires a human decision (never pressed) |
 | `A8N-JOB-001` | blocker | Job or result file failed ownership/integrity checks |
 | `A8N-JOB-002` | warning | Prior run left a lock or quarantine state |
 | `A8N-JOB-003` | blocker | Job or result is not from a trusted issuer (nothing executed/accepted) |

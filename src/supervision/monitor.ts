@@ -25,9 +25,11 @@ import {
   acquireMonitorLease,
   type MonitorLease,
 } from "./lease.js";
+import { dialogClassByName } from "../platform/dialog-taxonomy.js";
 import {
   applySupervisionEvent,
   initialSupervisionDoc,
+  MAX_HISTORY,
   type SupervisionEvent,
 } from "./machine.js";
 import {
@@ -36,6 +38,7 @@ import {
   writeSupervisionState,
 } from "./state.js";
 import type {
+  BlockingInfo,
   HostLevelState,
   MonitorRecord,
   PendingRequest,
@@ -43,6 +46,54 @@ import type {
   SupervisionReport,
   SupervisionStateDoc,
 } from "./types.js";
+
+/**
+ * Multi-script contention (#41, #284): when a blocking window is the
+ * measured `contention` class, the dialog is a symptom of a dispatch-level
+ * conflict — a script may still be running behind it. The dispatch layer's
+ * one-in-flight serialization is the fix; supervision's job is to record
+ * *which* request was in flight and over which transport, in both the
+ * blocking detail and the durable evidence log. The dialog itself is
+ * classified and reported, never dismissed as a superficial modal.
+ */
+function contentionEvidence(
+  blocking: BlockingInfo,
+  pending: readonly PendingRequest[],
+): string | null {
+  const hit = blocking.windows.some(
+    (window) =>
+      window.dialogClass !== null &&
+      dialogClassByName(window.dialogClass)?.contention === true,
+  );
+  if (!hit) {
+    return null;
+  }
+  const inFlight =
+    pending.length === 0
+      ? "no request is currently in flight"
+      : pending
+          .map(
+            (request) =>
+              `${request.id} (${request.method}, ${request.state}` +
+              `${request.transport === undefined ? "" : `, transport ${request.transport}`})`,
+          )
+          .join(", ");
+  return (
+    `dispatch contention: ${inFlight}; the in-flight request's outcome is uncertain and is ` +
+    "never resent — the transport's one-in-flight serialization owns the root cause (#41)"
+  );
+}
+
+function annotateContention(
+  blocking: BlockingInfo,
+  pending: readonly PendingRequest[],
+): BlockingInfo {
+  const note = contentionEvidence(blocking, pending);
+  if (note === null) {
+    return blocking;
+  }
+  return { ...blocking, detail: `${blocking.detail}; ${note}` };
+}
 
 export const DEFAULT_MONITOR_INTERVAL_MS = 2_000;
 
@@ -236,7 +287,20 @@ export class SupervisionMonitor {
               };
               return rank[hostOverride] > rank[blocking.host] ? hostOverride : blocking.host;
             })();
-      const effective = { ...blocking, host };
+      const effective = annotateContention({ ...blocking, host }, pending);
+      // The contention note is also durable evidence: a consumer reading
+      // only `evidence[]` (not `blocking.detail`) still sees which request
+      // was in flight when the dialog appeared. Bounded like probe-degraded.
+      const contentionNote = contentionEvidence(effective, pending);
+      if (
+        contentionNote !== null &&
+        this.#doc.evidence[this.#doc.evidence.length - 1] !== contentionNote
+      ) {
+        this.#doc = {
+          ...this.#doc,
+          evidence: [...this.#doc.evidence, contentionNote].slice(-MAX_HISTORY),
+        };
+      }
       const clear = host === "none" && !effective.windows.some((window) => window.blocking);
 
       const pendingFields =

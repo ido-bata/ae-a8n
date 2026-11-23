@@ -650,7 +650,13 @@ export class AeDriver {
     if (inFlight === null) {
       return null;
     }
-    return { id: inFlight.id, method: inFlight.method, since: inFlight.since, state: "in-flight" };
+    return {
+      id: inFlight.id,
+      method: inFlight.method,
+      since: inFlight.since,
+      state: "in-flight",
+      transport: this.#transport.kind,
+    };
   }
 
   /** Invoke a host method and return its result, unwrapped. */
