@@ -20,7 +20,8 @@ import {
   type MacSession,
 } from "../driver/mac-session.js";
 import { errorMessage } from "../errors.js";
-import { MacHostRecovery } from "../driver/recovery.js";
+import { createHostRecovery, type HostRecovery } from "../driver/host-recovery.js";
+import { measureWindowsSessionId } from "../platform/windows/session.js";
 import {
   SessionSupervision,
   attributeAeByCensus,
@@ -343,7 +344,7 @@ export async function openAfterEffects(
 
   // The GUI fallback is only wired when the caller asks for it, and it only
   // ever acts inside the session that owns the After Effects.
-  let recovery: MacHostRecovery | undefined;
+  let recovery: HostRecovery | undefined;
   if (sessionOption !== undefined && sessionOption.recover === true) {
     // A caller-supplied transport that is not the script transport has no
     // pid to look up, so the fallback would be silently absent from a
@@ -356,27 +357,54 @@ export async function openAfterEffects(
         op,
       );
     }
-    const targetSession = requireSession(sessionOption.uid);
-    // The pid comes from the transport, which scopes processes by its own
-    // session uid. Pressing keys in a different session than the one the
-    // pid lives in would automate somebody else's screen.
-    if (transport.targetSession?.uid !== targetSession.uid) {
-      throw new AfterEffectsError(
-        `session.recover: uid ${targetSession.uid} is not the session the transport talks into ` +
-          `(${transport.targetSession?.uid ?? "unknown"}), so the fallback would act in another session. ` +
-          "Nothing was started.",
-        op,
-      );
+    if (process.platform === "win32") {
+      // Windows has no per-user login session to name: `session.uid` is a
+      // macOS concept and is not consulted here. The recovery acts in the
+      // interactive session this process measured — the same session
+      // `AfterFX.exe -r` delivery runs in — and `WindowsGuiRecovery`
+      // still refuses the console session unless it was explicitly
+      // allowed, re-proves the session before every action, and presses
+      // only what the measured-class policy allows (today: nothing).
+      const sessionId = measureWindowsSessionId();
+      if (sessionId === null) {
+        throw new AfterEffectsError(
+          "session.recover: this process's interactive session could not be measured, so " +
+            "there is no proven desktop to recover in. Nothing was started.",
+          op,
+        );
+      }
+      recovery = createHostRecovery({
+        target: { platform: "win32", session: { sessionId } },
+        pid: () => transport.recoveryTargetPid(),
+        // A pid is not an identity. The same re-check that produced the pid
+        // runs again immediately before every GUI action, so a process
+        // that exited and had its pid reused is never the one pressed.
+        verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
+        screenshotDir: join(sessionRoot, "artifacts"),
+      });
+    } else {
+      const targetSession = requireSession(sessionOption.uid);
+      // The pid comes from the transport, which scopes processes by its own
+      // session uid. Pressing keys in a different session than the one the
+      // pid lives in would automate somebody else's screen.
+      if (transport.targetSession?.uid !== targetSession.uid) {
+        throw new AfterEffectsError(
+          `session.recover: uid ${targetSession.uid} is not the session the transport talks into ` +
+            `(${transport.targetSession?.uid ?? "unknown"}), so the fallback would act in another session. ` +
+            "Nothing was started.",
+          op,
+        );
+      }
+      recovery = createHostRecovery({
+        target: { platform: "darwin", session: targetSession },
+        pid: () => transport.recoveryTargetPid(),
+        // A pid is not an identity. The same re-check that produced the pid
+        // runs again immediately before every GUI action, so a process
+        // that exited and had its pid reused is never the one pressed.
+        verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
+        screenshotDir: join(sessionRoot, "artifacts"),
+      });
     }
-    recovery = new MacHostRecovery({
-      session: targetSession,
-      pid: () => transport.recoveryTargetPid(),
-      // A pid is not an identity. The same re-check that produced the pid
-      // runs again immediately before every GUI action, so a process
-      // that exited and had its pid reused is never the one pressed.
-      verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
-      screenshotDir: join(sessionRoot, "artifacts"),
-    });
   }
 
   // A host script declares extension methods. It is read here, once: the

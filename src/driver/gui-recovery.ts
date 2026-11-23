@@ -71,6 +71,16 @@ export type GuiWindowInfo = {
    * rather than translated.
    */
   readonly texts: readonly string[];
+  /**
+   * The measured "this window blocks the host" verdict, when the producer
+   * already has one — the Windows census evidence
+   * (`WindowsGuiWindow.blocking`). Absent on macOS, where
+   * `isBlockingWindow` derives the answer from the AX role words. An
+   * explicit verdict always wins: it is the caller's measured answer, the
+   * same contract `DialogWindow.blocking` carries in the platform-neutral
+   * recovery policy.
+   */
+  readonly blocking?: boolean;
 };
 
 export type GuiAppState = {
@@ -128,6 +138,13 @@ export function assessGuiObservation(
 
 /** A window that keeps the application from taking scripts. */
 export function isBlockingWindow(window: GuiWindowInfo): boolean {
+  // An explicit verdict is the producer's measured answer (the Windows
+  // census); only when it is absent does the AX role heuristic decide.
+  // Without this, a Windows `#32770` dialog — whose role carries a Win32
+  // class name, not an AX role — would never read as blocking.
+  if (window.blocking !== undefined) {
+    return window.blocking;
+  }
   const role = window.role.toLowerCase();
   const subrole = window.subrole?.toLowerCase() ?? "";
   return (
