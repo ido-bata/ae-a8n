@@ -410,6 +410,28 @@ describe("which window a recovery may act on", () => {
     if (choice.kind !== "unpressable") return;
     expect(choice.index).toBe(2);
   });
+
+  it("ignores blocking windows the census attributes to another pid or to nothing (#330)", () => {
+    // The bundle-confused listing: the foreign instance's dialog must not
+    // read as this instance's blocker — not even as an unclassified one
+    // that would quarantine the run.
+    const foreign = {
+      ...dialog("Script"),
+      censusAttribution: "foreign" as const,
+    };
+    const unmatched = {
+      ...measuredAlert(),
+      censusAttribution: "unmatched" as const,
+    };
+    expect(chooseRecoveryWindow([foreign, unmatched])).toEqual({ kind: "none" });
+    // Mixed with an owned measured alert, only the owned window is seen —
+    // and its index stays the raw listing position for the press.
+    const owned = { ...measuredAlert(), censusAttribution: "owned" as const };
+    const choice = chooseRecoveryWindow([foreign, owned]);
+    expect(choice.kind).toBe("known");
+    if (choice.kind !== "known") return;
+    expect(choice.index).toBe(2);
+  });
 });
 
 describe("the macOS host recovery's target process", () => {

@@ -91,7 +91,49 @@ export type GuiWindowInfo = {
    * a census window.
    */
   readonly frame?: GuiFrame | null;
+  /**
+   * The pid attribution the WindowServer census gave this AX window
+   * (#330). Present only when the census ran:
+   *
+   *   - `"owned"` — the window's frame matches a census window the
+   *     WindowServer attributes to the target pid. The only attribution
+   *     that makes the window usable as blocking or mutation evidence.
+   *   - `"foreign"` — the frame matches census windows, but only of OTHER
+   *     pids. This is the bundle-confused listing of issue #330: two AE
+   *     versions share `com.adobe.AfterEffects.application`, and System
+   *     Events can answer `windows of process` with the other instance's
+   *     windows. Foreign windows are never evidence about this pid.
+   *   - `"unmatched"` — no census window of any pid has this frame (a
+   *     frameless window, an AX phantom, or timing skew between the two
+   *     session commands). Unproven, so not evidence either.
+   *
+   * Absent when the census was unavailable: attribution is then
+   * unproven, which the press path refuses on — see `pressButtonIn`.
+   */
+  readonly censusAttribution?: AxWindowAttribution;
 };
+
+/**
+ * The WindowServer census's verdict on who an AX-listed window belongs
+ * to (#330). See `GuiWindowInfo.censusAttribution`.
+ */
+export type AxWindowAttribution = "owned" | "foreign" | "unmatched";
+
+/**
+ * Whether an AX window may be used as blocking or mutation evidence.
+ *
+ * `undefined` attribution — the census could not run — keeps the legacy
+ * trust level: there is no positive evidence of foreignness, and the
+ * unavailable census is already reported as degraded observation. A
+ * defined attribution must be `"owned"`: `"foreign"` and `"unmatched"`
+ * are excluded, never silently trusted.
+ */
+export function isPidAttributedWindow(window: GuiWindowInfo): boolean {
+  return (
+    window.censusAttribution !== "foreign" &&
+    window.censusAttribution !== "unmatched"
+  );
+}
 
 /** A rectangle in global screen coordinates (points, top-left origin). */
 export type GuiFrame = {
@@ -122,9 +164,12 @@ export type GuiAppState = {
     readonly onScreenCount: number;
   };
   /**
-   * True when AX reported zero windows but the WindowServer lists windows
-   * for this pid. `windows` is then NOT evidence of a clean screen — the
-   * AX tree is unserviceable and every AX-derived conclusion is suspect.
+   * True when AX reported zero windows attributable to this pid but the
+   * WindowServer lists windows for it — either an empty listing, or one
+   * whose every window the census attributes to other pids or to nothing
+   * (#330). `windows` is then NOT evidence of a clean screen — the AX
+   * tree is unserviceable or untrusted and every AX-derived conclusion
+   * is suspect.
    */
   readonly axSuspect: boolean;
   /**
@@ -139,6 +184,20 @@ export type GuiAppState = {
    * accounted for.
    */
   readonly axUnaccountedWindows: readonly WindowServerWindow[];
+  /**
+   * AX-listed windows the census attributes to OTHER pids (#330): the
+   * bundle-confused listing of issue #330, where `windows of process`
+   * answers with another same-bundle-id instance's windows. Excluded from
+   * blocking and mutation evidence by `isPidAttributedWindow`.
+   */
+  readonly axForeignWindowCount: number;
+  /**
+   * AX-listed windows no census window of any pid accounts for (#330):
+   * frameless windows, AX phantoms, or timing skew between the listing
+   * and the census commands. Also excluded from blocking and mutation
+   * evidence — unproven is not owned.
+   */
+  readonly axUnmatchedWindowCount: number;
 };
 
 /**
@@ -188,6 +247,50 @@ function isAxUnaccountedWindow(
 }
 
 /**
+ * Attribute one AX-listed window to a pid via the WindowServer census
+ * (#330).
+ *
+ * The AX listing is not pid-accurate on multi-install hosts: two AE
+ * versions share `CFBundleIdentifier`, and System Events can answer
+ * `windows of process` with the OTHER instance's windows (issue #330,
+ * verified on a real host). The census is pid-accurate, so an AX
+ * window's frame is the evidence: a frame that matches a census window
+ * of the target pid is `"owned"`; one that matches only census windows
+ * of other pids is `"foreign"`; one that matches nothing is `"unmatched"`.
+ *
+ * `"owned"` is checked first: a foreign window whose frame coincidentally
+ * equals a target-pid census window's bounds reads as owned — the residual
+ * risk is two instances with pixel-identical window geometry, which no
+ * frame comparison can separate.
+ *
+ * Returns `undefined` when the census is unavailable: nothing can be
+ * proven either way, and callers keep the legacy trust level while the
+ * unavailable census is already reported as degraded.
+ */
+function attributeAxWindow(
+  window: GuiWindowInfo,
+  pid: number,
+  census: WindowCensus,
+): AxWindowAttribution | undefined {
+  if (!census.available) {
+    return undefined;
+  }
+  const frame = window.frame;
+  if (frame == null) {
+    return "unmatched";
+  }
+  const matches = (ws: WindowServerWindow): boolean =>
+    ws.bounds !== null && framesMatch(frame, ws.bounds);
+  if (census.windows.some((ws) => ws.pid === pid && matches(ws))) {
+    return "owned";
+  }
+  if (census.windows.some((ws) => ws.pid !== pid && matches(ws))) {
+    return "foreign";
+  }
+  return "unmatched";
+}
+
+/**
  * Combine the AX listing with the WindowServer census into an honest
  * observation. Pure — the census gathering lives in `window-census.ts`.
  */
@@ -201,18 +304,41 @@ export function assessGuiObservation(
   const axUnaccountedWindows = census.available
     ? census.windows.filter((ws) => isAxUnaccountedWindow(ws, pid, windows))
     : [];
+  // Attribute every AX window before anyone trusts it (#330). The raw
+  // listing order is preserved — `windows`-class indices still address
+  // PRESS_BUTTON_SCRIPT's `windows of p` — but each entry now carries
+  // the census's verdict on whose window it really is.
+  const observed = windows.map((window) => {
+    const attribution = attributeAxWindow(window, pid, census);
+    return attribution === undefined
+      ? window
+      : { ...window, censusAttribution: attribution };
+  });
   return {
     pid,
     frontmost,
-    windows,
+    windows: observed,
     windowServer: {
       available: census.available,
       reason: census.available ? null : census.reason,
       windowCount: mine.windowCount,
       onScreenCount: mine.onScreenCount,
     },
-    axSuspect: windows.length === 0 && mine.windowCount > 0,
+    // AX-empty is suspect; so is an AX listing whose every window belongs
+    // to somebody else or to nothing — the pid's real windows are then
+    // AX-invisible, the same unobservable-surface evidence one listing at
+    // a time (#330). With the census unavailable `windowCount` is 0 and
+    // this stays false exactly as before.
+    axSuspect:
+      mine.windowCount > 0 &&
+      observed.every((window) => window.censusAttribution !== "owned"),
     axUnaccountedWindows,
+    axForeignWindowCount: observed.filter(
+      (window) => window.censusAttribution === "foreign",
+    ).length,
+    axUnmatchedWindowCount: observed.filter(
+      (window) => window.censusAttribution === "unmatched",
+    ).length,
   };
 }
 
@@ -549,6 +675,7 @@ export const PRESS_BUTTON_SCRIPT = [
   "  set expectedTitle to item 4 of argv",
   "  set expectedSubrole to item 5 of argv",
   "  set expectedText to item 6 of argv",
+  "  set expectedFrame to item 7 of argv",
   "  tell application \"System Events\"",
   "    set procs to (every application process whose unix id is targetPid)",
   "    if (count of procs) is 0 then return \"MISSING\"",
@@ -591,6 +718,34 @@ export const PRESS_BUTTON_SCRIPT = [
   "        end repeat",
   "      end try",
   "      if not found then return \"CHANGED\"",
+  "    end if",
+  // The last identity check is geometry (#330). On multi-install hosts the
+  // AX listing itself can be bundle-confused — `windows of process` may
+  // enumerate ANOTHER same-bundle-id instance's windows, so title, subrole
+  // and text can all describe a foreign dialog. The caller passes the frame
+  // of the window the census attributed to the target pid; the window found
+  // at the index must still occupy that frame before anything is pressed.
+  // A mismatch is a refusal ("CHANGED"), never a click.
+  "    if expectedFrame is not \"\" then",
+  "      set AppleScript's text item delimiters to \",\"",
+  "      set ef to text items of expectedFrame",
+  "      set AppleScript's text item delimiters to \" \"",
+  "      if (count of ef) is not 4 then return \"CHANGED\"",
+  "      set want to {(item 1 of ef) as integer, (item 2 of ef) as integer, (item 3 of ef) as integer, (item 4 of ef) as integer}",
+  "      set got to {}",
+  "      try",
+  "        set wpos to get position of w",
+  "        set wsize to get size of w",
+  "        set got to {(item 1 of wpos) as integer, (item 2 of wpos) as integer, (item 1 of wsize) as integer, (item 2 of wsize) as integer}",
+  "      end try",
+  "      if (count of got) is not 4 then return \"CHANGED\"",
+  "      set frameOk to true",
+  "      repeat with i from 1 to 4",
+  "        set d to (item i of got) - (item i of want)",
+  "        if d < 0 then set d to -d",
+  "        if d > 4 then set frameOk to false",
+  "      end repeat",
+  "      if not frameOk then return \"CHANGED\"",
   "    end if",
   "    try",
   "      repeat with b in buttons of w",
@@ -717,6 +872,22 @@ export class GuiRecoveryError extends Error {
     super(message);
     this.name = "GuiRecoveryError";
     this.code = options.code;
+  }
+}
+
+/**
+ * A GUI press was refused because the target window's pid attribution
+ * could not be proven (#330).
+ *
+ * Thrown BEFORE the mutation lease is taken and before any session
+ * command runs: provably nothing was pressed or clicked, so callers may
+ * treat it like any other pre-mutation refusal — never as an unknown
+ * mutation outcome.
+ */
+export class GuiAttributionError extends GuiRecoveryError {
+  constructor(message: string) {
+    super(message);
+    this.name = "GuiAttributionError";
   }
 }
 
@@ -975,7 +1146,12 @@ export class MacGuiRecovery {
 
   /** The windows that keep the application from taking a script. */
   blockingWindows(): GuiWindowInfo[] {
-    return this.listWindows().windows.filter(isBlockingWindow);
+    // Only pid-attributed windows count (#330): a foreign or unproven AX
+    // window is not this instance's blocker, and reporting it as one is
+    // exactly the false-`blocked` the bundle-confused listing produced.
+    return this.listWindows().windows.filter(
+      (window) => isBlockingWindow(window) && isPidAttributedWindow(window),
+    );
   }
 
   /**
@@ -1028,9 +1204,53 @@ export class MacGuiRecovery {
      */
     expectedText = "",
   ): boolean {
+    this.#assertPressAttribution(expected);
     return this.#mutate("pressButton", () =>
       this.#pressButton(windowIndex, title, expected, expectedText),
     );
+  }
+
+  /**
+   * Fail-closed pid attribution for a press (#330).
+   *
+   * When the caller names the window it chose (`expected`), that window
+   * must carry `"owned"` census attribution AND a frame: the frame is
+   * what PRESS_BUTTON_SCRIPT re-verifies inside the target session
+   * before clicking. `"foreign"`, `"unmatched"`, a missing attribution
+   * (census unavailable) and a missing frame all mean the press cannot
+   * be proven to land on this pid's window — on a multi-install host
+   * the AX listing can be entirely another instance's, and pressing by
+   * index alone would click THAT instance's dialog.
+   *
+   * `expected === undefined` keeps the legacy index-and-title press: the
+   * caller takes responsibility for the window it addresses, exactly as
+   * before this check existed.
+   */
+  #assertPressAttribution(expected: GuiWindowInfo | undefined): void {
+    if (expected === undefined) {
+      return;
+    }
+    if (expected.censusAttribution !== "owned" || expected.frame == null) {
+      throw new GuiAttributionError(
+        `the window chosen for the press cannot be proven to belong to After Effects ` +
+          `${this.#pid}: the WindowServer census did not attribute it to this pid ` +
+          `(attribution ${expected.censusAttribution ?? "unproven"}). On a host running ` +
+          "multiple same-bundle-id After Effects versions the Accessibility listing can " +
+          "enumerate another instance's windows, so an unattributed press could click that " +
+          "instance's dialog. No button was pressed.",
+      );
+    }
+  }
+
+  /** The `x,y,w,h` frame argument PRESS_BUTTON_SCRIPT verifies, or "". */
+  #expectedFrameArg(expected: GuiWindowInfo | undefined): string {
+    const frame = expected?.frame;
+    if (frame == null) {
+      return "";
+    }
+    return [frame.x, frame.y, frame.width, frame.height]
+      .map((value) => String(Math.round(value)))
+      .join(",");
   }
 
   #pressButton(
@@ -1046,6 +1266,7 @@ export class MacGuiRecovery {
       expected?.title ?? "",
       expected?.subrole ?? "",
       expectedText,
+      this.#expectedFrameArg(expected),
     ]);
     return result.stdout.trim() === "CLICKED";
   }
@@ -1080,6 +1301,7 @@ export class MacGuiRecovery {
     expected?: GuiWindowInfo,
     expectedText = "",
   ): boolean {
+    this.#assertPressAttribution(expected);
     // The press and its coordinate fallback are one mutation: the lease is
     // held across the whole sequence so no other mutator can act between
     // the accessibility press failing and the click landing.
@@ -1092,8 +1314,23 @@ export class MacGuiRecovery {
       if (window === undefined) {
         return false;
       }
+      // The coordinate fallback clicks raw screen positions: the window
+      // they come from must be just as pid-attributed as the one the
+      // accessibility press targeted (#330). A foreign or unproven window
+      // at this index means the listing is untrusted — click nothing.
+      if (window.censusAttribution !== "owned") {
+        return false;
+      }
       if (expected !== undefined && (window.title !== expected.title || window.subrole !== expected.subrole)) {
         // The window at that position is no longer the one the caller chose.
+        return false;
+      }
+      if (
+        expected?.frame != null &&
+        window.frame != null &&
+        !framesMatch(expected.frame, window.frame)
+      ) {
+        // Nor is it sitting where the caller saw it.
         return false;
       }
       if (expectedText !== "" && !window.texts.some((text) => text.includes(expectedText))) {

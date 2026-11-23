@@ -77,6 +77,8 @@ describe("MacGuiProbe", () => {
     windowServer: { available: true, reason: null, windowCount: 0, onScreenCount: 0 },
     axSuspect: false,
     axUnaccountedWindows: [],
+    axForeignWindowCount: 0,
+    axUnmatchedWindowCount: 0,
     ...overrides,
   });
 
@@ -194,6 +196,57 @@ describe("MacGuiProbe", () => {
     expect(third.ok && third.windows.some((w) => w.title === "<unobservable window>")).toBe(false);
     const fourth = probe.observe();
     expect(fourth.ok && fourth.windows.some((w) => w.title === "<unobservable window>")).toBe(true);
+  });
+
+  it("excludes foreign and unmatched AX windows from blocking evidence (#330)", () => {
+    // The bundle-confused listing: the foreign instance's dialog sits in
+    // `windows` beside the target's own window. Only the owned window may
+    // report; the foreign one is degraded evidence, never a blocker.
+    const probe = new MacGuiProbe(42, {
+      listWindows: () =>
+        appState({
+          windows: [
+            {
+              title: "own project",
+              role: "AXWindow",
+              subrole: "AXStandardWindow",
+              buttons: [],
+              texts: [],
+              frame: { x: 0, y: 39, width: 1710, height: 1073 },
+              censusAttribution: "owned",
+            },
+            {
+              title: "foreign dialog",
+              role: "AXWindow",
+              subrole: "AXDialog",
+              buttons: [{ title: "OK", description: "", position: null, size: null }],
+              texts: ["the other instance's dialog"],
+              frame: { x: 650, y: 185, width: 410, height: 342 },
+              censusAttribution: "foreign",
+            },
+            {
+              title: "phantom",
+              role: "AXWindow",
+              subrole: "AXDialog",
+              buttons: [],
+              texts: [],
+              frame: { x: 1, y: 1, width: 10, height: 10 },
+              censusAttribution: "unmatched",
+            },
+          ],
+          axForeignWindowCount: 1,
+          axUnmatchedWindowCount: 1,
+        }),
+      pidAlive: () => true,
+    });
+    const snap = probe.observe();
+    expect(snap.ok).toBe(true);
+    if (!snap.ok) return;
+    expect(snap.windows).toHaveLength(1);
+    expect(snap.windows[0]?.title).toBe("own project");
+    expect(snap.windows.some((w) => w.blocking)).toBe(false);
+    expect(snap.degraded?.join("\n")).toContain("other processes");
+    expect(snap.degraded?.join("\n")).toContain("unattributed");
   });
 
   it("does not double-report when axSuspect already covers the census", () => {
@@ -372,6 +425,8 @@ describe("SupervisionMonitor", () => {
         windowServer: { available: true, reason: null, windowCount: 7, onScreenCount: 3 },
         axSuspect: true,
         axUnaccountedWindows: [],
+        axForeignWindowCount: 0,
+        axUnmatchedWindowCount: 0,
       };
       const healthyState: GuiAppState = {
         pid: 42,
@@ -389,6 +444,8 @@ describe("SupervisionMonitor", () => {
         windowServer: { available: true, reason: null, windowCount: 1, onScreenCount: 1 },
         axSuspect: false,
         axUnaccountedWindows: [],
+        axForeignWindowCount: 0,
+        axUnmatchedWindowCount: 0,
       };
       const probe = new MacGuiProbe(42, {
         listWindows: () => (axEmpty ? suspectState : healthyState),

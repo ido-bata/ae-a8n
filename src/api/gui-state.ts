@@ -20,6 +20,7 @@
 import {
   GuiRecoveryError,
   isBlockingWindow,
+  isPidAttributedWindow,
   MacGuiRecovery,
   type GuiAppState,
   type GuiRecoveryOptions,
@@ -61,7 +62,11 @@ export type GuiObservationSeams = Pick<
  * even when it also matches a measured or unpressable class.
  */
 export function classifyGuiWindow(window: GuiWindowInfo): GuiWindowClassification {
-  if (!isBlockingWindow(window)) {
+  // A window the census cannot attribute to this pid is not this
+  // instance's blocker (#330): foreign and unmatched AX windows are
+  // excluded from every blocking verdict, exactly as
+  // `chooseRecoveryWindow` excludes them.
+  if (!isBlockingWindow(window) || !isPidAttributedWindow(window)) {
     return { kind: "not-blocking" };
   }
   const unpressable = classifyUnpressable(window);
@@ -93,8 +98,9 @@ function toWindowReport(window: GuiWindowInfo, index: number): GuiWindowReport {
     subrole: window.subrole,
     texts: window.texts,
     buttons: window.buttons.map((button) => button.title),
-    blocking: isBlockingWindow(window),
+    blocking: isBlockingWindow(window) && isPidAttributedWindow(window),
     frame: window.frame ?? null,
+    censusAttribution: window.censusAttribution ?? null,
     classification: classifyGuiWindow(window),
   };
 }
@@ -176,6 +182,8 @@ export function guiStateObservation(
       name: ws.name,
       bounds: ws.bounds,
     })),
+    axForeignWindowCount: state.axForeignWindowCount,
+    axUnmatchedWindowCount: state.axUnmatchedWindowCount,
     assessment: assessGuiWindows(state.windows),
     observedAt,
   };

@@ -589,6 +589,15 @@ export type GuiWindowReport = {
     readonly width: number;
     readonly height: number;
   } | null;
+  /**
+   * The WindowServer census's verdict on who this AX window belongs to
+   * (#330): `"owned"` — attributed to the target pid; `"foreign"` —
+   * attributed to another pid (the bundle-confused listing); `"unmatched"`
+   * — no census window accounts for it. `null` when the census could not
+   * run and attribution is unproven. Only `"owned"` windows count as
+   * blocking evidence.
+   */
+  readonly censusAttribution: "owned" | "foreign" | "unmatched" | null;
   readonly classification: GuiWindowClassification;
 };
 
@@ -649,6 +658,19 @@ export type GuiStateObservation = {
       readonly height: number;
     } | null;
   }[];
+  /**
+   * AX-listed windows the census attributes to OTHER pids (#330) — the
+   * bundle-confused listing of multi-install hosts. Excluded from
+   * `windows`' blocking verdicts; non-zero means part of the AX listing
+   * was untrusted.
+   */
+  readonly axForeignWindowCount: number;
+  /**
+   * AX-listed windows no census window of any pid accounts for (#330):
+   * frameless windows, AX phantoms, or timing skew. Also excluded from
+   * blocking verdicts — unproven is not owned.
+   */
+  readonly axUnmatchedWindowCount: number;
   readonly assessment: GuiAssessment;
   readonly observedAt: string;
 };

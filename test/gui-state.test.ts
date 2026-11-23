@@ -67,6 +67,8 @@ function state(windows: readonly GuiWindowInfo[], over: Partial<GuiAppState> = {
     },
     axSuspect: false,
     axUnaccountedWindows: [],
+    axForeignWindowCount: 0,
+    axUnmatchedWindowCount: 0,
     ...over,
   };
 }
