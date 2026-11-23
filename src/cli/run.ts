@@ -852,7 +852,7 @@ export async function runCli(
   // `supervise` is likewise outside the five contract commands: it reads
   // the durable supervision state of a session directory (#287).
   if (argv[0] === "supervise") {
-    const result = await runSuperviseCommand(argv.slice(1), {
+    const result = runSuperviseCommand(argv.slice(1), {
       ...(input.writeOut === undefined ? {} : { writeOut: input.writeOut }),
       ...(input.writeErr === undefined ? {} : { writeErr: input.writeErr }),
       ...(input.now === undefined ? {} : { now: input.now }),
