@@ -215,10 +215,10 @@ function renderHuman(envelope: CliEnvelope): string {
   return `${lines.join("\n")}\n`;
 }
 
-export async function runSuperviseCommand(
+export function runSuperviseCommand(
   argv: readonly string[],
   deps: Deps = {},
-): Promise<SuperviseCommandResult> {
+): SuperviseCommandResult {
   const writeOut =
     deps.writeOut ??
     ((text: string) => {
