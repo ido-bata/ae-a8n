@@ -341,11 +341,33 @@ export function applySupervisionEvent(
         // degraded probe from a lost one, so the worse answer stands.
         return { ok: true, doc: base(doc, now) };
       }
-      return { ok: true, doc: base({ ...doc, observationHealth: "degraded" }, now) };
+      // The reason is the evidence: "degraded" without it cannot be
+      // diagnosed by any consumer reading the durable document. Repeat
+      // ticks with the same reason do not append — evidence is a log of
+      // changes, not a heartbeat.
+      const entry = `probe-degraded: ${event.reason}`;
+      const evidence =
+        doc.evidence[doc.evidence.length - 1] === entry
+          ? doc.evidence
+          : [...doc.evidence, entry];
+      return {
+        ok: true,
+        doc: base(
+          {
+            ...doc,
+            observationHealth: "degraded",
+            evidence: evidence.slice(-MAX_HISTORY),
+          },
+          now,
+        ),
+      };
     }
 
     case "probe-ok": {
-      if (doc.observationHealth !== "degraded") {
+      // "unavailable" is promoted too: a document initialised before its
+      // first heartbeat starts there, and a live monitor whose probe now
+      // answers cleanly must not stay unavailable forever.
+      if (doc.observationHealth !== "degraded" && doc.observationHealth !== "unavailable") {
         return { ok: true, doc: base(doc, now) };
       }
       return { ok: true, doc: base({ ...doc, observationHealth: "ok" }, now) };
