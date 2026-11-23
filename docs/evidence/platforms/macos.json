@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "platform": "macos",
-  "commit": "e3326782ca150f59092c7670877813fe5381dd18",
-  "tarballSha256": "f04768d18f90b1189f1a05e5cda6e764a73f553b988126bb00d28c369358e87c",
-  "recordedAt": "2026-11-18",
+  "commit": "8cb1b7126dc7dce2da195d3092be969301c80606",
+  "tarballSha256": "87a494c62a0e8d167eab4400adb9e2ee90894112d8beb0d552a851d17bf195be",
+  "recordedAt": "2026-11-23",
   "verdict": "pass",
-  "evidence": "docs/evidence/windows-2026-11-18/../ (macOS runs: packaged 0.3.0 local E2E 4/4 PASS on AE 2027 27.0x78, session traces under /tmp/a8n-e2e-{run1,run2,rc1,rc2}; scoped guarantee per owner decision — isolated backend rows remain UNVERIFIED in #57/#62/#74)"
+  "evidence": "docs/evidence/release-0-6-0-2026-11-23/ (packaged 0.6.0 tarball clean-consumer runs on macOS 27.2.1 arm64, AE 2027 owned sessions + AE 2026 co-resident; scoped guarantee — see README for completed vs environment-bound scenarios)"
 }

@@ -1,0 +1,345 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "process-gone",
+    "windows": [],
+    "detail": "host state: process-gone"
+  },
+  "pendingRequests": [
+    {
+      "id": "2dc89410-7c77-4d7e-95f7-927d606ec8f1",
+      "method": "app.info",
+      "since": "2026-11-23T10:13:50.517Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-23T10:13:51.222Z",
+  "deadline": "2026-11-23T10:28:51.222Z",
+  "evidence": [
+    "probe-degraded: AX tree unserviceable: WindowServer reports 6 window(s) for this pid while AX listed none; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: WindowServer reports 1 on-screen window(s) the Accessibility API cannot account for",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: WindowServer reports 1 on-screen window(s) the Accessibility API cannot account for",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: WindowServer reports 1 on-screen window(s) the Accessibility API cannot account for",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: WindowServer reports 1 on-screen window(s) the Accessibility API cannot account for",
+    "probe-degraded: the After Effects process 44764 is no longer the one this run started (A8N-AE-004); no GUI action was taken.",
+    "probe-degraded: target pid is not alive"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 44179,
+    "pidStart": null,
+    "acquiredAt": "2026-11-23T10:06:38.586Z",
+    "heartbeatAt": "2026-11-23T10:13:50.822Z"
+  },
+  "history": [
+    {
+      "from": "recovering",
+      "to": "blocked",
+      "at": "2026-11-23T10:10:11.889Z",
+      "reason": "3 blocking window(s): ae-a8n ui.alert, 名称未設定プロジェクト, 名称未設定プロジェクト"
+    },
+    {
+      "from": "blocked",
+      "to": "recovering",
+      "at": "2026-11-23T10:10:16.422Z",
+      "reason": "no blocking window or host state observed"
+    },
+    {
+      "from": "recovering",
+      "to": "blocked",
+      "at": "2026-11-23T10:10:38.920Z",
+      "reason": "2 blocking window(s): ae-a8n ui.alert, 名称未設定プロジェクト"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:10:52.570Z",
+      "reason": "4 blocking window(s): ae-a8n ui.alert, 名称未設定プロジェクト, 名称未設定プロジェクト, <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:11:02.121Z",
+      "reason": "3 blocking window(s): ae-a8n ui.alert, 名称未設定プロジェクト, <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:11:16.948Z",
+      "reason": "5 blocking window(s): ae-a8n ui.alert, 名称未設定プロジェクト, 名称未設定プロジェクト, 名称未設定プロジェクト, <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:11:26.169Z",
+      "reason": "3 blocking window(s): ae-a8n ui.alert, 名称未設定プロジェクト, <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:16.024Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:18.229Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:20.616Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:22.773Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:25.052Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:27.299Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:29.459Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:31.627Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:33.935Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:36.300Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:38.616Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:41.144Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:43.375Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:45.667Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:48.112Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:50.334Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:52.627Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:54.811Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:57.089Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:12:59.345Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:01.650Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:03.845Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:06.059Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:08.425Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:10.751Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:13.060Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:15.198Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:17.364Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:19.614Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:21.813Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:24.019Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:26.312Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:28.646Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:30.845Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:33.120Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:35.363Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:37.561Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:39.792Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:41.992Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:44.234Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:46.457Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:48.670Z",
+      "reason": "host state: process-gone"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:13:51.222Z",
+      "reason": "host state: process-gone"
+    }
+  ],
+  "updatedAt": "2026-11-23T10:13:51.222Z"
+}

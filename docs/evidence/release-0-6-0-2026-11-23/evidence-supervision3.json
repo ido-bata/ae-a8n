@@ -1,0 +1,360 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "none",
+    "windows": [
+      {
+        "title": "<unobservable window>",
+        "role": "AXWindow",
+        "subrole": null,
+        "texts": [
+          "WindowServer reports 8 window(s) not visible to AX"
+        ],
+        "buttons": [],
+        "blocking": true,
+        "tier": "unknown",
+        "dialogClass": null,
+        "code": "A8N-SEC-001",
+        "content": {
+          "dialogClass": null,
+          "tier": "unknown",
+          "code": "A8N-SEC-001",
+          "evidenceLevel": null,
+          "fields": {},
+          "summary": "unclassified AXWindow \"<unobservable window>\" — WindowServer reports 8 window(s) not visible to AX"
+        }
+      }
+    ],
+    "detail": "1 blocking window(s): <unobservable window>"
+  },
+  "pendingRequests": [
+    {
+      "id": "f38c2c0c-c2af-48a0-aa8c-095d75c5c359",
+      "method": "app.quit",
+      "since": "2026-11-23T10:47:46.160Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-23T10:47:49.328Z",
+  "deadline": "2026-11-23T11:02:49.328Z",
+  "evidence": [
+    "probe-degraded: WindowServer reports 1 on-screen window(s) the Accessibility API cannot account for",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none",
+    "probe-degraded: WindowServer reports 1 on-screen window(s) the Accessibility API cannot account for",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 10154,
+    "pidStart": null,
+    "acquiredAt": "2026-11-23T10:37:40.720Z",
+    "heartbeatAt": "2026-11-23T10:47:46.886Z"
+  },
+  "history": [
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:44:21.311Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:44:24.731Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:44:28.748Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:44:32.433Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:44:36.073Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:44:39.815Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:44:44.354Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:44:48.421Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:44:52.459Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:44:56.232Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:44:59.729Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:02.770Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:06.021Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:09.236Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:12.280Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:15.317Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:19.063Z",
+      "reason": "1 blocking window(s): after-effects-script-progress"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:22.237Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:25.453Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:28.941Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:32.273Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:35.564Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:40.802Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:44.876Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:48.439Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:51.761Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:55.155Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:45:58.629Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:46:01.846Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:46:05.897Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:46:12.059Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:46:18.249Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:46:24.035Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:46:30.749Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:46:34.751Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:46:39.274Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:46:42.887Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:46:48.401Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:46:54.835Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:47:07.632Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:47:12.463Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:47:16.713Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:47:20.986Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:47:25.245Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:47:28.768Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:47:33.017Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:47:36.330Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:47:40.209Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:47:44.882Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-23T10:47:49.328Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    }
+  ],
+  "updatedAt": "2026-11-23T10:47:49.328Z"
+}

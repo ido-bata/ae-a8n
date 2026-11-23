@@ -1,0 +1,781 @@
+0.0s A8N_VERSION = 0.6.0
+8.2s launched. info: {"version":"27.0x78","build":"78"}
+8.2s ownership: {"kind":"owned","evidence":"pid 10740 is still the only instance"}
+8.7s recoveryTarget: {"pid":10740,"session":{"uid":501,"username":"rebui","asid":100022,"kind":"Aqua"}}
+12.1s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+12.1s   detail: 1 blocking window(s): after-effects-script-progress
+12.1s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+12.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+12.1s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+12.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+12.1s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+16.1s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+16.1s   detail: 1 blocking window(s): after-effects-script-progress
+16.1s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+16.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+16.1s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+16.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+16.1s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+20.2s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+20.2s   detail: 1 blocking window(s): after-effects-script-progress
+20.2s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+20.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+20.2s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+20.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+20.2s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+24.2s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+24.2s   detail: 1 blocking window(s): after-effects-script-progress
+24.2s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+24.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+24.2s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+24.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+24.2s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+28.2s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+28.2s   detail: 1 blocking window(s): after-effects-script-progress
+28.2s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+28.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+28.2s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+28.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+28.2s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+32.2s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+32.2s   detail: 1 blocking window(s): after-effects-script-progress
+32.2s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+32.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+32.2s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+32.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+32.2s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+36.3s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+36.3s   detail: 1 blocking window(s): after-effects-script-progress
+36.3s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+36.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+36.3s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+36.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+36.3s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+40.3s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+40.3s   detail: 1 blocking window(s): after-effects-script-progress
+40.3s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+40.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+40.3s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+40.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+40.3s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+44.4s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+44.4s   detail: 1 blocking window(s): after-effects-script-progress
+44.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+44.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+44.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+44.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+44.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+48.4s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+48.4s   detail: 1 blocking window(s): after-effects-script-progress
+48.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+48.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+48.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+48.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+48.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+52.5s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+52.5s   detail: 1 blocking window(s): after-effects-script-progress
+52.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+52.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+52.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+52.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+52.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+56.5s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+56.5s   detail: 1 blocking window(s): after-effects-script-progress
+56.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+56.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+56.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+56.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+56.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+60.5s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+60.5s   detail: 1 blocking window(s): after-effects-script-progress
+60.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+60.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+60.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+60.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+60.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+64.4s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+64.4s   detail: 1 blocking window(s): after-effects-script-progress
+64.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+64.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+64.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+64.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+64.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+68.5s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+68.5s   detail: 1 blocking window(s): after-effects-script-progress
+68.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+68.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+68.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+68.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+68.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+72.5s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+72.5s   detail: 1 blocking window(s): after-effects-script-progress
+72.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+72.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+72.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+72.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+72.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+76.5s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+76.5s   detail: 1 blocking window(s): after-effects-script-progress
+76.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+76.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+76.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+76.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+76.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+80.5s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+80.5s   detail: 1 blocking window(s): after-effects-script-progress
+80.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+80.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+80.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+80.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+80.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+84.5s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+84.5s   detail: 1 blocking window(s): after-effects-script-progress
+84.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+84.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+84.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+84.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+84.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+88.4s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+88.4s   detail: 1 blocking window(s): after-effects-script-progress
+88.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+88.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+88.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+88.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+88.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+92.4s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+92.4s   detail: 1 blocking window(s): after-effects-script-progress
+92.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+92.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+92.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+92.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+92.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+93.8s dismiss-mid windows: 5 axSuspect: false
+93.8s   axwin[1] {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","texts":["missing value","Script execution time 16 minutes 54 seconds."],"buttons":["missing value"]}
+93.8s   axwin[2] {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","texts":[],"buttons":[]}
+93.8s   axwin[3] {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","texts":[],"buttons":[]}
+93.8s   axwin[4] {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","texts":[],"buttons":[]}
+93.8s   axwin[5] {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","texts":[],"buttons":[]}
+96.8s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+96.8s   detail: 1 blocking window(s): after-effects-script-progress
+96.8s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+96.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+96.8s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+96.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+96.8s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+100.2s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+100.2s   detail: 1 blocking window(s): after-effects-script-progress
+100.2s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+100.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+100.2s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+100.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+100.2s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+104.3s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+104.3s   detail: 1 blocking window(s): after-effects-script-progress
+104.3s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+104.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+104.3s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+104.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+104.3s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+108.4s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+108.4s   detail: 1 blocking window(s): after-effects-script-progress
+108.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+108.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+108.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+108.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+108.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+113.5s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+113.5s   detail: 1 blocking window(s): after-effects-script-progress
+113.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+113.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+113.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+113.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+113.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+117.9s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+117.9s   detail: 1 blocking window(s): after-effects-script-progress
+117.9s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+117.9s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+117.9s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+117.9s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+117.9s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+123.0s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+123.0s   detail: 1 blocking window(s): after-effects-script-progress
+123.0s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+123.0s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+123.0s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+123.0s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+123.0s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+130.6s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+130.6s   detail: 1 blocking window(s): after-effects-script-progress
+130.6s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+130.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+130.6s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+130.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+130.6s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+137.5s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+137.5s   detail: 1 blocking window(s): after-effects-script-progress
+137.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+137.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+137.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+137.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+137.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+144.3s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+144.3s   detail: 1 blocking window(s): after-effects-script-progress
+144.3s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+144.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+144.3s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+144.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+144.3s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+149.1s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+149.1s   detail: 1 blocking window(s): after-effects-script-progress
+149.1s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+149.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+149.1s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+149.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+149.1s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+153.2s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+153.2s   detail: 1 blocking window(s): after-effects-script-progress
+153.2s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+153.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+153.2s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+153.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+153.2s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+157.2s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+157.2s   detail: 1 blocking window(s): after-effects-script-progress
+157.2s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+157.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+157.2s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+157.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+157.2s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+161.8s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+161.8s   detail: 1 blocking window(s): after-effects-script-progress
+161.8s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+161.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+161.8s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+161.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+161.8s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+166.2s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+166.2s   detail: 1 blocking window(s): after-effects-script-progress
+166.2s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+166.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+166.2s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+166.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+166.2s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+170.4s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+170.4s   detail: 1 blocking window(s): after-effects-script-progress
+170.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+170.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+170.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+170.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+170.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+175.1s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+175.1s   detail: 1 blocking window(s): after-effects-script-progress
+175.1s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+175.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+175.1s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+175.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+175.1s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+182.1s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+182.1s   detail: 1 blocking window(s): after-effects-script-progress
+182.1s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+182.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+182.1s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+182.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+182.1s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+189.1s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+189.1s   detail: 1 blocking window(s): after-effects-script-progress
+189.1s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+189.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+189.1s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+189.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+189.1s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+193.5s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+193.5s   detail: 1 blocking window(s): after-effects-script-progress
+193.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+193.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+193.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+193.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+193.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+199.1s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+199.1s   detail: 1 blocking window(s): after-effects-script-progress
+199.1s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+199.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+199.1s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+199.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+199.1s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+203.2s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+203.2s   detail: 1 blocking window(s): after-effects-script-progress
+203.2s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+203.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+203.2s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+203.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+203.2s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+207.3s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+207.3s   detail: 1 blocking window(s): after-effects-script-progress
+207.3s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+207.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+207.3s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+207.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+207.3s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+211.4s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+211.4s   detail: 1 blocking window(s): after-effects-script-progress
+211.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+211.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+211.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+211.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+211.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+215.5s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+215.5s   detail: 1 blocking window(s): after-effects-script-progress
+215.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+215.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+215.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+215.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+215.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+219.6s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+219.6s   detail: 1 blocking window(s): after-effects-script-progress
+219.6s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+219.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+219.6s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+219.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+219.6s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+223.6s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+223.6s   detail: 1 blocking window(s): after-effects-script-progress
+223.6s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+223.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+223.6s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+223.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+223.6s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+227.7s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+227.7s   detail: 1 blocking window(s): after-effects-script-progress
+227.7s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+227.7s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+227.7s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+227.7s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+227.7s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+231.8s watch phase=blocked health=ok obsHealth=ok host=none win=5w pending=
+231.8s   detail: 1 blocking window(s): after-effects-script-progress
+231.8s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+231.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+231.8s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+231.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+231.8s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+233.3s dismiss-pre-dialog windows: 5 axSuspect: false
+233.3s   axwin[1] {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","texts":["missing value","Script execution time 18 minutes 59 seconds."],"buttons":["missing value"]}
+233.3s   axwin[2] {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","texts":[],"buttons":[]}
+233.3s   axwin[3] {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","texts":[],"buttons":[]}
+233.3s   axwin[4] {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","texts":[],"buttons":[]}
+233.3s   axwin[5] {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","texts":[],"buttons":[]}
+233.3s showModalDialog begin
+248.5s showModalDialog FAILED after 15.2s: AfterEffectsError - After Effects did not answer ui.alert within 15000ms; a modal window may be blocking After Effects; the call took 15227ms in total hostCondition=modal
+251.5s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=4w pending=ui.alert:in-flight
+251.5s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+251.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+251.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+251.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+251.5s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+255.0s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=4w pending=ui.alert:in-flight
+255.0s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+255.0s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+255.0s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+255.0s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+255.0s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+262.1s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+262.1s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+262.1s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+262.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+262.1s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+262.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+262.1s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+262.1s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+266.4s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+266.4s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+266.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+266.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+266.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+266.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+266.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+266.4s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+270.9s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+270.9s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+270.9s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+270.9s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+270.9s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+270.9s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+270.9s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+270.9s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+275.0s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+275.0s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+275.0s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+275.0s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+275.0s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+275.0s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+275.0s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+275.0s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+279.1s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+279.1s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+279.1s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+279.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+279.1s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+279.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+279.1s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+279.1s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+283.4s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+283.4s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+283.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+283.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+283.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+283.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+283.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+283.4s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+287.3s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+287.3s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+287.3s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+287.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+287.3s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+287.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+287.3s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+287.3s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+291.6s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+291.6s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+291.6s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+291.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+291.6s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+291.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+291.6s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+291.6s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+296.0s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+296.0s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+296.0s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+296.0s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+296.0s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+296.0s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+296.0s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+296.0s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+300.6s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+300.6s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+300.6s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+300.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+300.6s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+300.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+300.6s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+300.6s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+305.0s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+305.0s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+305.0s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+305.0s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+305.0s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+305.0s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+305.0s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+305.0s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+309.2s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+309.2s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+309.2s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+309.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+309.2s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+309.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+309.2s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+309.2s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+313.4s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+313.4s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+313.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+313.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+313.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+313.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+313.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+313.4s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+317.8s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+317.8s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+317.8s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+317.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+317.8s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+317.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+317.8s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+317.8s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+322.1s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+322.1s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+322.1s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+322.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+322.1s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+322.1s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+322.1s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+322.1s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+327.2s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+327.2s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+327.2s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+327.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+327.2s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+327.2s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+327.2s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+327.2s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+334.0s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+334.0s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+334.0s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+334.0s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+334.0s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+334.0s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+334.0s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+334.0s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+340.8s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+340.8s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+340.8s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+340.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+340.8s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+340.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+340.8s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+340.8s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+347.6s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+347.6s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+347.6s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+347.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+347.6s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+347.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+347.6s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+347.6s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+352.6s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+352.6s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+352.6s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+352.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+352.6s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+352.6s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+352.6s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+352.6s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+357.3s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+357.3s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+357.3s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+357.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+357.3s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+357.3s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+357.3s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+357.3s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+361.4s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+361.4s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+361.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+361.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+361.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+361.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+361.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+361.4s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+365.5s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+365.5s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+365.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+365.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+365.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+365.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+365.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+365.5s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+369.5s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+369.5s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+369.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+369.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+369.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+369.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+369.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+369.5s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+375.4s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+375.4s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+375.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+375.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+375.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+375.4s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+375.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+375.4s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+380.8s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+380.8s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+380.8s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+380.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+380.8s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+380.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+380.8s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+380.8s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+392.8s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+392.8s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+392.8s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+392.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+392.8s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+392.8s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+392.8s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+392.8s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+397.5s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=6w pending=ui.alert:in-flight
+397.5s   detail: 2 blocking window(s): after-effects-script-progress, <unobservable window>
+397.5s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+397.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+397.5s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+397.5s   win: {"title":"Aulymo","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+397.5s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+397.5s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+401.8s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+401.8s   detail: 1 blocking window(s): <unobservable window>
+401.8s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+405.7s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+405.7s   detail: 1 blocking window(s): <unobservable window>
+405.7s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+409.1s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+409.1s   detail: 1 blocking window(s): <unobservable window>
+409.1s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+413.1s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+413.1s   detail: 1 blocking window(s): <unobservable window>
+413.1s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+416.8s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+416.8s   detail: 1 blocking window(s): <unobservable window>
+416.8s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+420.4s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+420.4s   detail: 1 blocking window(s): <unobservable window>
+420.4s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+424.2s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+424.2s   detail: 1 blocking window(s): <unobservable window>
+424.2s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+428.7s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+428.7s   detail: 1 blocking window(s): <unobservable window>
+428.7s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+432.8s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+432.8s   detail: 1 blocking window(s): <unobservable window>
+432.8s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+436.8s post-dialog phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+436.8s   detail: 1 blocking window(s): <unobservable window>
+436.8s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+438.0s dismiss-post windows: 0 axSuspect: true
+441.0s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+441.0s   detail: 1 blocking window(s): <unobservable window>
+441.0s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+444.1s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+444.1s   detail: 1 blocking window(s): <unobservable window>
+444.1s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+447.1s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+447.1s   detail: 1 blocking window(s): <unobservable window>
+447.1s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+450.4s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+450.4s   detail: 1 blocking window(s): <unobservable window>
+450.4s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+453.6s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+453.6s   detail: 1 blocking window(s): <unobservable window>
+453.6s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+456.6s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+456.6s   detail: 1 blocking window(s): <unobservable window>
+456.6s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+459.7s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+459.7s   detail: 1 blocking window(s): <unobservable window>
+459.7s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+463.4s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=3w pending=ui.alert:in-flight
+463.4s   detail: 1 blocking window(s): after-effects-script-progress
+463.4s   win: {"title":"スクリプト launch.jsx を実行中...","role":"AXLayoutArea","subrole":"AXDialog","tier":"report-only","dialogClass":"after-effects-script-progress","code":null}
+463.4s   win: {"title":"missing value","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+463.4s   win: {"title":"Adobe After Effects 2026 - 名称未設定プロジェクト *","role":"AXLayoutArea","subrole":"AXFloatingWindow","tier":"report-only","dialogClass":null,"code":null}
+466.6s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+466.6s   detail: 1 blocking window(s): <unobservable window>
+466.6s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+469.8s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+469.8s   detail: 1 blocking window(s): <unobservable window>
+469.8s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+473.3s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+473.3s   detail: 1 blocking window(s): <unobservable window>
+473.3s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+476.7s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+476.7s   detail: 1 blocking window(s): <unobservable window>
+476.7s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+479.9s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+479.9s   detail: 1 blocking window(s): <unobservable window>
+479.9s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+485.2s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+485.2s   detail: 1 blocking window(s): <unobservable window>
+485.2s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+489.3s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+489.3s   detail: 1 blocking window(s): <unobservable window>
+489.3s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+492.8s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+492.8s   detail: 1 blocking window(s): <unobservable window>
+492.8s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+496.1s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+496.1s   detail: 1 blocking window(s): <unobservable window>
+496.1s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+499.5s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+499.5s   detail: 1 blocking window(s): <unobservable window>
+499.5s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+503.0s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+503.0s   detail: 1 blocking window(s): <unobservable window>
+503.0s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+506.2s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+506.2s   detail: 1 blocking window(s): <unobservable window>
+506.2s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+510.3s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+510.3s   detail: 1 blocking window(s): <unobservable window>
+510.3s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+516.4s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+516.4s   detail: 1 blocking window(s): <unobservable window>
+516.4s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+522.6s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+522.6s   detail: 1 blocking window(s): <unobservable window>
+522.6s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+528.4s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+528.4s   detail: 1 blocking window(s): <unobservable window>
+528.4s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+535.1s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+535.1s   detail: 1 blocking window(s): <unobservable window>
+535.1s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+539.1s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+539.1s   detail: 1 blocking window(s): <unobservable window>
+539.1s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+543.7s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+543.7s   detail: 1 blocking window(s): <unobservable window>
+543.7s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+547.3s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+547.3s   detail: 1 blocking window(s): <unobservable window>
+547.3s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+552.8s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+552.8s   detail: 1 blocking window(s): <unobservable window>
+552.8s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+559.2s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+559.2s   detail: 1 blocking window(s): <unobservable window>
+559.2s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+572.1s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+572.1s   detail: 1 blocking window(s): <unobservable window>
+572.1s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+576.8s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+576.8s   detail: 1 blocking window(s): <unobservable window>
+576.8s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+581.1s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+581.1s   detail: 1 blocking window(s): <unobservable window>
+581.1s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+585.4s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+585.4s   detail: 1 blocking window(s): <unobservable window>
+585.4s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+589.6s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+589.6s   detail: 1 blocking window(s): <unobservable window>
+589.6s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+593.1s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+593.1s   detail: 1 blocking window(s): <unobservable window>
+593.1s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+597.4s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+597.4s   detail: 1 blocking window(s): <unobservable window>
+597.4s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+600.7s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+600.7s   detail: 1 blocking window(s): <unobservable window>
+600.7s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+604.6s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+604.6s   detail: 1 blocking window(s): <unobservable window>
+604.6s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+609.3s post-dismiss phase=blocked health=degraded obsHealth=degraded host=none win=1w pending=ui.alert:in-flight
+609.3s   detail: 1 blocking window(s): <unobservable window>
+609.3s   win: {"title":"<unobservable window>","role":"AXWindow","subrole":null,"tier":"unknown","dialogClass":null,"code":"A8N-SEC-001"}
+610.3s version() FAILED: AfterEffectsError app.info was not sent to After Effects: the call was abandoned while it waited for the previous script to finish; it was never sent to After Effects, so nothing ran. Nothing ran.
+610.3s trace op counts: {"session.probe:ok":2,"session.launch:ok":2,"session.authorization:ok":2,"session.close:ok":1,"supervision.transition:ok":2,"supervision.health:ok":1,"session.recover:error":2,"ui.alert:timeout":1,"app.info:error":1}
+610.3s outbox: ["bab656a5-006a-461a-98d1-1171634e0a5d.result.json","da6a4b4b-79ff-499c-aa62-d0fd9d1c88b2.result.json"]
+file:///private/tmp/ae-accept-rc2/consumer/node_modules/@ido-bata/ae-a8n/dist/api/errors.js:155
+        throw new AfterEffectsError(`${op} was not sent to After Effects: ${error.message}. Nothing ran.`, op, { cause: error });
+              ^
+
+AfterEffectsError: session.close was not sent to After Effects: the call was abandoned while it waited for the previous script to finish; it was never sent to After Effects, so nothing ran. Nothing ran.
+    at contextualise (file:///private/tmp/ae-accept-rc2/consumer/node_modules/@ido-bata/ae-a8n/dist/api/errors.js:155:15)
+    at AfterEffects.close (file:///private/tmp/ae-accept-rc2/consumer/node_modules/@ido-bata/ae-a8n/dist/api/index.js:525:13)
+    at async file:///private/tmp/ae-accept-rc2/consumer/probe3.mjs:72:16 {
+  op: 'session.close',
+  code: undefined,
+  hostCondition: undefined,
+  [cause]: ScriptNotSentError: the call was abandoned while it waited for the previous script to finish; it was never sent to After Effects, so nothing ran
+      at ScriptInvocationTransport.invoke (file:///private/tmp/ae-accept-rc2/consumer/node_modules/@ido-bata/ae-a8n/dist/driver/script-invocation.js:1169:31)
+      at async #settle (file:///private/tmp/ae-accept-rc2/consumer/node_modules/@ido-bata/ae-a8n/dist/driver/driver.js:617:32)
+      at async #call (file:///private/tmp/ae-accept-rc2/consumer/node_modules/@ido-bata/ae-a8n/dist/driver/driver.js:547:25)
+      at async AeDriver.stop (file:///private/tmp/ae-accept-rc2/consumer/node_modules/@ido-bata/ae-a8n/dist/driver/driver.js:430:17)
+      at async AfterEffects.close (file:///private/tmp/ae-accept-rc2/consumer/node_modules/@ido-bata/ae-a8n/dist/api/index.js:512:28)
+      at async file:///private/tmp/ae-accept-rc2/consumer/probe3.mjs:72:16
+}
+
+Node.js v24.22.1

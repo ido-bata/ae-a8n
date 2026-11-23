@@ -1,0 +1,164 @@
+{
+  "schemaVersion": "1.0",
+  "command": "supervise",
+  "status": "blocked",
+  "exitCode": 3,
+  "startedAt": "2026-11-23T10:07:32.052Z",
+  "finishedAt": "2026-11-23T10:07:32.072Z",
+  "platform": {
+    "os": "darwin",
+    "release": "27.2.0",
+    "arch": "arm64",
+    "backend": "none"
+  },
+  "package": {
+    "name": "@ido-bata/ae-a8n",
+    "version": "0.6.0",
+    "commit": null
+  },
+  "target": {
+    "name": "local",
+    "isolation": "session"
+  },
+  "checks": [],
+  "nextActions": [
+    {
+      "kind": "human",
+      "code": "supervision.blocked",
+      "action": "After Effects is blocked: 1 blocking window(s): 名称未設定プロジェクト. Wait for recovery or inspect `ae-a8n supervise status` again; the wait is bounded by the phase deadline."
+    }
+  ],
+  "facts": {
+    "status": "observed",
+    "source": "state",
+    "doc": {
+      "schemaVersion": "ae-a8n.supervision/v1",
+      "sessionId": null,
+      "phase": "blocked",
+      "observationHealth": "ok",
+      "blocking": {
+        "host": "none",
+        "windows": [
+          {
+            "title": "名称未設定プロジェクト",
+            "role": "AXLayoutArea",
+            "subrole": "AXDialog",
+            "texts": [
+              "%",
+              "今日のヒント",
+              "位置アニメーション全体で一定の速度を維持するには、位置キーフレームを選択し、右 キーを押しながらクリックして、「時間ロービング」を有効にします。   - Michael Szalapski",
+              "ショートカット",
+              "埋め込み :",
+              "範囲",
+              "再生開始の時間",
+              "フレーム",
+              "スキップ",
+              "解像度",
+              "(スペースバー での) 停止時 :",
+              "No selection",
+              "Select a text layer to see the motions on it",
+              "Easing",
+              "Current: —",
+              "Select a text layer with an animation, or select keyframes in the timeline"
+            ],
+            "buttons": [
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "missing value",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              "",
+              ""
+            ],
+            "blocking": true,
+            "tier": "unknown",
+            "dialogClass": null,
+            "code": "A8N-SEC-001",
+            "content": {
+              "dialogClass": null,
+              "tier": "unknown",
+              "code": "A8N-SEC-001",
+              "evidenceLevel": null,
+              "fields": {},
+              "summary": "unclassified AXLayoutArea/AXDialog [missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value, missing value] \"名称未設定プロジェクト\" — % / 今日のヒント / 位置アニメーション全体で一定の速度を維持するには、位置キーフレームを選択し、右 キーを押しながらクリックして、「時間ロービング」を有効にします。   - Michael Szalapski / ショートカット / 埋め込み : / 範囲 / 再生開始の時間 / フレーム / スキップ / 解像度 / (スペースバー での) 停止時 : / No selection / Select a text layer to see the motions on it / Easing / Current: — / Select a text layer with an animation, or select keyframes in the timeline"
+            }
+          }
+        ],
+        "detail": "1 blocking window(s): 名称未設定プロジェクト"
+      },
+      "pendingRequests": [],
+      "enteredAt": "2026-11-23T10:07:29.034Z",
+      "deadline": "2026-11-23T10:22:29.034Z",
+      "evidence": [
+        "probe-degraded: AX tree unserviceable: WindowServer reports 6 window(s) for this pid while AX listed none; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred"
+      ],
+      "monitor": {
+        "ownerId": "ae-a8n-session",
+        "pid": 44179,
+        "pidStart": null,
+        "acquiredAt": "2026-11-23T10:06:38.586Z",
+        "heartbeatAt": "2026-11-23T10:07:21.370Z"
+      },
+      "history": [
+        {
+          "from": "init",
+          "to": "running",
+          "at": "2026-11-23T10:06:38.595Z",
+          "reason": "supervision started"
+        },
+        {
+          "from": "running",
+          "to": "blocked",
+          "at": "2026-11-23T10:07:29.034Z",
+          "reason": "1 blocking window(s): 名称未設定プロジェクト"
+        }
+      ],
+      "updatedAt": "2026-11-23T10:07:29.034Z"
+    },
+    "health": "ok",
+    "healthDetail": null,
+    "readAt": "2026-11-23T10:07:32.052Z"
+  }
+}
