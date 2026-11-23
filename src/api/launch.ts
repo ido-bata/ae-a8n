@@ -510,7 +510,7 @@ export async function openAfterEffects(
     supervision = SessionSupervision.start({
       sessionRoot,
       pid: supervisionTarget.pid,
-      session: supervisionTarget.session,
+      target: { platform: "darwin", session: supervisionTarget.session },
       verifyPid: (pid) => driver.recoveryTarget()?.pid === pid,
       pendingRequests: () => {
         const pending = driver.pendingRequest();
@@ -521,6 +521,35 @@ export async function openAfterEffects(
       trace,
     });
     session.supervision = supervision;
+  } else if (process.platform === "win32" && transport instanceof ScriptInvocationTransport) {
+    // Windows supervision (#316) uses the same attestation the win32
+    // recovery wiring above proved: `recoveryTargetPid()` re-reads the
+    // process census on every call — pid plus the full creation identity,
+    // single in-scope instance — so a reused pid, a second AfterFX.exe or
+    // an unreadable census yields null and no monitor starts. The session
+    // is this process's own measured interactive session: the observer's
+    // PowerShell children land on this desktop by construction, and the
+    // probe additionally refuses an observation whose target reports a
+    // different session id. Observation only — this path holds no press.
+    // A non-script transport (the dispatcher channel, a supplied
+    // HostTransport) cannot name its pid, so it gets no monitor and the
+    // durable report stays honestly unavailable.
+    const pid = transport.recoveryTargetPid();
+    const sessionId = pid === null ? null : measureWindowsSessionId();
+    if (pid !== null && sessionId !== null && sessionId > 0) {
+      supervision = SessionSupervision.start({
+        sessionRoot,
+        pid,
+        target: { platform: "win32", session: { sessionId } },
+        verifyPid: (target) => transport.recoveryTargetPid() === target,
+        pendingRequests: () => {
+          const pending = driver.pendingRequest();
+          return pending === null ? [] : [pending];
+        },
+        trace,
+      });
+      session.supervision = supervision;
+    }
   } else if (process.platform === "darwin" && transport instanceof DispatcherTransport) {
     // Recorded activation provenance (#294) is the stronger evidence:
     // an owned `activateDispatcher()` delivery named the exact process
@@ -544,7 +573,7 @@ export async function openAfterEffects(
       supervision = SessionSupervision.start({
         sessionRoot,
         pid: attested.pid,
-        session: guiSession,
+        target: { platform: "darwin", session: guiSession },
         verifyPid: (pid) => driver.hostAttestation().pid === pid,
         pendingRequests: () => {
           const pending = driver.pendingRequest();
@@ -570,7 +599,7 @@ export async function openAfterEffects(
         supervision = SessionSupervision.start({
           sessionRoot,
           pid: attributed.pid,
-          session: attributed.session,
+          target: { platform: "darwin", session: attributed.session },
           verifyPid: attributed.verifyPid,
           pendingRequests: () => {
             const pending = driver.pendingRequest();

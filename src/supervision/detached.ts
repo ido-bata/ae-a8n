@@ -25,6 +25,15 @@
  * by default for backward compatibility. CLI/MCP/VSCode consumers that
  * want supervision to outlive a single request process call this at
  * session start; the lease makes concurrent calls harmless.
+ *
+ * Platform scope: the detached supervisor is macOS-only (#295). On win32
+ * the in-process `SessionSupervision` monitor (#316) already publishes
+ * the same durable report for the session's lifetime; a win32 detached
+ * spawn — which would need its own session-id/provenance plumbing through
+ * `supervisor-entry` — is a deliberate follow-up, not a gap this ticket
+ * hides. Until then `startDetachedSupervisor` returns `{ pid: null }` on
+ * win32 and readers see honest `unavailable`/`monitor-lost`, never a
+ * fabricated healthy state.
  */
 
 import { spawn } from "node:child_process";

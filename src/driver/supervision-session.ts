@@ -1,9 +1,10 @@
 /**
- * Session-scoped supervision wiring (#285).
+ * Session-scoped supervision wiring (#285, win32 in #316).
  *
  * `SessionSupervision` is the seam between a live `AeDriver` session and
- * the platform-neutral supervision core: it builds the macOS probe from the
- * same `MacGuiRecovery` observation `ae.guiState()` uses, starts the
+ * the platform-neutral supervision core: it builds the platform's GUI
+ * probe — `MacGuiProbe` over `MacGuiRecovery` on macOS, `WindowsGuiProbe`
+ * over the Win32 census + UIA observer on Windows — starts the
  * lease-elected monitor against the session directory, and exposes the
  * durable report the driver consults while requests wait.
  *
@@ -11,7 +12,10 @@
  *
  *   - Observation only. The monitor never presses a button; recovery stays
  *     on the driver's existing `HostRecovery` path, which holds the GUI
- *     mutation lease and audit trail.
+ *     mutation lease and audit trail. On Windows that is
+ *     `WindowsGuiRecovery`/`WindowsHostRecovery` (#283/#315) — supervision
+ *     shares no code path with it beyond the read-only observation, and
+ *     gains no mutation authority from it.
  *   - Honest absence. Any platform/session/observation it cannot support
  *     returns `null`, and `report()` then reads the durable state — which
  *     is `unavailable`, never a fabricated clean bill.
@@ -27,6 +31,8 @@ import {
 } from "./mac-session.js";
 import { MacGuiRecovery } from "./gui-recovery.js";
 import { MacGuiProbe } from "../platform/darwin/gui-probe.js";
+import { WindowsGuiProbe } from "../platform/windows/gui-probe.js";
+import type { WindowsGuiSession } from "./windows-gui-recovery.js";
 import {
   SupervisionMonitor,
   supervisionReport,
@@ -40,16 +46,36 @@ import {
   type SupervisionTraceSink,
 } from "../supervision/session-trace.js";
 
+/**
+ * The proven GUI target a session monitor observes (#316): the platform
+ * plus the session shape that platform's attestation produced — the same
+ * split `HostRecoveryTarget` uses for the mutation path. A `MacSession`
+ * names a login session by uid/asid; a `WindowsGuiSession` names an
+ * interactive session by id.
+ */
+export type SessionSupervisionTarget =
+  | { readonly platform: "darwin"; readonly session: MacSession }
+  | { readonly platform: "win32"; readonly session: WindowsGuiSession };
+
 export type SessionSupervisionOptions = {
   /** The driver's session root — the same directory supervision state lives in. */
   readonly sessionRoot: string;
   /** The After Effects pid this session targets. */
   readonly pid: number;
-  /** The GUI session the pid lives in; must be Aqua. */
-  readonly session: MacSession;
+  /**
+   * The attested target: which platform's probe to build and which GUI
+   * session the pid was proven to live in. The caller — never this class —
+   * decides the target is proven; `start` only refuses what it cannot
+   * honour (wrong host platform, unmeasurable session id, non-Aqua
+   * session).
+   */
+  readonly target: SessionSupervisionTarget;
   /**
    * Re-proves the pid immediately before each observation, same contract as
    * the recovery path's `verifyProcess`: a reused pid is never the target.
+   * On Windows the check runs *after* the observer answers: a snapshot that
+   * already proves `process-gone` stays process-gone, while any other
+   * answer that cannot re-prove the pid is refused as degraded evidence.
    */
   readonly verifyPid?: (pid: number) => boolean;
   /** Live pending requests the driver wants reflected in the document. */
@@ -62,6 +88,14 @@ export type SessionSupervisionOptions = {
    * publishes durable state, it just leaves no trace rows.
    */
   readonly trace?: SupervisionTraceSink;
+  /** Test seam: replaces `process.platform`. */
+  readonly platform?: NodeJS.Platform;
+  /**
+   * Test seam: replaces the platform-built `GuiProbe`. Platform and
+   * session proof still gate `start`, and on Windows the pid re-proof
+   * wrapper still applies around the injected probe.
+   */
+  readonly probe?: GuiProbe;
 };
 
 /**
@@ -185,35 +219,17 @@ export class SessionSupervision {
 
   /**
    * Start monitoring, or return null when this host cannot be observed
-   * honestly (non-macOS, non-Aqua session, or an observation stack that
-   * refuses to initialise). Null is not an error: the durable report stays
-   * `unavailable`, which is the truthful answer.
+   * honestly (host platform or session shape the target cannot be
+   * honoured on, or an observation stack that refuses to initialise).
+   * Null is not an error: the durable report stays `unavailable`, which
+   * is the truthful answer.
    */
   static start(options: SessionSupervisionOptions): SessionSupervision | null {
-    if (process.platform !== "darwin" || options.session.kind !== "Aqua") {
+    const platform = options.platform ?? process.platform;
+    const probe = SessionSupervision.#buildProbe(options, platform);
+    if (probe === null) {
       return null;
     }
-    const verifyPid = options.verifyPid ?? (() => true);
-    let recovery: MacGuiRecovery;
-    try {
-      recovery = new MacGuiRecovery({
-        session: options.session,
-        pid: options.pid,
-        verifyProcess: verifyPid,
-        // Observation only: this instance exists to feed `listWindows()` to
-        // the probe and never presses anything, so the console-session
-        // mutation guard must not silence it — the console session is the
-        // common case a supervised AE lives in. Same allowance as
-        // `ae.guiState()`.
-        allowConsoleSession: true,
-      });
-    } catch {
-      return null;
-    }
-    const probe: GuiProbe = new MacGuiProbe(options.pid, {
-      listWindows: () => recovery.listWindows(),
-      pidAlive: () => verifyPid(options.pid),
-    });
     const tracer =
       options.trace === undefined ? null : new SupervisionSessionTracer(options.trace);
     const started = SupervisionMonitor.start({
@@ -239,6 +255,93 @@ export class SessionSupervision {
     // a monitor can never hold the process open.
     void started.monitor.run().catch(() => undefined);
     return new SessionSupervision(options.sessionRoot, started.monitor, tracer);
+  }
+
+  /**
+   * Build the platform probe for an attested target, or null when the
+   * target cannot be honoured on this host. The checks here are the last
+   * line before a monitor exists: a mismatched host platform, a session
+   * the platform cannot name, or a probe that refuses to initialise all
+   * yield null — never a guessed target.
+   */
+  static #buildProbe(
+    options: SessionSupervisionOptions,
+    platform: NodeJS.Platform,
+  ): GuiProbe | null {
+    const target = options.target;
+    if (target.platform === "darwin") {
+      if (platform !== "darwin" || target.session.kind !== "Aqua") {
+        return null;
+      }
+      if (options.probe !== undefined) {
+        return options.probe;
+      }
+      const verifyPid = options.verifyPid ?? (() => true);
+      let recovery: MacGuiRecovery;
+      try {
+        recovery = new MacGuiRecovery({
+          session: target.session,
+          pid: options.pid,
+          verifyProcess: verifyPid,
+          // Observation only: this instance exists to feed `listWindows()`
+          // to the probe and never presses anything, so the console-session
+          // mutation guard must not silence it — the console session is the
+          // common case a supervised AE lives in. Same allowance as
+          // `ae.guiState()`.
+          allowConsoleSession: true,
+        });
+      } catch {
+        return null;
+      }
+      return new MacGuiProbe(options.pid, {
+        listWindows: () => recovery.listWindows(),
+        pidAlive: () => verifyPid(options.pid),
+      });
+    }
+
+    // win32 (#316): `WindowsGuiProbe` is already the platform-neutral
+    // `GuiProbe` — Win32 census plus UIA, read-only by construction. What
+    // it cannot prove alone is target identity: its observer script sees
+    // *a* process at the pid, not *the* process this session proved. The
+    // wrapper below closes that gap with the caller's `verifyPid`
+    // re-proof — the same `sameProcess` creation-identity check the
+    // recovery path uses — and `expectedSessionId` makes a foreign-session
+    // pid fail closed inside the probe itself.
+    if (platform !== "win32") {
+      return null;
+    }
+    const sessionId = target.session.sessionId;
+    if (!Number.isInteger(sessionId) || sessionId <= 0) {
+      return null;
+    }
+    const verifyPid = options.verifyPid ?? (() => true);
+    const observer =
+      options.probe ??
+      new WindowsGuiProbe(options.pid, { expectedSessionId: sessionId });
+    return {
+      observe: async () => {
+        const snapshot = await observer.observe();
+        if (!snapshot.ok || snapshot.host === "process-gone") {
+          // A proven-gone target stays process-gone: the observer's own
+          // meta record is the evidence, and the pid re-proof cannot make
+          // a dead process "unknown".
+          return snapshot;
+        }
+        if (!verifyPid(options.pid)) {
+          // The pid now names something else — reused, or ambiguous
+          // against a second instance. Whatever windows were just listed
+          // are not this session's After Effects, so the whole snapshot
+          // is refused as degraded evidence, never a clean screen.
+          return {
+            ok: false,
+            reason:
+              `pid ${options.pid} could not be re-proven as this session's ` +
+              "After Effects (reused, gone, or ambiguous)",
+          };
+        }
+        return snapshot;
+      },
+    };
   }
 
   /** The current durable report, health re-evaluated at read time. */

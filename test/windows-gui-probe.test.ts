@@ -435,6 +435,61 @@ describe("WindowsGuiProbe", () => {
     expect(snapshot.ok).toBe(false);
     expect(runner.calls).toHaveLength(0);
   });
+
+  it("accepts a target whose session id matches expectedSessionId", async () => {
+    const probe = new WindowsGuiProbe(4321, {
+      runner: fakeRunner(healthy),
+      platform: "win32",
+      expectedSessionId: 1,
+    });
+    const snapshot = await probe.observe();
+    expect(snapshot.ok).toBe(true);
+    if (snapshot.ok) {
+      expect(snapshot.host).toBe("none");
+      expect(snapshot.degraded).toBeUndefined();
+    }
+  });
+
+  it("fails closed when the live pid reports a different session (#316)", async () => {
+    // The pid was reused by a process on another desktop: this observer's
+    // window census cannot see its windows, so any "clean" answer would be
+    // fabricated. The snapshot is refused instead.
+    const probe = new WindowsGuiProbe(4321, {
+      runner: fakeRunner(meta({ sessionId: 7 }) + session() + windowRecord({ sessionId: 7 }) + done()),
+      platform: "win32",
+      expectedSessionId: 1,
+    });
+    const snapshot = await probe.observe();
+    expect(snapshot.ok).toBe(false);
+    if (!snapshot.ok) {
+      expect(snapshot.reason).toContain("session 7");
+      expect(snapshot.reason).toContain("session 1");
+    }
+  });
+
+  it("marks degraded — not refused — when the target session id is unreadable", async () => {
+    const probe = new WindowsGuiProbe(4321, {
+      runner: fakeRunner(meta({ sessionId: null }) + session() + windowRecord() + done()),
+      platform: "win32",
+      expectedSessionId: 1,
+    });
+    const snapshot = await probe.observe();
+    expect(snapshot.ok).toBe(true);
+    if (snapshot.ok) {
+      expect(snapshot.host).toBe("none");
+      expect(snapshot.degraded?.join(" ")).toContain("session id unreadable");
+    }
+  });
+
+  it("still reports process-gone for a dead pid under expectedSessionId", async () => {
+    const probe = new WindowsGuiProbe(4321, {
+      runner: fakeRunner(line({ type: "meta", pid: 4321, exists: false }) + done()),
+      platform: "win32",
+      expectedSessionId: 1,
+    });
+    const snapshot = await probe.observe();
+    expect(snapshot.ok && snapshot.host).toBe("process-gone");
+  });
 });
 
 describe("windowsGuiObserveScript", () => {

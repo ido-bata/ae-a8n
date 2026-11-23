@@ -118,13 +118,18 @@ describe("capabilities() handshake", () => {
     const ae = await launch();
     const response = await ae.capabilities();
 
-    // The advertisement names what exists, not what is hoped for: only
-    // the macOS AX+WindowServer probe is implemented, and the verification
-    // level stays automated-fake until a real-host run records the
-    // monitor end to end.
+    // The advertisement names what exists, not what is hoped for: both
+    // desktop probes are implemented (#285 darwin, #316 win32), the probe
+    // mechanism is named for this host, and the verification level stays
+    // automated-fake until a real-host run records the monitor end to end.
     expect(response.supervision).toEqual({
-      platforms: ["darwin"],
-      probe: "ax-windowserver",
+      platforms: ["darwin", "win32"],
+      probe:
+        process.platform === "win32"
+          ? "win32-uia"
+          : process.platform === "darwin"
+            ? "ax-windowserver"
+            : null,
       monitoring: expect.any(Boolean),
       verification: "automated-fake",
       report: "ae.supervisionState()",

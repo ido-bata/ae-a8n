@@ -409,6 +409,16 @@ export type WindowsGuiProbeOptions = {
   readonly runner?: CommandRunner;
   /** Test seam: replaces `process.platform`. */
   readonly platform?: NodeJS.Platform;
+  /**
+   * The Windows session id the target must live in (#316). When set, an
+   * observation that proves the pid exists but reports a *different*
+   * session fails closed: the pid was reused by a process on another
+   * desktop, or the target moved, and windows this observer can enumerate
+   * are not its windows. Reporting them would be a fabricated clean
+   * screen, so the snapshot is refused instead. An *unreadable* session
+   * id is degraded evidence, never a match and never a refusal by itself.
+   */
+  readonly expectedSessionId?: number;
 };
 
 const OBSERVER_TIMEOUT_MS = 30_000;
@@ -418,10 +428,12 @@ export class WindowsGuiProbe implements GuiProbe {
   readonly #pid: number;
   readonly #runner: CommandRunner;
   readonly #platform: NodeJS.Platform;
+  readonly #expectedSessionId: number | undefined;
 
   constructor(pid: number, options: WindowsGuiProbeOptions = {}) {
     this.#pid = pid;
     this.#platform = options.platform ?? process.platform;
+    this.#expectedSessionId = options.expectedSessionId;
     this.#runner =
       options.runner ??
       new SpawnCommandRunner({ timeoutMs: OBSERVER_TIMEOUT_MS, maxBuffer: OBSERVER_MAX_BUFFER });
@@ -457,6 +469,26 @@ export class WindowsGuiProbe implements GuiProbe {
         reason:
           `observer produced no readable meta record (exit ${result.exitCode})` +
           (detail === "" ? "" : `: ${detail.slice(0, 300)}`),
+      };
+    }
+
+    // Session attestation (#316): a live process that reports a session
+    // other than the proven one is not the target — the pid was reused or
+    // the process moved, and this desktop's windows are not its evidence.
+    // A gone process has no session to mismatch; its host state already
+    // says process-gone.
+    if (
+      this.#expectedSessionId !== undefined &&
+      observation.process.exists &&
+      observation.process.sessionId !== null &&
+      observation.process.sessionId !== this.#expectedSessionId
+    ) {
+      return {
+        ok: false,
+        reason:
+          `target pid ${this.#pid} lives in session ${observation.process.sessionId}, ` +
+          `not the proven session ${this.#expectedSessionId}; the pid was reused ` +
+          "or the target moved sessions",
       };
     }
 
@@ -497,6 +529,13 @@ export class WindowsGuiProbe implements GuiProbe {
     }
     if (observation.process.exists && observation.locked === null) {
       degraded.push("GUI session lock state unreadable");
+    }
+    if (
+      this.#expectedSessionId !== undefined &&
+      observation.process.exists &&
+      observation.process.sessionId === null
+    ) {
+      degraded.push("target process session id unreadable");
     }
     if (observation.process.exists && observation.process.responding === null) {
       degraded.push("process responsiveness unreadable");
