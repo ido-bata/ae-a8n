@@ -258,8 +258,22 @@ export class SupervisionMonitor {
           ...pendingFields,
           reason: effective.detail,
         });
-      } else if (this.#doc.observationHealth === "degraded") {
-        this.#apply({ kind: "probe-ok", reason: "probe answered again" });
+      }
+
+      // Observation health is orthogonal to phase: degraded evidence is
+      // recorded in every phase, and a clean answer restores "ok". A probe
+      // that answers but flags degraded evidence (AX tree unserviceable,
+      // census unavailable) is degraded observation, not a clean bill.
+      if ((snapshot.degraded ?? []).length > 0) {
+        this.#apply({
+          kind: "probe-degraded",
+          reason: snapshot.degraded!.join("; "),
+        });
+      } else if (
+        this.#doc.observationHealth === "degraded" ||
+        this.#doc.observationHealth === "unavailable"
+      ) {
+        this.#apply({ kind: "probe-ok", reason: "probe answered cleanly" });
       }
     }
 

@@ -48,6 +48,7 @@ import {
 } from "./envelope.js";
 import { runAgentCommand } from "./agent.js";
 import { runDispatcherCommand } from "./dispatcher.js";
+import { runSuperviseCommand } from "./supervise.js";
 import { runExtensionCommand } from "./extension.js";
 import { EXIT, type ExitCode } from "./exit-code.js";
 import {
@@ -848,6 +849,17 @@ export async function runCli(
     });
     return result.exitCode as ExitCode;
   }
+  // `supervise` is likewise outside the five contract commands: it reads
+  // the durable supervision state of a session directory (#287).
+  if (argv[0] === "supervise") {
+    const result = runSuperviseCommand(argv.slice(1), {
+      ...(input.writeOut === undefined ? {} : { writeOut: input.writeOut }),
+      ...(input.writeErr === undefined ? {} : { writeErr: input.writeErr }),
+      ...(input.now === undefined ? {} : { now: input.now }),
+    });
+    return result.exitCode as ExitCode;
+  }
+
   const deps = dependencies(input);
   const startedAt = deps.now();
   const parsed = parseArgs(argv);

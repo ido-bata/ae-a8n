@@ -221,6 +221,79 @@ describe("SupervisionMonitor", () => {
     }
   });
 
+  it("promotes a live monitor's health to ok on a clean probe answer", async () => {
+    const dir = tmpSession();
+    try {
+      const probe: GuiProbe = {
+        observe: () => ({ ok: true, host: "none", windows: [] }),
+      };
+      const started = SupervisionMonitor.start({
+        sessionDir: dir,
+        probe,
+        ownerId: "test-monitor",
+        pid: process.pid,
+        now: () => new Date("2026-01-01T00:00:00Z"),
+        sleep: async () => {},
+      });
+      expect(started.ok).toBe(true);
+      if (!started.ok) return;
+      try {
+        // The document initialises as "unavailable" (no monitor record
+        // yet); a live monitor whose probe answers cleanly must not stay
+        // unavailable — real-host smoke caught exactly that stuck state.
+        await started.monitor.tick();
+        const report = started.monitor.report();
+        expect(report.status).toBe("observed");
+        if (report.status === "observed") {
+          expect(report.health).toBe("ok");
+        }
+      } finally {
+        started.monitor.stop();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("records degraded health from snapshot degradation notes", async () => {
+    const dir = tmpSession();
+    try {
+      const probe: GuiProbe = {
+        observe: () => ({
+          ok: true,
+          host: "none",
+          windows: [],
+          degraded: ["WindowServer census unavailable: probe missing"],
+        }),
+      };
+      const started = SupervisionMonitor.start({
+        sessionDir: dir,
+        probe,
+        ownerId: "test-monitor",
+        pid: process.pid,
+        now: () => new Date("2026-01-01T00:00:00Z"),
+        sleep: async () => {},
+      });
+      expect(started.ok).toBe(true);
+      if (!started.ok) return;
+      try {
+        await started.monitor.tick();
+        const report = started.monitor.report();
+        expect(report.status).toBe("observed");
+        if (report.status === "observed") {
+          expect(report.health).toBe("degraded");
+          expect(report.doc.evidence.join("\n")).toContain(
+            "WindowServer census unavailable",
+          );
+        }
+      } finally {
+        started.monitor.stop();
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses a second monitor while the lease is held", () => {
     const dir = tmpSession();
     try {
