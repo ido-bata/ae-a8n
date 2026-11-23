@@ -238,7 +238,11 @@ describe("DispatcherTransport.attestation with recorded provenance (#294)", () =
     recordProvenance(dir);
 
     // Same pid, different start time: a different process owns it now.
-    const reused: HostProcess = { ...censusMatch, startedAt: T0 + 90_000 };
+    const reused: HostProcess = {
+      ...censusMatch,
+      startedAt: T0 + 90_000,
+      identity: "2026-10-15T00:01:30.0000000Z",
+    };
     expect(attestingTransport(dir, () => [reused]).attestation().pid).toBeNull();
 
     // Same pid and start time, different Windows creation identity:
@@ -469,7 +473,11 @@ describe("AfterEffects.activateDispatcher records provenance (#294)", () => {
     expect(attaching.hostPid()).toBe(42);
 
     // …and attests nothing once the pid names a different process.
-    const reused: HostProcess = { ...censusMatch, startedAt: T0 + 90_000 };
+    const reused: HostProcess = {
+      ...censusMatch,
+      startedAt: T0 + 90_000,
+      identity: "2026-10-15T00:01:30.0000000Z",
+    };
     expect(attestingTransport(channelDir, () => [reused]).attestation().pid).toBeNull();
 
     await ae.close();
