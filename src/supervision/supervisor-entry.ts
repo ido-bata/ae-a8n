@@ -83,7 +83,14 @@ async function main(): Promise<number> {
 
   let recovery: MacGuiRecovery;
   try {
-    recovery = new MacGuiRecovery({ session, pid, verifyProcess: verifyPid });
+    recovery = new MacGuiRecovery({
+      session,
+      pid,
+      verifyProcess: verifyPid,
+      // Observation only — the supervisor holds no mutation path, so the
+      // console-session guard that protects presses must not stop it.
+      allowConsoleSession: true,
+    });
   } catch {
     return 0;
   }
