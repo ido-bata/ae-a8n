@@ -172,11 +172,16 @@ export type SupervisionAdvertisement = {
   /** Platforms with an implemented OS-native GUI probe. */
   readonly platforms: readonly ("win32" | "darwin")[];
   /**
-   * The observation mechanism, or null when no probe exists. On darwin it
-   * is the Accessibility tree plus the WindowServer window census — the
-   * same sources `ae.guiState()` uses, independent of AE's script path.
+   * The observation mechanism on this host, or null when this platform
+   * has no implemented probe. On darwin it is the Accessibility tree plus
+   * the WindowServer window census — the same sources `ae.guiState()`
+   * uses, independent of AE's script path. On win32 it is the Win32
+   * window census plus UI Automation (#282/#316). Supervision is
+   * observation-only on every platform: no probe here presses anything,
+   * and no Windows dialog class is registered as pressable, so mutation
+   * stays unavailable rather than merely unadvertised.
    */
-  readonly probe: "ax-windowserver" | null;
+  readonly probe: "ax-windowserver" | "win32-uia" | null;
   /**
    * Whether durable supervision state for this session is being kept
    * fresh right now — an in-process monitor or a detached supervisor
@@ -634,13 +639,21 @@ export function buildCapabilityHandshake(input: CapabilityHandshakeInput): Hands
       dispatcherInstance,
     },
     supervision: {
-      // Only the macOS probe exists today (MacGuiProbe over AX +
-      // WindowServer); Windows supervision is specified but unimplemented,
-      // so it is not claimed. The verification level is the strongest
-      // evidence the supervision path has — automated-fake until a
-      // real-host run records the monitor end to end.
-      platforms: ["darwin"],
-      probe: "ax-windowserver",
+      // Both desktop probes are implemented and wired into session
+      // supervision (#285 darwin, #316 win32). The verification level is
+      // the strongest evidence the supervision path has — automated-fake
+      // until a real-host run records the monitor end to end, and the
+      // Windows lane's real-host check is tracked separately (#288).
+      platforms: ["darwin", "win32"],
+      // The mechanism is named for the host this session runs on; a
+      // platform with no probe reports null rather than borrowing the
+      // other platform's name.
+      probe:
+        attestation.platform?.os === "win32"
+          ? "win32-uia"
+          : attestation.platform?.os === "darwin"
+            ? "ax-windowserver"
+            : null,
       monitoring: input.supervisionMonitoring === true,
       verification: "automated-fake",
       report: "ae.supervisionState()",
