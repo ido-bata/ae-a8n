@@ -33,8 +33,12 @@ import {
   type GuiProbe,
   type SupervisionReport,
 } from "../supervision/index.js";
-import type { PendingRequest } from "../supervision/types.js";
+import type { PendingRequest, SupervisionStateDoc } from "../supervision/types.js";
 import type { SupervisionEvent } from "../supervision/machine.js";
+import {
+  SupervisionSessionTracer,
+  type SupervisionTraceSink,
+} from "../supervision/session-trace.js";
 
 export type SessionSupervisionOptions = {
   /** The driver's session root — the same directory supervision state lives in. */
@@ -52,6 +56,12 @@ export type SessionSupervisionOptions = {
   readonly pendingRequests?: () => readonly PendingRequest[];
   readonly intervalMs?: number;
   readonly ownerId?: string;
+  /**
+   * Session trace the monitor's publishes and read-side health evaluations
+   * are recorded into (#287). Optional: without it supervision still
+   * publishes durable state, it just leaves no trace rows.
+   */
+  readonly trace?: SupervisionTraceSink;
 };
 
 /**
@@ -161,10 +171,16 @@ export function attributeAeByCensus(
 export class SessionSupervision {
   readonly #sessionRoot: string;
   readonly #monitor: SupervisionMonitor;
+  readonly #tracer: SupervisionSessionTracer | null;
 
-  private constructor(sessionRoot: string, monitor: SupervisionMonitor) {
+  private constructor(
+    sessionRoot: string,
+    monitor: SupervisionMonitor,
+    tracer: SupervisionSessionTracer | null,
+  ) {
     this.#sessionRoot = sessionRoot;
     this.#monitor = monitor;
+    this.#tracer = tracer;
   }
 
   /**
@@ -198,6 +214,8 @@ export class SessionSupervision {
       listWindows: () => recovery.listWindows(),
       pidAlive: () => verifyPid(options.pid),
     });
+    const tracer =
+      options.trace === undefined ? null : new SupervisionSessionTracer(options.trace);
     const started = SupervisionMonitor.start({
       sessionDir: options.sessionRoot,
       probe,
@@ -207,6 +225,11 @@ export class SessionSupervision {
       ...(options.pendingRequests === undefined
         ? {}
         : { pendingRequests: options.pendingRequests }),
+      // Phase transitions are traced from the publish side: the monitor is
+      // the only writer, so every phase it enters lands here exactly once.
+      ...(tracer === null
+        ? {}
+        : { onPublish: (doc: SupervisionStateDoc) => tracer.notePublished(doc) }),
     });
     if (!started.ok) {
       return null;
@@ -215,12 +238,17 @@ export class SessionSupervision {
     // `run`, and `stop()` releases the lease. The sleep timer is unref'd so
     // a monitor can never hold the process open.
     void started.monitor.run().catch(() => undefined);
-    return new SessionSupervision(options.sessionRoot, started.monitor);
+    return new SessionSupervision(options.sessionRoot, started.monitor, tracer);
   }
 
   /** The current durable report, health re-evaluated at read time. */
   report(): SupervisionReport {
-    return supervisionReport(this.#sessionRoot);
+    const report = supervisionReport(this.#sessionRoot);
+    // Evaluated health is traced from the read side: a stale heartbeat
+    // (`monitor-lost`) is only visible here, because the monitor that would
+    // have reported it is already gone.
+    this.#tracer?.noteReport(report);
+    return report;
   }
 
   /** The live phase, for callers that only need the headline. */

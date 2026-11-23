@@ -487,6 +487,9 @@ export async function openAfterEffects(
         const pending = driver.pendingRequest();
         return pending === null ? [] : [pending];
       },
+      // Supervision transitions and monitor health land in the same
+      // trace.jsonl every other session operation does (#287).
+      trace,
     });
     session.supervision = supervision;
   } else if (process.platform === "darwin" && transport instanceof DispatcherTransport) {
@@ -511,6 +514,7 @@ export async function openAfterEffects(
           const pending = driver.pendingRequest();
           return pending === null ? [] : [pending];
         },
+        trace,
       });
       session.supervision = supervision;
     }

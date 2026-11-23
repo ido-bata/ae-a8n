@@ -888,6 +888,21 @@ export class AeDriver {
   }
 
   /**
+   * One-line supervision summary for trace rows: `phase/health` when a
+   * report was observed, `unavailable:<source>` when it was not, and null
+   * when no supervision hook exists at all.
+   */
+  #supervisionReportSummary(): string | null {
+    const report = this.#supervision?.report() ?? null;
+    if (report === null) {
+      return null;
+    }
+    return report.status === "observed"
+      ? `${report.doc.phase}/${report.health}`
+      : `unavailable:${report.source}`;
+  }
+
+  /**
    * Classifies a timed-out call from what is actually known: a blocking
    * window the recovery observed beats a process probe, and a probe that
    * cannot attribute a process stays "unknown" rather than guessing.
@@ -948,10 +963,15 @@ export class AeDriver {
       return { kind: "unresolved", sawWindow: false };
     }
     const sawWindow = outcome.window !== undefined;
+    // Supervision context on the recovery row (#287): which durable phase
+    // and observation health the attempt ran under, so the trace links the
+    // GUI mutation/audit record to the state that motivated it.
+    const supervision = this.#supervisionReportSummary();
     this.#trace.record("session.recover", outcome.recovered ? "ok" : "error", 0, {
       result: {
         recovered: outcome.recovered,
         evidence: outcome.evidence,
+        ...(supervision === null ? {} : { supervision }),
         ...(outcome.outcome === undefined ? {} : { outcome: outcome.outcome }),
         ...(outcome.code === undefined ? {} : { code: outcome.code }),
         ...(outcome.window === undefined ? {} : { window: outcome.window }),

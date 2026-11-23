@@ -48,7 +48,7 @@ export function generalHelp(): string {
 
 const COMMAND_HELP: Record<CommandName, string> = {
   doctor: [
-    "Usage: ae-a8n doctor [--json] [--target <name>] [--user <name>] [--host <name>] [--verbose]",
+    "Usage: ae-a8n doctor [--json] [--target <name>] [--user <name>] [--host <name>] [--verbose] [--session-root <dir>]",
     "",
     "Read-only diagnostics for the environment an isolated After Effects session",
     "would use. It reads the OS version and architecture, the Node version, the",
@@ -64,6 +64,8 @@ const COMMAND_HELP: Record<CommandName, string> = {
     "  --user <name>      OS account the target session must belong to",
     "  --host <name>      Windows host; selects the Windows remote-host adapter",
     "  --verbose          Include the raw evidence in the human output",
+    "  --session-root <d> Also report the session's durable supervision state",
+    "                     (phase, monitor liveness, observation health)",
     "  --help, -h         Show this help",
     "",
     "Exit codes: 0 when no blocker was found; 3 when any blocker was found;",

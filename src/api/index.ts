@@ -323,6 +323,14 @@ export class AfterEffects {
    */
   capabilities(): Promise<HandshakeResponse> {
     const driver = this.#session.driver;
+    // "Monitoring" is proven, not assumed (#287): an in-process monitor on
+    // this session, or durable state whose evaluated health is still `ok`
+    // (a detached supervisor keeps writing after this process would have
+    // stopped mattering). Anything less reports false — honest absence.
+    const durable = supervisionReport(driver.sessionRoot);
+    const monitoring =
+      this.#session.supervision !== null ||
+      (durable.status === "observed" && durable.health === "ok");
     return Promise.resolve(
       buildCapabilityHandshake({
         ae: this.#probe,
@@ -331,6 +339,7 @@ export class AfterEffects {
         ownership: driver.ownership(),
         extensionMethods: this.#extensionMethods,
         grantedOperations: grantedScopes(this.#session),
+        supervisionMonitoring: monitoring,
         hostNonce: this.#hostNonce,
         generatedAt: new Date().toISOString(),
       }),
