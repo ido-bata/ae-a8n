@@ -17,7 +17,6 @@
  * ```
  */
 
-import { rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import type { MacSession } from "../driver/mac-session.js";
@@ -39,16 +38,11 @@ import {
   EntityNotFoundError,
   ExtensionMethodNotFoundError,
   HostError,
-  HostNotOwnedError,
   contextualise,
 } from "./errors.js";
 import type { StopResult } from "../driver/driver.js";
-import {
-  defaultDispatcherChannelDir,
-  DispatcherTransport,
-} from "../driver/dispatcher-transport.js";
-import { recordDispatcherProvenance } from "../driver/dispatcher-provenance.js";
 import type { HostOwnership } from "../driver/transport.js";
+import { activateDispatcherForSession } from "./dispatcher-activation.js";
 import { attachAfterEffects } from "./attach.js";
 import { openAfterEffects } from "./launch.js";
 import { openRebuiltSession } from "./rebuild.js";
@@ -496,108 +490,10 @@ export class AfterEffects {
     if (this.#closed) {
       throw new AfterEffectsError("the session is closed", op);
     }
-    const ownership = this.#session.driver.ownership();
-    if (ownership.kind !== "owned") {
-      throw new HostNotOwnedError(
-        op,
-        ownership.kind,
-        `${ownership.evidence}; dispatcher activation is only delivered to an After ` +
-          "Effects this session owns — activating a foreign instance stays a human action",
-      );
-    }
-    const transport = this.#session.driver.scriptTransport();
-    if (transport === null) {
-      throw new AfterEffectsError(
-        "only a session on the built-in script transport can deliver the " +
-          "dispatcher activation script; this session's transport cannot",
-        op,
-      );
-    }
-    const channelDir = options.channelDir ?? defaultDispatcherChannelDir();
-    const dispatcher = new DispatcherTransport({ channelDir });
-    await dispatcher.prepare();
-    const activation = await dispatcher.prepareActivationScript();
-    const timeoutMs = options.timeoutMs ?? 15_000;
-    let deliveredPath: string | null = null;
-    // The staged per-call file is always safe to remove: AE only ever
-    // reads the private copy `deliverActivationScript` returns. That copy
-    // must survive until AE has read it — proven by the nonce appearing —
-    // so on timeout it is left behind: a still-pending script-trust
-    // dialog may yet read it and complete the activation.
-    try {
-      // Pre-spawn refusals (ownership lost, non-canonical file) propagate
-      // as-is: nothing was delivered, so the timeout wording would lie.
-      deliveredPath = await transport.deliverActivationScript(activation.path);
-      // The nonce — not heartbeat freshness — is the proof: a dispatcher
-      // that was already answering the channel cannot carry this call's
-      // nonce, so a stale-but-fresh heartbeat fails closed here.
-      let beat: NonNullable<ReturnType<typeof dispatcher.status>["heartbeat"]>;
-      try {
-        beat = await dispatcher.waitForActivationNonce(activation.nonce, timeoutMs);
-      } catch (error) {
-        throw new AfterEffectsError(
-          `the activation script was delivered to the owned After Effects but ` +
-            `${errorMessage(error)}; After Effects may be showing a script-trust ` +
-            "or consent dialog, or the -r hand-off reached a different instance. " +
-            "If so, answer it, or run " +
-            `${dispatcher.activateScriptPath} via File > Scripts > Run Script File`,
-          op,
-        );
-      }
-      // The nonce proves the delivered script ran on an After Effects
-      // answering this channel. Bind it to the owned instance: if the
-      // census no longer proves a single owned in-scope process, the
-      // `-r` hand-off may have reached a different After Effects that
-      // started mid-delivery — fail closed rather than claim it.
-      const postDelivery = this.#session.driver.ownership();
-      if (postDelivery.kind !== "owned") {
-        throw new AfterEffectsError(
-          `the activation script ran, but the owned After Effects can no ` +
-            `longer be proven sole in-scope (${postDelivery.evidence}); ` +
-            "the dispatcher may have activated a different instance — " +
-            "inspect `ae-a8n dispatcher status` before attaching",
-          op,
-        );
-      }
-      // Record which owned process the nonce proved the dispatcher
-      // activated in (#294): later attach sessions through this channel
-      // attest pid/session from this record — re-verified live against
-      // the heartbeat and the OS census — instead of reporting nothing.
-      // Evidence only: it never grants this session ownership of that
-      // process, and a failed write must not fail a proven activation.
-      const ownedHost = transport.ownedProcess();
-      if (ownedHost !== null) {
-        const targetSession = transport.targetSession;
-        try {
-          recordDispatcherProvenance(channelDir, {
-            host: ownedHost,
-            instance: beat.instance,
-            activatedAt: beat.activatedAt,
-            activationNonce: activation.nonce,
-            session:
-              targetSession === null
-                ? null
-                : {
-                    uid: targetSession.uid,
-                    asid: targetSession.asid,
-                    user: targetSession.username,
-                  },
-          });
-        } catch (error) {
-          this.#session.trace.record("session.dispatcherProvenance", "error", 0, {
-            error: {
-              name: error instanceof Error ? error.name : "Error",
-              message: errorMessage(error),
-            },
-          });
-        }
-      }
-      rmSync(deliveredPath, { force: true });
-      deliveredPath = null;
-      return { channelDir, instance: beat.instance, aeVersion: beat.aeVersion };
-    } finally {
-      rmSync(activation.path, { force: true });
-    }
+    // The delivery core is shared with the verified rebuild's transport
+    // re-staging (#313): same ownership gate, same nonce proof, same
+    // provenance record — never a second, weaker copy.
+    return activateDispatcherForSession(this.#session, options, op);
   }
 
   /**

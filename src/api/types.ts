@@ -459,6 +459,44 @@ export type ResumeOptions = Omit<LaunchOptions, "sessionRoot"> & {
 export type RebuildOptions = ResumeOptions;
 
 /**
+ * What re-staging one transport surface of the rebuilt session did (#313).
+ *
+ * `resumed` describes the GUI-blocking lifecycle only; whether every
+ * delivery path the crashed session used exists again inside the new
+ * After Effects process is reported here, per surface, and never
+ * implied. `failed` and `unproven` are honest answers: the session is
+ * still usable through its own (probe-proven) transport, but the named
+ * surface was not re-established and a consumer must not assume it was.
+ */
+export type TransportRestage = {
+  /**
+   * The transport surface: the session transport's `kind`
+   * (e.g. `"script-invocation"`, `"in-ae-dispatcher"`), or
+   * `"in-ae-dispatcher"` for a dispatcher activation channel — `channelDir`
+   * then names which channel.
+   */
+  readonly transport: string;
+  /** The dispatcher channel directory, for activation entries. */
+  readonly channelDir?: string;
+  /**
+   * - `not-required`: nothing inside the new process needed staging —
+   *   the session transport delivers per call and its readiness probe
+   *   already proved it, or the surface was never bound to the crashed
+   *   process.
+   * - `restaged`: the surface was re-established and proven (e.g. a
+   *   dispatcher re-activation whose nonce heartbeat was observed).
+   * - `failed`: re-staging was attempted and did not complete; `detail`
+   *   says why. The surface is NOT available.
+   * - `unproven`: re-staging could not even be attempted honestly (e.g.
+   *   the activation index is corrupt, or the channel's provenance
+   *   cannot be read); availability is unknown, never assumed.
+   */
+  readonly status: "not-required" | "restaged" | "failed" | "unproven";
+  /** What was decided or what went wrong, for a human. */
+  readonly detail: string;
+};
+
+/**
  * What `AfterEffects.rebuild` did, for the caller and the trace. The
  * returned `AfterEffects` session is the authority on the new host; this
  * report is the audit of the transition itself.
@@ -479,6 +517,14 @@ export type SessionRebuildReport = {
   readonly pendingResolved: number;
   /** Pending requests left `unknown` — never resent. */
   readonly pendingUnknown: number;
+  /**
+   * Per-surface transport re-staging outcome (#313): the session's own
+   * transport plus every dispatcher channel the crashed session had
+   * activated. A `failed`/`unproven` entry means that surface is not
+   * proven available on the rebuilt process — read it before assuming
+   * the old session's delivery paths all came back.
+   */
+  readonly transports: readonly TransportRestage[];
 };
 
 /*

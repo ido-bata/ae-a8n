@@ -30,6 +30,38 @@
  * Pending requests the crashed session left behind are reconciled, never
  * resent: a recorded result file proves an outcome; everything else stays
  * `unknown`.
+ *
+ * Transport re-staging (#313): a new After Effects process starts with
+ * none of the delivery paths the crashed one had, so after ownership is
+ * re-proven the rebuild re-establishes what the old session provably
+ * used, per surface:
+ *
+ *   - script-invocation: nothing to re-stage. Every call delivers its
+ *     entry script fresh and the driver stages the host-script copy
+ *     controller-side per session; nothing persists inside After Effects.
+ *     The readiness probe already proved the new process answers.
+ *   - in-ae-dispatcher *as the session transport*: unreachable — that
+ *     transport never records launch provenance, so rebuild refuses it
+ *     before this point; and its `launch()` refuses without a live
+ *     heartbeat anyway. Fail-closed both ways.
+ *   - dispatcher *activation* inside the process: an owned session's
+ *     `activateDispatcher()` delivery dies with the process. The session
+ *     activation index (`dispatcher-activations.json`) plus each channel's
+ *     `provenance.json` (#294) name exactly which channels were activated
+ *     in the crashed pid; those are re-activated through the same
+ *     `activateDispatcherForSession` core `activateDispatcher()` uses.
+ *   - native-channel: not a session transport. The C++ plug-in is loaded
+ *     by After Effects itself and its file channel persists on disk, so
+ *     there is nothing ae-a8n stages per process — consumers observe the
+ *     plug-in heartbeat going stale and fresh on their own.
+ *
+ * Re-staging never fails the rebuild: the session's own transport is
+ * already probe-proven, and `resumed` describes the GUI-blocking
+ * lifecycle, not transport readiness. Instead every surface's outcome is
+ * reported on `rebuild.transports` (`not-required` / `restaged` /
+ * `failed` / `unproven`), summarised in the `recovery-succeeded` reason,
+ * and recorded in the session trace — a surface that could not be
+ * re-established is never reported as available.
  */
 
 import { resolve } from "node:path";
@@ -38,6 +70,12 @@ import { errorMessage } from "../errors.js";
 import { readLaunchProvenance } from "../driver/launch-provenance.js";
 import { HostLeftRunningError } from "../driver/driver.js";
 import { readGuiSession, type MacSession } from "../driver/mac-session.js";
+import { defaultDispatcherChannelDir } from "../driver/dispatcher-transport.js";
+import {
+  readDispatcherProvenance,
+  type DispatcherProvenance,
+} from "../driver/dispatcher-provenance.js";
+import { readSessionDispatcherActivations } from "../driver/session-dispatcher-activations.js";
 import {
   defaultProcessCensus,
   reconcilePendingRequests,
@@ -45,7 +83,10 @@ import {
   type ProcessCensus,
 } from "../driver/session-rebuild.js";
 import type { HostProcess } from "../driver/host-processes.js";
-import { ScriptingPermissionError } from "../driver/transport.js";
+import {
+  DISPATCHER_TRANSPORT_KIND,
+  ScriptingPermissionError,
+} from "../driver/transport.js";
 import {
   applySupervisionEvent,
   inspectMonitorLease,
@@ -54,9 +95,17 @@ import {
   type SupervisionEvent,
 } from "../supervision/index.js";
 import type { SupervisionPhase, SupervisionStateDoc } from "../supervision/types.js";
+import { activateDispatcherForSession } from "./dispatcher-activation.js";
 import { AfterEffectsError, contextualise } from "./errors.js";
 import { openAfterEffects, type OpenedSession } from "./launch.js";
-import type { LaunchOptions, RebuildOptions, SessionRebuildReport } from "./types.js";
+import type { Session } from "./session.js";
+import type {
+  DispatcherActivation,
+  LaunchOptions,
+  RebuildOptions,
+  SessionRebuildReport,
+  TransportRestage,
+} from "./types.js";
 
 export type RebuiltSession = OpenedSession & {
   readonly rebuild: SessionRebuildReport;
@@ -73,6 +122,18 @@ export type RebuildDeps = {
   readonly readGuiSession?: (uid: number) => MacSession | null;
   readonly open?: (options: LaunchOptions, op: string) => Promise<OpenedSession>;
   readonly now?: () => Date;
+  /**
+   * Test seam for the dispatcher re-activation (#313): the channel
+   * directory the *default* dispatcher channel resolves to, and the
+   * activation call itself. Production uses
+   * `defaultDispatcherChannelDir()` and `activateDispatcherForSession` —
+   * the same core `AfterEffects.activateDispatcher` runs.
+   */
+  readonly dispatcherChannelDir?: string;
+  readonly activateDispatcher?: (
+    session: Session,
+    channelDir: string,
+  ) => Promise<DispatcherActivation>;
 };
 
 function currentUid(): number {
@@ -134,6 +195,159 @@ function withEvidence(
     evidence: [...doc.evidence, ...evidence].slice(-50),
     updatedAt: now.toISOString(),
   };
+}
+
+/**
+ * Re-stage the transport surfaces the crashed session provably used
+ * inside the rebuilt After Effects process (#313). See the module
+ * comment for the per-transport decisions; the short version is that
+ * only dispatcher *activations* ever lived inside the old process, and
+ * those are re-activated through the same `activateDispatcherForSession`
+ * core `activateDispatcher()` uses — never a second delivery path.
+ *
+ * Nothing here throws: a surface that cannot be re-established is
+ * reported `failed`/`unproven` on the returned entries, because the
+ * rebuild itself already succeeded — the session's own transport was
+ * proven by the launch probe. `resumed` is a GUI-lifecycle phase and is
+ * not downgraded for a secondary surface; the report, the
+ * `recovery-succeeded` reason, and the trace carry the honest answer.
+ */
+async function restageSessionTransports(input: {
+  readonly session: Session;
+  readonly sessionRoot: string;
+  readonly previousPid: number;
+  readonly platform: NodeJS.Platform;
+  readonly deps: RebuildDeps;
+}): Promise<readonly TransportRestage[]> {
+  const { session, sessionRoot, previousPid, platform, deps } = input;
+  const entries: TransportRestage[] = [];
+
+  // The session's own transport. Whatever it is, the rebuild's readiness
+  // probe already delivered a script through it to the new process —
+  // that is the proof it answers. What differs is whether anything had
+  // to be staged *inside* After Effects for it to work again:
+  const transportKind = session.driver.transportKind;
+  if (transportKind === DISPATCHER_TRANSPORT_KIND) {
+    // Unreachable in practice — a dispatcher session never records launch
+    // provenance, so rebuild refuses it before this point — but if it is
+    // ever reached, "a dispatcher answered the probe" does not prove the
+    // dispatcher lives in *this* process. Say so rather than imply it.
+    entries.push({
+      transport: transportKind,
+      status: "unproven",
+      detail:
+        "the session transport is the in-AE dispatcher channel; the probe " +
+        "proved a dispatcher answers, but which process hosts it is only " +
+        "attested by dispatcher provenance, not by this rebuild",
+    });
+  } else if (session.driver.scriptTransport() !== null) {
+    entries.push({
+      transport: transportKind,
+      status: "not-required",
+      detail:
+        "script invocation delivers every call fresh and the driver " +
+        "re-stages the host-script copy per session; nothing persists " +
+        "inside After Effects, and the readiness probe already proved " +
+        "the new process answers",
+    });
+  } else {
+    entries.push({
+      transport: transportKind,
+      status: "not-required",
+      detail:
+        "a caller-supplied transport manages its own host state; the " +
+        "readiness probe already proved it answers the rebuilt process",
+    });
+  }
+
+  // Dispatcher activations that lived inside the crashed process. The
+  // session activation index names the channels this session activated;
+  // each channel's provenance.json (#294) proves which host pid the
+  // activation ran in. Only a record bound to the crashed pid needs
+  // re-staging — anything else is provably not this session's to redo.
+  const defaultChannelDir = deps.dispatcherChannelDir ?? defaultDispatcherChannelDir();
+  const channelDirs = new Set<string>([defaultChannelDir]);
+  const recorded = readSessionDispatcherActivations(sessionRoot);
+  if (recorded.kind === "ok") {
+    for (const dir of recorded.channelDirs) {
+      channelDirs.add(dir);
+    }
+  } else if (recorded.kind === "corrupt") {
+    entries.push({
+      transport: DISPATCHER_TRANSPORT_KIND,
+      status: "unproven",
+      detail:
+        `the session's dispatcher-activation index is corrupt ` +
+        `(${recorded.detail}); channels activated under a custom ` +
+        "channelDir cannot be enumerated, so only the default channel " +
+        "was checked",
+    });
+  }
+
+  const activate =
+    deps.activateDispatcher ??
+    ((target: Session, channelDir: string) =>
+      activateDispatcherForSession(target, { channelDir }, "session.rebuild"));
+
+  for (const channelDir of channelDirs) {
+    let provenance: DispatcherProvenance | null;
+    try {
+      provenance = readDispatcherProvenance(channelDir);
+    } catch (error) {
+      entries.push({
+        transport: DISPATCHER_TRANSPORT_KIND,
+        channelDir,
+        status: "unproven",
+        detail: `the channel's activation provenance cannot be read (${errorMessage(error)}); whether the crashed process hosted a dispatcher here is unknown`,
+      });
+      continue;
+    }
+    if (provenance === null) {
+      // No owned-activation record: either no dispatcher was ever
+      // activated here by ae-a8n, or it was human-activated — which this
+      // tooling never re-delivers. Nothing this session did needs
+      // re-staging on this channel.
+      continue;
+    }
+    if (provenance.host.platform !== platform) {
+      entries.push({
+        transport: DISPATCHER_TRANSPORT_KIND,
+        channelDir,
+        status: "unproven",
+        detail:
+          `the channel's activation provenance was recorded on ` +
+          `${provenance.host.platform} but this rebuild runs on ${platform}`,
+      });
+      continue;
+    }
+    if (provenance.host.pid !== previousPid) {
+      // Bound to a different (still-running or later) process: not the
+      // crashed session's activation, so there is nothing to re-stage.
+      continue;
+    }
+    try {
+      const activation = await activate(session, channelDir);
+      entries.push({
+        transport: DISPATCHER_TRANSPORT_KIND,
+        channelDir,
+        status: "restaged",
+        detail:
+          `the crashed process hosted this channel's dispatcher ` +
+          `(pid ${previousPid}); re-activated in the rebuilt process ` +
+          `(instance ${activation.instance}, AE ${activation.aeVersion})`,
+      });
+    } catch (error) {
+      entries.push({
+        transport: DISPATCHER_TRANSPORT_KIND,
+        channelDir,
+        status: "failed",
+        detail:
+          `the crashed process hosted this channel's dispatcher ` +
+          `(pid ${previousPid}) but re-activation failed: ${errorMessage(error)}`,
+      });
+    }
+  }
+  return entries;
 }
 
 /**
@@ -369,10 +583,31 @@ export async function openRebuiltSession(
     );
   }
 
-  // 9. Recovery succeeded: the blocking host state is resolved and the
-  //    pending requests were reconciled above. If the monitor already moved
-  //    the session elsewhere (e.g. a crash-repair dialog on the new AE),
-  //    the machine refuses and the durable phase stays the honest one.
+  // 9. Re-stage the transport surfaces the crashed process hosted (#313).
+  //    Runs while the document is still `recovering`: the outcome is part
+  //    of the recovery record, and a surface that cannot be re-established
+  //    is reported, never implied away. It cannot fail the rebuild — the
+  //    session's own transport is already probe-proven.
+  const transports = await restageSessionTransports({
+    session: opened.session,
+    sessionRoot,
+    previousPid: provenance.host.pid,
+    platform,
+    deps,
+  });
+  const restageNote = transports
+    .filter((entry) => entry.status !== "not-required")
+    .map(
+      (entry) =>
+        `${entry.transport}${entry.channelDir === undefined ? "" : ` ${entry.channelDir}`} ` +
+        `→ ${entry.status}`,
+    )
+    .join("; ");
+
+  // 10. Recovery succeeded: the blocking host state is resolved and the
+  //     pending requests were reconciled above. If the monitor already moved
+  //     the session elsewhere (e.g. a crash-repair dialog on the new AE),
+  //     the machine refuses and the durable phase stays the honest one.
   const phase = recordEvent(
     sessionRoot,
     opened.session.supervision,
@@ -380,7 +615,8 @@ export async function openRebuiltSession(
       kind: "recovery-succeeded",
       reason:
         "owned After Effects relaunched and re-proven; supervision resumes " +
-        "on the new process",
+        "on the new process" +
+        (restageNote === "" ? "" : `; transport restage: ${restageNote}`),
     },
     now,
   );
@@ -393,6 +629,12 @@ export async function openRebuiltSession(
       phase,
       pendingResolved: pending.resolved.length,
       pendingUnknown: pending.unknown.length,
+      transports: transports.map((entry) => ({
+        transport: entry.transport,
+        ...(entry.channelDir === undefined ? {} : { channelDir: entry.channelDir }),
+        status: entry.status,
+        detail: entry.detail,
+      })),
     },
   });
 
@@ -404,6 +646,7 @@ export async function openRebuiltSession(
       phase,
       pendingResolved: pending.resolved.length,
       pendingUnknown: pending.unknown.length,
+      transports,
     },
   };
 }

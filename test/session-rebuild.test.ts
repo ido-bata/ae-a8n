@@ -42,13 +42,19 @@ const NEW_STARTED_AT = T0 + 60_000;
 const AQUA: MacSession = { uid: 501, username: "tester", asid: 42, kind: "Aqua" };
 
 let sessionRoot: string;
+let channelDir: string;
 
 beforeEach(() => {
   sessionRoot = mkdtempSync(join(tmpdir(), "a8n-rebuild-"));
+  // Rebuild re-staging (#313) reads the default dispatcher channel's
+  // provenance; point it at a temp dir so the real per-user channel can
+  // never leak into these tests.
+  channelDir = mkdtempSync(join(tmpdir(), "a8n-rebuild-channel-"));
 });
 
 afterEach(() => {
   rmSync(sessionRoot, { recursive: true, force: true });
+  rmSync(channelDir, { recursive: true, force: true });
 });
 
 function processGoneDoc(pending: readonly PendingRequest[] = []): SupervisionStateDoc {
@@ -109,6 +115,7 @@ function deps(overrides: Partial<RebuildDeps> = {}): RebuildDeps {
     // and no sibling instance exists to be confused with the rebuild.
     processes: () => [],
     readGuiSession: () => AQUA,
+    dispatcherChannelDir: channelDir,
     ...overrides,
   };
 }
