@@ -137,7 +137,6 @@ function seedChannelProvenance(dir: string, pid: number): void {
     host: {
       pid,
       startedAt: OLD_STARTED_AT,
-      identity: null,
       executable: AE_EXECUTABLE,
     },
     instance: "inst-old",
