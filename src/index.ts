@@ -226,6 +226,18 @@ export {
   type GuiWindowInfo,
 } from "./driver/gui-recovery.js";
 export {
+  DIALOG_TAXONOMY,
+  describeDialogEvidence,
+  dialogClassByName,
+  extractDialogContent,
+  matchDialogClass,
+  type DialogClassSpec,
+  type DialogEvidence,
+  type DialogEvidenceLevel,
+  type RegisteredDialogTier,
+  type StructuredDialogContent,
+} from "./platform/dialog-taxonomy.js";
+export {
   chooseRecoveryWindow,
   classifyDialog,
   classifyUnpressable,

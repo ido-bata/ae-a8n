@@ -84,6 +84,18 @@ export const DIAGNOSTIC_CODES = {
     severity: "info",
     title: "After Effects is already running",
   },
+  "A8N-AE-010": {
+    severity: "blocker",
+    title: "An After Effects script error dialog is present",
+  },
+  "A8N-AE-011": {
+    severity: "blocker",
+    title: "An After Effects unsaved-changes dialog is present",
+  },
+  "A8N-AE-012": {
+    severity: "blocker",
+    title: "An After Effects dialog requires a human decision",
+  },
   "A8N-JOB-001": { severity: "blocker", title: "Job or result file failed ownership or integrity checks" },
   "A8N-JOB-002": { severity: "warning", title: "A prior run left a lock or quarantine state" },
   "A8N-JOB-003": { severity: "blocker", title: "Job or result is not from a trusted issuer" },

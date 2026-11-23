@@ -17,6 +17,10 @@ import {
   isHumanOnlyWindow,
   type DialogWindow,
 } from "../platform/recovery-policy.js";
+import {
+  extractDialogContent,
+  type StructuredDialogContent,
+} from "../platform/dialog-taxonomy.js";
 import type {
   BlockingInfo,
   DialogTier,
@@ -57,9 +61,15 @@ export function windowTier(window: DialogWindow): {
   readonly tier: DialogTier;
   readonly dialogClass: string | null;
   readonly code: string | null;
+  readonly content: StructuredDialogContent;
 } {
+  // Structured content is extracted for every window: it is the honest
+  // record of what the OS showed, including for windows that turn out not
+  // to block. `dialogClass: null` + `tier: "unknown"` inside it means
+  // unmeasured — the quarantine answer, never a guess.
+  const content = extractDialogContent(window);
   if (!window.blocking) {
-    return { tier: "report-only", dialogClass: null, code: null };
+    return { tier: "report-only", dialogClass: null, code: null, content };
   }
   if (isHumanOnlyWindow(window)) {
     const known = classifyDialog(window);
@@ -67,20 +77,21 @@ export function windowTier(window: DialogWindow): {
       tier: "human-required",
       dialogClass: known.kind === "known" ? known.dialogClass.name : null,
       code: known.kind === "known" ? known.dialogClass.code : "A8N-PERM-004",
+      content,
     };
   }
   const classified = classifyDialog(window);
   if (classified.kind === "known") {
-    if (classified.dialogClass.presses) {
-      return { tier: "auto-safe", dialogClass: classified.dialogClass.name, code: null };
-    }
+    // The taxonomy tier is authoritative (#284): auto-safe is the only
+    // pressable tier; human-required and report-only are never pressed.
     return {
-      tier: "human-required",
+      tier: classified.dialogClass.tier,
       dialogClass: classified.dialogClass.name,
       code: classified.dialogClass.code,
+      content,
     };
   }
-  return { tier: "unknown", dialogClass: null, code: "A8N-SEC-001" };
+  return { tier: "unknown", dialogClass: null, code: "A8N-SEC-001", content };
 }
 
 /**

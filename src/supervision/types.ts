@@ -17,6 +17,14 @@
  */
 
 import type { DialogWindow } from "../platform/recovery-policy.js";
+import type {
+  DialogTier,
+  StructuredDialogContent,
+} from "../platform/dialog-taxonomy.js";
+
+// The tier vocabulary is owned by the dialog taxonomy registry (#284);
+// re-exported here so supervision consumers keep one import site.
+export type { DialogTier } from "../platform/dialog-taxonomy.js";
 
 export const SUPERVISION_SCHEMA_VERSION = "ae-a8n.supervision/v1";
 
@@ -74,17 +82,6 @@ export type HostLevelState =
   /** The host state could not be determined; never guessed. */
   | "unknown";
 
-/** What automation may do with a blocking window, by evidence tier. */
-export type DialogTier =
-  /** Measured on a real host; the safe dismissal was verified. */
-  | "auto-safe"
-  /** Measured; the decision belongs to a human. Never pressed. */
-  | "human-required"
-  /** Measured informational state; reported, not pressed. */
-  | "report-only"
-  /** Unmeasured. Quarantine; never pressed. */
-  | "unknown";
-
 /** One blocking window plus its policy classification. */
 export type SupervisionWindow = DialogWindow & {
   readonly tier: DialogTier;
@@ -92,6 +89,13 @@ export type SupervisionWindow = DialogWindow & {
   readonly dialogClass: string | null;
   /** The diagnostic code a human/consumer should see, when applicable. */
   readonly code: string | null;
+  /**
+   * Structured content extracted from the window's accessible text (#284):
+   * class-specific fields (script error line/message) plus a one-line
+   * summary. Absent on documents written before taxonomy v2 — readers must
+   * treat it as optional, never as "no content".
+   */
+  readonly content?: StructuredDialogContent;
 };
 
 /** What is blocking the host, at window and host level. */
@@ -113,6 +117,14 @@ export type PendingRequest = {
    * may still arrive — never resend. `unknown`: outcome cannot be proven.
    */
   readonly state: "in-flight" | "timed-out" | "unknown";
+  /**
+   * The transport kind the request went through (e.g. "script-invocation",
+   * "in-ae-dispatcher"), when the driver can name it. Evidence for the
+   * multi-script contention class (#41): the dialog is a symptom of a
+   * dispatch-level conflict, so reports carry which transport was in
+   * flight. Optional — older documents and transports may omit it.
+   */
+  readonly transport?: string;
 };
 
 /** The monitor lease holder recorded in the state document. */

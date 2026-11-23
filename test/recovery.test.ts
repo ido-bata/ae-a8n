@@ -387,19 +387,19 @@ describe("which window a recovery may act on", () => {
     const choice = chooseRecoveryWindow(windows);
     expect(choice.kind).toBe("unpressable");
     if (choice.kind !== "unpressable") return;
-    expect(choice.dialogClass.name).toBe("ae crash-repair options");
+    expect(choice.dialogClass.name).toBe("after-effects-crash-repair");
   });
 
   it("names the AppDirs/Required Dir startup warning and the recovery project window", () => {
     const warning = chooseRecoveryWindow([dialog("警告", "AppDirs <5> Required Dir = /Applications/Adobe After Effects 2026")]);
     expect(warning.kind).toBe("unpressable");
     if (warning.kind === "unpressable") {
-      expect(warning.dialogClass.name).toBe("ae startup directory warning");
+      expect(warning.dialogClass.name).toBe("after-effects-startup-directory-warning");
     }
     const recovery = chooseRecoveryWindow([dialog("リカバリプロジェクトを生成", "After Effects Crash_33.aep")]);
     expect(recovery.kind).toBe("unpressable");
     if (recovery.kind === "unpressable") {
-      expect(recovery.dialogClass.name).toBe("ae crash-recovery project");
+      expect(recovery.dialogClass.name).toBe("after-effects-crash-recovery-project");
     }
   });
 
