@@ -19,6 +19,49 @@ const MEASURE_TIMEOUT_MS = 5_000;
 const SESSION_SCRIPT = "[System.Diagnostics.Process]::GetCurrentProcess().SessionId";
 
 /**
+ * `WTSGetActiveConsoleSessionId` returns the session attached to the
+ * physical console — the desktop the person at the machine is looking at.
+ * 0xFFFFFFFF means no session holds the console; it is reported as null,
+ * never as a session id.
+ */
+const CONSOLE_SESSION_SCRIPT = `
+$sig = '[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern uint WTSGetActiveConsoleSessionId();'
+Add-Type -MemberDefinition $sig -Name AeA8nWts -Namespace AeA8n -ErrorAction Stop
+[uint32]$id = [AeA8n.AeA8nWts]::WTSGetActiveConsoleSessionId()
+if ($id -eq 0xFFFFFFFF) { 'none' } else { [string]$id }
+`;
+
+/**
+ * The session id attached to the physical console, measured by the OS.
+ * Null when it cannot be measured or no session holds the console: an
+ * unknown console owner must never be read as "not the console".
+ */
+export function measureConsoleSessionId(): number | null {
+  if (process.platform !== "win32") {
+    return null;
+  }
+  let output: string;
+  try {
+    output = execFileSync(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", CONSOLE_SESSION_SCRIPT],
+      { encoding: "utf-8", timeout: MEASURE_TIMEOUT_MS, windowsHide: true },
+    );
+  } catch {
+    return null;
+  }
+  const text = output.trim();
+  if (text === "none") {
+    return null;
+  }
+  if (!/^\d+$/u.test(text)) {
+    return null;
+  }
+  const sessionId = Number(text);
+  return Number.isSafeInteger(sessionId) ? sessionId : null;
+}
+
+/**
  * The current process's session id, measured by the OS. Null when it cannot
  * be measured: an unknown session is never treated as interactive.
  */

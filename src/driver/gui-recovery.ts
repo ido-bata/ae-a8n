@@ -39,6 +39,7 @@ import {
   defaultGuiLeaseRoot,
   guiSessionKey,
   type GuiLease,
+  type GuiLeaseSession,
 } from "../platform/darwin/gui-lease.js";
 import {
   consoleSessionUid,
@@ -1080,7 +1081,12 @@ export class MacGuiRecovery {
  */
 export function defaultLeaseController(options: {
   readonly stateRoot: string;
-  readonly session: MacSession;
+  /**
+   * The lease scope: a macOS `{uid, asid}` session or, since #283, a
+   * Windows `{platform: "win32", sessionId}` one. The on-disk format and
+   * fail-closed semantics are identical for both.
+   */
+  readonly session: GuiLeaseSession;
   readonly ownerId: string;
 }): GuiLeaseController {
   const sessionKey = guiSessionKey(options.session);
