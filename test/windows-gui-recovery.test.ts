@@ -92,7 +92,7 @@ const PRESS_SESSION_MISMATCH = line({
 const PRESS_INVOKE_FAILED = line({ type: "result", status: "INVOKE_FAILED", detail: "boom" });
 const CLICK_OK = line({ type: "result", status: "CLICKED" });
 
-type ScriptKind = "list" | "press" | "click";
+type ScriptKind = "list" | "press" | "click" | "unknown";
 
 function kindOf(command: ProbeCommand): ScriptKind {
   const script = command.args[command.args.length - 1] ?? "";
