@@ -76,6 +76,7 @@ function processGoneDoc(pending: readonly PendingRequest[] = []): SupervisionSta
 function seedCrashedSession(options: {
   readonly pending?: readonly PendingRequest[];
   readonly provenance?: boolean;
+  readonly identity?: string;
 } = {}): void {
   writeSupervisionState(sessionRoot, processGoneDoc(options.pending ?? []));
   if (options.provenance !== false) {
@@ -85,6 +86,7 @@ function seedCrashedSession(options: {
         pid: OLD_PID,
         startedAt: OLD_STARTED_AT,
         executable: AE_EXECUTABLE,
+        ...(options.identity === undefined ? {} : { identity: options.identity }),
       },
     });
   }
@@ -263,10 +265,18 @@ describe("openRebuiltSession", () => {
   });
 
   it("refuses when the recorded process is still running (stale process-gone)", async () => {
-    seedCrashedSession();
+    // The creation identity lets Windows `sameProcess` recognise the
+    // recorded process; without it the census entry would only count as
+    // "another instance" — still a refusal, but a different reason.
+    seedCrashedSession({ identity: "creation-identity-1" });
     const transport = fakeTransport();
     const stillAlive: HostProcess[] = [
-      { pid: OLD_PID, startedAt: OLD_STARTED_AT, executable: AE_EXECUTABLE },
+      {
+        pid: OLD_PID,
+        startedAt: OLD_STARTED_AT,
+        executable: AE_EXECUTABLE,
+        identity: "creation-identity-1",
+      },
     ];
 
     await expectRebuildRefusal(
