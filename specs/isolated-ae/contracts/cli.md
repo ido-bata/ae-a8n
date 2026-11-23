@@ -82,7 +82,7 @@ not 6.
 ## 5. Diagnostic codes
 
 Format: `A8N-<AREA>-<NNN>`. Areas: `ENV`, `SESSION`, `PERM`, `AE`, `JOB`,
-`SEC`, `EXT`, `RELEASE`.
+`SEC`, `EXT`, `RELEASE`, `SUP`.
 
 Each check:
 
