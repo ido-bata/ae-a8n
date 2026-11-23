@@ -46,6 +46,14 @@ $script:targetPid = ${pid}
 $script:maxWindows = 128
 $script:maxUiaElements = 300
 $script:maxUiaDepth = 6
+# The observer bounds itself: a hung or merely slow target must not hold the
+# probe past its budget. When the deadline passes mid-census or mid-UIA the
+# script stops enumerating and still emits the done record with the
+# partial-evidence flags, so the probe reports degraded evidence instead of
+# a killed process that left no closing record (#324).
+$script:deadline = [DateTime]::UtcNow.AddSeconds(20)
+$script:censusTimedOut = $false
+$script:uiaTimedOut = $false
 
 function Write-Record($record) {
   [Console]::Out.WriteLine(($record | ConvertTo-Json -Compress -Depth 8))
@@ -92,7 +100,7 @@ try {
   Add-Type -TypeDefinition $cs -ErrorAction Stop
 } catch {
   Write-Record ([ordered]@{ type = 'census-error'; error = [string]$_.Exception.Message })
-  Write-Record ([ordered]@{ type = 'done'; windows = 0; uiaOk = 0; uiaFailed = 0; truncated = $false })
+  Write-Record ([ordered]@{ type = 'done'; windows = 0; uiaOk = 0; uiaFailed = 0; truncated = $false; timedOut = $false; censusComplete = $false; uiaComplete = $false })
   exit 0
 }
 
@@ -141,6 +149,9 @@ for ($i = 0; $i -lt $script:candidates.Count -and $targets.Count -lt $script:max
 $SMTO_ABORTIFHUNG = 0x0002
 $SMTO_BLOCK = 0x0001
 foreach ($h in $targets) {
+  # Per-window work is bounded twice: SendMessageTimeout caps each liveness
+  # probe, and this deadline caps the census as a whole.
+  if ([DateTime]::UtcNow -gt $script:deadline) { $script:censusTimedOut = $true; break }
   $title = New-Object System.Text.StringBuilder 1024
   [void][AeA8nWin32]::GetWindowText($h, $title, 1024)
   $class = New-Object System.Text.StringBuilder 256
@@ -200,6 +211,8 @@ if ($uiaState -eq 'ok') {
   $walker = $null
   try { $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker } catch {}
   foreach ($h in $targets) {
+    if ($script:uiaTimedOut) { break }
+    if ([DateTime]::UtcNow -gt $script:deadline) { $script:uiaTimedOut = $true; break }
     $rec = [ordered]@{ type = 'uia'; hwnd = [string]$h.ToInt64() }
     try {
       $el = [System.Windows.Automation.AutomationElement]::FromHandle($h)
@@ -219,6 +232,7 @@ if ($uiaState -eq 'ok') {
         $queue = New-Object System.Collections.Queue
         $queue.Enqueue(@{ el = $el; depth = 0 })
         while ($queue.Count -gt 0 -and $count -lt $script:maxUiaElements) {
+          if ([DateTime]::UtcNow -gt $script:deadline) { $script:uiaTimedOut = $true; break }
           $item = $queue.Dequeue()
           $node = $item.el
           $depth = [int]$item.depth
@@ -264,6 +278,9 @@ Write-Record ([ordered]@{
   uiaOk = $uiaOk
   uiaFailed = $uiaFailed
   truncated = $truncated
+  timedOut = [bool]($script:censusTimedOut -or $script:uiaTimedOut)
+  censusComplete = [bool](-not $script:censusTimedOut)
+  uiaComplete = [bool](-not $script:uiaTimedOut)
 })
 `;
 }
