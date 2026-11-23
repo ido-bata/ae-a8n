@@ -13,6 +13,7 @@
  * the exit code reflects what was proven — not what was hoped.
  */
 
+import { arch as osArch, platform as osPlatform, release as osRelease } from "node:os";
 import { resolve } from "node:path";
 
 import { supervisionReport, type SupervisionReport } from "../supervision/index.js";
@@ -20,9 +21,9 @@ import { buildEnvelope, type CliEnvelope, type NextAction } from "./envelope.js"
 import { EXIT, type ExitCode } from "./exit-code.js";
 
 const PLATFORM = {
-  os: process.platform,
-  release: null,
-  arch: process.arch,
+  os: osPlatform(),
+  release: osRelease(),
+  arch: osArch(),
   backend: "none",
 } as const;
 
