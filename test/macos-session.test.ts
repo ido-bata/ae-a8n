@@ -230,6 +230,24 @@ describe("the GUI recovery", () => {
     expect(text).toContain('if not found then return "CHANGED"');
   });
 
+  it("re-verifies the window frame before pressing — the bundle-confused listing guard (#330)", () => {
+    // On multi-install hosts `windows of process` can enumerate ANOTHER
+    // same-bundle-id instance's windows, so title/subrole/text can all
+    // describe a foreign dialog. The caller passes the census-attributed
+    // frame; the window at the index must still occupy it or the press is
+    // refused as CHANGED — never clicked.
+    const text = PRESS_BUTTON_SCRIPT.join("\n");
+    expect(text).toContain("set expectedFrame to item 7 of argv");
+    expect(text).toContain("get position of w");
+    expect(text).toContain("get size of w");
+    expect(text).toContain("if not frameOk then return \"CHANGED\"");
+    // The check must run BEFORE the button loop that clicks.
+    const frameCheck = text.indexOf("if not frameOk then return \"CHANGED\"");
+    const click = text.indexOf("click b");
+    expect(frameCheck).toBeGreaterThan(-1);
+    expect(click).toBeGreaterThan(frameCheck);
+  });
+
   it("emits a G frame record for both the windows and UI-elements listings (#321)", () => {
     // Census reconciliation needs every listed window's geometry; AE's
     // real windows arrive through the UI-elements path, so both loops
@@ -485,6 +503,121 @@ describe("the GUI recovery", () => {
     let reads = 0;
     const blind = mk(() => proven, () => (reads++ === 0 ? 1 : -1));
     expect(() => blind.listWindows()).toThrow(/console owner could not be read/);
+  });
+});
+
+describe("the pid attribution of a press target (#330)", () => {
+  const session = { uid: 502, username: "test", asid: 100040, kind: "Aqua" as const };
+  const readSession = () => session;
+  const lease = {
+    acquire: () => ({ path: "/fake/lease", release: () => {} }),
+    audit: () => {},
+  };
+  const censusOwned = {
+    available: true as const,
+    windows: [
+      {
+        pid: 4242,
+        owner: "After Effects",
+        layer: 0,
+        onScreen: true,
+        name: "dlg",
+        bounds: { x: 650, y: 185, width: 410, height: 342 },
+      },
+    ],
+  };
+  const ownedWindow = {
+    title: "",
+    role: "AXWindow",
+    subrole: "AXDialog",
+    buttons: [{ title: "OK", description: "", position: null, size: null }],
+    texts: ["ae-a8n: close me"],
+    frame: { x: 650, y: 185, width: 410, height: 342 },
+    censusAttribution: "owned" as const,
+  };
+
+  it("refuses to press a window the census attributes to another pid — before any session command", () => {
+    let commands = 0;
+    let acquisitions = 0;
+    const gui = new MacGuiRecovery({
+      session,
+      pid: 4242,
+      allowConsoleSession: true,
+      readTargetSession: readSession,
+      census: () => censusOwned,
+      lease: {
+        acquire: () => {
+          acquisitions += 1;
+          return { path: "/fake/lease", release: () => {} };
+        },
+        audit: () => {},
+      },
+      runSession: () => {
+        commands += 1;
+        return { status: 0, stdout: "", stderr: "", timedOut: false };
+      },
+    });
+    const foreign = { ...ownedWindow, censusAttribution: "foreign" as const };
+    const unmatched = { ...ownedWindow, censusAttribution: "unmatched" as const };
+    const { censusAttribution: _drop, ...unproven } = ownedWindow;
+    for (const bad of [foreign, unmatched, unproven]) {
+      expect(() => gui.pressButtonIn(1, "OK", bad, "ae-a8n:")).toThrow(/cannot be proven to belong/);
+      expect(() => gui.pressButton(1, "OK", bad)).toThrow(/cannot be proven to belong/);
+    }
+    // The refusal precedes the lease and every session command: provably
+    // nothing was pressed and nothing was even sent.
+    expect(commands).toBe(0);
+    expect(acquisitions).toBe(0);
+  });
+
+  it("passes the census-attributed frame to the press script as argv 7", () => {
+    const calls: string[][] = [];
+    const gui = new MacGuiRecovery({
+      session,
+      pid: 4242,
+      allowConsoleSession: true,
+      readTargetSession: readSession,
+      census: () => censusOwned,
+      lease,
+      runSession: (_s, _p, args) => {
+        calls.push([...args]);
+        return { status: 0, stdout: "CLICKED", stderr: "", timedOut: false };
+      },
+    });
+    expect(gui.pressButtonIn(1, "OK", ownedWindow, "ae-a8n:")).toBe(true);
+    expect(calls).toHaveLength(1);
+    // argv: pid, index, title, expectedTitle, expectedSubrole, expectedText, expectedFrame
+    expect(calls[0]?.at(-1)).toBe("650,185,410,342");
+  });
+
+  it("the coordinate fallback clicks nothing when the re-listed window is not pid-attributed", () => {
+    // The accessibility press answers NOT_FOUND; the fresh listing then
+    // shows the window at the index has a frame no census window owns.
+    // The fallback must refuse rather than click raw coordinates that
+    // could belong to another instance (#330).
+    let commands = 0;
+    const gui = new MacGuiRecovery({
+      session,
+      pid: 4242,
+      allowConsoleSession: true,
+      readTargetSession: readSession,
+      census: () => censusOwned,
+      lease,
+      runSession: () => {
+        commands += 1;
+        return commands === 1
+          ? { status: 0, stdout: "NOT_FOUND", stderr: "", timedOut: false }
+          : {
+              status: 0,
+              stdout: "W||AXWindow|AXDialog\nG|10,10|100,100\nT|ae-a8n: close me\n",
+              stderr: "",
+              timedOut: false,
+            };
+      },
+    });
+    expect(gui.pressButtonIn(1, "OK", ownedWindow, "ae-a8n:")).toBe(false);
+    // press + one re-list; a clickAt would have been a third command.
+    expect(commands).toBe(2);
   });
 });
 

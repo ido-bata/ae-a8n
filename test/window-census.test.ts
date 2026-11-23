@@ -15,6 +15,7 @@ import {
   assessGuiObservation,
   framesMatch,
   isBlockingWindow,
+  isPidAttributedWindow,
   type GuiWindowInfo,
 } from "../src/driver/gui-recovery.js";
 import {
@@ -142,13 +143,15 @@ describe("assessGuiObservation — the AX-empty regression", () => {
   it("AE layout-area windows count as observed => healthy AE is not axSuspect (#304)", () => {
     // Real AE 2026 vends its windows as UI-element AXLayoutArea records, not
     // through the `windows` class. Once the listing includes them, a healthy
-    // instance must not look AX-unobservable.
+    // instance must not look AX-unobservable. The frame matches a census
+    // window of the same pid, so the census attributes it (#330).
     const aeWindow: GuiWindowInfo = {
       title: "Adobe After Effects 2026 - untitled *",
       role: "AXLayoutArea",
       subrole: "AXFloatingWindow",
       buttons: [],
       texts: [],
+      frame: { x: 592, y: 367, width: 525, height: 377 },
     };
     const census = { available: true as const, windows: parseWindowCensus(CENSUS_FIXTURE) };
     const state = assessGuiObservation(63300, false, [aeWindow], census);
@@ -158,8 +161,14 @@ describe("assessGuiObservation — the AX-empty regression", () => {
   });
 
   it("AX windows present => axSuspect false regardless of census", () => {
+    // The dialog's frame matches a census window of the same pid, so it is
+    // pid-attributed (#330); without that the listing would be unproven.
+    const attributed: GuiWindowInfo = {
+      ...dialogWindow,
+      frame: { x: 592, y: 367, width: 525, height: 377 },
+    };
     const census = { available: true as const, windows: parseWindowCensus(CENSUS_FIXTURE) };
-    const state = assessGuiObservation(63300, true, [dialogWindow], census);
+    const state = assessGuiObservation(63300, true, [attributed], census);
     expect(state.axSuspect).toBe(false);
     expect(state.windows).toHaveLength(1);
   });
@@ -226,6 +235,108 @@ describe("assessGuiObservation — AX-invisible on-screen windows (#321)", () =>
       reason: "probe missing",
     });
     expect(state.axUnaccountedWindows).toHaveLength(0);
+  });
+});
+
+describe("assessGuiObservation — pid attribution of AX windows (#330)", () => {
+  // The measured failure: two AE versions share one bundle id, and System
+  // Events answers `windows of process` with the OTHER instance's windows.
+  // The census is pid-accurate, so a frame match against another pid's
+  // census window is positive proof of foreignness.
+  const OWN_PID = 63300;
+  const FOREIGN_PID = 77777;
+  const ownMain: GuiWindowInfo = {
+    title: "Adobe After Effects 2027 - untitled",
+    role: "AXLayoutArea",
+    subrole: "AXFloatingWindow",
+    buttons: [],
+    texts: [],
+    frame: { x: 0, y: 39, width: 1710, height: 1073 },
+  };
+  const foreignDialog: GuiWindowInfo = {
+    title: "Script",
+    role: "AXWindow",
+    subrole: "AXDialog",
+    buttons: [{ title: "OK", description: "", position: null, size: null }],
+    texts: ["the other instance's dialog"],
+    frame: { x: 650, y: 185, width: 410, height: 342 },
+  };
+  const ownCensus = win({
+    onScreen: true,
+    name: "untitled",
+    bounds: { x: 0, y: 38, width: 1710, height: 1074 },
+  });
+  const foreignCensus = win({
+    pid: FOREIGN_PID,
+    owner: "After Effects",
+    layer: 8,
+    onScreen: true,
+    name: "Script",
+    bounds: { x: 650, y: 185, width: 410, height: 342 },
+  });
+
+  it("marks a window owned when its frame matches a target-pid census window", () => {
+    const census = { available: true as const, windows: [ownCensus] };
+    const state = assessGuiObservation(OWN_PID, true, [ownMain], census);
+    expect(state.windows[0]?.censusAttribution).toBe("owned");
+    expect(isPidAttributedWindow(state.windows[0]!)).toBe(true);
+    expect(state.axForeignWindowCount).toBe(0);
+    expect(state.axUnmatchedWindowCount).toBe(0);
+    expect(state.axSuspect).toBe(false);
+  });
+
+  it("marks a window foreign when its frame matches only another pid's census window", () => {
+    const census = { available: true as const, windows: [ownCensus, foreignCensus] };
+    const state = assessGuiObservation(OWN_PID, true, [ownMain, foreignDialog], census);
+    expect(state.windows[0]?.censusAttribution).toBe("owned");
+    expect(state.windows[1]?.censusAttribution).toBe("foreign");
+    expect(isPidAttributedWindow(state.windows[1]!)).toBe(false);
+    expect(state.axForeignWindowCount).toBe(1);
+    // The owned window keeps the listing trustworthy: not axSuspect.
+    expect(state.axSuspect).toBe(false);
+  });
+
+  it("a wholly foreign AX listing raises axSuspect — the pid's windows are AX-invisible", () => {
+    // Both pids received the identical foreign listing on the real host:
+    // for the target, every AX window belongs to somebody else, so the
+    // observation must degrade exactly like an empty AX tree.
+    const census = { available: true as const, windows: [ownCensus, foreignCensus] };
+    const state = assessGuiObservation(OWN_PID, true, [foreignDialog], census);
+    expect(state.axSuspect).toBe(true);
+    expect(state.axForeignWindowCount).toBe(1);
+    // The foreign dialog's frame does not account for the target's own
+    // on-screen census window either (#321 path intact).
+    expect(state.axUnaccountedWindows).toHaveLength(1);
+  });
+
+  it("marks a window unmatched when no census window of any pid has its frame", () => {
+    const ghost: GuiWindowInfo = { ...ownMain, frame: { x: 10, y: 10, width: 100, height: 100 } };
+    const census = { available: true as const, windows: [ownCensus] };
+    const state = assessGuiObservation(OWN_PID, true, [ownMain, ghost], census);
+    expect(state.windows[0]?.censusAttribution).toBe("owned");
+    expect(state.windows[1]?.censusAttribution).toBe("unmatched");
+    expect(isPidAttributedWindow(state.windows[1]!)).toBe(false);
+    expect(state.axUnmatchedWindowCount).toBe(1);
+  });
+
+  it("marks a frameless window unmatched — it can never be attributed", () => {
+    const { frame: _frame, ...noFrame } = ownMain;
+    const census = { available: true as const, windows: [ownCensus] };
+    const state = assessGuiObservation(OWN_PID, true, [noFrame], census);
+    expect(state.windows[0]?.censusAttribution).toBe("unmatched");
+    expect(state.axSuspect).toBe(true);
+  });
+
+  it("leaves attribution unset when the census is unavailable — legacy trust, still degraded", () => {
+    const state = assessGuiObservation(OWN_PID, true, [ownMain], {
+      available: false,
+      reason: "probe missing",
+    });
+    expect(state.windows[0]?.censusAttribution).toBeUndefined();
+    expect(isPidAttributedWindow(state.windows[0]!)).toBe(true);
+    expect(state.axForeignWindowCount).toBe(0);
+    expect(state.axUnmatchedWindowCount).toBe(0);
+    expect(state.axSuspect).toBe(false);
   });
 });
 

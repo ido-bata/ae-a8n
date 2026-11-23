@@ -29,6 +29,14 @@
  *     `UNACCOUNTED_CONFIRM_OBSERVATIONS` consecutive observations, so a
  *     single mid-drag/mid-resize skew between the two session commands
  *     cannot flap the phase.
+ *   - The AX listing itself is not pid-accurate on multi-install hosts
+ *     (issue #330): with two same-bundle-id AE versions running, System
+ *     Events can answer `windows of process` with the OTHER instance's
+ *     windows. Every AX window is attributed through the pid-accurate
+ *     census before it is trusted: `"foreign"` and `"unmatched"` windows
+ *     are excluded from the reported window list and named in `degraded`,
+ *     and an AX listing with NO attributable window raises `axSuspect`
+ *     exactly like an empty one.
  *   - A census that cannot run is degraded evidence, not "no windows".
  *   - A dead pid is `process-gone`; a gone GUI session is
  *     `gui-session-lost`. Both are host-level states, not windows.
@@ -37,7 +45,7 @@
 import { execFileSync } from "node:child_process";
 
 import type { GuiAppState, GuiWindowInfo } from "../../driver/gui-recovery.js";
-import { isBlockingWindow } from "../../driver/gui-recovery.js";
+import { isBlockingWindow, isPidAttributedWindow } from "../../driver/gui-recovery.js";
 import type { WindowServerWindow } from "./window-census.js";
 import type { DialogWindow } from "../recovery-policy.js";
 import type { GuiProbe, ProbeSnapshot } from "../../supervision/probe.js";
@@ -224,11 +232,28 @@ export class MacGuiProbe implements GuiProbe {
     if (state.axSuspect) {
       degraded.push(
         `AX tree unserviceable: WindowServer reports ${state.windowServer.windowCount} window(s) ` +
-          "for this pid while AX listed none",
+          "for this pid while AX listed none attributable to it",
+      );
+    }
+    if (state.axForeignWindowCount > 0) {
+      degraded.push(
+        `AX listing included ${state.axForeignWindowCount} window(s) the WindowServer ` +
+          "attributes to other processes — the bundle-confused listing of #330; " +
+          "excluded as foreign",
+      );
+    }
+    if (state.axUnmatchedWindowCount > 0) {
+      degraded.push(
+        `AX listing included ${state.axUnmatchedWindowCount} window(s) no census window ` +
+          "accounts for — excluded as unattributed",
       );
     }
 
-    const windows = state.windows.map(toDialogWindow);
+    // Only pid-attributed AX windows are evidence (#330): a foreign or
+    // unproven window is never this instance's blocker.
+    const windows = state.windows
+      .filter(isPidAttributedWindow)
+      .map(toDialogWindow);
     if (state.axSuspect) {
       if (this.#axSuspectInStartupGrace()) {
         // Launch-transient AX emptiness (#322): the process is young enough
