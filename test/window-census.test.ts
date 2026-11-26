@@ -41,6 +41,7 @@ function win(partial: Partial<WindowServerWindow>): WindowServerWindow {
     layer: 0,
     onScreen: false,
     name: "",
+    windowNumber: null,
     bounds: null,
     ...partial,
   };

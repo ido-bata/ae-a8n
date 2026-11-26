@@ -40,6 +40,14 @@ export type WindowServerWindow = {
   /** 1 when the window is on the currently visible Space(s), else 0. */
   readonly onScreen: boolean;
   readonly name: string;
+  /**
+   * The WindowServer window number (CGWindowID), when the census row
+   * carried one. Stable for the window's lifetime and the handle
+   * `screencapture -l` and `CGWindowListCreateImage` address — it is how
+   * a floating panel is captured without leaking the rest of the screen
+   * (#343). `null` when the field was absent or unparsable.
+   */
+  readonly windowNumber?: number | null;
   readonly bounds: {
     readonly x: number;
     readonly y: number;
@@ -54,7 +62,9 @@ export type WindowCensus =
 
 /**
  * The probe itself. One pipe-delimited line per window:
- *   pid|owner|layer|onscreen|name|x|y|width|height
+ *   pid|owner|layer|onscreen|name|x|y|width|height|windowNumber
+ * The window number is appended last so older parsers that read the first
+ * nine fields keep working; it is what `screencapture -l` addresses.
  * `optionAll` (0) is used so windows on other Spaces and minimized windows
  * are included — residue is residue wherever it is parked.
  */
@@ -88,6 +98,12 @@ def gn(d, k):
     if not v: return None
     o = ctypes.c_double()
     return o.value if cf.CFNumberGetValue(v, 13, ctypes.byref(o)) else None
+def gni(d, k):
+    kk = cfstr(k); v = cf.CFDictionaryGetValue(d, kk); cf.CFRelease(kk)
+    if not v: return None
+    # kCFNumberIntType (9) writes a C int — the buffer must be c_int, not c_long.
+    o = ctypes.c_int()
+    return o.value if cf.CFNumberGetValue(v, 9, ctypes.byref(o)) else None
 def clean(s):
     return (s or "").replace("|", " ").replace("\n", " ").replace("\r", " ")
 arr = cg.CGWindowListCopyWindowInfo(0, 0)
@@ -97,6 +113,7 @@ for i in range(n):
     pid = gn(w, "kCGWindowOwnerPID")
     layer = gn(w, "kCGWindowLayer")
     ons = gn(w, "kCGWindowIsOnscreen")
+    wnum = gni(w, "kCGWindowNumber")
     kb = cfstr("kCGWindowBounds"); bd = cf.CFDictionaryGetValue(w, kb); cf.CFRelease(kb)
     vals = {}
     if bd:
@@ -105,13 +122,14 @@ for i in range(n):
             if v2:
                 o = ctypes.c_double()
                 if cf.CFNumberGetValue(v2, 13, ctypes.byref(o)): vals[kk] = o.value
-    print("%s|%s|%s|%s|%s|%s|%s|%s|%s" % (
+    print("%s|%s|%s|%s|%s|%s|%s|%s|%s|%s" % (
         int(pid) if pid is not None else -1,
         clean(gs(w, "kCGWindowOwnerName") or "?"),
         int(layer) if layer is not None else -2147483648,
         1 if ons == 1.0 else 0,
         clean(gs(w, "kCGWindowName") or ""),
         vals.get("X", ""), vals.get("Y", ""), vals.get("Width", ""), vals.get("Height", ""),
+        int(wnum) if wnum is not None else "",
     ))
 cf.CFRelease(arr)
 `;
@@ -123,6 +141,8 @@ export function parseWindowCensus(text: string): WindowServerWindow[] {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
     const p = trimmed.split("|");
+    // Nine fields is the legacy shape; the tenth (window number) is
+    // optional so older listings still parse.
     if (p.length < 9) continue;
     const pid = Number(p[0]);
     if (!Number.isFinite(pid) || pid <= 0) continue;
@@ -139,6 +159,7 @@ export function parseWindowCensus(text: string): WindowServerWindow[] {
       layer: num(p[2]) ?? 0,
       onScreen: p[3] === "1",
       name: p[4] ?? "",
+      windowNumber: p.length > 9 ? num(p[9]) : null,
       bounds: x !== null && y !== null && w !== null && h !== null
         ? { x, y, width: w, height: h }
         : null,

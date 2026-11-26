@@ -160,6 +160,7 @@ describe("MacGuiProbe", () => {
         layer: 8,
         onScreen: true,
         name: "",
+        windowNumber: null,
         bounds: { x: 650, y: 185, width: 410, height: 342 },
       },
     ];
@@ -262,6 +263,7 @@ describe("MacGuiProbe", () => {
               layer: 8,
               onScreen: true,
               name: "",
+              windowNumber: null,
               bounds: { x: 1, y: 2, width: 3, height: 4 },
             },
           ],
@@ -362,6 +364,7 @@ describe("MacGuiProbe", () => {
         layer: 8,
         onScreen: true,
         name: "",
+        windowNumber: null,
         bounds: { x: 650, y: 185, width: 410, height: 342 },
       },
     ];

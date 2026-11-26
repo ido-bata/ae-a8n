@@ -96,6 +96,14 @@
 - **新規の mutation-disabling 実装 ticket は起票しない。** 未修正 defect（#329）は誤報告方向、残 gap（#294/#295 の未配線側）は監視不存在方向であり、いずれも「誤対象を操作する」経路を新たに開かない。
 - 既存 ticket への受入条件追記: #294（残 gap の明確化）、#329（分類精度の受入条件）、#336（診断 gap である旨の分類確認）。
 
+### panel mutation（#343 / B-PLATFORM）— 未許可（fail-closed）
+
+- 対象: `ae.panel()` の `resize`/`restore`（`mutate-gui` class。実装は `src/panels/` + `RESIZE_PANEL_SCRIPT`、契約は `specs/panel-interaction/spec.md`）。
+- 現状: **無効**。auto-safe class に panel mutation は存在せず、実機で AE panel が `set size`（System Events 経由の AX size set）に応答することも未検証（owned AE launch が #339 と同じく blocked）。`panelMutationGate()`（`src/panels/gate.ts`）が唯一の flip point で、現時点では常に refuse し、理由に本書を明記する。
+- 多層防御（gate とは独立に常時有効）: census 帰属 `"owned"` 必須（`foreign`/`unmatched`/`unproven` は mutation・capture とも拒否）、GUI lease + audit、lease 内の frame/title/subrole 再検証、process identity 再証明、mutation outcome 不明時は `indeterminate` で再観測要求。
+- 解除条件: (a) 本監査で panel resize class を auto-safe 相当と判定、(b) owned AE で `set size` の実機検証（resize → census/AX frame の readback 一致）、(c) 座標系の一意性確認（points 空間で DPI 換算を伴わないことの実測）。
+- 最小実機 PoC: owned AE の ScriptUI resizeable window に対し `panel.resize()` → `measure()` で要求サイズと観測 frame の一致を確認し、`restore()` で元 frame に戻ること。証跡は PanelCapture artifact（sha256/backingScale/leakage）とともに #343 に記録。
+
 ## 未確認事項（unverified として明記）
 
 - #321/#322/#323/#324/#330 の各修正は実機で**発見**された defect への修正であり、修正後の実機再検証は #288（Windows 11 + macOS AE 2026/2027 matrix、freeze 後受入）に委譲されている。現時点の検証レベルは `automated test`（fake host）+ 実機発見時の観測証跡。

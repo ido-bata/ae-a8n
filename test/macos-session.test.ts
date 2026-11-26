@@ -16,9 +16,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   CLICK_AT_SCRIPT,
+  GuiMutationError,
   LIST_WINDOWS_SCRIPT,
   MacGuiRecovery,
   PRESS_BUTTON_SCRIPT,
+  RESIZE_PANEL_SCRIPT,
   isBlockingWindow,
   parseUiListing,
 } from "../src/driver/gui-recovery.js";
@@ -291,6 +293,7 @@ describe("the GUI recovery", () => {
         "list-windows": LIST_WINDOWS_SCRIPT,
         "press-button": PRESS_BUTTON_SCRIPT,
         "click-at": CLICK_AT_SCRIPT,
+        "resize-panel": RESIZE_PANEL_SCRIPT,
       })) {
         const source = join(dir, `${name}.applescript`);
         writeFileSync(source, `${script.join("\n")}\n`);
@@ -665,6 +668,252 @@ describe("the pid attribution of a press target (#330)", () => {
     // re-list + press + fallback re-list; a clickAt would have been a
     // fourth command.
     expect(commands).toBe(3);
+  });
+});
+
+describe("panel window operations (#343)", () => {
+  const session = { uid: 502, username: "test", asid: 100040, kind: "Aqua" as const };
+  const readSession = () => session;
+  const lease = {
+    acquire: () => ({ path: "/fake/lease", release: () => {} }),
+    audit: () => {},
+  };
+  const panelWindow = {
+    title: "My Plugin Panel",
+    role: "AXLayoutArea",
+    subrole: "AXFloatingWindow",
+    buttons: [],
+    texts: [],
+    frame: { x: 100, y: 200, width: 640, height: 504 },
+    censusAttribution: "owned" as const,
+  };
+  const mk = (
+    runSession: (
+      s: unknown,
+      p: string,
+      args: readonly string[],
+    ) => { status: number; stdout: string; stderr: string; timedOut: boolean },
+    over: Record<string, unknown> = {},
+  ) =>
+    new MacGuiRecovery({
+      session,
+      pid: 4242,
+      allowConsoleSession: true,
+      readTargetSession: readSession,
+      census: () => ({ available: false, reason: "no census in test" }),
+      lease,
+      runSession,
+      ...over,
+    });
+
+  it("windowServerWindows answers only the target pid's census rows", () => {
+    const gui = mk(() => ({ status: 0, stdout: "", stderr: "", timedOut: false }), {
+      census: () => ({
+        available: true as const,
+        windows: [
+          {
+            pid: 4242,
+            owner: "After Effects",
+            layer: 0,
+            onScreen: true,
+            name: "panel",
+            windowNumber: 777,
+            bounds: { x: 100, y: 200, width: 640, height: 504 },
+          },
+          {
+            pid: 9999,
+            owner: "Other AE",
+            layer: 0,
+            onScreen: true,
+            name: "foreign",
+            bounds: { x: 0, y: 0, width: 10, height: 10 },
+          },
+        ],
+      }),
+    });
+    const view = gui.windowServerWindows();
+    expect(view.available).toBe(true);
+    expect(view.windows).toHaveLength(1);
+    expect(view.windows[0]?.windowNumber).toBe(777);
+  });
+
+  it("windowServerWindows reports an unavailable census instead of an empty list", () => {
+    const gui = mk(() => ({ status: 0, stdout: "", stderr: "", timedOut: false }), {
+      census: () => ({ available: false as const, reason: "WindowServer refused" }),
+    });
+    const view = gui.windowServerWindows();
+    expect(view.available).toBe(false);
+    expect(view.reason).toContain("WindowServer refused");
+    expect(view.windows).toEqual([]);
+  });
+
+  it("captureRegion sends screencapture -R with the rounded frame in points", () => {
+    const calls: { program: string; args: string[] }[] = [];
+    const gui = mk((_s, program, args) => {
+      calls.push({ program, args: [...args] });
+      return { status: 0, stdout: "", stderr: "", timedOut: false };
+    });
+    const path = join(tmpdir(), "a8n-region.png");
+    expect(gui.captureRegion(path, { x: 100.4, y: 200.6, width: 640, height: 504 })).toBe(path);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.program).toBe("/usr/sbin/screencapture");
+    expect(calls[0]?.args).toEqual([
+      "-x",
+      "-o",
+      "-R",
+      "100,201,640,504",
+      path,
+    ]);
+  });
+
+  it("captureRegion throws when screencapture fails", () => {
+    const gui = mk(() => ({
+      status: 1,
+      stdout: "",
+      stderr: "could not create image",
+      timedOut: false,
+    }));
+    expect(() =>
+      gui.captureRegion(join(tmpdir(), "a8n-region.png"), {
+        x: 0,
+        y: 0,
+        width: 10,
+        height: 10,
+      }),
+    ).toThrow(/could not capture the region/);
+  });
+
+  it("captureWindowById addresses the window by its WindowServer number", () => {
+    const calls: { program: string; args: string[] }[] = [];
+    const gui = mk((_s, program, args) => {
+      calls.push({ program, args: [...args] });
+      return { status: 0, stdout: "", stderr: "", timedOut: false };
+    });
+    const path = join(tmpdir(), "a8n-window.png");
+    gui.captureWindowById(path, 777);
+    expect(calls[0]?.program).toBe("/usr/sbin/screencapture");
+    expect(calls[0]?.args).toContain("-l");
+    expect(calls[0]?.args).toContain("777");
+    expect(calls[0]?.args.at(-1)).toBe(path);
+  });
+
+  it("resizePanelWindow refuses a window the census cannot prove is ours — before the lease", () => {
+    let commands = 0;
+    let acquisitions = 0;
+    const gui = mk(
+      () => {
+        commands += 1;
+        return { status: 0, stdout: "", stderr: "", timedOut: false };
+      },
+      {
+        lease: {
+          acquire: () => {
+            acquisitions += 1;
+            return { path: "/fake/lease", release: () => {} };
+          },
+          audit: () => {},
+        },
+      },
+    );
+    const foreign = { ...panelWindow, censusAttribution: "foreign" as const };
+    const unmatched = { ...panelWindow, censusAttribution: "unmatched" as const };
+    const { censusAttribution: _drop, ...unproven } = panelWindow;
+    for (const bad of [foreign, unmatched, unproven]) {
+      expect(() =>
+        gui.resizePanelWindow(
+          { ...bad, frame: panelWindow.frame },
+          { width: 800, height: 600 },
+        ),
+      ).toThrow(/cannot be proven to belong/);
+    }
+    expect(commands).toBe(0);
+    expect(acquisitions).toBe(0);
+  });
+
+  it("resizePanelWindow passes identity and size as argv, never in the script", () => {
+    const calls: string[][] = [];
+    const gui = mk((_s, _p, args) => {
+      calls.push([...args]);
+      return { status: 0, stdout: "RESIZED", stderr: "", timedOut: false };
+    });
+    expect(
+      gui.resizePanelWindow(panelWindow, { width: 800.4, height: 600 }),
+    ).toBe(true);
+    // The args array is the -e script lines followed by argv:
+    // pid, title, subrole, expectedFrame, width, height.
+    const argv = calls[0]?.slice(-6);
+    expect(argv?.slice(0, 3)).toEqual(["4242", "My Plugin Panel", "AXFloatingWindow"]);
+    expect(argv?.[3]).toBe("100,200,640,504");
+    expect(argv?.slice(4)).toEqual(["800", "600"]);
+  });
+
+  it("resizePanelWindow reports a refused identity check as not-resized, not an error", () => {
+    for (const verdict of ["CHANGED", "NOT_FOUND", "MISSING"]) {
+      const gui = mk(() => ({
+        status: 0,
+        stdout: verdict,
+        stderr: "",
+        timedOut: false,
+      }));
+      expect(gui.resizePanelWindow(panelWindow, { width: 10, height: 10 })).toBe(false);
+    }
+  });
+
+  it("resizePanelWindow turns a mid-mutation failure into an unknown outcome", () => {
+    const audits: { kind: string; outcome?: string | undefined }[] = [];
+    const gui = mk(
+      () => ({ status: 0, stdout: "FAILED", stderr: "", timedOut: false }),
+      {
+        lease: {
+          acquire: () => ({ path: "/fake/lease", release: () => {} }),
+          audit: (event: { kind: string; outcome?: string }) =>
+            audits.push({ kind: event.kind, outcome: event.outcome }),
+        },
+      },
+    );
+    expect(() =>
+      gui.resizePanelWindow(panelWindow, { width: 10, height: 10 }),
+    ).toThrow(GuiMutationError);
+    expect(audits).toContainEqual({ kind: "mutate", outcome: "unknown" });
+  });
+
+  it("resizePanelWindow sends nothing when the GUI lease is held by another owner", () => {
+    // No lease → no mutation: the acquire refusal precedes every session
+    // command, exactly like a press under a held lease.
+    let commands = 0;
+    const gui = mk(
+      () => {
+        commands += 1;
+        return { status: 0, stdout: "RESIZED", stderr: "", timedOut: false };
+      },
+      {
+        lease: {
+          acquire: () => {
+            throw new Error("GUI lease is held by pid 9999");
+          },
+          audit: () => {},
+        },
+      },
+    );
+    expect(() =>
+      gui.resizePanelWindow(panelWindow, { width: 10, height: 10 }),
+    ).toThrow(/GUI lease is held/);
+    expect(commands).toBe(0);
+  });
+
+  it("resizePanelWindow refuses before sending anything when the process is unproven", () => {
+    let commands = 0;
+    const gui = mk(
+      () => {
+        commands += 1;
+        return { status: 0, stdout: "RESIZED", stderr: "", timedOut: false };
+      },
+      { verifyProcess: () => false },
+    );
+    expect(() =>
+      gui.resizePanelWindow(panelWindow, { width: 10, height: 10 }),
+    ).toThrow(/A8N-AE-004/);
+    expect(commands).toBe(0);
   });
 });
 
