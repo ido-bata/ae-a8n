@@ -137,6 +137,14 @@ The contract, in order:
   `needs-human` phases are never downgraded; UNKNOWN pending requests
   are left untouched and are never resent by the rebuild that follows.
 
+Every refusal throws `AfterEffectsError` (`op === "session.terminate"`)
+before anything is signalled, and — like every typed API error since
+#341 — carries machine-readable `nextActions`: an always-permitted
+inspect step plus the situation-specific answer (`session-policy` for a
+missing permit or unproven ownership, `evidence-unavailable` /
+`unsafe-to-automate` / `requires-human` for unreadable or ambiguous
+evidence).
+
 The report (`TerminateReport`) carries `outcome`
 (`terminated` / `already-gone` / `survived` / `unproven`), the `method`
 (`none` / `graceful` / `forced`), `disappearanceProven`, the supervision

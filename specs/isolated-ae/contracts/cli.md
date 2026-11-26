@@ -79,6 +79,15 @@ not 6.
 `checks[]` is the diagnostic list described below. `status` is the aggregate;
 `exitCode` always matches §2.
 
+`nextActions[]` entries are the machine-readable guidance contract (#341):
+`{ "kind": "automatic | human", "allowed": bool, "code": "…",
+"reason": { "code": "<stable reason code>", "detail"?: "…" },
+"action": "…" }`. `kind` says who acts, `allowed` whether automation may do
+it now, `code` identifies the action/condition, `reason.code` is a stable
+reason from the `NEXT_ACTION_REASON_CODES` vocabulary, and `action` is
+display prose — never the contract. `schemaVersion` stays `"1.0"`: the new
+fields are additive, per the envelope's own compatibility rule.
+
 ## 5. Diagnostic codes
 
 Format: `A8N-<AREA>-<NNN>`. Areas: `ENV`, `SESSION`, `PERM`, `AE`, `JOB`,
@@ -286,13 +295,16 @@ a script.
     { "code": "A8N-JOB-002", "action": "reported | cleared | refused | recorded", "detail": "…", "remedy": "…" }
   ],
   "cleared": false,
-  "nextActions": [ { "kind": "human", "code": "A8N-JOB-002", "action": "…" } ]
+  "nextActions": [
+    { "kind": "human", "allowed": false, "code": "A8N-JOB-002",
+      "reason": { "code": "requires-human" }, "action": "…" }
+  ]
 }
 ```
 
-`nextActions[]` keeps the common envelope's shape (§4: `kind`, `code`,
-`action`) rather than the `detail` key of an earlier draft, so a reader parses
-one shape across all five commands.
+`nextActions[]` keeps the common envelope's shape (§4) rather than the
+`detail` key of an earlier draft, so a reader parses one shape across all
+commands.
 
 **Decision (T038):** a quarantine record is *reported*, never cleared, unless
 `--force` is passed: it exists because nobody could prove the run had ended,

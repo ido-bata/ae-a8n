@@ -99,6 +99,13 @@ import { activateDispatcherForSession } from "./dispatcher-activation.js";
 import { AfterEffectsError, contextualise } from "./errors.js";
 import { openAfterEffects, type OpenedSession } from "./launch.js";
 import type { Session } from "./session.js";
+import {
+  humanAction,
+  inspectAction,
+  nextAction,
+  waitAction,
+  type NextAction,
+} from "../supervision/next-actions.js";
 import type {
   DispatcherActivation,
   LaunchOptions,
@@ -363,9 +370,24 @@ export async function openRebuiltSession(
   const sessionRoot = resolve(options.sessionRoot);
   const platform = deps.platform ?? process.platform;
   const now = deps.now ?? (() => new Date());
-  function fail(reason: string): never {
-    throw new AfterEffectsError(reason, op);
+  function fail(reason: string, nextActions?: readonly NextAction[]): never {
+    throw new AfterEffectsError(reason, op, {
+      ...(nextActions === undefined ? {} : { nextActions }),
+    });
   }
+
+  // The machine-readable guidance every rebuild refusal carries (#341):
+  // read the evidence first (always permitted), then the human/policy
+  // answer for the specific refusal.
+  const inspectRebuild = inspectAction(
+    "session.rebuild",
+    "Read the durable supervision document and launch provenance in the session root before deciding whether a rebuild is provable.",
+  );
+  const rebuildHuman = humanAction(
+    "session.rebuild",
+    "requires-human",
+    "Rebuild is refused until its proofs hold; a human resolves the named blocker or chooses a different path.",
+  );
 
   // 1. Supervision must have proven process loss. Anything else — running,
   //    a dialog block, quarantined, needs-human, absent or corrupt state —
@@ -375,12 +397,30 @@ export async function openRebuiltSession(
     fail(
       `no supervision state in ${sessionRoot}: process loss was never proven, ` +
         "so there is nothing to rebuild from. Use launch() for a new session.",
+      [
+        inspectRebuild,
+        nextAction({
+          kind: "automatic",
+          allowed: true,
+          code: "session.launch",
+          reason: "permitted",
+          action: "For a new session use `AfterEffects.launch()`; rebuild is only for proven process loss.",
+        }),
+      ],
     );
   }
   if (state.kind === "corrupt") {
     fail(
       `the supervision state in ${sessionRoot} cannot be trusted (${state.detail}); ` +
         "refusing to rebuild on unreadable evidence",
+      [
+        inspectRebuild,
+        humanAction(
+          "session.rebuild",
+          "evidence-unavailable",
+          "The supervision state is unreadable or from an unknown schema; a human decides whether to keep or remove it before any rebuild.",
+        ),
+      ],
     );
   }
   const doc = state.doc;
@@ -388,18 +428,36 @@ export async function openRebuiltSession(
     fail(
       "supervision is quarantined: the blocking state could not be classified " +
         "safely and a human must resolve it before any rebuild",
+      [
+        inspectRebuild,
+        humanAction(
+          "session.rebuild",
+          "unsafe-to-automate",
+          "Quarantined supervision means the blocking state was never classified; a human resolves it in After Effects first.",
+        ),
+      ],
     );
   }
   if (doc.phase === "needs-human") {
     fail(
       "supervision is waiting on a human decision; resolve it " +
         "(supervision state → recovering) before rebuilding",
+      [inspectRebuild, rebuildHuman],
     );
   }
   if (doc.phase !== "blocked" || doc.blocking?.host !== "process-gone") {
     fail(
       `rebuild requires proven process loss, but supervision reports phase ` +
         `"${doc.phase}" with host state "${doc.blocking?.host ?? "none"}"`,
+      doc.phase === "blocked" || doc.phase === "recovering"
+        ? [
+            waitAction(
+              "session.rebuild",
+              "Supervision is still resolving a block; wait within the phase deadline and re-check `ae.supervisionState()` — rebuild is only for proven process loss.",
+            ),
+            inspectRebuild,
+          ]
+        : [inspectRebuild, rebuildHuman],
     );
   }
 
@@ -412,12 +470,27 @@ export async function openRebuiltSession(
       `the monitor lease is held by ${lease.record?.ownerId ?? "unknown"} ` +
         `(pid ${lease.record?.pid ?? "?"}), which still observes the previous ` +
         "host; stop that session's monitor or let its lease expire before rebuilding",
+      [
+        waitAction(
+          "session.rebuild",
+          "A live monitor still observes the dead pid and would overwrite the rebuild's transitions; wait for its lease to expire, then retry `AfterEffects.rebuild`.",
+        ),
+        inspectRebuild,
+      ],
     );
   }
   if (lease.state === "ambiguous") {
     fail(
       "the monitor lease file cannot be understood; refusing to rebuild " +
         "under uncertain observation authority",
+      [
+        inspectRebuild,
+        humanAction(
+          "session.rebuild",
+          "unsafe-to-automate",
+          "The monitor lease cannot be understood, so observation authority is uncertain; a human resolves the lease file before any rebuild.",
+        ),
+      ],
     );
   }
 
@@ -427,19 +500,35 @@ export async function openRebuiltSession(
   try {
     provenance = readLaunchProvenance(sessionRoot);
   } catch (error) {
-    fail(`launch provenance is unusable: ${errorMessage(error)}`);
+    fail(`launch provenance is unusable: ${errorMessage(error)}`, [
+      inspectRebuild,
+      humanAction(
+        "session.rebuild",
+        "evidence-unavailable",
+        "The launch-provenance record cannot be read; ownership is unproven and a human decides what the record means.",
+      ),
+    ]);
   }
   if (provenance === null) {
     fail(
       `no launch provenance in ${sessionRoot}: this session never proved it ` +
         "owned an After Effects process, so there is no owned host to rebuild. " +
         "Attached and unknown sessions are never restarted.",
+      [
+        inspectRebuild,
+        humanAction(
+          "session.rebuild",
+          "session-policy",
+          "Without launch provenance the session never proved ownership; attached and unknown sessions are never restarted — use `launch()` or `resume()` instead.",
+        ),
+      ],
     );
   }
   if (provenance.host.platform !== platform) {
     fail(
       `the launch record names platform ${provenance.host.platform} but this ` +
         `host is ${platform}; cross-platform rebuild is not provable`,
+      [inspectRebuild, rebuildHuman],
     );
   }
 
@@ -453,6 +542,14 @@ export async function openRebuiltSession(
     fail(
       `the After Effects process list could not be read ` +
         `(${errorMessage(error)}); process loss cannot be re-proven`,
+      [
+        inspectRebuild,
+        humanAction(
+          "session.rebuild",
+          "evidence-unavailable",
+          "The process census could not run, so process loss cannot be re-proven; a human checks the host state before any rebuild.",
+        ),
+      ],
     );
   }
   const targetUid = options.session?.uid ?? currentUid();
@@ -463,7 +560,7 @@ export async function openRebuiltSession(
     sessionUid: targetUid,
   });
   if (!hostCheck.ok) {
-    fail(hostCheck.reason);
+    fail(hostCheck.reason, [inspectRebuild, rebuildHuman]);
   }
 
   // 5. macOS: the rebuild must land in a live Aqua session — the same
@@ -475,6 +572,7 @@ export async function openRebuiltSession(
         `uid ${targetUid} has no Aqua login session ` +
           `${guiSession === null ? "" : `(kind ${guiSession.kind}) `}` +
           "to rebuild into; nothing was started",
+        [inspectRebuild, rebuildHuman],
       );
     }
   }
@@ -494,7 +592,10 @@ export async function openRebuiltSession(
     now(),
   );
   if (!started.ok) {
-    fail(`supervision refused the rebuild transition: ${started.reason}`);
+    fail(`supervision refused the rebuild transition: ${started.reason}`, [
+      inspectRebuild,
+      rebuildHuman,
+    ]);
   }
   const startedDoc = withEvidence(
     {
@@ -507,7 +608,10 @@ export async function openRebuiltSession(
   try {
     writeSupervisionState(sessionRoot, startedDoc);
   } catch (error) {
-    fail(`the rebuild could not be recorded in supervision state: ${errorMessage(error)}`);
+    fail(`the rebuild could not be recorded in supervision state: ${errorMessage(error)}`, [
+      inspectRebuild,
+      rebuildHuman,
+    ]);
   }
 
   // 7. Relaunch through the ordinary path. It re-proves everything a
@@ -580,6 +684,14 @@ export async function openRebuiltSession(
     fail(
       `the rebuilt After Effects could not be proven owned ` +
         `(${ownership.evidence}); it was left running and nothing was quit`,
+      [
+        inspectRebuild,
+        humanAction(
+          "session.rebuild",
+          "unsafe-to-automate",
+          "The relaunched host could not be proven owned and was left running untouched; a human inspects it before any further automation.",
+        ),
+      ],
     );
   }
 

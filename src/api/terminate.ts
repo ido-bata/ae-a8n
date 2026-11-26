@@ -56,10 +56,14 @@ import type { HostProcess } from "../driver/host-processes.js";
 import {
   acquireMonitorLease,
   applySupervisionEvent,
+  humanAction,
   initialSupervisionDoc,
+  inspectAction,
   inspectMonitorLease,
+  nextAction,
   readSupervisionState,
   writeSupervisionState,
+  type NextAction,
 } from "../supervision/index.js";
 import type { SupervisionPhase, SupervisionStateDoc } from "../supervision/types.js";
 import { TraceRecorder } from "../trace/trace.js";
@@ -213,12 +217,28 @@ export async function terminateSessionHost(
   const began = now();
   const trace = new TraceRecorder({ file: join(sessionRoot, "trace.jsonl") });
 
-  function fail(reason: string): never {
+  function fail(reason: string, nextActions?: readonly NextAction[]): never {
     trace.record(OP, "error", now() - began, {
       error: { name: "AfterEffectsError", message: reason },
     });
-    throw new AfterEffectsError(reason, OP);
+    throw new AfterEffectsError(reason, OP, {
+      ...(nextActions === undefined ? {} : { nextActions }),
+    });
   }
+
+  // The machine-readable guidance every terminate refusal carries (#341):
+  // read the evidence first (always permitted), then the answer for the
+  // specific refusal — a missing permit is a policy refusal the caller
+  // can fix, an unreadable or ambiguous host is for a human.
+  const inspectTerminate = inspectAction(
+    OP,
+    "Read the launch-provenance record and the durable supervision document in the session root, then re-check the host census before deciding whether terminate is provable.",
+  );
+  const terminateHuman = humanAction(
+    OP,
+    "requires-human",
+    "Terminate is refused until its proofs hold; a human resolves the named blocker or chooses a different path.",
+  );
 
   // 1. Explicit permission. No default, no implicit consent. The hint is
   //    built before the check: inside the refusal branch the permit
@@ -228,6 +248,19 @@ export async function terminateSessionHost(
     fail(
       `terminate requires explicit permission: pass ${permitHint} ` +
         "to consent to signalling the owned After Effects process",
+      [
+        inspectTerminate,
+        nextAction({
+          kind: "automatic",
+          allowed: false,
+          code: OP,
+          reason: "session-policy",
+          action:
+            `Terminate signals a live process, so it is refused without ` +
+            `the explicit ${permitHint} consent; pass it to permit ` +
+            "signalling the recorded owned host, or leave the host running.",
+        }),
+      ],
     );
   }
   if (options.force !== undefined && typeof options.force !== "boolean") {
@@ -241,19 +274,40 @@ export async function terminateSessionHost(
   try {
     provenance = readLaunchProvenance(sessionRoot);
   } catch (error) {
-    fail(`launch provenance is unusable: ${errorMessage(error)}`);
+    fail(`launch provenance is unusable: ${errorMessage(error)}`, [
+      inspectTerminate,
+      humanAction(
+        OP,
+        "evidence-unavailable",
+        "The launch-provenance record cannot be read; a human decides whether the record is kept or removed before any terminate.",
+      ),
+    ]);
   }
   if (provenance === null) {
     fail(
       `no launch provenance in ${sessionRoot}: this session never proved it ` +
         "owned an After Effects process, so there is no owned host to terminate. " +
         "Attached and unknown sessions are never signalled.",
+      [
+        inspectTerminate,
+        nextAction({
+          kind: "automatic",
+          allowed: false,
+          code: OP,
+          reason: "session-policy",
+          action:
+            "This session never proved ownership of an After Effects " +
+            "process, so there is no owned host to terminate; attached " +
+            "and unknown hosts are left running by policy.",
+        }),
+      ],
     );
   }
   if (provenance.host.platform !== platform) {
     fail(
       `the launch record names platform ${provenance.host.platform} but this ` +
         `host is ${platform}; cross-platform terminate is not provable`,
+      [inspectTerminate, terminateHuman],
     );
   }
 
@@ -284,10 +338,17 @@ export async function terminateSessionHost(
   // 3. Live re-verification, immediately before any signal.
   const before = inspect();
   if (before.kind === "ambiguous") {
-    fail(before.reason);
+    fail(before.reason, [
+      inspectTerminate,
+      humanAction(
+        OP,
+        "unsafe-to-automate",
+        "The recorded pid cannot be told apart from a possibly reused or sibling process; signalling it could kill a foreign process, so a human resolves the host state first.",
+      ),
+    ]);
   }
   if (before.kind === "siblings") {
-    fail(before.reason);
+    fail(before.reason, [inspectTerminate, terminateHuman]);
   }
 
   const pid = provenance.host.pid;

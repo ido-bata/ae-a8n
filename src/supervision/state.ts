@@ -23,9 +23,11 @@ import type {
   SupervisionPhase,
   SupervisionReadSource,
   SupervisionReport,
+  SupervisionReportFacts,
   SupervisionStateDoc,
 } from "./types.js";
 import { SUPERVISION_PHASES, SUPERVISION_SCHEMA_VERSION } from "./types.js";
+import { supervisionNextActions } from "./guidance.js";
 
 export const SUPERVISION_STATE_FILE = "supervision.json";
 
@@ -246,6 +248,18 @@ export function evaluateObservationHealth(
   return { health: doc.observationHealth, detail: null };
 }
 
+/** Attach the derived fields every report carries (#341). */
+function withGuidance(
+  facts: SupervisionReportFacts,
+  stateFile: string,
+): SupervisionReport {
+  return {
+    ...facts,
+    stateFile,
+    nextActions: supervisionNextActions(facts),
+  };
+}
+
 /** Build the public report for a session directory. */
 export function supervisionReport(
   sessionDir: string,
@@ -253,29 +267,39 @@ export function supervisionReport(
 ): SupervisionReport {
   const now = options.now ?? new Date();
   const readAt = now.toISOString();
+  const stateFile = supervisionStatePath(sessionDir);
   const result = readSupervisionState(sessionDir);
   switch (result.kind) {
     case "absent":
-      return {
-        status: "unavailable",
-        source: "absent",
-        reason:
-          "no supervision state exists for this session directory; " +
-          "either supervision never ran or the session dir is wrong",
-        readAt,
-      };
+      return withGuidance(
+        {
+          status: "unavailable",
+          source: "absent",
+          reason:
+            "no supervision state exists for this session directory; " +
+            "either supervision never ran or the session dir is wrong",
+          readAt,
+        },
+        stateFile,
+      );
     case "corrupt":
-      return { status: "unavailable", source: "corrupt", reason: result.detail, readAt };
+      return withGuidance(
+        { status: "unavailable", source: "corrupt", reason: result.detail, readAt },
+        stateFile,
+      );
     case "state": {
       const evaluated = evaluateObservationHealth(result.doc, now, options.monitorTtlMs);
-      return {
-        status: "observed",
-        source: "state",
-        doc: result.doc,
-        health: evaluated.health,
-        healthDetail: evaluated.detail,
-        readAt,
-      };
+      return withGuidance(
+        {
+          status: "observed",
+          source: "state",
+          doc: result.doc,
+          health: evaluated.health,
+          healthDetail: evaluated.detail,
+          readAt,
+        },
+        stateFile,
+      );
     }
   }
 }

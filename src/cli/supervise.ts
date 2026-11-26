@@ -28,7 +28,7 @@ import {
   type SupervisionPhase,
   type SupervisionReport,
 } from "../supervision/index.js";
-import { buildEnvelope, type CliEnvelope, type NextAction } from "./envelope.js";
+import { buildEnvelope, type CliEnvelope } from "./envelope.js";
 import { EXIT, type ExitCode } from "./exit-code.js";
 
 const PLATFORM = {
@@ -178,50 +178,6 @@ function exitFor(report: SupervisionReport): { status: CliEnvelope["status"]; ex
     case "quarantined":
       return { status: "refused", exitCode: EXIT.refused };
   }
-}
-
-function nextActionsFor(report: SupervisionReport): NextAction[] {
-  if (report.status !== "observed") {
-    return [
-      {
-        kind: "human",
-        code: "supervision.unavailable",
-        action:
-          "No trustworthy supervision state exists for this session root. " +
-          "Confirm the directory is the session's own sessionRoot; if a session is live, its monitor may not have started.",
-      },
-    ];
-  }
-  const doc = report.doc;
-  if (doc.phase === "needs-human" || doc.phase === "quarantined") {
-    const windows = doc.blocking?.windows ?? [];
-    const detail =
-      windows.length > 0
-        ? windows.map((w) => w.title || w.dialogClass || w.role).join(", ")
-        : (doc.blocking?.detail ?? doc.phase);
-    return [
-      {
-        kind: "human",
-        code: `supervision.${doc.phase}`,
-        action:
-          `After Effects needs a human: ${detail}. ` +
-          "Resolve it in the After Effects window, then re-run `ae-a8n supervise status` — " +
-          "automation never presses unmeasured dialogs.",
-      },
-    ];
-  }
-  if (doc.phase === "blocked" || doc.phase === "recovering") {
-    return [
-      {
-        kind: "human",
-        code: "supervision.blocked",
-        action:
-          `After Effects is ${doc.phase}: ${doc.blocking?.detail ?? "blocking state observed"}. ` +
-          "Wait for recovery or inspect `ae-a8n supervise status` again; the wait is bounded by the phase deadline.",
-      },
-    ];
-  }
-  return [];
 }
 
 function renderHuman(envelope: CliEnvelope): string {
@@ -477,7 +433,9 @@ export async function runSuperviseCommand(
     target: LOCAL_TARGET,
     checks: [],
     facts: report,
-    nextActions: nextActionsFor(report),
+    // The envelope's nextActions are the report's own (#341): the same
+    // machine-readable guidance `ae.supervisionState()` returns.
+    nextActions: report.nextActions,
   });
   if (parsed.json) {
     writeOut(`${JSON.stringify(envelope, null, 2)}\n`);
