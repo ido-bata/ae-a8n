@@ -7,6 +7,7 @@
  */
 
 import type { DiagnosticCode } from "../doctor/diagnostics.js";
+import type { ExpectedModalSpec } from "../driver/expected-modals.js";
 import type { GuiAppState } from "../driver/gui-recovery.js";
 import type { HostTransport, SessionAuthorization } from "../driver/transport.js";
 
@@ -370,16 +371,34 @@ export type LaunchOptions = {
     readonly uid: number;
     /**
      * Whether a modal dialog may be closed by GUI automation when it blocks
-     * the host. Off by default: a dialog that asks for a decision belongs to
-     * a human.
+     * the host. **On by default** (#342): the standard lifecycle wires the
+     * recovery whenever the transport can prove its target, because the
+     * only class automation may press is a measured, safe one — every
+     * other blocking window is still reported, never pressed. Pass `false`
+     * to opt out entirely (no GUI inspection, no press, no evidence
+     * images); pass `true` to make the wiring mandatory — a session that
+     * cannot be wired then refuses to launch instead of degrading.
      */
     readonly recover?: boolean;
   };
   /**
+   * Modal dialogs this session expects to raise and knows how to resolve
+   * (#342). Each entry is `{ name, matches(window), resolve? }` — see
+   * `ExpectedModalSpec`. A matching window is classified by the
+   * expectation instead of quarantined as unknown: `press` resolves it
+   * through the same audited GUI path as a measured class, `wait` (the
+   * default) records it as expected evidence and leaves it for its
+   * owner. Windows that match nothing keep the standard classification.
+   * Registration also works while the session runs via
+   * `ae.expectModal(spec)`, which returns an unregister function.
+   */
+  readonly expectedModals?: readonly ExpectedModalSpec[];
+  /**
    * How long a recovered call may then wait for the answer to the request it
    * already sent, in milliseconds. Default 60 000; 0 stops waiting at once.
    *
-   * Only meaningful with `session.recover`. It is *additional* time, on top of
+   * Only meaningful with recovery enabled (the default; `session.recover:
+   * false` disables it). It is *additional* time, on top of
    * `timeoutMs`: `timeoutMs` ends the first wait, then the GUI fallback runs
    * (which can take a while — it observes windows, takes a screenshot and
    * presses the dialog), and only then does this grace start. Set it when the

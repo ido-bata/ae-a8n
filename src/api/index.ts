@@ -55,6 +55,7 @@ import {
 /** What `AfterEffects.close` did. */
 export type CloseResult = StopResult;
 export type { HostOwnership };
+import type { ExpectedModalSpec } from "../driver/expected-modals.js";
 import type {
   ActivateDispatcherOptions,
   ApplicationInfo,
@@ -75,6 +76,11 @@ import type {
 
 export * from "./errors.js";
 export type * from "./types.js";
+export type {
+  ExpectedModalResolution,
+  ExpectedModalSpec,
+  ExpectedModalWindow,
+} from "../driver/expected-modals.js";
 export { grantedScopes } from "./session.js";
 import {
   Comp,
@@ -339,6 +345,27 @@ export class AfterEffects {
         generatedAt: new Date().toISOString(),
       }),
     );
+  }
+
+  /**
+   * Registers an expected modal for this session (#342) and returns its
+   * unregister function.
+   *
+   * Use this when the test itself raises a dialog it intends to resolve —
+   * an unsaved-changes prompt, a script-error sheet — so the standard
+   * recovery path classifies it as expected instead of quarantining it as
+   * unknown. `resolve` may press one declared button through the same
+   * audited GUI path a measured class uses, or `wait` (the default) to
+   * leave the modal for its owner while the original request keeps its
+   * bounded wait. Nothing is pressed for windows that match no
+   * registration, and Adobe account/licence windows are never pressable
+   * through an expectation.
+   *
+   * Throws when the session has no GUI recovery path (a non-script
+   * transport, or `session.recover: false`).
+   */
+  expectModal(spec: ExpectedModalSpec): () => void {
+    return this.#session.expectModal(spec);
   }
 
   /**

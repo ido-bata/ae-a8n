@@ -13,6 +13,12 @@ import { fileURLToPath } from "node:url";
 
 import { entryScriptPath, stageHostScript, writeBootstrapScript } from "./bootstrap.js";
 import type { MacSession } from "./mac-session.js";
+import { classifyAnomaly, type AnomalyKind } from "./anomaly.js";
+import { classifyOperationRetry } from "./operation-policy.js";
+import {
+  recoveryEvidenceRecord,
+  writeRecoveryEvidence,
+} from "./recovery-evidence.js";
 import type { HostRecovery } from "./recovery.js";
 import {
   collectSessionDiagnostics,
@@ -289,7 +295,12 @@ type RecoveryWait =
       error: Error;
       detail: { args: Record<string, unknown>; error: { name: string; message: string } };
     }
-  | { kind: "unresolved"; sawWindow: boolean };
+  | {
+      kind: "unresolved";
+      sawWindow: boolean;
+      /** The anomaly the unresolved wait classified (#342). */
+      anomaly?: AnomalyKind;
+    };
 
 /**
  * The settled outcome of one call: the value to return or the error to
@@ -893,6 +904,7 @@ export class AeDriver {
       throw outcome.error;
     } catch (error) {
       let failure = error;
+      let anomaly: AnomalyKind | undefined;
       if (error instanceof TimeoutError) {
         let sawWindow = false;
         if (this.#recovery !== undefined) {
@@ -922,6 +934,7 @@ export class AeDriver {
             return { status: "error", error: waited.error, detail: waited.detail };
           }
           sawWindow = waited.sawWindow;
+          anomaly = waited.anomaly;
         }
         // A timeout is not a diagnosis. Before reporting it, ask what the
         // host looked like: a dead process, a live-but-blocked one, a modal
@@ -940,9 +953,21 @@ export class AeDriver {
         detail: {
           ...(outcomeDetail ?? { args: { ...params } }),
           error: { name: nameOf(failure), message: errorMessage(failure) },
-          ...(failure instanceof TimeoutError && failure.hostCondition !== undefined
-            ? { result: { hostCondition: failure.hostCondition } }
-            : {}),
+          result: {
+            // The operation's side-effect class is fixed before the outcome
+            // is read (#342): read-only / verified-retry / unknown-side-effect
+            // is the contract a consumer branches on for resend decisions.
+            retryClass: classifyOperationRetry(method),
+            ...(failure instanceof TimeoutError && failure.hostCondition !== undefined
+              ? {
+                  hostCondition: failure.hostCondition,
+                  // The anomaly the unresolved recovery classified (#342):
+                  // expected-modal / human-required / unknown-modal etc.,
+                  // so the report names the same kind the recovery saw.
+                  ...(anomaly === undefined ? {} : { anomaly }),
+                }
+              : {}),
+          },
         },
       };
     } finally {
@@ -1009,7 +1034,11 @@ export class AeDriver {
     timeoutMs: number,
   ): Promise<
     | { readonly kind: "recovered"; readonly sawWindow: boolean }
-    | { readonly kind: "unresolved"; readonly sawWindow: boolean }
+    | {
+        readonly kind: "unresolved";
+        readonly sawWindow: boolean;
+        readonly anomaly?: AnomalyKind;
+      }
     | { readonly kind: "quarantined"; readonly error: HostQuarantinedError }
   > {
     const recovery = this.#recovery;
@@ -1030,6 +1059,26 @@ export class AeDriver {
     // and observation health the attempt ran under, so the trace links the
     // GUI mutation/audit record to the state that motivated it.
     const supervision = this.#supervisionReportSummary();
+    // Recovery evidence manifest (#342): the attempt's facts — operation,
+    // outcome, window, expected-modal name, before/after images, uncapturable
+    // gaps — bound into one artifact document next to the screenshots. A
+    // write failure is traced, never thrown: evidence must not break the
+    // recovery it describes.
+    const evidence = writeRecoveryEvidence(
+      this.#paths.artifacts,
+      recoveryEvidenceRecord({
+        requestId: id,
+        method,
+        timeoutMs,
+        outcome,
+        supervision,
+      }),
+    );
+    if (evidence.path === null) {
+      this.#trace.record("session.recover-evidence", "error", 0, {
+        error: { name: "EvidenceWriteError", message: evidence.error ?? "unknown" },
+      });
+    }
     this.#trace.record("session.recover", outcome.recovered ? "ok" : "error", 0, {
       result: {
         recovered: outcome.recovered,
@@ -1038,14 +1087,31 @@ export class AeDriver {
         ...(outcome.outcome === undefined ? {} : { outcome: outcome.outcome }),
         ...(outcome.code === undefined ? {} : { code: outcome.code }),
         ...(outcome.window === undefined ? {} : { window: outcome.window }),
+        ...(outcome.expectedModal === undefined ? {} : { expectedModal: outcome.expectedModal }),
         ...(outcome.screenshotPath === undefined ? {} : { screenshot: outcome.screenshotPath }),
+        ...(outcome.screenshotAfterPath === undefined
+          ? {}
+          : { screenshotAfter: outcome.screenshotAfterPath }),
+        ...(outcome.screenshotNote === undefined ? {} : { screenshotNote: outcome.screenshotNote }),
+        ...(evidence.path === null ? {} : { evidence: evidence.path }),
       },
     });
     if (!outcome.recovered) {
       if (outcome.code !== undefined) {
         return { kind: "quarantined", error: new HostQuarantinedError(outcome.evidence) };
       }
-      return { kind: "unresolved", sawWindow };
+      return {
+        kind: "unresolved",
+        sawWindow,
+        ...(sawWindow
+          ? {
+              anomaly: classifyAnomaly({
+                expectedModal: outcome.expectedModal,
+                dialogTier: outcome.dialogTier,
+              }),
+            }
+          : {}),
+      };
     }
     return { kind: "recovered", sawWindow };
   }
@@ -1085,7 +1151,11 @@ export class AeDriver {
       throw attempt.error;
     }
     if (attempt.kind === "unresolved") {
-      return { kind: "unresolved", sawWindow: attempt.sawWindow };
+      return {
+        kind: "unresolved",
+        sawWindow: attempt.sawWindow,
+        ...(attempt.anomaly === undefined ? {} : { anomaly: attempt.anomaly }),
+      };
     }
     const result = await this.#awaitResult(id, method, params, this.#recoveryGraceMs, timeoutMs, false);
     if (result.status === "ok") {

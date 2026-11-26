@@ -21,6 +21,7 @@ import {
 } from "../driver/mac-session.js";
 import { errorMessage } from "../errors.js";
 import { createHostRecovery, type HostRecovery } from "../driver/host-recovery.js";
+import { ExpectedModalRegistry } from "../driver/expected-modals.js";
 import { measureWindowsSessionId } from "../platform/windows/session.js";
 import {
   SessionSupervision,
@@ -415,21 +416,34 @@ export async function openAfterEffects(
     }
   }
 
-  // The GUI fallback is only wired when the caller asks for it, and it only
-  // ever acts inside the session that owns the After Effects.
+  // Expected-modal registrations (#342) live for the whole session: the
+  // recovery reads them inside every attempt, and `ae.expectModal()` adds
+  // or removes entries while the session runs.
+  const expectedModals = new ExpectedModalRegistry();
+  for (const spec of options.expectedModals ?? []) {
+    expectedModals.register(spec);
+  }
+
+  // The GUI fallback is part of the standard lifecycle (#342): it is wired
+  // whenever the caller has not opted out (`session.recover === false`)
+  // and the transport can honestly name its target. An explicit
+  // `recover: true` keeps the strict contract — a request that cannot be
+  // honoured refuses the launch rather than silently dropping a safety
+  // behaviour the caller asked for; a default-on session that cannot be
+  // wired launches without recovery and records why on the trace, because
+  // the caller never asked for it.
   let recovery: HostRecovery | undefined;
-  if (sessionOption !== undefined && sessionOption.recover === true) {
-    // A caller-supplied transport that is not the script transport has no
-    // pid to look up, so the fallback would be silently absent from a
-    // session the caller asked to be recoverable. A requested safety
-    // behaviour that cannot be provided is refused, not dropped.
-    if (!(transport instanceof ScriptInvocationTransport)) {
-      throw new AfterEffectsError(
-        "session.recover needs the built-in script transport; the supplied transport cannot say which " +
-          "process to recover. Nothing was started.",
-        op,
-      );
+  let expectedModalsActive = false;
+  const recoverOption = sessionOption?.recover;
+  const recoveryUnavailable = (reason: string): void => {
+    if (recoverOption === true) {
+      throw new AfterEffectsError(`${reason} Nothing was started.`, op);
     }
+    trace.record("session.recovery", "error", 0, {
+      error: { name: "RecoveryUnavailable", message: reason },
+    });
+  };
+  if (recoverOption !== false && transport instanceof ScriptInvocationTransport) {
     if (process.platform === "win32") {
       // Windows has no per-user login session to name: `session.uid` is a
       // macOS concept and is not consulted here. The recovery acts in the
@@ -440,44 +454,78 @@ export async function openAfterEffects(
       // only what the measured-class policy allows (today: nothing).
       const sessionId = measureWindowsSessionId();
       if (sessionId === null) {
-        throw new AfterEffectsError(
+        recoveryUnavailable(
           "session.recover: this process's interactive session could not be measured, so " +
-            "there is no proven desktop to recover in. Nothing was started.",
-          op,
+            "there is no proven desktop to recover in.",
         );
+      } else {
+        recovery = createHostRecovery({
+          target: { platform: "win32", session: { sessionId } },
+          pid: () => transport.recoveryTargetPid(),
+          // A pid is not an identity. The same re-check that produced the pid
+          // runs again immediately before every GUI action, so a process
+          // that exited and had its pid reused is never the one pressed.
+          verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
+          screenshotDir: join(sessionRoot, "artifacts"),
+        });
       }
-      recovery = createHostRecovery({
-        target: { platform: "win32", session: { sessionId } },
-        pid: () => transport.recoveryTargetPid(),
-        // A pid is not an identity. The same re-check that produced the pid
-        // runs again immediately before every GUI action, so a process
-        // that exited and had its pid reused is never the one pressed.
-        verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
-        screenshotDir: join(sessionRoot, "artifacts"),
-      });
     } else {
-      const targetSession = requireSession(sessionOption.uid);
-      // The pid comes from the transport, which scopes processes by its own
-      // session uid. Pressing keys in a different session than the one the
-      // pid lives in would automate somebody else's screen.
-      if (transport.targetSession?.uid !== targetSession.uid) {
-        throw new AfterEffectsError(
-          `session.recover: uid ${targetSession.uid} is not the session the transport talks into ` +
-            `(${transport.targetSession?.uid ?? "unknown"}), so the fallback would act in another session. ` +
-            "Nothing was started.",
-          op,
-        );
+      // The recovery session is the one the transport provably talks into.
+      // An explicit `session.uid` is still honoured and cross-checked; with
+      // no session option the transport's own measured target session is
+      // used — the same attestation supervision and `recoveryTarget()` rely
+      // on. A transport that cannot name one gets no recovery, honestly.
+      let targetSession: MacSession | null = null;
+      try {
+        if (sessionOption !== undefined) {
+          targetSession = requireSession(sessionOption.uid);
+          // The pid comes from the transport, which scopes processes by its own
+          // session uid. Pressing keys in a different session than the one the
+          // pid lives in would automate somebody else's screen.
+          if (transport.targetSession?.uid !== targetSession.uid) {
+            throw new AfterEffectsError(
+              `session.recover: uid ${targetSession.uid} is not the session the transport talks into ` +
+                `(${transport.targetSession?.uid ?? "unknown"}), so the fallback would act in another session.`,
+              op,
+            );
+          }
+        } else {
+          targetSession = transport.targetSession;
+          if (targetSession === null || targetSession.kind !== "Aqua") {
+            throw new AfterEffectsError(
+              "session.recover: the transport cannot name the login session its After Effects lives in, " +
+                "so there is no proven desktop to recover in.",
+              op,
+            );
+          }
+        }
+      } catch (error) {
+        recoveryUnavailable(errorMessage(error));
       }
-      recovery = createHostRecovery({
-        target: { platform: "darwin", session: targetSession },
-        pid: () => transport.recoveryTargetPid(),
-        // A pid is not an identity. The same re-check that produced the pid
-        // runs again immediately before every GUI action, so a process
-        // that exited and had its pid reused is never the one pressed.
-        verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
-        screenshotDir: join(sessionRoot, "artifacts"),
-      });
+      if (targetSession !== null) {
+        recovery = createHostRecovery({
+          target: { platform: "darwin", session: targetSession },
+          pid: () => transport.recoveryTargetPid(),
+          // A pid is not an identity. The same re-check that produced the pid
+          // runs again immediately before every GUI action, so a process
+          // that exited and had its pid reused is never the one pressed.
+          verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
+          screenshotDir: join(sessionRoot, "artifacts"),
+          expectedModals,
+        });
+        expectedModalsActive = true;
+      }
     }
+  } else if (recoverOption === true) {
+    // A caller-supplied transport that is not the script transport has no
+    // pid to look up, so the fallback would be silently absent from a
+    // session the caller asked to be recoverable. A requested safety
+    // behaviour that cannot be provided is refused, not dropped.
+    throw new AfterEffectsError(
+      "session.recover needs the built-in script transport; the supplied transport cannot say which " +
+        "process to recover. Nothing was started.",
+      op,
+    );
   }
 
   // A host script declares extension methods. It is read here, once: the
@@ -720,6 +768,22 @@ export async function openAfterEffects(
     }
   }
   session.supervision = supervision;
+  // Expected modals are honoured only where a recovery actually reads the
+  // registry (the macOS path today). Anywhere else `expectModal` refuses
+  // rather than registering into a void — and launch-time specs that can
+  // never be consulted are recorded, not silently dropped.
+  if (!expectedModalsActive && (options.expectedModals?.length ?? 0) > 0) {
+    trace.record("session.expected-modals", "error", 0, {
+      error: {
+        name: "ExpectedModalsUnavailable",
+        message:
+          `${options.expectedModals?.length} expected-modal spec(s) were supplied but this ` +
+          "platform's recovery path cannot consult them; the windows they describe keep " +
+          "their unregistered classification. Nothing was pressed for them.",
+      },
+    });
+  }
+  session.modalExpectations = expectedModalsActive ? expectedModals : null;
   return { session, probe, extensionMethods };
 }
 
