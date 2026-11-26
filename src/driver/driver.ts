@@ -233,6 +233,20 @@ export type DriverOptions = {
    * budget first. The hook only reads; it never presses anything itself.
    */
   readonly supervision?: { report(): SupervisionReport | null };
+  /**
+   * Boot supervision hook (#339): invoked by `start()` after the
+   * transport's `launch()` has run its process census and before the
+   * readiness probe's first ExtendScript, so a startup modal that blocks
+   * the probe is observed instead of silent. `start` runs once per
+   * `start()` attempt that reaches the probe; `stop` releases whatever
+   * `start` acquired when the launch fails. Both must be idempotent, and
+   * observation must never break a launch: a hook error is traced, not
+   * thrown.
+   */
+  readonly bootSupervision?: {
+    start(): void;
+    stop(): void;
+  };
 };
 
 export type CallOptions = {
@@ -303,6 +317,7 @@ export class AeDriver {
   readonly #recovery: HostRecovery | undefined;
   readonly #recoveryGraceMs: number;
   readonly #supervision: { report(): SupervisionReport | null } | undefined;
+  readonly #bootSupervision: { start(): void; stop(): void } | undefined;
   /** The request currently inside `#settle`, for supervision's pending list. */
   #inFlight: { readonly id: string; readonly method: string; readonly since: string } | null = null;
   #started = false;
@@ -330,6 +345,7 @@ export class AeDriver {
     this.#recovery = options.recovery;
     this.#recoveryGraceMs = options.recoveryGraceMs ?? 60_000;
     this.#supervision = options.supervision;
+    this.#bootSupervision = options.bootSupervision;
 
     if (!existsSync(this.#hostScriptPath)) {
       throw new HostUnavailableError(`host script not found: ${this.#hostScriptPath}`);
@@ -409,6 +425,18 @@ export class AeDriver {
     const began = Date.now();
     try {
       await this.#transport.launch();
+      // Boot supervision (#339): launch() has already run the transport's
+      // process census, so the spawned or selected pid is attributable
+      // before the probe's first ExtendScript response. Observation is
+      // best-effort here — a hook that cannot prove a target does nothing,
+      // and a hook that fails must not fail the launch.
+      try {
+        this.#bootSupervision?.start();
+      } catch (error) {
+        this.#trace.record("session.supervision", "error", 0, {
+          error: { name: nameOf(error), message: errorMessage(error) },
+        });
+      }
       if (this.#transport.awaitScriptable !== undefined) {
         const scriptable = await this.#transport.awaitScriptable(this.#readinessTimeoutMs);
         if (!scriptable) {
@@ -458,6 +486,15 @@ export class AeDriver {
       });
       return info;
     } catch (error) {
+      // Whatever the boot hook started observes a launch that failed;
+      // release it. The durable document it published stays behind —
+      // readers see the last proven state and then monitor-lost, which is
+      // the honest answer. A stop failure must not mask the launch error.
+      try {
+        this.#bootSupervision?.stop();
+      } catch {
+        // Observation teardown never replaces the launch's own failure.
+      }
       // A launch can fail after the host process appeared: the Apple Event
       // that carries the probe is denied, or the host never becomes
       // scriptable. The process is then this run's doing but unowned — it is
