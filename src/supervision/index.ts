@@ -1,5 +1,18 @@
 export * from "./types.js";
 export {
+  NEXT_ACTION_REASON_CODES,
+  humanAction,
+  inspectAction,
+  nextAction,
+  retryAction,
+  waitAction,
+  type NextAction,
+  type NextActionInput,
+  type NextActionReason,
+  type NextActionReasonCode,
+} from "./next-actions.js";
+export { supervisionNextActions } from "./guidance.js";
+export {
   applySupervisionEvent,
   initialSupervisionDoc,
   DEFAULT_PHASE_DEADLINE_MS,

@@ -329,6 +329,15 @@ export {
   type DetachedSupervisor,
   type DetachedSupervisorOptions,
 } from "./supervision/detached.js";
+export {
+  NEXT_ACTION_REASON_CODES,
+  nextAction,
+  supervisionNextActions,
+  type NextAction,
+  type NextActionInput,
+  type NextActionReason,
+  type NextActionReasonCode,
+} from "./supervision/index.js";
 export type {
   BlockingInfo,
   DialogTier,
@@ -338,6 +347,7 @@ export type {
   PendingRequest,
   SupervisionPhase,
   SupervisionReport,
+  SupervisionReportFacts,
   SupervisionStateDoc,
   SupervisionTransition,
   SupervisionWindow,

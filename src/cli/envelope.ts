@@ -10,6 +10,11 @@ import type { Capabilities, SessionIdentity, SetupStepState } from "../platform/
 import { packageInfo } from "../runner/package-info.js";
 import type { RunArtifacts, RunReport, RunVerdict } from "../runner/artifacts.js";
 import type { Finding } from "../runner/recover-run.js";
+import {
+  nextAction,
+  type NextAction,
+  type NextActionReasonCode,
+} from "../supervision/next-actions.js";
 
 export const SCHEMA_VERSION = "1.0";
 
@@ -43,11 +48,16 @@ export type TargetInfo = {
   readonly identity?: SessionIdentity;
 };
 
-export type NextAction = {
-  readonly kind: "human" | "automatic";
-  readonly code: string;
-  readonly action: string;
-};
+/**
+ * One `nextActions[]` entry (#341). The canonical contract lives in
+ * `src/supervision/next-actions.ts` and is shared by the API, the
+ * supervision report and every CLI command: `kind` says who acts,
+ * `allowed` whether automation may do it now, `code` identifies the
+ * action/condition, `reason.code` is the stable reason, and `action` is
+ * display prose — never the machine contract. Re-exported here so CLI
+ * consumers keep one import site.
+ */
+export type { NextAction } from "../supervision/next-actions.js";
 
 /**
  * One `setup` step as the CLI reports it: the plan's description plus what
@@ -91,6 +101,23 @@ export type CliEnvelope = {
   readonly stateFile?: string;
 };
 
+/**
+ * Map a check's remedy onto the next-action contract (#341). `remedyKind`
+ * already says who can clear the condition; `allowed` restates it for
+ * automation and `reason.code` gives the stable why, so a consumer never
+ * has to parse `action` prose.
+ */
+function reasonCodeFor(remedyKind: DiagnosticCheck["remedyKind"]): NextActionReasonCode {
+  switch (remedyKind) {
+    case "automatic":
+      return "permitted";
+    case "human":
+      return "requires-human";
+    case "none":
+      return "permitted";
+  }
+}
+
 export function nextActionsOf(checks: readonly DiagnosticCheck[]): readonly NextAction[] {
   const actions: NextAction[] = [];
   const seen = new Set<string>();
@@ -103,11 +130,15 @@ export function nextActionsOf(checks: readonly DiagnosticCheck[]): readonly Next
       continue;
     }
     seen.add(key);
-    actions.push({
-      kind: check.remedyKind,
-      code: check.code,
-      action: check.remedy,
-    });
+    actions.push(
+      nextAction({
+        kind: check.remedyKind === "automatic" ? "automatic" : "human",
+        allowed: check.remedyKind === "automatic",
+        code: check.code,
+        reason: reasonCodeFor(check.remedyKind),
+        action: check.remedy,
+      }),
+    );
   }
   return actions;
 }

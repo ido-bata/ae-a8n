@@ -18,6 +18,10 @@
  *     `unavailable`. This is the only place monitor loss can be recorded —
  *     a dead monitor cannot write its own obituary, so the signal comes
  *     from the read side re-evaluating the heartbeat against the clock.
+ *   - `supervision.next-actions` — every change of the machine-readable
+ *     guidance set (#341): the `kind`/`code`/`reason.code` triple of each
+ *     offered action, so a trace shows not just *that* automation stopped
+ *     but *what it was told it may do next*.
  *
  * Recovery actions are not duplicated here: the driver already records
  * `session.recover` for every attempt, and every GUI mutation goes through
@@ -59,6 +63,8 @@ export class SupervisionSessionTracer {
   #phase: SupervisionPhase | "init" = "init";
   /** Last evaluated health a reader saw; null until the first report read. */
   #health: HealthKey | null = null;
+  /** Last next-action signature a reader saw; null until the first report. */
+  #actions: string | null = null;
 
   constructor(trace: SupervisionTraceSink) {
     this.#trace = trace;
@@ -92,17 +98,46 @@ export class SupervisionSessionTracer {
    * observe because the monitor is already gone.
    */
   noteReport(report: SupervisionReport): void {
+    // Guidance is recorded first so a paired health change stays the last
+    // row — readers that tail the trace see the evaluated health last.
+    this.#noteActions(report);
     const health = healthKeyOf(report);
-    if (health === this.#health) {
+    if (health !== this.#health) {
+      const from = this.#health;
+      this.#health = health;
+      const detail = healthDetailOf(report);
+      this.#record("supervision.health", {
+        from: from ?? "unobserved",
+        to: health,
+        ...(detail === null ? {} : { detail }),
+        phase: report.status === "observed" ? report.doc.phase : null,
+      });
+    }
+  }
+
+  /**
+   * Record a `supervision.next-actions` row whenever the offered guidance
+   * changes (#341). Only the judgement fields are traced — `kind`, `code`
+   * and `reason.code` — never the prose, so the trace stays a contract
+   * record rather than a copy of the report.
+   */
+  #noteActions(report: SupervisionReport): void {
+    const signature = report.nextActions
+      .map((action) => `${action.kind}:${action.allowed ? "allowed" : "withheld"}:${action.code}:${action.reason.code}`)
+      .join("|");
+    if (signature === this.#actions) {
       return;
     }
-    const from = this.#health;
-    this.#health = health;
-    const detail = healthDetailOf(report);
-    this.#record("supervision.health", {
+    const from = this.#actions;
+    this.#actions = signature;
+    this.#record("supervision.next-actions", {
       from: from ?? "unobserved",
-      to: health,
-      ...(detail === null ? {} : { detail }),
+      to: report.nextActions.map((action) => ({
+        kind: action.kind,
+        allowed: action.allowed,
+        code: action.code,
+        reason: action.reason.code,
+      })),
       phase: report.status === "observed" ? report.doc.phase : null,
     });
   }
