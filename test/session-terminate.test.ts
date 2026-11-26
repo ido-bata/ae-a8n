@@ -23,10 +23,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { openRebuiltSession, type RebuildDeps } from "../src/api/rebuild.js";
 import { AfterEffectsError } from "../src/api/errors.js";
-import {
-  recordLaunchProvenance,
-  type OwnedProcess,
-} from "../src/driver/launch-provenance.js";
 import type { HostProcess } from "../src/driver/host-processes.js";
 import type { TerminateHostRequest } from "../src/driver/host-terminate.js";
 import type { MacSession } from "../src/driver/mac-session.js";
@@ -78,25 +74,33 @@ function recordedProcess(overrides: Partial<HostProcess> = {}): HostProcess {
   };
 }
 
-function seedProvenance(overrides: Partial<OwnedProcess> = {}): void {
-  recordLaunchProvenance(sessionRoot, {
-    transport: "script-invocation",
-    host: {
-      pid: OLD_PID,
-      startedAt: OLD_STARTED_AT,
-      executable: AE_EXECUTABLE,
-      ...overrides,
-    },
-  });
-}
+/**
+ * Provenance host fields the fixtures may override. `startedAt` accepts
+ * null because the stored schema allows it (platforms that cannot report
+ * a start time); `recordLaunchProvenance` cannot write that shape, so the
+ * document is written directly.
+ */
+type ProvenanceHost = {
+  readonly pid?: number;
+  readonly startedAt?: number | null;
+  readonly identity?: string | null;
+  readonly executable?: string;
+};
 
 /**
- * The stored schema allows `startedAt: null` (platforms that cannot
- * report a start time); `recordLaunchProvenance` only writes what a real
- * transport reported, so the ambiguous-record fixture writes the document
- * directly.
+ * Writes a launch-provenance document naming platform `"darwin"`.
+ *
+ * The terminate/rebuild decision logic is platform-parameterized, and
+ * every OS surface these tests exercise is already injected — the census
+ * (`deps.processes`), the signal (`deps.terminateHost`), the GUI session
+ * (`deps.readGuiSession`), and `deps.platform` itself. Pinning the
+ * record to `"darwin"` keeps the darwin code path — uid-scoped census,
+ * start-time process identity, the Aqua-session gate — exercised
+ * identically on macOS, Linux and Windows CI. `recordLaunchProvenance`
+ * would stamp `process.platform`, which makes the record disagree with
+ * the injected platform everywhere but on a Mac.
  */
-function seedProvenanceWithoutStartTime(): void {
+function seedProvenance(overrides: ProvenanceHost = {}): void {
   writeFileSync(
     join(sessionRoot, "launch-provenance.json"),
     `${JSON.stringify(
@@ -106,10 +110,11 @@ function seedProvenanceWithoutStartTime(): void {
         a8nVersion: "0.0.0-test",
         transport: "script-invocation",
         host: {
-          pid: OLD_PID,
-          startedAt: null,
-          identity: null,
-          executable: AE_EXECUTABLE,
+          pid: overrides.pid ?? OLD_PID,
+          startedAt:
+            overrides.startedAt === undefined ? OLD_STARTED_AT : overrides.startedAt,
+          identity: overrides.identity ?? null,
+          executable: overrides.executable ?? AE_EXECUTABLE,
           platform: "darwin",
         },
       },
@@ -275,7 +280,7 @@ describe("terminateSessionHost authorization gates", () => {
   });
 
   it("refuses a possibly-reused pid: live pid under a start-time-less record is ambiguous", async () => {
-    seedProvenanceWithoutStartTime();
+    seedProvenance({ startedAt: null });
     const h = harness();
     // The recorded pid is alive but the record cannot prove it is the
     // same process — signalling it could kill a foreign process.
@@ -530,6 +535,9 @@ describe("terminateSessionHost supervision handoff", () => {
 describe("terminate → rebuild chain", () => {
   function rebuildDeps(): RebuildDeps {
     return {
+      // Same pinned platform as the provenance fixture and the terminate
+      // harness: the darwin decision path on every CI host.
+      platform: "darwin",
       processes: () => [],
       readGuiSession: () => AQUA,
       dispatcherChannelDir: channelDir,
