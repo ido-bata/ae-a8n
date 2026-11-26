@@ -20,8 +20,10 @@ import {
   applySupervisionEvent,
   initialSupervisionDoc,
 } from "../src/supervision/machine.js";
+import { supervisionNextActions } from "../src/supervision/guidance.js";
 import type {
   SupervisionReport,
+  SupervisionReportFacts,
   SupervisionStateDoc,
 } from "../src/supervision/types.js";
 
@@ -101,13 +103,18 @@ function blockedDoc(): SupervisionStateDoc {
 }
 
 function blockedReport(doc: SupervisionStateDoc): SupervisionReport {
-  return {
+  const facts: SupervisionReportFacts = {
     status: "observed",
     source: "state",
     doc,
     health: "ok",
     healthDetail: null,
     readAt: new Date().toISOString(),
+  };
+  return {
+    ...facts,
+    stateFile: join(sessionRoot, "supervision.json"),
+    nextActions: supervisionNextActions(facts),
   };
 }
 
