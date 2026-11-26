@@ -28,6 +28,7 @@ import {
 import type { WindowServerWindow } from "../src/platform/darwin/window-census.js";
 import { encodePng } from "../src/testing/index.js";
 import { panelCapabilities, panelForTarget } from "../src/api/panels.js";
+import { panelMutationGate } from "../src/panels/gate.js";
 import { AfterEffects } from "../src/index.js";
 import { FakeAfterEffectsTransport } from "../src/testing/index.js";
 
@@ -616,27 +617,57 @@ describe("panelForTarget / public surface", () => {
     }
   });
 
-  it("wires the A-SAFETY gate: resize/restore refuse in production before any observation", async () => {
-    // `panelForTarget` with no seam override gets `panelMutationGate()` —
-    // the audit has enabled no panel mutation class, so the refusal must
-    // name the gate document and precede even the first AX listing.
-    let observed = 0;
-    const panel = panelForTarget(
-      { pid: PID, session: SESSION },
-      { title: "My Plugin Panel" },
-      dir,
-      {
-        runSession: () => {
-          observed += 1;
-          return { status: 0, stdout: "", stderr: "", timedOut: false };
-        },
-      },
-    );
-    await expect(panel.resize({ width: 800, height: 600 })).rejects.toMatchObject({
-      code: "refused",
-      message: expect.stringContaining("gui-supervision-safety-gates") as unknown as string,
-    });
-    await expect(panel.restore()).rejects.toMatchObject({ code: "refused" });
-    expect(observed).toBe(0);
+  it("panelMutationGate refuses every panel mutation and cites the audit", () => {
+    // Platform-neutral: the gate is policy, not platform code. Both
+    // mutation classes refuse, and the reason names the document a
+    // caller must consult before expecting this to change.
+    const gate = panelMutationGate();
+    for (const op of ["resize", "restore"] as const) {
+      const verdict = gate(op);
+      expect(verdict.allowed).toBe(false);
+      if (!verdict.allowed) {
+        expect(verdict.reason).toContain("gui-supervision-safety-gates");
+        expect(verdict.reason).toContain("auto-safe");
+      }
+    }
   });
+
+  // `panelForTarget` is macOS-only by contract: on any other platform it
+  // reports `unsupported` before a controller exists, so the wiring test
+  // below can only run where the path exists.
+  it.runIf(process.platform === "darwin")(
+    "wires the A-SAFETY gate: resize/restore refuse in production before any observation",
+    async () => {
+      // `panelForTarget` with no seam override gets `panelMutationGate()` —
+      // the audit has enabled no panel mutation class, so the refusal must
+      // name the gate document and precede even the first AX listing.
+      let observed = 0;
+      const panel = panelForTarget(
+        { pid: PID, session: SESSION },
+        { title: "My Plugin Panel" },
+        dir,
+        {
+          runSession: () => {
+            observed += 1;
+            return { status: 0, stdout: "", stderr: "", timedOut: false };
+          },
+        },
+      );
+      await expect(panel.resize({ width: 800, height: 600 })).rejects.toMatchObject({
+        code: "refused",
+        message: expect.stringContaining("gui-supervision-safety-gates") as unknown as string,
+      });
+      await expect(panel.restore()).rejects.toMatchObject({ code: "refused" });
+      expect(observed).toBe(0);
+    },
+  );
+
+  it.runIf(process.platform !== "darwin")(
+    "reports unsupported on non-macOS platforms even with an attested target",
+    () => {
+      expect(() =>
+        panelForTarget({ pid: PID, session: SESSION }, { title: "x" }, dir),
+      ).toThrowError(expect.objectContaining({ code: "unsupported" }) as Error);
+    },
+  );
 });
