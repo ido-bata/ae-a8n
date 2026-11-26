@@ -716,6 +716,18 @@ export async function openRebuiltSession(
     )
     .join("; ");
 
+  // The transport-readiness verdict (#340) is deliberately separate from
+  // the supervision phase: `resumed` is a GUI-lifecycle claim, and a
+  // rebuild whose needed transport surface failed — or whose availability
+  // could not even be proven — must not read as fully ready.
+  const transportReady: SessionRebuildReport["transportReady"] = transports.some(
+    (entry) => entry.status === "failed",
+  )
+    ? "degraded"
+    : transports.some((entry) => entry.status === "unproven")
+      ? "unproven"
+      : "ready";
+
   // 10. Recovery succeeded: the blocking host state is resolved and the
   //     pending requests were reconciled above. If the monitor already moved
   //     the session elsewhere (e.g. a crash-repair dialog on the new AE),
@@ -747,6 +759,7 @@ export async function openRebuiltSession(
         status: entry.status,
         detail: entry.detail,
       })),
+      transportReady,
     },
   });
 
@@ -759,6 +772,7 @@ export async function openRebuiltSession(
       pendingResolved: pending.resolved.length,
       pendingUnknown: pending.unknown.length,
       transports,
+      transportReady,
     },
   };
 }
