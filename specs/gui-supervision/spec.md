@@ -102,6 +102,19 @@ Every state records `enteredAt`, `deadline` (bounded — no state waits forever)
 - Trace and audit: supervision transitions, monitor heartbeats, and every GUI mutation are recorded in the session trace and GUI audit log.
 - `ae.capabilities()` reports which supervision features the platform/transport supports and at what verification level.
 
+**Runtime guidance contract (#341, US-A4 of program #337).** Every surface that can stop automation — `ae.supervisionState()`, `ae-a8n supervise`, the CLI envelope's `nextActions[]`, and typed API errors — answers "what may happen next" with the same machine-readable shape, so an agent that never read this spec can still decide:
+
+```json
+{ "kind": "automatic | human", "allowed": false, "code": "supervision.needs-human",
+  "reason": { "code": "requires-human" }, "action": "…prose for humans…" }
+```
+
+- `kind` says *who* the action is for (the existing envelope axis, unchanged); `allowed` says whether an *automated* actor may perform it now; `code` identifies the action or condition (a diagnostic code or a dotted supervision/runtime code); `reason.code` is a stable code from the `NEXT_ACTION_REASON_CODES` vocabulary (`permitted`, `requires-human`, `requires-permission`, `bounded-wait`, `unknown-outcome`, `not-sent`, `unsafe-to-automate`, `evidence-unavailable`, `monitor-lost`, `session-policy`); `action` is display prose and is never the contract.
+- `allowed: true` is emitted only for actions automation may perform now — read-only inspection, bounded waits, retries of provably-unsent requests, and explicitly permitted API steps. Actions needing a permission grant, a human decision, or an unproven state are reported `allowed: false` (or `kind: "human"`); they are named so the consumer knows automation stopped on purpose, never so automation performs them.
+- A request whose outcome is unproven (`timed-out`/`unknown`) never produces an allowed resend; `not-sent` is the only retry-permitted reason.
+- No surface recommends out-of-permission operations, arbitrary shell commands, or OCR/screenshot-derived instructions as automation guidance — those are not in the vocabulary.
+- The supervision report additionally carries `stateFile` (the `supervision.json` the report was read from, named even when unreadable) so "evidence missing" is explicit rather than silent. Schema compatibility is additive-only: `ae-a8n.supervision/v1` documents are unchanged; the report's derived fields do not alter the durable document.
+
 **Which sessions can be supervised is itself attested, per transport.** Observation starts only when the target pid *and* its OS session are proven: the script-invocation transport re-proves pid+start identity and session on every check; the in-AE dispatcher transport attests through recorded activation provenance plus live census re-proof, or — failing that — only when the OS census proves exactly one AE instance in the caller's session (#294). Sessions whose target cannot be proven get no monitor and an honestly `unavailable` report; a census-attributed or provenance-attested monitor observes but never gains mutation authority — the press path keeps its own, stricter attestation. As of the #338 audit this covers script-invocation sessions on both desktop OSes and dispatcher sessions on macOS; Windows dispatcher sessions and native-channel sessions on both OSes remain `unavailable` by design until their attestation is wired — a coverage gap, not a safety hole, because absence of a monitor cannot produce a wrong-target action.
 
 ## Acceptance / verification

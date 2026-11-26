@@ -21,6 +21,7 @@ import type {
   DialogTier,
   StructuredDialogContent,
 } from "../platform/dialog-taxonomy.js";
+import type { NextAction } from "./next-actions.js";
 
 // The tier vocabulary is owned by the dialog taxonomy registry (#284);
 // re-exported here so supervision consumers keep one import site.
@@ -185,10 +186,11 @@ export type SupervisionReadSource =
   | "corrupt";
 
 /**
- * What `ae.supervision()` / the CLI returns. `status: "unavailable"` is an
- * honest answer — the report never fabricates a healthy state.
+ * The report facts before derived guidance is attached (#341). Builders
+ * such as `supervisionNextActions` consume this shape; consumers see
+ * `SupervisionReport`, which adds `stateFile` and `nextActions`.
  */
-export type SupervisionReport =
+export type SupervisionReportFacts =
   | {
       readonly status: "observed";
       readonly source: "state";
@@ -204,3 +206,24 @@ export type SupervisionReport =
       readonly reason: string;
       readonly readAt: string;
     };
+
+/**
+ * What `ae.supervisionState()` / the CLI returns. `status: "unavailable"` is an
+ * honest answer — the report never fabricates a healthy state.
+ *
+ * `stateFile` is the `supervision.json` path the report was read from (or
+ * attempted against): the evidence location a consumer can inspect — an
+ * unreadable file is still named so the "evidence missing" case is
+ * explicit rather than silent.
+ *
+ * `nextActions` is the machine-readable guidance contract (#341,
+ * `next-actions.ts`): `kind`/`allowed`/`code`/`reason.code` let an agent
+ * that never read the supervision Skill decide the next permitted step —
+ * including which actions automation must NOT take.
+ */
+export type SupervisionReport = SupervisionReportFacts & {
+  /** Path of the `supervision.json` this report is about. */
+  readonly stateFile: string;
+  /** Machine-readable next actions; empty when nothing is owed. */
+  readonly nextActions: readonly NextAction[];
+};
