@@ -48,6 +48,7 @@ import {
   type SetupStepReport,
   type TargetInfo,
 } from "./envelope.js";
+import { humanAction } from "../supervision/next-actions.js";
 import { runAgentCommand } from "./agent.js";
 import { runDispatcherCommand } from "./dispatcher.js";
 import { runSuperviseCommand } from "./supervise.js";
@@ -636,7 +637,9 @@ function recoveryActions(result: RecoverResult): NextAction[] {
     if (finding.remedy === undefined || finding.remedy.length === 0) {
       continue;
     }
-    actions.push({ kind: "human", code: finding.code, action: finding.remedy });
+    actions.push(
+      humanAction(finding.code, "requires-human", finding.remedy),
+    );
   }
   return actions;
 }

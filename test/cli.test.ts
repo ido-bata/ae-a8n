@@ -315,7 +315,9 @@ describe("the doctor command", () => {
     expect(envelope.nextActions).toEqual([
       {
         kind: "human",
+        allowed: false,
         code: "A8N-SESSION-001",
+        reason: { code: "requires-human" },
         action: "Create the account, then re-run doctor.",
       },
     ]);

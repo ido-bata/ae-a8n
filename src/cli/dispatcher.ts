@@ -21,6 +21,7 @@ import {
   type DispatcherChannelStatus,
 } from "../driver/dispatcher-transport.js";
 import { errorMessage } from "../errors.js";
+import { humanAction } from "../supervision/next-actions.js";
 import { buildEnvelope, type CliEnvelope, type NextAction } from "./envelope.js";
 import { EXIT, type ExitCode } from "./exit-code.js";
 
@@ -165,23 +166,21 @@ function parseDispatcherArgs(argv: readonly string[]): Parsed {
 /** The human steps a prepared channel still needs, in order. */
 function activationSteps(activateScriptPath: string, channelDir: string): NextAction[] {
   return [
-    {
-      kind: "human",
-      code: "dispatcher.activate",
-      action:
-        `In After Effects: File > Scripts > Run Script File, select ${activateScriptPath}`,
-    },
-    {
-      kind: "human",
-      code: "dispatcher.verify",
-      action: `Then check the connection: ae-a8n dispatcher status --channel-dir ${channelDir}`,
-    },
-    {
-      kind: "human",
-      code: "dispatcher.consent",
-      action:
-        "AE may ask once for 'Allow Scripts to Write Files and Access Network'; that consent is yours to give.",
-    },
+    humanAction(
+      "dispatcher.activate",
+      "requires-human",
+      `In After Effects: File > Scripts > Run Script File, select ${activateScriptPath}`,
+    ),
+    humanAction(
+      "dispatcher.verify",
+      "requires-human",
+      `Then check the connection: ae-a8n dispatcher status --channel-dir ${channelDir}`,
+    ),
+    humanAction(
+      "dispatcher.consent",
+      "requires-permission",
+      "AE may ask once for 'Allow Scripts to Write Files and Access Network'; that consent is yours to give.",
+    ),
   ];
 }
 
@@ -372,11 +371,11 @@ export async function runDispatcherCommand(
           status.prepared
             ? activationSteps(status.activateScriptPath, status.channelDir)
             : [
-                {
-                  kind: "human",
-                  code: "dispatcher.prepare",
-                  action: `prepare the channel first: ae-a8n dispatcher prepare --channel-dir ${JSON.stringify(status.channelDir)}`,
-                },
+                humanAction(
+                  "dispatcher.prepare",
+                  "requires-human",
+                  `prepare the channel first: ae-a8n dispatcher prepare --channel-dir ${JSON.stringify(status.channelDir)}`,
+                ),
               ],
           "no dispatcher has answered on this channel; that is unproven, not a pass",
         );
@@ -406,14 +405,13 @@ export async function runDispatcherCommand(
           finishedAt,
           facts,
           [
-            {
-              kind: "human",
-              code: "dispatcher.reactivate",
-              action:
-                "the heartbeat went stale: the dispatcher is not answering. If After Effects " +
+            humanAction(
+              "dispatcher.reactivate",
+              "requires-human",
+              "the heartbeat went stale: the dispatcher is not answering. If After Effects " +
                 "was restarted, activate again with the activate.jsx above; if it is running, " +
                 "the dispatcher may be busy — check again shortly.",
-            },
+            ),
           ],
           "a stale heartbeat is unproven, not a pass",
         );
@@ -421,13 +419,12 @@ export async function runDispatcherCommand(
         return { exitCode: EXIT.unknown };
       }
       const envelope = envelopeFor(command, "ok", EXIT.ok, startedAt, finishedAt, facts, [
-        {
-          kind: "human",
-          code: "dispatcher.launch",
-          action:
-            `connect with AfterEffects.launch({ transport: { kind: "in-ae-dispatcher", ` +
+        humanAction(
+          "dispatcher.launch",
+          "requires-human",
+          `connect with AfterEffects.launch({ transport: { kind: "in-ae-dispatcher", ` +
             `channelDir: ${JSON.stringify(status.channelDir)} } })`,
-        },
+        ),
       ]);
       emit(envelope, parsed.json, fullDeps);
       return { exitCode: EXIT.ok };
@@ -452,13 +449,12 @@ export async function runDispatcherCommand(
           activateScriptPath: transport.activateScriptPath,
         },
         [
-          {
-            kind: "human",
-            code: "dispatcher.startup.verify",
-            action:
-              "AE startup execution of this entry is unverified on real hosts; confirm with " +
+          humanAction(
+            "dispatcher.startup.verify",
+            "requires-human",
+            "AE startup execution of this entry is unverified on real hosts; confirm with " +
               "ae-a8n dispatcher status after an AE restart.",
-          },
+          ),
         ],
         "Startup placement is a path computation; whether AE runs it is unproven until observed",
       );
@@ -481,15 +477,14 @@ export async function runDispatcherCommand(
         note: removed === null ? "no ae-a8n Startup entry was installed" : undefined,
       },
       [
-        {
-          kind: "human",
-          code: "dispatcher.startup.confirm",
-          action:
-            removed === null
-              ? "nothing was installed, so no AE restart is needed for this entry"
-              : "the entry is gone for future AE launches; a dispatcher already running " +
-                "keeps answering until AE restarts — confirm with ae-a8n dispatcher status",
-        },
+        humanAction(
+          "dispatcher.startup.confirm",
+          "requires-human",
+          removed === null
+            ? "nothing was installed, so no AE restart is needed for this entry"
+            : "the entry is gone for future AE launches; a dispatcher already running " +
+              "keeps answering until AE restarts — confirm with ae-a8n dispatcher status",
+        ),
       ],
     );
     emit(envelope, parsed.json, fullDeps);

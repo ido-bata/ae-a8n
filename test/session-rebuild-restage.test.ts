@@ -186,6 +186,8 @@ describe("openRebuiltSession transport re-staging", () => {
     );
     expect(dispatcherEntry?.status).toBe("restaged");
     expect(dispatcherEntry?.transport).toBe("in-ae-dispatcher");
+    // Every surface is proven: the aggregate verdict is ready (#340).
+    expect(rebuilt.rebuild.transportReady).toBe("ready");
   });
 
   it("finds a custom channelDir through the session activation index", async () => {
@@ -256,6 +258,9 @@ describe("openRebuiltSession transport re-staging", () => {
     );
     expect(entry?.status).toBe("failed");
     expect(entry?.detail).toContain("script-trust dialog");
+    // A failed surface degrades the aggregate verdict — the session
+    // resumed but its dispatcher transport is not proven (#340).
+    expect(rebuilt.rebuild.transportReady).toBe("degraded");
   });
 
   it("reports unproven when the channel provenance cannot be read", async () => {
@@ -273,6 +278,7 @@ describe("openRebuiltSession transport re-staging", () => {
     );
     expect(entry?.status).toBe("unproven");
     expect(entry?.detail).toContain("cannot be read");
+    expect(rebuilt.rebuild.transportReady).toBe("unproven");
   });
 
   it("reports unproven for a corrupt activation index and still checks the default channel", async () => {

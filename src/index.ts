@@ -125,6 +125,12 @@ export type {
   TextLayerOptions,
   OpenProjectOptions,
   OperationOptions,
+  RebuildOptions,
+  ResumeOptions,
+  SessionRebuildReport,
+  TerminateOptions,
+  TerminateReport,
+  TransportRestage,
   ParameterValue,
   ProjectInfo,
   PropertyInfo,
@@ -138,6 +144,7 @@ export type {
 } from "./api/types.js";
 
 export { TraceRecorder } from "./trace/trace.js";
+export { TERMINATE_PERMIT } from "./api/types.js";
 export type { TraceEvent, TraceStatus } from "./trace/trace.js";
 export type { DiagnosticCode } from "./doctor/diagnostics.js";
 
@@ -349,6 +356,15 @@ export {
   type DetachedSupervisor,
   type DetachedSupervisorOptions,
 } from "./supervision/detached.js";
+export {
+  NEXT_ACTION_REASON_CODES,
+  nextAction,
+  supervisionNextActions,
+  type NextAction,
+  type NextActionInput,
+  type NextActionReason,
+  type NextActionReasonCode,
+} from "./supervision/index.js";
 export type {
   BlockingInfo,
   DialogTier,
@@ -358,6 +374,7 @@ export type {
   PendingRequest,
   SupervisionPhase,
   SupervisionReport,
+  SupervisionReportFacts,
   SupervisionStateDoc,
   SupervisionTransition,
   SupervisionWindow,
