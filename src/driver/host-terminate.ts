@@ -286,7 +286,7 @@ function runFile(
         if (error === null) {
           resolvePromise();
         } else {
-          rejectPromise(error);
+          rejectPromise(new Error(errorMessage(error)));
         }
       },
     );

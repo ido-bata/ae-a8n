@@ -170,7 +170,7 @@ function harness(overrides: Partial<TerminateDeps> = {}): Harness {
   let censusError: string | null = null;
   const state: Harness = {
     calls,
-    deps: {} as TerminateDeps,
+    deps: {},
     setProcesses(list) {
       processes = typeof list === "function" ? list() : list;
       censusError = null;

@@ -220,10 +220,13 @@ export async function terminateSessionHost(
     throw new AfterEffectsError(reason, OP);
   }
 
-  // 1. Explicit permission. No default, no implicit consent.
+  // 1. Explicit permission. No default, no implicit consent. The hint is
+  //    built before the check: inside the refusal branch the permit
+  //    reference is narrowed to `never`, which a template cannot print.
+  const permitHint = `permit: "${TERMINATE_PERMIT}"`;
   if (options.permit !== TERMINATE_PERMIT) {
     fail(
-      `terminate requires explicit permission: pass permit: "${TERMINATE_PERMIT}" ` +
+      `terminate requires explicit permission: pass ${permitHint} ` +
         "to consent to signalling the owned After Effects process",
     );
   }
@@ -288,9 +291,9 @@ export async function terminateSessionHost(
   }
 
   const pid = provenance.host.pid;
-  const report = async (
+  const report = (
     partial: Omit<TerminateReport, "pid" | "evidence"> & { readonly evidence?: readonly string[] },
-  ): Promise<TerminateReport> => {
+  ): TerminateReport => {
     const { evidence: extra, ...rest } = partial;
     const full: TerminateReport = {
       pid,
