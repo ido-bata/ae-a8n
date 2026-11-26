@@ -272,7 +272,33 @@ an ExtendScript cannot be interrupted from outside. So a timeout ends the
   (neither could be determined — never guessed). Through the public API it
   surfaces as `hostCondition` on the thrown `AfterEffectsError` (the
   `TimeoutError` stays the `cause`); the same classification is recorded
-  in the trace.
+  in the trace. The trace `result` also carries `anomaly` — the kind the
+  recovery classified (`expected-modal`, `human-required-modal`,
+  `unknown-modal`, `process-gone`, …) — and `retryClass`, the operation's
+  side-effect class (`read-only` / `verified-retry` /
+  `unknown-side-effect`) a consumer branches on for resend decisions.
+- **Recovery is part of the standard path.** On the built-in script
+  transport a GUI recovery runs after a timeout by default — no dedicated
+  call is needed. `session.recover: false` opts out; `true` keeps the
+  strict contract (an unwirable session refuses to launch, while a
+  default-on session that cannot be wired launches and records
+  `session.recovery` on the trace). Only measured `auto-safe` dialog
+  classes are ever pressed; sign-in/licence and unmeasured windows are
+  refused or quarantined (`A8N-SEC-001`), never clicked through.
+- **Expected modals can be declared.** `expectedModals` at launch or
+  `ae.expectModal(spec)` registers a window the test itself raises — an
+  unsaved-changes prompt, a script-error sheet — so the recovery
+  classifies it as expected instead of quarantining it. `resolve` may
+  press one declared button through the same audited path, or `wait`
+  (default) to leave the modal for its owner. It cannot make a
+  human-only window pressable, and on Windows registrations are refused
+  (recorded as `session.expected-modals` on the trace).
+- **Every recovery attempt writes an evidence manifest** to
+  `artifacts/recovery-<requestId>.evidence.json`: the operation, outcome,
+  blocking window, expectation name, before/after screenshots (or the
+  recorded reason none exists in `uncapturable`), and pointers to
+  `ae.diagnostics()` for host logs and crash reports. See
+  [ADR-0006](adr/0006-standard-path-anomaly-recovery.md).
 - **`ae.diagnostics()`** collects host-side evidence into
   `<artifactsDir>/diagnostics/`: OS crash reports for the After Effects
   binaries modified during the session, After Effects host logs touched in

@@ -18,8 +18,13 @@
 
 import { join } from "node:path";
 
-import { DIALOG_TAXONOMY } from "../platform/dialog-taxonomy.js";
+import { DIALOG_TAXONOMY, dialogClassByName } from "../platform/dialog-taxonomy.js";
 import type { DialogWindow } from "../platform/recovery-policy.js";
+import {
+  toExpectedModalWindow,
+  type ExpectedModalMatch,
+  type ExpectedModalRegistry,
+} from "./expected-modals.js";
 import {
   GuiAttributionError,
   GuiMutationError,
@@ -60,8 +65,34 @@ export type RecoveryOutcome = {
   readonly evidence: string;
   /** A screenshot of the target session, when one was taken. */
   readonly screenshotPath?: string;
+  /**
+   * A second screenshot taken after a press was attempted (#342): the
+   * before/after pair is the mutation evidence. Present only when a press
+   * ran — refused outcomes have nothing to compare against.
+   */
+  readonly screenshotAfterPath?: string;
+  /**
+   * Why no screenshot exists when one was wanted (#342): the capture
+   * failure is recorded, never silently absent. Absent when no blocking
+   * window made a capture applicable.
+   */
+  readonly screenshotNote?: string;
   /** The window that was blocking, when one was found. */
   readonly window?: string;
+  /**
+   * The registered expected-modal spec that classified this window
+   * (#342), when one matched. Its presence means the outcome was decided
+   * by a caller-declared expectation, not by the measured taxonomy — the
+   * trace and evidence manifest carry the name so the two are never
+   * confused.
+   */
+  readonly expectedModal?: string;
+  /**
+   * The blocking window's taxonomy tier when the outcome classified one
+   * (#342): feeds `classifyAnomaly` so the timeout report names the same
+   * kind the recovery saw. Absent when no window was classified.
+   */
+  readonly dialogTier?: "auto-safe" | "human-required" | "report-only" | "unknown";
 };
 
 export interface HostRecovery {
@@ -325,6 +356,29 @@ export function chooseRecoveryWindow(windows: readonly GuiWindowInfo[]): Recover
   };
 }
 
+/**
+ * The screenshot fields of a `RecoveryOutcome` (#342). Before/after capture
+ * notes are merged into one `screenshotNote` so a double failure keeps both
+ * reasons instead of the second overwriting the first.
+ */
+function screenshotFields(
+  shot: string | undefined,
+  shotNote: string | undefined,
+  afterPath?: string,
+  afterNote?: string,
+): {
+  screenshotPath?: string;
+  screenshotAfterPath?: string;
+  screenshotNote?: string;
+} {
+  const notes = [shotNote, afterNote].filter((note): note is string => note !== undefined);
+  return {
+    ...(shot === undefined ? {} : { screenshotPath: shot }),
+    ...(afterPath === undefined ? {} : { screenshotAfterPath: afterPath }),
+    ...(notes.length === 0 ? {} : { screenshotNote: notes.join("; ") }),
+  };
+}
+
 export type MacHostRecoveryOptions = {
   /** The session the After Effects instance lives in. */
   readonly session: MacSession;
@@ -341,7 +395,31 @@ export type MacHostRecoveryOptions = {
   readonly screenshotDir: string;
   /** The buttons that may be pressed. */
   readonly buttons?: readonly string[];
+  /**
+   * Session-registered expected modals (#342). When a blocking window that
+   * is not a measured class matches a registration, the expectation's
+   * resolution decides — `press` through the same audited path, `wait`
+   * leaving the modal for its owner. Absent means every unmeasured window
+   * keeps the quarantine classification.
+   */
+  readonly expectedModals?: ExpectedModalRegistry | undefined;
+  /**
+   * Test seam: replaces the `MacGuiRecovery` the attempt builds. The
+   * surface is the three calls an attempt makes — list, capture, press —
+   * so a fake can drive every classification and fault path without a
+   * real Accessibility session.
+   */
+  readonly gui?: GuiRecoverySurface | undefined;
 };
+
+/**
+ * The slice of `MacGuiRecovery` a recovery attempt uses. Defined as a
+ * structural type so tests can substitute a fake without subclassing.
+ */
+export type GuiRecoverySurface = Pick<
+  MacGuiRecovery,
+  "listWindows" | "capture" | "pressButtonIn"
+>;
 
 /**
  * The GUI fallback for a macOS After Effects.
@@ -355,6 +433,8 @@ export class MacHostRecovery implements HostRecovery {
   readonly #verifyProcess: ((pid: number) => boolean) | undefined;
   readonly #screenshotDir: string;
   readonly #buttons: readonly string[];
+  readonly #expectedModals: ExpectedModalRegistry | undefined;
+  readonly #gui: GuiRecoverySurface | undefined;
 
   constructor(options: MacHostRecoveryOptions) {
     this.#session = options.session;
@@ -362,6 +442,8 @@ export class MacHostRecovery implements HostRecovery {
     this.#verifyProcess = options.verifyProcess;
     this.#screenshotDir = options.screenshotDir;
     this.#buttons = options.buttons ?? RECOVERY_BUTTONS;
+    this.#expectedModals = options.expectedModals;
+    this.#gui = options.gui;
   }
 
   attempt(context: RecoveryContext): Promise<RecoveryOutcome> {
@@ -388,20 +470,24 @@ export class MacHostRecovery implements HostRecovery {
         evidence: `no After Effects process this run started could be tied to it: ${context.method} (${context.requestId}) timed out and no host process was found`,
       };
     }
-    let gui: MacGuiRecovery;
-    try {
-      gui = new MacGuiRecovery({
-        session: this.#session,
-        pid,
-        ...(this.#verifyProcess === undefined ? {} : { verifyProcess: this.#verifyProcess }),
-      });
-    } catch (error) {
-      return {
-        recovered: false,
-        outcome: "refused",
-        ...(error instanceof GuiRecoveryError && error.code !== undefined ? { code: error.code } : {}),
-        evidence: `no GUI recovery is possible: ${errorMessage(error)}`,
-      };
+    let gui: GuiRecoverySurface;
+    if (this.#gui !== undefined) {
+      gui = this.#gui;
+    } else {
+      try {
+        gui = new MacGuiRecovery({
+          session: this.#session,
+          pid,
+          ...(this.#verifyProcess === undefined ? {} : { verifyProcess: this.#verifyProcess }),
+        });
+      } catch (error) {
+        return {
+          recovered: false,
+          outcome: "refused",
+          ...(error instanceof GuiRecoveryError && error.code !== undefined ? { code: error.code } : {}),
+          evidence: `no GUI recovery is possible: ${errorMessage(error)}`,
+        };
+      }
     }
     let state: ReturnType<MacGuiRecovery["listWindows"]>;
     try {
@@ -452,13 +538,17 @@ export class MacHostRecovery implements HostRecovery {
     const window = choice.window;
     const screenshotPath = join(this.#screenshotDir, `recovery-${context.requestId}.png`);
     let shot: string | undefined;
+    let shotNote: string | undefined;
     try {
       gui.capture(screenshotPath);
       shot = screenshotPath;
-    } catch {
+    } catch (error) {
       // A screenshot that cannot be taken does not stop the recovery; the
-      // accessibility report is the primary evidence.
+      // accessibility report is the primary evidence. The failure is
+      // recorded on the outcome (#342) so "no image" is never silent.
+      shotNote = `screen capture failed: ${errorMessage(error)}`;
     }
+    const shotFields = () => screenshotFields(shot, shotNote);
     const description = describeWindow(window);
     if (choice.kind === "human-only") {
       return {
@@ -468,9 +558,33 @@ export class MacHostRecovery implements HostRecovery {
           `After Effects ${pid} shows "${description}", which is an Adobe account or licence window. ` +
           "No button was pressed: signing in, signing out or deactivating a device is a human's decision. " +
           "The host stays blocked until it is answered by hand.",
-        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        ...shotFields(),
+        dialogTier: "human-required",
         window: description,
       };
+    }
+    // Expected-modal registration (#342): a window the measured taxonomy
+    // would refuse or quarantine may instead be resolved by a
+    // caller-declared expectation. `human-only` never reaches this point —
+    // an account/licence decision is not pressable through registration.
+    if (
+      (choice.kind === "unpressable" || choice.kind === "quarantine") &&
+      this.#expectedModals !== undefined
+    ) {
+      const match = this.#expectedModals.match(toExpectedModalWindow(window));
+      if (match !== null) {
+        return this.#resolveExpected(
+          gui,
+          context,
+          pid,
+          choice.index,
+          window,
+          description,
+          match,
+          shot,
+          shotNote,
+        );
+      }
     }
     if (choice.kind === "unpressable") {
       return {
@@ -480,7 +594,8 @@ export class MacHostRecovery implements HostRecovery {
           `After Effects ${pid} shows "${description}", which is the ${choice.dialogClass.name} dialog. ` +
           `No button was pressed: ${choice.dialogClass.reason}. ` +
           "The host stays blocked until it is answered by hand.",
-        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        ...shotFields(),
+        dialogTier: dialogClassByName(choice.dialogClass.name)?.tier ?? "human-required",
         window: description,
       };
     }
@@ -493,7 +608,8 @@ export class MacHostRecovery implements HostRecovery {
           `After Effects ${pid} shows "${description}", which is not a dialog class this project has measured. ` +
           `No button was pressed and no key was sent (${choice.code}). The state is unknown, so the run is ` +
           "quarantined: answer the window by hand and inspect the screenshot before continuing.",
-        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        ...shotFields(),
+        dialogTier: "unknown",
         window: description,
       };
     }
@@ -502,11 +618,128 @@ export class MacHostRecovery implements HostRecovery {
     // empty-title dialog; the text it says can, and it is the same text the
     // class was matched on. The press re-checks it inside the target session.
     const marker = window.texts.find((text) => /^\s*ae-a8n:/.test(text)) ?? "";
+    return this.#pressButtons({
+      gui,
+      context,
+      pid,
+      windowIndex: choice.index,
+      window,
+      description,
+      marker,
+      buttons: this.#buttons,
+      classLabel: choice.dialogClass,
+      dialogTier: "auto-safe",
+      blockingCount: choice.blockingCount,
+      shot,
+      shotNote,
+      screenshotDir: this.#screenshotDir,
+      requestId: context.requestId,
+    });
+  }
+
+  /**
+   * Applies a matched expected-modal resolution (#342).
+   *
+   * `wait` — the default — records the modal as expected and presses
+   * nothing: the window belongs to its registered owner, and the original
+   * request keeps its bounded wait. `press` sends exactly the declared
+   * button through `#pressButtons`, the same lease/audit/attribution path
+   * the measured class uses; the evidence names the expectation so a
+   * registered press is never mistaken for a measured one.
+   */
+  #resolveExpected(
+    gui: GuiRecoverySurface,
+    context: RecoveryContext,
+    pid: number,
+    windowIndex: number,
+    window: GuiWindowInfo,
+    description: string,
+    match: ExpectedModalMatch,
+    shot: string | undefined,
+    shotNote: string | undefined,
+  ): RecoveryOutcome {
+    const name = `expected modal "${match.spec.name}"`;
+    if (match.resolution.kind === "wait") {
+      return {
+        recovered: false,
+        outcome: "refused",
+        expectedModal: match.spec.name,
+        evidence:
+          `After Effects ${pid} shows "${description}", which a registered expectation ` +
+          `(${name}) declares expected. No button was pressed: the modal is left for its ` +
+          "registered owner while the original request keeps its bounded wait. " +
+          "Unregister the expectation or resolve the window to let the standard path decide.",
+        ...screenshotFields(shot, shotNote),
+        window: description,
+      };
+    }
+    const marker = window.texts.find((text) => /^\s*ae-a8n:/.test(text)) ?? "";
+    return this.#pressButtons({
+      gui,
+      context,
+      pid,
+      windowIndex,
+      window,
+      description,
+      marker,
+      buttons: [match.resolution.button],
+      classLabel: name,
+      blockingCount: 1,
+      shot,
+      shotNote,
+      screenshotDir: this.#screenshotDir,
+      requestId: context.requestId,
+      expectedModal: match.spec.name,
+    });
+  }
+
+  /**
+   * Presses each candidate button in the chosen window through the audited
+   * path and shapes the outcome. Shared by the measured-class path and the
+   * expected-modal path (#342) so both record identical evidence: a
+   * successful press is `dismissed`, an uncertain mutation is
+   * `quarantined`, and every refusal says what stopped it. When a press was
+   * attempted, a second screenshot is taken for the before/after pair.
+   */
+  #pressButtons(input: {
+    gui: GuiRecoverySurface;
+    context: RecoveryContext;
+    pid: number;
+    windowIndex: number;
+    window: GuiWindowInfo;
+    description: string;
+    marker: string;
+    buttons: readonly string[];
+    /** What authorised the press, for evidence: a measured class or `expected modal "…"`. */
+    classLabel: string;
+    /** The window's taxonomy tier for anomaly classification (#342). */
+    dialogTier?: "auto-safe" | "human-required" | "report-only" | "unknown";
+    blockingCount: number;
+    shot: string | undefined;
+    shotNote: string | undefined;
+    screenshotDir: string;
+    requestId: string;
+    expectedModal?: string;
+  }): RecoveryOutcome {
+    const { gui, pid, window, description } = input;
+    const afterShot = join(input.screenshotDir, `recovery-${input.requestId}-after.png`);
+    const captureAfter = (): { path?: string; note?: string } => {
+      try {
+        gui.capture(afterShot);
+        return { path: afterShot };
+      } catch (error) {
+        return { note: `post-press capture failed: ${errorMessage(error)}` };
+      }
+    };
+    const expectedFields = () => ({
+      ...(input.expectedModal === undefined ? {} : { expectedModal: input.expectedModal }),
+      ...(input.dialogTier === undefined ? {} : { dialogTier: input.dialogTier }),
+    });
     let leaseRefusal: string | null = null;
     let attributionRefusal: string | null = null;
     let refusalCode: "A8N-AE-004" | undefined;
     let unknownMutation: string | null = null;
-    for (const title of this.#buttons) {
+    for (const title of input.buttons) {
       // One call for both cases: a button the listing showed and one it did
       // not both get the accessibility press first and the coordinate click
       // second. Reserving the fallback for buttons the listing lacked meant a
@@ -514,7 +747,7 @@ export class MacHostRecovery implements HostRecovery {
       // then claimed none of the buttons was available.
       let pressed: boolean;
       try {
-        pressed = gui.pressButtonIn(choice.index, title, window, marker);
+        pressed = gui.pressButtonIn(input.windowIndex, title, window, input.marker);
       } catch (error) {
         if (error instanceof GuiMutationError) {
           // The press may already have reached the dialog: the screen state
@@ -540,22 +773,25 @@ export class MacHostRecovery implements HostRecovery {
         break;
       }
       if (pressed) {
+        const after = captureAfter();
         const others =
-          choice.blockingCount > 1
-            ? ` (${choice.blockingCount - 1} other modal window(s) were left untouched)`
+          input.blockingCount > 1
+            ? ` (${input.blockingCount - 1} other modal window(s) were left untouched)`
             : "";
         return {
           recovered: true,
           outcome: "dismissed",
           evidence:
-            `closed "${description}" (${choice.dialogClass}) by pressing "${title}" in ` +
+            `closed "${description}" (${input.classLabel}) by pressing "${title}" in ` +
             `${this.#session.username}'s session${others}`,
-          ...(shot === undefined ? {} : { screenshotPath: shot }),
+          ...screenshotFields(input.shot, input.shotNote, after.path, after.note),
+          ...expectedFields(),
           window: description,
         };
       }
     }
     if (unknownMutation !== null) {
+      const after = captureAfter();
       return {
         recovered: false,
         outcome: "quarantined",
@@ -565,7 +801,8 @@ export class MacHostRecovery implements HostRecovery {
           `unknown result: ${unknownMutation}. Whether the button was pressed cannot be ` +
           "determined from here, so the run is quarantined: re-observe the screen before " +
           "retrying anything, and do not assume the dialog is still up or already gone.",
-        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        ...screenshotFields(input.shot, input.shotNote, after.path, after.note),
+        ...expectedFields(),
         window: description,
       };
     }
@@ -578,7 +815,8 @@ export class MacHostRecovery implements HostRecovery {
           `${attributionRefusal}. The window could not be proven to belong to this ` +
           "After Effects instance, so nothing was pressed — pressing it could have " +
           "clicked another instance's dialog.",
-        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        ...screenshotFields(input.shot, input.shotNote),
+        ...expectedFields(),
         window: description,
       };
     }
@@ -594,7 +832,8 @@ export class MacHostRecovery implements HostRecovery {
               "so nothing was pressed and nothing will be until the target can be re-verified."
             : `After Effects ${pid} shows "${description}", but no GUI mutation was attempted: ` +
               `${leaseRefusal}. The dialog stays up until the lease holder finishes or the lease is reaped.`,
-        ...(shot === undefined ? {} : { screenshotPath: shot }),
+        ...screenshotFields(input.shot, input.shotNote),
+        ...expectedFields(),
         window: description,
       };
     }
@@ -606,9 +845,10 @@ export class MacHostRecovery implements HostRecovery {
       recovered: false,
       outcome: "refused",
       evidence:
-        `found "${description}" but pressed nothing: none of ${this.#buttons.join(", ")} was available, ` +
+        `found "${description}" but pressed nothing: none of ${input.buttons.join(", ")} was available, ` +
         "and no untargeted key was sent",
-      ...(shot === undefined ? {} : { screenshotPath: shot }),
+      ...screenshotFields(input.shot, input.shotNote),
+      ...expectedFields(),
       window: description,
     };
   }
