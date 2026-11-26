@@ -14,11 +14,11 @@
  */
 
 import {
-  chmodSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -212,16 +212,18 @@ describe("the recovery evidence manifest", () => {
   });
 
   it("keeps the timeout and traces the failure when the manifest cannot be written", async () => {
-    // The artifacts directory is made read-only after the driver created
-    // it, so the manifest write fails. Evidence must never break the
-    // recovery it describes.
+    // `artifacts` is replaced by a *file*, so the manifest's directory can
+    // never be created — a failure that reads identically on every OS,
+    // unlike permission bits (chmod is a no-op for writes on Windows).
+    // Evidence must never break the recovery it describes.
     const transport = new BlockedTransport();
     const { driver } = startDriver(transport, {
       recovered: false,
       outcome: "refused",
       evidence: "no window found",
     });
-    chmodSync(join(root, "artifacts"), 0o555);
+    rmSync(join(root, "artifacts"), { recursive: true, force: true });
+    writeFileSync(join(root, "artifacts"), "not a directory");
     await expect(driver.call("app.info", {})).rejects.toBeInstanceOf(TimeoutError);
     const evidenceRows = traceRows("session.recover-evidence");
     expect(evidenceRows.at(-1)?.status).toBe("error");
