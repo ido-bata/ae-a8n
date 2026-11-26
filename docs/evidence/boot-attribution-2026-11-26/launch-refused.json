@@ -1,0 +1,13 @@
+{
+  "schema": "a8n.poc-boot-attribution/v1",
+  "mode": "launch",
+  "recordedAt": "2026-11-26T13:58:00.126Z",
+  "outcome": "refused",
+  "reason": "1 in-scope instance(s) of /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects already running; an owned launch would attach to them, which this PoC never does",
+  "preexisting": [
+    {
+      "pid": 24051,
+      "startedAt": "2026-11-26T11:34:32.000Z"
+    }
+  ]
+}

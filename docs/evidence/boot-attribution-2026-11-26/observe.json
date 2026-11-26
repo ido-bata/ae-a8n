@@ -1,0 +1,275 @@
+{
+  "schema": "a8n.poc-boot-attribution/v1",
+  "mode": "observe",
+  "recordedAt": "2026-11-26T13:56:28.647Z",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "user": "rebui",
+    "uid": 501,
+    "consoleUid": 501,
+    "session": {
+      "uid": 501,
+      "username": "rebui",
+      "asid": 100022,
+      "kind": "Aqua"
+    }
+  },
+  "installs": [
+    {
+      "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects",
+      "versionName": "Adobe After Effects 2026.app",
+      "instances": [
+        {
+          "pid": 24051,
+          "startedAt": "2026-11-26T11:34:32.000Z",
+          "startedAtMs": 1795692872000,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects",
+          "uid": 501,
+          "installExecutable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects",
+          "lsappinfo": {
+            "name": "After Effects",
+            "bundleId": "com.adobe.AfterEffects.application",
+            "asid": 100022,
+            "uid": 501
+          },
+          "session": {
+            "uid": 501,
+            "username": "rebui",
+            "asid": 100022,
+            "kind": "Aqua"
+          },
+          "windowServer": {
+            "available": true,
+            "windows": [
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 612,
+                  "width": 500,
+                  "height": 500
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "Adobe After Effects 2026 - 名称未設定プロジェクト *",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 1,
+                  "y": 39,
+                  "width": 1710,
+                  "height": 1073
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 1,
+                  "y": 63,
+                  "width": 1710,
+                  "height": 1049
+                }
+              }
+            ]
+          },
+          "ax": {
+            "ok": true,
+            "frontmost": false,
+            "axWindowCount": 0,
+            "axWindows": [],
+            "windowServer": {
+              "available": true,
+              "reason": null,
+              "windowCount": 7,
+              "onScreenCount": 0
+            },
+            "axSuspect": true,
+            "axUnaccountedWindowCount": 0,
+            "axForeignWindowCount": 0,
+            "axUnmatchedWindowCount": 0
+          }
+        }
+      ]
+    },
+    {
+      "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "versionName": "Adobe After Effects 2027.app",
+      "instances": [
+        {
+          "pid": 40890,
+          "startedAt": "2026-11-26T13:53:14.000Z",
+          "startedAtMs": 1795701194000,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+          "uid": 501,
+          "installExecutable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+          "lsappinfo": {
+            "name": "After Effects",
+            "bundleId": "com.adobe.AfterEffects.application",
+            "asid": 100022,
+            "uid": 501
+          },
+          "session": {
+            "uid": 501,
+            "username": "rebui",
+            "asid": 100022,
+            "kind": "Aqua"
+          },
+          "windowServer": {
+            "available": true,
+            "windows": [
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 612,
+                  "width": 500,
+                  "height": 500
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "名称未設定プロジェクト",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 38,
+                  "width": 1710,
+                  "height": 1074
+                }
+              }
+            ]
+          },
+          "ax": {
+            "ok": true,
+            "frontmost": false,
+            "axWindowCount": 0,
+            "axWindows": [],
+            "windowServer": {
+              "available": true,
+              "reason": null,
+              "windowCount": 7,
+              "onScreenCount": 0
+            },
+            "axSuspect": true,
+            "axUnaccountedWindowCount": 0,
+            "axForeignWindowCount": 0,
+            "axUnmatchedWindowCount": 0
+          }
+        }
+      ]
+    }
+  ],
+  "windowCensusAvailable": true,
+  "windowCensusReason": null,
+  "notes": [
+    "observe mode is read-only: ps, lsappinfo, CGWindowList census, and one AX listing per instance. No Apple Event or DoScript was sent to any After Effects."
+  ]
+}
