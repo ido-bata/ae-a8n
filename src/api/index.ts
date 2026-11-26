@@ -32,6 +32,13 @@ import {
   type HandshakeResponse,
 } from "./capabilities.js";
 import { guiStateReport } from "./gui-state.js";
+import {
+  type Panel,
+  panelCapabilities,
+  panelForTarget,
+  type PanelCapabilities,
+  type PanelLocator,
+} from "./panels.js";
 import { supervisionReport, type SupervisionReport } from "../supervision/index.js";
 import {
   AfterEffectsError,
@@ -87,6 +94,16 @@ import {
   requireString,
 } from "./entities.js";
 export { Comp, Effect, Effects, Layer, MenuCommand, Parameter, Project };
+export {
+  Panel,
+  panelCapabilities,
+  PanelError,
+  type PanelCapabilities,
+  type PanelCapture,
+  type PanelLocator,
+  type PanelMeasurement,
+  type PanelTarget,
+} from "./panels.js";
 // The capability-handshake surface is exported once, from the package
 // entry point (src/index.ts → ./api/capabilities.js); re-exporting it here
 // too would duplicate the list and leak test-only symbols twice.
@@ -519,6 +536,33 @@ export class AfterEffects {
     // the target session); `.then` keeps even a synchronous failure a
     // rejection rather than a throw from a Promise-typed method.
     return Promise.resolve().then(() => guiStateReport(this.recoveryTarget()));
+  }
+
+  /**
+   * What this build can do with After Effects panels on this platform
+   * (#343, `specs/panel-interaction/spec.md`): per-capability support,
+   * verification level and gate status. Unsupported combinations are
+   * explicit answers — macOS-only in this slice, and `resize` reports
+   * `unavailable` while the mutate-gui gate is pending A-SAFETY review.
+   */
+  panelCapabilities(): PanelCapabilities {
+    return panelCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to one panel surface of the owned After Effects instance
+   * (#343): `identify`/`measure`/`capture` are observe-class;
+   * `resize`/`restore` are mutate-gui and gated — see
+   * `panelCapabilities()` for what is currently allowed.
+   *
+   * `locator` names the surface by title/role/subrole or OS window
+   * number; resolution re-proves pid attribution through the window
+   * census on every operation, so a stale or foreign surface is refused,
+   * never guessed. Throws `PanelError` when no owned target is attested
+   * or the platform is unsupported.
+   */
+  panel(locator: PanelLocator): Panel {
+    return panelForTarget(this.recoveryTarget(), locator, this.artifactsDir);
   }
 
   /**

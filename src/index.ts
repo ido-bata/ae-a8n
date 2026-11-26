@@ -16,6 +16,7 @@ export {
   Effect,
   Layer,
   MenuCommand,
+  Panel,
   Parameter,
   Project,
   REDO_COMMAND_ID,
@@ -40,6 +41,25 @@ export {
 } from "./api/errors.js";
 export type { CloseResult } from "./api/index.js";
 export type { AttachFailureReason } from "./api/errors.js";
+
+/*
+ * Panel interaction surface (#343, specs/panel-interaction/spec.md):
+ * `ae.panel(locator)` plus the capability report. Mutation (resize /
+ * restore) is gate-pending; observe operations run on owned targets.
+ */
+export { panelCapabilities, PanelError } from "./api/panels.js";
+export type {
+  PanelCapabilities,
+  PanelCapability,
+  PanelCapture,
+  PanelErrorCode,
+  PanelFrame,
+  PanelLocator,
+  PanelMeasurement,
+  PanelSize,
+  PanelSurface,
+  PanelTarget,
+} from "./panels/types.js";
 
 /*
  * Capability handshake surface (#102): `ae.capabilities()` plus the

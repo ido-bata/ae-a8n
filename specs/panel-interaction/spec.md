@@ -185,10 +185,17 @@ Observed (2026-11-2x, points, global top-left origin):
 Feasibility conclusions for T002:
 
 - **Identify (floating)**: feasible via census+AX frame attribution (existing machinery). Docked panels remain the open problem — AX tree region identification needed; ScriptUI slice defers this.
-- **Resize**: AX `AXSize`/`AXPosition` set on the panel's AX window is the candidate vehicle (needs a small swift helper alongside `ax-press.swift`; `AXUIElementSetAttributeValue` is absent today). Must verify AE panels actually honor AX size sets — **unverified**, T002 PoC.
-- **Measure**: census bounds re-read post-resize + ScriptUI `w.size` readback — both channels exist or are trivially reachable.
-- **Capture**: `screencapture -R<x,y,w,h>` (points→pixels handled by the tool at the session's backing scale) or `-l<windowID>` for floating panels; `CGWindowListCreateImage` via the existing python ctypes seam is the fallback that needs no Screen Recording prompt for own-process... (actually needs it for other apps' content — **verify in T002**). Region capture writes stay gated until A-SAFETY clears `mutate-gui`.
-- **DPI**: bounds are points; `screencapture` emits pixels at backing scale (2× on this machine's Retina). `backingScale` must be sampled per capture — not yet implemented anywhere.
+- **Resize**: implemented as `RESIZE_PANEL_SCRIPT` (`src/driver/gui-recovery.ts`) — System Events `set size` on the AX window/UI element, not the hypothesized swift `AXSize` helper; `set size` drives the same AX attribute. Identity is the census-attributed frame plus title/subrole, re-checked inside the session immediately before the set (frame tolerance 4pt). Verdicts: `RESIZED`/`CHANGED`/`NOT_FOUND`/`MISSING`/`FAILED`; `FAILED` audits `mutate` outcome `unknown` → `GuiMutationError`. Whether AE panels actually honor `set size` — **still unverified on a real host** (no owned AE launch was possible; foreign instances were not touched).
+- **Measure**: census bounds re-read post-resize; in-AE `Window.size` readback is **not wired** (`readbackSource` reports `os-only`/`unavailable` honestly).
+- **Capture**: `screencapture -x -o -R<x,y,w,h>` (`captureRegion`) and `-l<CGWindowID>` (`captureWindowById`) implemented; the census now parses `kCGWindowNumber` as the tenth pipe field — **verified on real host**: a read-only census run returned 253/253 windows with window numbers. `CGWindowListCreateImage` fallback not needed yet. Whether `-R` honours point units on every macOS version remains a real-host question — the artifact records PNG pixel size vs point frame so a scale mismatch is visible (`backingScale` is `null` unless pixels are an exact multiple). Region capture writes stay gated until A-SAFETY clears `mutate-gui`.
+- **DPI**: bounds are points; `backingScale` is derived per capture from the PNG IHDR, never assumed.
+
+### 7.1 Implementation findings (T003)
+
+- Public surface: `ae.panel(locator)` + `ae.panelCapabilities()` (`src/api/panels.ts`); `Panel` is a locator, not a handle — every operation re-resolves.
+- The mutation gate is fail-closed: with no `authorizeMutation` wired, `resize`/`restore` refuse before any observation. Production wires no gate yet — resize stays refused pending A-SAFETY.
+- `capture` requires `owned` attribution; `foreign`/`unmatched`/`unproven` surfaces refuse rather than risk photographing another instance.
+- macOS `allowConsoleSession: true` is set for panel ops (unlike recovery presses): the target is an explicitly requested, census-attributed window of the caller's own AE, and the lease/audit/identity re-checks are unchanged.
 
 ## 8. Windows coverage
 
@@ -212,7 +219,8 @@ Feasibility conclusions for T002:
 | --- | --- |
 | Helper inventory (what exists) | `implemented`+ — each row cites verified-on-real-host status from existing docs where applicable |
 | macOS floating panels = separate CGWindows; docked panels not census-visible | `verified on real host` (read-only census, this machine, AE 2026+2027) |
-| AX size-set resize works on AE panels | **unverified** — T002 PoC |
-| `screencapture -R`/`-l` region capture meets the artifact contract | **unverified** — T002 PoC, gated |
-| Windows identification/resize/capture feasibility | **unverified** — no real Windows host in this work |
-| Contract itself | draft; no code implied |
+| CGWindowID (`kCGWindowNumber`) parsed from census | `verified on real host` (read-only census, 253/253 windows carry it) |
+| Contract + resolver + controller + API | `automated test` (`test/panels.test.ts`, fixture/fake seams) |
+| `RESIZE_PANEL_SCRIPT` compiles | `automated test` (`osacompile`, `test/macos-session.test.ts`) |
+| AE panels honor `set size`; `-R`/`-l` capture meets the artifact contract on a real panel | **unverified** — needs an owned AE launch, blocked same as #339 |
+| Windows identification/resize/capture feasibility | **unverified** — no real Windows host in this work; API reports `unsupported` |

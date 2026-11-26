@@ -780,6 +780,92 @@ export const CLICK_AT_SCRIPT = [
 ];
 
 /**
+ * Resizes the window a panel operation resolved, by identity rather than
+ * by index (#343).
+ *
+ * After Effects does not vend its real windows through `windows of p` —
+ * they are `UI elements` of role AXLayoutArea (#304) — so an index into
+ * one container says nothing about the other, and a panel can move
+ * between containers when it docks. Identity is therefore the frame the
+ * WindowServer census attributed to this pid (the same evidence
+ * `pressButton` requires), re-checked inside the session immediately
+ * before `set size`, plus title/subrole as consistency checks. A frame
+ * match whose title or subrole changed is `CHANGED` — a refusal, not a
+ * resize of whatever now sits there.
+ *
+ *   argv: pid, expectedTitle, expectedSubrole, expectedFrame "x,y,w,h",
+ *         newWidth, newHeight
+ *
+ * Prints RESIZED / CHANGED / NOT_FOUND / MISSING / FAILED.
+ */
+export const RESIZE_PANEL_SCRIPT = [
+  "on run argv",
+  "  set targetPid to (item 1 of argv) as integer",
+  "  set expectedTitle to item 2 of argv",
+  "  set expectedSubrole to item 3 of argv",
+  "  set expectedFrame to item 4 of argv",
+  "  set newW to (item 5 of argv) as integer",
+  "  set newH to (item 6 of argv) as integer",
+  "  tell application \"System Events\"",
+  "    set procs to (every application process whose unix id is targetPid)",
+  "    if (count of procs) is 0 then return \"MISSING\"",
+  "    set p to item 1 of procs",
+  "    set AppleScript's text item delimiters to \",\"",
+  "    set ef to text items of expectedFrame",
+  "    set AppleScript's text item delimiters to \" \"",
+  "    if (count of ef) is not 4 then return \"CHANGED\"",
+  "    set want to {(item 1 of ef) as integer, (item 2 of ef) as integer, (item 3 of ef) as integer, (item 4 of ef) as integer}",
+  "    repeat with w in windows of p",
+  "      set r to my a8nTryResize(w, want, expectedTitle, expectedSubrole, newW, newH)",
+  "      if r is not \"\" then return r",
+  "    end repeat",
+  "    repeat with e in UI elements of p",
+  "      set r to my a8nTryResize(e, want, expectedTitle, expectedSubrole, newW, newH)",
+  "      if r is not \"\" then return r",
+  "    end repeat",
+  "  end tell",
+  "  return \"NOT_FOUND\"",
+  "end run",
+  "on a8nTryResize(el, want, expectedTitle, expectedSubrole, newW, newH)",
+  "  set got to {}",
+  "  try",
+  "    set epos to get position of el",
+  "    set esize to get size of el",
+  "    set got to {(item 1 of epos) as integer, (item 2 of epos) as integer, (item 1 of esize) as integer, (item 2 of esize) as integer}",
+  "  on error",
+  "    return \"\"",
+  "  end try",
+  "  set frameOk to true",
+  "  repeat with i from 1 to 4",
+  "    set d to (item i of got) - (item i of want)",
+  "    if d < 0 then set d to -d",
+  "    if d > 4 then set frameOk to false",
+  "  end repeat",
+  "  if not frameOk then return \"\"",
+  "  if expectedTitle is not \"\" then",
+  "    set etitle to \"\"",
+  "    try",
+  "      set etitle to (name of el) as string",
+  "    end try",
+  "    if etitle is not expectedTitle then return \"CHANGED\"",
+  "  end if",
+  "  if expectedSubrole is not \"\" then",
+  "    set esub to \"\"",
+  "    try",
+  "      set esub to (subrole of el) as string",
+  "    end try",
+  "    if esub is not expectedSubrole then return \"CHANGED\"",
+  "  end if",
+  "  try",
+  "    set size of el to {newW, newH}",
+  "    return \"RESIZED\"",
+  "  on error",
+  "    return \"FAILED\"",
+  "  end try",
+  "end a8nTryResize",
+];
+
+/**
  * The lease + audit surface `MacGuiRecovery` uses. The default is the
  * file-based lease under the ae-a8n state root; tests inject a fake so no
  * real lease file or audit line is needed.
@@ -1182,6 +1268,162 @@ export class MacGuiRecovery {
       );
     }
     return path;
+  }
+
+  /**
+   * The WindowServer census rows attributed to this pid, across all
+   * Spaces — the pid-accurate half of panel identification (#343). Read
+   * -only and audited as observation; an unavailable census returns
+   * `available: false` with the reason, never an empty list that could be
+   * mistaken for "no windows".
+   */
+  windowServerWindows(): {
+    readonly available: boolean;
+    readonly reason: string | null;
+    readonly windows: readonly WindowServerWindow[];
+  } {
+    this.#observe("windowServerWindows");
+    try {
+      const census =
+        this.#census !== undefined
+          ? this.#census()
+          : { available: false as const, reason: "no census configured" };
+      if (!census.available) {
+        return { available: false, reason: census.reason, windows: [] };
+      }
+      return {
+        available: true,
+        reason: null,
+        windows: census.windows.filter((w) => w.pid === this.#pid),
+      };
+    } catch (error) {
+      return {
+        available: false,
+        reason: `window census failed: ${errorMessage(error)}`,
+        windows: [],
+      };
+    }
+  }
+
+  /**
+   * A screenshot of one rectangular region of the target session's
+   * screen (#343 panel capture). `frame` is in the same points,
+   * top-left-origin space the census and AX frames use. Read-only
+   * observation — audited, never leased — but the file it writes is
+   * evidence, so callers own where it lands.
+   *
+   * `-R` takes the rect in points; whether screencapture honours that on
+   * every macOS version is a T002 real-host question — the capture
+   * artifact records the pixel size so a scale mismatch is visible rather
+   * than silent.
+   */
+  captureRegion(path: string, frame: GuiFrame): string {
+    this.#observe("captureRegion");
+    if (this.#screenshotDir !== undefined) {
+      mkdirSync(this.#screenshotDir, { recursive: true });
+    }
+    mkdirSync(dirname(path), { recursive: true });
+    this.#assertSameProcess();
+    this.#assertSessionProof();
+    const rect = [frame.x, frame.y, frame.width, frame.height]
+      .map((value) => String(Math.round(value)))
+      .join(",");
+    const result = this.#runSession(
+      this.#session,
+      "/usr/sbin/screencapture",
+      ["-x", "-o", "-R", rect, path],
+      { timeoutMs: 30_000 },
+    );
+    if (result.status !== 0) {
+      throw new GuiRecoveryError(
+        `could not capture the region of ${this.#session.username}'s session: ${result.stderr.trim()}`,
+      );
+    }
+    return path;
+  }
+
+  /**
+   * A screenshot of one window of the target session, addressed by its
+   * WindowServer window number — the capture that does not leak the rest
+   * of the screen (#343). Read-only observation, same audit rule as
+   * `captureRegion`.
+   */
+  captureWindowById(path: string, windowNumber: number): string {
+    this.#observe("captureWindowById");
+    if (this.#screenshotDir !== undefined) {
+      mkdirSync(this.#screenshotDir, { recursive: true });
+    }
+    mkdirSync(dirname(path), { recursive: true });
+    this.#assertSameProcess();
+    this.#assertSessionProof();
+    const result = this.#runSession(
+      this.#session,
+      "/usr/sbin/screencapture",
+      ["-x", "-o", "-l", String(windowNumber), path],
+      { timeoutMs: 30_000 },
+    );
+    if (result.status !== 0) {
+      throw new GuiRecoveryError(
+        `could not capture window ${windowNumber} of ${this.#session.username}'s session: ${result.stderr.trim()}`,
+      );
+    }
+    return path;
+  }
+
+  /**
+   * Resizes the panel window `expected` resolved to (#343), under the
+   * same lease + audit + pid-attribution proof a press requires.
+   *
+   * `expected` must carry `"owned"` census attribution and a frame —
+   * the same fail-closed gate `pressButton` applies (#330). The script
+   * re-verifies the frame (and title/subrole when present) inside the
+   * session immediately before `set size`, so a window that moved or was
+   * replaced between resolution and mutation is refused, not resized.
+   *
+   * Returns true only when the script reports RESIZED. `CHANGED`,
+   * `NOT_FOUND` and `MISSING` are provable non-mutations and audit as
+   * `not-performed`; `FAILED` means `set size` itself errored after the
+   * identity checks passed, which is an unknown outcome and surfaces as
+   * `GuiMutationError` — re-observe before retrying.
+   */
+  resizePanelWindow(
+    expected: GuiWindowInfo & { frame: GuiFrame },
+    size: { readonly width: number; readonly height: number },
+  ): boolean {
+    this.#assertPressAttribution(expected);
+    return this.#mutate("resizePanelWindow", () => {
+      const frameArg = [
+        expected.frame.x,
+        expected.frame.y,
+        expected.frame.width,
+        expected.frame.height,
+      ]
+        .map((value) => String(Math.round(value)))
+        .join(",");
+      const result = this.#osascript(RESIZE_PANEL_SCRIPT, [
+        String(this.#pid),
+        expected.title,
+        expected.subrole ?? "",
+        frameArg,
+        String(Math.round(size.width)),
+        String(Math.round(size.height)),
+      ]);
+      const verdict = result.stdout.trim().toUpperCase();
+      if (verdict === "RESIZED") {
+        return true;
+      }
+      if (verdict === "FAILED") {
+        // `set size` was reached and errored: the mutation may have
+        // partially applied. Unknown outcome — never "not-performed".
+        throw new GuiRecoveryError(
+          "the panel resize was attempted but System Events reported failure; " +
+            "the window state must be re-observed before any retry",
+        );
+      }
+      // CHANGED / NOT_FOUND / MISSING: the script refused before `set
+      // size`, so provably nothing was resized.
+      return false;
+    });
   }
 
   /**
