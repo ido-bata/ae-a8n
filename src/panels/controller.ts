@@ -25,7 +25,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import type { GuiAppState, GuiFrame, GuiWindowInfo } from "../driver/gui-recovery.js";
+import {
+  GuiMutationError,
+  type GuiAppState,
+  type GuiFrame,
+  type GuiWindowInfo,
+} from "../driver/gui-recovery.js";
 import type { WindowServerWindow } from "../platform/darwin/window-census.js";
 import { resolvePanelTarget, type PanelResolution } from "./resolve.js";
 import {
@@ -123,6 +128,23 @@ function frameEquals(a: PanelSize, b: PanelSize, tolerance = 1): boolean {
   return Math.abs(a.width - b.width) <= tolerance && Math.abs(a.height - b.height) <= tolerance;
 }
 
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The public surface is `PanelError` codes, not driver error types: an
+ * observation that cannot run is `unavailable`; a mutation whose outcome
+ * is unknown is `indeterminate` — never silently retried or reported as
+ * a clean refusal.
+ */
+function asPanelError(error: unknown, code: "unavailable" | "indeterminate"): PanelError {
+  if (error instanceof PanelError) {
+    return error;
+  }
+  return new PanelError(code, errorText(error), { cause: error });
+}
+
 export class PanelController {
   readonly #pid: number;
   readonly #locator: PanelLocator;
@@ -153,8 +175,24 @@ export class PanelController {
 
   /** One fresh resolution; also records the first-seen frame for restore. */
   #resolve(): PanelResolution {
-    const state = this.#ops.observe();
-    const census = this.#ops.censusWindows();
+    let state: GuiAppState;
+    try {
+      state = this.#ops.observe();
+    } catch (error) {
+      throw asPanelError(error, "unavailable");
+    }
+    let census: PanelCensusView;
+    try {
+      census = this.#ops.censusWindows();
+    } catch (error) {
+      // A census that throws is an unavailable census — degraded
+      // attribution, never a crash and never an empty "no windows".
+      census = {
+        available: false,
+        reason: `window census failed: ${errorText(error)}`,
+        windows: [],
+      };
+    }
     const resolution = resolvePanelTarget({
       pid: this.#pid,
       state,
@@ -241,10 +279,19 @@ export class PanelController {
     if (window.frame == null) {
       throw new PanelError("not-found", "the resolved window lost its frame before resize");
     }
-    const applied = this.#ops.resizePanel(
-      { ...window, frame: window.frame },
-      size,
-    );
+    let applied: boolean;
+    try {
+      applied = this.#ops.resizePanel({ ...window, frame: window.frame }, size);
+    } catch (error) {
+      // A GuiMutationError means the platform mutation may have partially
+      // applied — the honest code is `indeterminate`, and the caller must
+      // re-observe before any retry. Anything else means the mutation
+      // never ran (lease, session, identity) → `unavailable`.
+      throw asPanelError(
+        error,
+        error instanceof GuiMutationError ? "indeterminate" : "unavailable",
+      );
+    }
     if (!applied) {
       throw new PanelError(
         "refused",
@@ -301,10 +348,16 @@ export class PanelController {
     const windowNumber = target.surface.windowNumber;
     const useWindowCapture =
       windowNumber !== null && target.surface.state.onScreen !== false;
-    if (useWindowCapture) {
-      this.#ops.captureWindow(path, windowNumber);
-    } else {
-      this.#ops.captureRegion(path, target.surface.frame);
+    try {
+      if (useWindowCapture) {
+        this.#ops.captureWindow(path, windowNumber);
+      } else {
+        this.#ops.captureRegion(path, target.surface.frame);
+      }
+    } catch (error) {
+      // A failed capture (TCC denial, screencapture error, session entry)
+      // is an honest `unavailable` — never an empty artifact.
+      throw asPanelError(error, "unavailable");
     }
     if (!statSync(path, { throwIfNoEntry: false })?.isFile()) {
       throw new PanelError(

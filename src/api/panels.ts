@@ -25,6 +25,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { PanelController, type PanelSurfaceOps } from "../panels/controller.js";
+import { panelMutationGate } from "../panels/gate.js";
 import {
   PanelError,
   type PanelCapabilities,
@@ -94,9 +95,9 @@ export function panelCapabilities(platform: NodeJS.Platform): PanelCapabilities 
       support: "unavailable",
       verification: VERIFICATION,
       reason:
-        "mutate-gui class pending the A-SAFETY gate review " +
-        "(docs/gui-supervision-safety-gates.md); the code path exists and is " +
-        "contract-tested but the production gate refuses until cleared",
+        "mutate-gui class gated off by panelMutationGate() per the A-SAFETY " +
+        "audit entry in docs/gui-supervision-safety-gates.md; the code path " +
+        "exists and is contract-tested but refuses until the audit clears it",
     },
     captureRegion: {
       support: "implemented",
@@ -130,7 +131,7 @@ export function panelCapabilities(platform: NodeJS.Platform): PanelCapabilities 
 
 /** Seams the production adapter needs; mirrors `GuiObservationSeams`. */
 export type PanelSeams = GuiObservationSeams & {
-  /** Mutation gate override — production leaves it unset (refuses). */
+  /** Mutation gate override — production falls back to the A-SAFETY gate, which refuses. */
   readonly authorizeMutation?: PanelMutationGate;
   readonly settleMs?: number;
   readonly newOperationId?: () => string;
@@ -263,9 +264,11 @@ export function panelForTarget(
     locator,
     ops,
     artifactDir: join(artifactDir, "panels"),
-    ...(seams.authorizeMutation === undefined
-      ? {}
-      : { authorizeMutation: seams.authorizeMutation }),
+    // The A-SAFETY gate is wired explicitly, not left to the controller's
+    // fail-closed default: `docs/gui-supervision-safety-gates.md` is the
+    // policy source and `src/panels/gate.ts` its single code flip point.
+    // A seam override exists for tests only.
+    authorizeMutation: seams.authorizeMutation ?? panelMutationGate(),
     ...(seams.settleMs === undefined ? {} : { settleMs: seams.settleMs }),
     ...(seams.newOperationId === undefined
       ? {}

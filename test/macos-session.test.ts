@@ -877,6 +877,30 @@ describe("panel window operations (#343)", () => {
     expect(audits).toContainEqual({ kind: "mutate", outcome: "unknown" });
   });
 
+  it("resizePanelWindow sends nothing when the GUI lease is held by another owner", () => {
+    // No lease → no mutation: the acquire refusal precedes every session
+    // command, exactly like a press under a held lease.
+    let commands = 0;
+    const gui = mk(
+      () => {
+        commands += 1;
+        return { status: 0, stdout: "RESIZED", stderr: "", timedOut: false };
+      },
+      {
+        lease: {
+          acquire: () => {
+            throw new Error("GUI lease is held by pid 9999");
+          },
+          audit: () => {},
+        },
+      },
+    );
+    expect(() =>
+      gui.resizePanelWindow(panelWindow, { width: 10, height: 10 }),
+    ).toThrow(/GUI lease is held/);
+    expect(commands).toBe(0);
+  });
+
   it("resizePanelWindow refuses before sending anything when the process is unproven", () => {
     let commands = 0;
     const gui = mk(

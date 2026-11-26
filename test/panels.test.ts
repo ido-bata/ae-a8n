@@ -19,14 +19,20 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PanelController, type PanelSurfaceOps } from "../src/panels/controller.js";
 import { resolvePanelTarget } from "../src/panels/resolve.js";
 import { PanelError } from "../src/panels/types.js";
-import type { GuiAppState, GuiFrame, GuiWindowInfo } from "../src/driver/gui-recovery.js";
+import {
+  GuiMutationError,
+  type GuiAppState,
+  type GuiFrame,
+  type GuiWindowInfo,
+} from "../src/driver/gui-recovery.js";
 import type { WindowServerWindow } from "../src/platform/darwin/window-census.js";
 import { encodePng } from "../src/testing/index.js";
-import { panelCapabilities } from "../src/api/panels.js";
+import { panelCapabilities, panelForTarget } from "../src/api/panels.js";
 import { AfterEffects } from "../src/index.js";
 import { FakeAfterEffectsTransport } from "../src/testing/index.js";
 
 const PID = 4242;
+const SESSION = { uid: 502, username: "ae-test", asid: 100022, kind: "Aqua" as const };
 
 const PANEL_FRAME: GuiFrame = { x: 100, y: 200, width: 640, height: 504 };
 
@@ -406,15 +412,118 @@ describe("PanelController slice", () => {
     expect(state.resizes).toHaveLength(0);
   });
 
-  it("surfaces an unknown mutation outcome as indeterminate via the ops throw", async () => {
+  it("reports an unknown mutation outcome as indeterminate, never a clean refusal", async () => {
+    // GuiMutationError means the platform mutation may have partially
+    // applied: the caller must re-observe, and the code says so.
+    const { ops } = fakeOps({
+      resizePanel: () => {
+        throw new GuiMutationError("the resizePanelWindow mutation was attempted but its result is unknown");
+      },
+    });
+    const ctl = controller(ops);
+    await expect(ctl.resize({ width: 10, height: 10 })).rejects.toMatchObject({
+      code: "indeterminate",
+    });
+  });
+
+  it("maps a pre-mutation ops failure to unavailable, keeping the driver message", async () => {
     const { ops } = fakeOps({
       resizePanel: () => {
         throw new Error("session command died mid-mutation");
       },
     });
     const ctl = controller(ops);
-    await expect(ctl.resize({ width: 10, height: 10 })).rejects.toThrow(
-      /session command died/,
+    await expect(ctl.resize({ width: 10, height: 10 })).rejects.toMatchObject({
+      code: "unavailable",
+      message: expect.stringContaining("session command died") as unknown as string,
+    });
+  });
+
+  it("maps an observation failure to unavailable PanelError", () => {
+    const { ops } = fakeOps({
+      observe: () => {
+        throw new Error("the accessibility query failed");
+      },
+    });
+    const ctl = controller(ops);
+    expect(() => ctl.identify()).toThrowError(
+      expect.objectContaining({ code: "unavailable" }) as Error,
+    );
+    expect(() => ctl.measure()).toThrowError(
+      expect.objectContaining({ code: "unavailable" }) as Error,
+    );
+  });
+
+  it("treats a throwing census as unavailable attribution, not a crash", () => {
+    const { ops, state } = fakeOps({
+      censusWindows: () => {
+        throw new Error("census pipe broke");
+      },
+    });
+    const ctl = controller(ops);
+    // The AX listing still carries its own "owned" attribution, so the
+    // surface resolves; only the window-number/on-screen enrichment is
+    // lost — capture degrades to the region vehicle.
+    const capture = ctl.capture();
+    expect(state.captures[0]?.kind).toBe("region");
+    expect(capture.target.surface.attribution).toBe("owned");
+  });
+
+  it("reports an uncapturable surface as unavailable PanelError, never an empty artifact", () => {
+    // Permission denied / screencapture failure at the platform layer:
+    // the ops throw, the file never lands, and the caller gets a coded
+    // refusal — not a zero-byte "capture".
+    const { ops } = fakeOps({
+      captureWindow: () => {
+        throw new Error("screencapture exited 1: could not create image");
+      },
+    });
+    const ctl = controller(ops);
+    expect(() => ctl.capture()).toThrowError(
+      expect.objectContaining({
+        code: "unavailable",
+        message: expect.stringContaining("could not create image") as unknown as string,
+      }) as Error,
+    );
+  });
+
+  it("reports a capture that exits zero but writes nothing as unavailable", () => {
+    const { ops } = fakeOps({
+      captureWindow: () => {
+        // screencapture "succeeded" but produced no file (TCC denial can
+        // look like this on some macOS versions).
+      },
+    });
+    const ctl = controller(ops);
+    expect(() => ctl.capture()).toThrowError(
+      expect.objectContaining({ code: "unavailable" }) as Error,
+    );
+  });
+
+  it("keeps occlusion honestly unknown and leakage scoped to the region", () => {
+    const { ops } = fakeOps();
+    const ctl = controller(ops);
+    const capture = ctl.capture();
+    // Neither CGWindowList nor the AX frame proves what covers the
+    // surface — guessing would make the artifact claim more than it shows.
+    expect(capture.geometry.occlusion).toBe("unknown");
+    expect(capture.geometry.leakage).toBe("region");
+    expect(capture.geometry.coordinateSpace).toBe("points-top-left");
+  });
+
+  it("refuses capture when the resolved surface is no longer owned at capture time", () => {
+    // Stale-handle negative: the locator still matches by title, but the
+    // window's attribution flipped to foreign between identify and
+    // capture — the fresh resolution must refuse, not photograph it.
+    let attribution: "owned" | "foreign" = "owned";
+    const { ops } = fakeOps({
+      observe: () => appState([axWindow({ censusAttribution: attribution })]),
+    });
+    const ctl = controller(ops);
+    ctl.identify();
+    attribution = "foreign";
+    expect(() => ctl.capture()).toThrowError(
+      expect.objectContaining({ code: "unproven" }) as Error,
     );
   });
 
@@ -505,5 +614,29 @@ describe("panelForTarget / public surface", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("wires the A-SAFETY gate: resize/restore refuse in production before any observation", async () => {
+    // `panelForTarget` with no seam override gets `panelMutationGate()` —
+    // the audit has enabled no panel mutation class, so the refusal must
+    // name the gate document and precede even the first AX listing.
+    let observed = 0;
+    const panel = panelForTarget(
+      { pid: PID, session: SESSION },
+      { title: "My Plugin Panel" },
+      dir,
+      {
+        runSession: () => {
+          observed += 1;
+          return { status: 0, stdout: "", stderr: "", timedOut: false };
+        },
+      },
+    );
+    await expect(panel.resize({ width: 800, height: 600 })).rejects.toMatchObject({
+      code: "refused",
+      message: expect.stringContaining("gui-supervision-safety-gates") as unknown as string,
+    });
+    await expect(panel.restore()).rejects.toMatchObject({ code: "refused" });
+    expect(observed).toBe(0);
   });
 });

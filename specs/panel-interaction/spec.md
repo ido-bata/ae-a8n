@@ -193,8 +193,9 @@ Feasibility conclusions for T002:
 ### 7.1 Implementation findings (T003)
 
 - Public surface: `ae.panel(locator)` + `ae.panelCapabilities()` (`src/api/panels.ts`); `Panel` is a locator, not a handle — every operation re-resolves.
-- The mutation gate is fail-closed: with no `authorizeMutation` wired, `resize`/`restore` refuse before any observation. Production wires no gate yet — resize stays refused pending A-SAFETY.
+- The mutation gate is wired explicitly: `panelForTarget` passes `panelMutationGate()` (`src/panels/gate.ts`) as `authorizeMutation` — the single flip point for the A-SAFETY decision recorded in `docs/gui-supervision-safety-gates.md` §「panel mutation（#343 / B-PLATFORM）」. The gate refuses every panel mutation today; the controller's own fail-closed default covers direct construction. Resize operates purely in the point coordinate space shared by AX and the census — no DPI conversion is involved, so there is no coordinate ambiguity to resolve for the mutation itself; capture-side scale ambiguity is reported via `backingScale`, never guessed.
 - `capture` requires `owned` attribution; `foreign`/`unmatched`/`unproven` surfaces refuse rather than risk photographing another instance.
+- Ops failures surface as `PanelError` codes, not driver error types: observation/capture failures → `unavailable`, a mutation with unknown outcome (`GuiMutationError`) → `indeterminate` (re-observe before retry), a throwing census degrades to unavailable attribution rather than crashing.
 - macOS `allowConsoleSession: true` is set for panel ops (unlike recovery presses): the target is an explicitly requested, census-attributed window of the caller's own AE, and the lease/audit/identity re-checks are unchanged.
 
 ## 8. Windows coverage
@@ -220,7 +221,8 @@ Feasibility conclusions for T002:
 | Helper inventory (what exists) | `implemented`+ — each row cites verified-on-real-host status from existing docs where applicable |
 | macOS floating panels = separate CGWindows; docked panels not census-visible | `verified on real host` (read-only census, this machine, AE 2026+2027) |
 | CGWindowID (`kCGWindowNumber`) parsed from census | `verified on real host` (read-only census, 253/253 windows carry it) |
-| Contract + resolver + controller + API | `automated test` (`test/panels.test.ts`, fixture/fake seams) |
+| Contract + resolver + controller + API + negative paths | `automated test` (`test/panels.test.ts`, fixture/fake seams) |
 | `RESIZE_PANEL_SCRIPT` compiles | `automated test` (`osacompile`, `test/macos-session.test.ts`) |
+| Panel mutation gate | `automated test` — wired to `panelMutationGate()`, refuses all panel mutations pending the A-SAFETY entry in `docs/gui-supervision-safety-gates.md` |
 | AE panels honor `set size`; `-R`/`-l` capture meets the artifact contract on a real panel | **unverified** — needs an owned AE launch, blocked same as #339 |
 | Windows identification/resize/capture feasibility | **unverified** — no real Windows host in this work; API reports `unsupported` |
