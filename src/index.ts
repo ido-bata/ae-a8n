@@ -105,6 +105,12 @@ export type {
   TextLayerOptions,
   OpenProjectOptions,
   OperationOptions,
+  RebuildOptions,
+  ResumeOptions,
+  SessionRebuildReport,
+  TerminateOptions,
+  TerminateReport,
+  TransportRestage,
   ParameterValue,
   ProjectInfo,
   PropertyInfo,
@@ -118,6 +124,7 @@ export type {
 } from "./api/types.js";
 
 export { TraceRecorder } from "./trace/trace.js";
+export { TERMINATE_PERMIT } from "./api/types.js";
 export type { TraceEvent, TraceStatus } from "./trace/trace.js";
 export type { DiagnosticCode } from "./doctor/diagnostics.js";
 

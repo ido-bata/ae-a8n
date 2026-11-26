@@ -105,6 +105,68 @@ Ownership after a successful resume is `owned`, so owned-only operations —
 session. A resume that cannot prove identity leaves the host `unknown` or
 `attached`, and `close()` still refuses to quit it.
 
+## Terminating a live owned host (#340)
+
+`AfterEffects.rebuild()` only ever runs *after* loss is proven — it refuses
+a session whose host is still alive. Stopping that live host is a separate,
+explicitly authorized contract: `AfterEffects.terminate(options)`.
+
+The contract, in order:
+
+- `options.permit` must be the literal `TERMINATE_PERMIT`
+  (`"terminate-owned-host"`). There is no default and no implicit grant.
+- The session must carry launch provenance proving this session launched
+  the host. `attached` and `unknown` sessions are refused — nothing is
+  signalled, and nothing about their host is mutated.
+- A fresh process-census re-proof runs immediately before any signal:
+  the recorded pid must still be the recorded process (pid *and* start
+  time), it must be the only instance of its install in scope, and a pid
+  that cannot be told apart from the record is never signalled. If the
+  census itself cannot be read, terminate refuses — an OS query that
+  cannot be answered is never a guess.
+- Signalling is graceful-first: the platform's polite quit (an Apple
+  Event `quit` on macOS, `taskkill` without `/F` on Windows) within
+  `gracefulTimeoutMs`, bounded by `deadlineMs`. Escalation to a forced
+  kill requires `force: true` — an explicit second permission, not a
+  default. A host that survives reports `survived`; one whose census can
+  no longer be read reports `unproven`. Neither claims death.
+- Disappearance is proven by the census, not by the signal returning.
+  Only then does terminate write supervision state — `blocking-observed`
+  with `host: "process-gone"` — under the monitor lease (taking over an
+  expired lease, deferring to a live monitor). `quarantined` and
+  `needs-human` phases are never downgraded; UNKNOWN pending requests
+  are left untouched and are never resent by the rebuild that follows.
+
+Every refusal throws `AfterEffectsError` (`op === "session.terminate"`)
+before anything is signalled, and — like every typed API error since
+#341 — carries machine-readable `nextActions`: an always-permitted
+inspect step plus the situation-specific answer (`session-policy` for a
+missing permit or unproven ownership, `evidence-unavailable` /
+`unsafe-to-automate` / `requires-human` for unreadable or ambiguous
+evidence).
+
+The report (`TerminateReport`) carries `outcome`
+(`terminated` / `already-gone` / `survived` / `unproven`), the `method`
+(`none` / `graceful` / `forced`), `disappearanceProven`, the supervision
+write status (`recorded` / `deferred-to-monitor` / `not-proven`), and
+the evidence trail. `already-gone` means the recorded host was already
+proven absent — including when its pid was recycled by an unrelated
+process — and still records `process-gone` so rebuild's gate is met.
+
+The handoff to rebuild is deliberately asymmetric: terminate's report is
+evidence for the caller, never authority for rebuild. `openRebuiltSession`
+re-proves every precondition itself — supervision document, monitor
+lease, census, provenance, Aqua session — so a terminate that deferred
+to a live monitor simply leaves rebuild refused until that monitor
+records the state.
+
+Current coverage gaps (per the #338 audit): graceful quit is an Apple
+Event on macOS and `taskkill` on Windows — there is no auto-safe dialog
+class involved and no Windows `auto-safe` class exists at all; a graceful
+quit that hits a modal save/discard prompt will simply time out into
+`survived` (or `forced` under `force: true`), and unsaved-change policy
+for terminate is the caller's decision, not the driver's.
+
 ## Authorization is a separate grant (#145)
 
 Three authorities stay separate: quitting the host is owned-only and is

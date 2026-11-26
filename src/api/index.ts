@@ -46,6 +46,7 @@ import { activateDispatcherForSession } from "./dispatcher-activation.js";
 import { attachAfterEffects } from "./attach.js";
 import { openAfterEffects } from "./launch.js";
 import { openRebuiltSession } from "./rebuild.js";
+import { terminateSessionHost } from "./terminate.js";
 import {
   grantedScopes,
   requireAuthorized,
@@ -70,6 +71,8 @@ import type {
   OperationOptions,
   RebuildOptions,
   ResumeOptions,
+  TerminateOptions,
+  TerminateReport,
   ProjectInfo,
   SessionDiagnostics,
 } from "./types.js";
@@ -82,6 +85,7 @@ export type {
   ExpectedModalWindow,
 } from "../driver/expected-modals.js";
 export { grantedScopes } from "./session.js";
+export { TERMINATE_PERMIT } from "./types.js";
 import {
   Comp,
   Effect,
@@ -256,6 +260,31 @@ export class AfterEffects {
   static async rebuild(options: RebuildOptions): Promise<AfterEffects> {
     const rebuilt = await openRebuiltSession(options);
     return new AfterEffects(rebuilt.session, rebuilt.probe, rebuilt.extensionMethods);
+  }
+
+  /**
+   * Terminates the owned After Effects `options.sessionRoot` names — the
+   * *separate* authorized path for a live host that will not answer
+   * (#340). Rebuild never signals a process; this path never launches one.
+   *
+   * Every gate must hold or nothing is signalled: explicit
+   * `permit: "terminate-owned-host"` consent, launch provenance proving an
+   * earlier session owned the host (attached and unknown sessions refuse),
+   * and a fresh census re-proving the recorded pid+start identity with no
+   * sibling instance in scope. Graceful-first — the OS's polite request
+   * (AE `quit` Apple Event on macOS, `taskkill` on Windows) — and the
+   * force kill only under explicit `force: true`. Disappearance must be
+   * *proven* by census; `survived`/`unproven` are honest outcomes.
+   *
+   * Once proven, the durable supervision record moves to
+   * `blocked`/`process-gone` under the monitor lease — the state
+   * `AfterEffects.rebuild` requires — so the sequence
+   * `terminate → rebuild` continues a session on a new generation.
+   * Pending requests stay `unknown` and are never resent; quarantined and
+   * needs-human phases are never downgraded.
+   */
+  static async terminate(options: TerminateOptions): Promise<TerminateReport> {
+    return terminateSessionHost(options);
   }
 
   /**

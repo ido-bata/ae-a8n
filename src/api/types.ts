@@ -487,6 +487,124 @@ export type ResumeOptions = Omit<LaunchOptions, "sessionRoot"> & {
 export type RebuildOptions = ResumeOptions;
 
 /**
+ * The explicit permission `AfterEffects.terminate` requires (#340). It is
+ * a literal, not a boolean, so the consent is greppable at every call
+ * site and cannot be satisfied by accident.
+ */
+export const TERMINATE_PERMIT = "terminate-owned-host" as const;
+
+/**
+ * Options for `AfterEffects.terminate` (#340): the same session shape as
+ * `rebuild` — `sessionRoot` is required and names the directory whose
+ * launch-provenance record identifies the owned host to stop.
+ *
+ * Terminate is the *separate* authorized path for a live host that will
+ * not answer (a hang): rebuild never signals a process, and this path
+ * never launches one. Every gate must hold or nothing is signalled:
+ *
+ *   - `permit` must be `"terminate-owned-host"` — prior, explicit consent;
+ *   - launch provenance must prove an earlier session *owned* the host —
+ *     attached and unknown sessions have none and are never signalled;
+ *   - a fresh census must prove the recorded pid+start identity is still
+ *     that same process and that no other instance of the install runs;
+ *   - an unreadable census refuses — an unknown OS answer is never a
+ *     guess.
+ *
+ * Graceful-first: the OS's own polite request (AE `quit` Apple Event on
+ * macOS, `taskkill` without `/F` on Windows) is sent first and given
+ * `gracefulTimeoutMs` to work — After Effects may still raise its own
+ * save prompt, which is the point. Only `force: true` — explicit
+ * permission for the disposable owned environment — escalates to
+ * `SIGKILL`/`taskkill /F`. The whole operation is bounded by `deadlineMs`;
+ * a host that survives is reported `survived`, never claimed dead.
+ */
+export type TerminateOptions = Omit<ResumeOptions, "session"> & {
+  /**
+   * The OS user whose session the recorded host lives in — the same
+   * scoping `rebuild` applies to the census (default: this process's
+   * uid). `recover` is meaningless here and ignored.
+   */
+  readonly session?: { readonly uid: number };
+  /** Required literal consent; see `TERMINATE_PERMIT`. */
+  readonly permit: typeof TERMINATE_PERMIT;
+  /**
+   * Permit the force kill (`SIGKILL` / `taskkill /F`) when the graceful
+   * request does not end the process within `gracefulTimeoutMs`. Without
+   * it a surviving host is reported `survived` and left running.
+   */
+  readonly force?: boolean;
+  /**
+   * How long the graceful request may take to prove disappearance, in
+   * milliseconds. Default 10 000. The force phase gets whatever remains
+   * of `deadlineMs`.
+   */
+  readonly gracefulTimeoutMs?: number;
+  /**
+   * Total bound for the whole terminate operation, in milliseconds.
+   * Default 30 000. Exceeding it reports `survived` or `unproven`, never
+   * an endless wait.
+   */
+  readonly deadlineMs?: number;
+};
+
+/**
+ * What `AfterEffects.terminate` did (#340). The report is the audit of the
+ * transition itself: which signal was sent, whether disappearance is
+ * *proven* (never assumed), and what happened to the durable supervision
+ * record that `rebuild` will read next.
+ */
+export type TerminateReport = {
+  /**
+   * - `terminated`: a signal was sent and the recorded process's
+   *   disappearance is proven by census.
+   * - `already-gone`: the recorded process was already gone when
+   *   terminate ran; nothing was signalled. Rebuild applies.
+   * - `survived`: the host outlived the bounded wait (graceful only, or
+   *   force permitted and still alive). It was left running; inspect it.
+   * - `unproven`: disappearance could not be proven — the census was
+   *   unreadable or the environment drifted (siblings, ambiguous pid).
+   *   Never reported as dead.
+   */
+  readonly outcome: "terminated" | "already-gone" | "survived" | "unproven";
+  /** The pid the launch-provenance record named. */
+  readonly pid: number;
+  /**
+   * How the host ended: `none` (already gone), `graceful` (the OS polite
+   * request sufficed), `forced` (explicit-permission kill was needed).
+   */
+  readonly method: "none" | "graceful" | "forced";
+  /** Whether census proved the recorded process gone — the rebuild gate. */
+  readonly disappearanceProven: boolean;
+  /**
+   * What happened to the durable supervision record once disappearance
+   * was proven:
+   *
+   * - `recorded`: terminate held the monitor lease briefly (taking over
+   *   an expired one) and published `blocked`/`process-gone` — the state
+   *   `rebuild` requires. `quarantined`/`needs-human` phases are never
+   *   downgraded by this write.
+   * - `deferred-to-monitor`: a live monitor holds the lease; it owns the
+   *   document and will record `process-gone` itself. Terminate does not
+   *   write under it.
+   * - `lease-ambiguous`: the lease file cannot be understood; nothing was
+   *   written and rebuild will refuse until it is resolved.
+   * - `state-unreadable`: the supervision document is absent or corrupt
+   *   in a way terminate will not overwrite; rebuild decides from it.
+   * - `not-proven`: disappearance was not proven, so nothing was written.
+   */
+  readonly supervision:
+    | "recorded"
+    | "deferred-to-monitor"
+    | "lease-ambiguous"
+    | "state-unreadable"
+    | "not-proven";
+  /** The supervision phase after terminate's write, when one exists. */
+  readonly phase: string | null;
+  /** Audit detail: signals sent, census verdicts, lease handoff. */
+  readonly evidence: readonly string[];
+};
+
+/**
  * What re-staging one transport surface of the rebuilt session did (#313).
  *
  * `resumed` describes the GUI-blocking lifecycle only; whether every
@@ -553,6 +671,19 @@ export type SessionRebuildReport = {
    * the old session's delivery paths all came back.
    */
   readonly transports: readonly TransportRestage[];
+  /**
+   * The transport-readiness verdict (#340), kept separate from `phase`:
+   * `resumed` is a GUI-lifecycle claim and says nothing about whether the
+   * delivery surfaces the crashed session used came back.
+   *
+   * - `ready`: every surface that needed staging is `restaged` or
+   *   `not-required`.
+   * - `unproven`: at least one surface is `unproven` and none `failed` —
+   *   availability could not be determined, never assumed.
+   * - `degraded`: at least one surface `failed` to re-stage — that surface
+   *   is NOT available on the rebuilt process.
+   */
+  readonly transportReady: "ready" | "unproven" | "degraded";
 };
 
 /*
