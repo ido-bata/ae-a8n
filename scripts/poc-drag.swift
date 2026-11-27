@@ -4,6 +4,8 @@
 //   swiftc -O poc-drag.swift -o poc-drag
 //   ./poc-drag drag --from 100,100 --to 400,300 [--steps 24] [--step-delay-ms 16]
 //   ./poc-drag filedrag --file /tmp/fixture.png --from 100,100 --to 400,300
+//   ./poc-drag click --at X,Y [--tap hid|session]
+//   ./poc-drag key --code N [--flags cmd,shift,opt,ctrl]
 //
 // `drag` posts a plain CGEvent press-drag-release: mouseMoved, leftMouseDown,
 // a series of leftMouseDragged events, leftMouseUp. Whether AE treats that
@@ -62,6 +64,9 @@ struct Parsed {
     var file: String?
     var from: Point?
     var to: Point?
+    var at: Point?
+    var keyCode: Int?
+    var flags = ""
     var steps = 24
     var stepDelayMs = 16
     var tap = TapKind.session
@@ -87,7 +92,7 @@ func parse(_ args: [String]) -> Parsed {
             return args[i]
         }
         switch arg {
-        case "drag", "filedrag":
+        case "drag", "filedrag", "click", "key":
             if p.mode.isEmpty { p.mode = arg } else { failUsage("only one subcommand") }
         case "--file":
             p.file = takeValue()
@@ -95,6 +100,16 @@ func parse(_ args: [String]) -> Parsed {
             p.from = parsePoint(takeValue(), "--from")
         case "--to":
             p.to = parsePoint(takeValue(), "--to")
+        case "--at":
+            p.at = parsePoint(takeValue(), "--at")
+        case "--code":
+            let v = takeValue()
+            guard let n = Int(v), n >= 0, n <= 127 else {
+                failUsage("--code expects a virtual keycode 0-127")
+            }
+            p.keyCode = n
+        case "--flags":
+            p.flags = takeValue()
         case "--steps":
             let v = takeValue()
             guard let n = Int(v), n > 0 else { failUsage("--steps expects a positive integer") }
@@ -173,7 +188,77 @@ func runPlainDrag(_ p: Parsed, from: Point, to: Point) {
     print("{\"ok\":true,\"mode\":\"drag\",\"from\":[\(from.x),\(from.y)],\"to\":[\(to.x),\(to.y)],\"steps\":\(p.steps),\"channel\":\"\(p.tap.name)\"}")
 }
 
+// MARK: - click (plain press-release, e.g. a window close button)
+
+func runClick(_ p: Parsed, at: Point) {
+    let tap = p.tap.location
+    guard postMouse(.mouseMoved, at, tap: tap) else {
+        FileHandle.standardError.write(Data("poc-drag: failed to create mouseMoved\n".utf8))
+        exit(1)
+    }
+    usleep(30_000)
+    guard postMouse(.leftMouseDown, at, tap: tap) else {
+        FileHandle.standardError.write(Data("poc-drag: failed to create leftMouseDown\n".utf8))
+        exit(1)
+    }
+    usleep(50_000)
+    guard postMouse(.leftMouseUp, at, tap: tap) else {
+        FileHandle.standardError.write(Data("poc-drag: failed to create leftMouseUp\n".utf8))
+        exit(1)
+    }
+    print("{\"ok\":true,\"mode\":\"click\",\"at\":[\(at.x),\(at.y)],\"channel\":\"\(p.tap.name)\"}")
+}
+
+// MARK: - key (single keystroke, e.g. Cmd+M to minimize a focused window)
+
+func cgFlags(_ spec: String) -> CGEventFlags {
+    var flags = CGEventFlags()
+    for part in spec.split(separator: ",") {
+        switch part.trimmingCharacters(in: .whitespaces) {
+        case "cmd", "command": flags.insert(.maskCommand)
+        case "shift": flags.insert(.maskShift)
+        case "opt", "option", "alt": flags.insert(.maskAlternate)
+        case "ctrl", "control": flags.insert(.maskControl)
+        case "fn": flags.insert(.maskSecondaryFn)
+        default: break
+        }
+    }
+    return flags
+}
+
+func runKey(_ p: Parsed, code: Int) {
+    let flags = cgFlags(p.flags)
+    guard let down = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(code), keyDown: true),
+          let up = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(code), keyDown: false) else {
+        FileHandle.standardError.write(Data("poc-drag: failed to create key events\n".utf8))
+        exit(1)
+    }
+    down.flags = flags
+    up.flags = flags
+    down.post(tap: .cgSessionEventTap)
+    usleep(50_000)
+    up.post(tap: .cgSessionEventTap)
+    print("{\"ok\":true,\"mode\":\"key\",\"code\":\(code),\"flags\":\"\(p.flags)\",\"channel\":\"session\"}")
+}
+
 // MARK: - filedrag (NSDraggingSession source)
+
+/// NSPasteboard does not conform to NSPasteboardWriting in the Swift
+/// overlay; this adapter vends the types/data we wrote onto the board.
+final class BoardWriter: NSObject, NSPasteboardWriting {
+    let board: NSPasteboard
+    init(_ board: NSPasteboard) { self.board = board }
+    func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
+        // Only valid UTIs may be advertised; the legacy NSFilenamesPboardType
+        // flavor cannot cross this API (measured: CorePasteboard rejects it).
+        // public.file-url is the modern standard every current drop target
+        // reads; if AE needs the legacy flavor this PoC records that.
+        return [.fileURL]
+    }
+    func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
+        return board.propertyList(forType: type)
+    }
+}
 
 final class DragSource: NSObject, NSDraggingSource {
     var window: NSWindow?
@@ -220,6 +305,7 @@ func runFileDrag(_ p: Parsed, file: String, from: Point, to: Point) {
 
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
+    FileHandle.standardError.write(Data("poc-drag: filedrag starting, file=\(file) from=\(from.x),\(from.y) to=\(to.x),\(to.y)\n".utf8))
 
     let source = DragSource()
     source.beganAt = Date()
@@ -237,70 +323,96 @@ func runFileDrag(_ p: Parsed, file: String, from: Point, to: Point) {
     let window = NSWindow(contentRect: frame,
                           styleMask: [.borderless],
                           backing: .buffered, defer: false)
-    window.isOpaque = false
-    window.backgroundColor = .clear
-    window.hasShadow = false
+    // NOT fully transparent: a zero-alpha window is skipped by WindowServer
+    // hit-testing and never receives the posted mouse-down (measured —
+    // first PoC run). A faint backing plus the file icon keeps the helper
+    // visible for the ~1s it exists.
+    window.isOpaque = true
+    window.backgroundColor = NSColor(calibratedWhite: 0.15, alpha: 0.85)
+    window.hasShadow = true
     window.level = .floating
     window.isReleasedWhenClosed = false
     window.collectionBehavior = [.canJoinAllSpaces, .stationary]
     let view = DragView(frame: NSRect(x: 0, y: 0, width: half * 2, height: half * 2))
+    view.wantsLayer = true
+    let icon = NSWorkspace.shared.icon(forFile: path)
+    icon.size = NSSize(width: 40, height: 40)
+    view.layer?.contents = icon
+    view.layer?.contentsGravity = .resizeAspect
+    view.layer?.cornerRadius = 6
     view.onMouseDown = { event in
-        // Build the pasteboard item: file URL plus the legacy filenames
-        // type so both modern and classic drop targets see the file.
-        let pbItem = NSPasteboardItem()
-        pbItem.setString(fileURL.absoluteString, forType: .fileURL)
-        pbItem.setPropertyList([fileURL.path],
+        FileHandle.standardError.write(Data("poc-drag: mouseDown received at \(event.locationInWindow)\n".utf8))
+        // Build the pasteboard: file URL plus the legacy filenames type so
+        // both modern (public.file-url) and classic (NSFilenamesPboardType)
+        // drop targets see the file. A real NSPasteboard is the writer
+        // because NSPasteboardItem rejects the legacy non-UTI type.
+        let pboard = NSPasteboard(name: NSPasteboard.Name("ae-a8n-drag-poc"))
+        pboard.declareTypes([
+            .fileURL,
+            NSPasteboard.PasteboardType("NSFilenamesPboardType"),
+        ], owner: nil)
+        pboard.setString(fileURL.absoluteString, forType: .fileURL)
+        pboard.setPropertyList([fileURL.path],
                                forType: NSPasteboard.PasteboardType("NSFilenamesPboardType"))
-        let draggingItem = NSDraggingItem(pasteboardWriter: pbItem)
-        let icon = NSWorkspace.shared.icon(forFile: path)
-        icon.size = NSSize(width: 48, height: 48)
+        let draggingItem = NSDraggingItem(pasteboardWriter: BoardWriter(pboard))
         draggingItem.setDraggingFrame(
             NSRect(x: 0, y: 0, width: 48, height: 48), contents: icon)
-        source.didBegin = true
-        view.beginDraggingSession(with: [draggingItem], event: event, source: source)
+        let session = view.beginDraggingSession(with: [draggingItem], event: event, source: source)
+        source.didBegin = session != nil
+        FileHandle.standardError.write(Data("poc-drag: beginDraggingSession returned session=\(session != nil)\n".utf8))
     }
     window.contentView?.addSubview(view)
     source.window = window
     window.orderFrontRegardless()
+    FileHandle.standardError.write(Data("poc-drag: window frame=\(window.frame) screen=\(NSScreen.main?.frame ?? .zero) visible=\(window.isVisible)\n".utf8))
 
-    // Post the initial mouse-down at --from; it is delivered to our view,
-    // whose mouseDown starts the dragging session.
-    guard postMouse(.mouseMoved, from, tap: .cgSessionEventTap) else {
-        FileHandle.standardError.write(Data("poc-drag: failed to create mouseMoved\n".utf8))
-        exit(1)
-    }
-    usleep(30_000)
-    guard postMouse(.leftMouseDown, from, tap: .cgSessionEventTap) else {
-        FileHandle.standardError.write(Data("poc-drag: failed to create leftMouseDown\n".utf8))
-        exit(1)
-    }
-
-    // Drive the drag path on the main run loop. The dragging session is
-    // owned by the WindowServer once begun; posted CGEvents move the
-    // session's cursor exactly like real mouse movement.
+    // Everything below runs on the main run loop: the window must be
+    // ordered AND the run loop spinning before the mouse-down is posted,
+    // or the event can be delivered to whatever window was under the
+    // point a moment earlier.
     let pathPoints = dragPath(from: from, to: to, steps: p.steps)
     let stepDelay = UInt64(p.stepDelayMs) * 1000
-    var index = 1
-    func scheduleNext() {
-        guard index <= pathPoints.count - 1 else {
-            // Final point: release.
-            let last = pathPoints.last!
-            _ = postMouse(.leftMouseUp,
-                          Point(x: Double(last.x), y: Double(last.y)), tap: .cgSessionEventTap)
+    var index = 0
+    var postedDown = false
+
+    func postNext() {
+        if !postedDown {
+            postedDown = true
+            guard postMouse(.mouseMoved, from, tap: .cgSessionEventTap) else {
+                FileHandle.standardError.write(Data("poc-drag: failed to create mouseMoved\n".utf8))
+                exit(1)
+            }
+            usleep(30_000)
+            guard postMouse(.leftMouseDown, from, tap: .cgSessionEventTap) else {
+                FileHandle.standardError.write(Data("poc-drag: failed to create leftMouseDown\n".utf8))
+                exit(1)
+            }
+            FileHandle.standardError.write(Data("poc-drag: posted mouseMoved+leftMouseDown at \(from.x),\(from.y)\n".utf8))
+            // Give the event time to reach the view and begin the session
+            // before the first move is posted.
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(150)) {
+                postNext()
+            }
             return
         }
+        guard index <= pathPoints.count - 1 else { return }
         let pt = pathPoints[index]
-        _ = postMouse(.leftMouseDragged,
-                      Point(x: Double(pt.x), y: Double(pt.y)), tap: .cgSessionEventTap)
         index += 1
+        if index == pathPoints.count {
+            _ = postMouse(.leftMouseUp,
+                          Point(x: Double(pt.x), y: Double(pt.y)), tap: .cgSessionEventTap)
+            FileHandle.standardError.write(Data("poc-drag: posted leftMouseUp at \(pt.x),\(pt.y)\n".utf8))
+        } else {
+            _ = postMouse(.leftMouseDragged,
+                          Point(x: Double(pt.x), y: Double(pt.y)), tap: .cgSessionEventTap)
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + .nanoseconds(Int(stepDelay))) {
-            scheduleNext()
+            postNext()
         }
     }
-    // Give the mouse-down a moment to reach the view and begin the session
-    // before the first move is posted.
-    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(120)) {
-        scheduleNext()
+
+    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(400)) {
+        postNext()
     }
 
     // Watchdogs: if the session never begins or never ends, fail honestly.
@@ -326,16 +438,26 @@ func runFileDrag(_ p: Parsed, file: String, from: Point, to: Point) {
 guard CommandLine.arguments.count >= 2 else { failUsage("missing subcommand") }
 let args = Array(CommandLine.arguments.dropFirst())
 let p = parse(args)
-guard let from = p.from, let to = p.to else {
-    failUsage("\(p.mode) expects --from X,Y --to X,Y")
+if p.mode == "click" {
+    guard let at = p.at else { failUsage("click expects --at X,Y") }
+    runClick(p, at: at)
+} else if p.mode == "key" {
+    guard let code = p.keyCode else { failUsage("key expects --code N") }
+    runKey(p, code: code)
+} else {
+    guard p.from != nil, p.to != nil else {
+        failUsage("\(p.mode) expects --from X,Y --to X,Y")
+    }
 }
 
 switch p.mode {
 case "drag":
-    runPlainDrag(p, from: from, to: to)
+    runPlainDrag(p, from: p.from!, to: p.to!)
 case "filedrag":
     guard let file = p.file else { failUsage("filedrag expects --file PATH") }
-    runFileDrag(p, file: file, from: from, to: to)
+    runFileDrag(p, file: file, from: p.from!, to: p.to!)
+case "click", "key":
+    break // already handled above
 default:
-    failUsage("missing or unknown subcommand (expected: drag or filedrag)")
+    failUsage("missing or unknown subcommand (expected: drag, filedrag, click or key)")
 }

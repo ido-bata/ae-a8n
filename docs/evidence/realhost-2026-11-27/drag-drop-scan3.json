@@ -1,0 +1,1606 @@
+{
+  "schema": "a8n.poc-drag-drop/v1",
+  "issue": 369,
+  "recordedAt": "2026-11-27T08:56:34.586Z",
+  "install": "/Applications/Adobe After Effects 2027",
+  "mode": "file",
+  "steps": [
+    {
+      "name": "preflight",
+      "at": "2026-11-27T08:56:34.875Z",
+      "install": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "preexisting": [],
+      "aeCensus": [
+        {
+          "pid": 3198,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/dynamiclinkmanager"
+        },
+        {
+          "pid": 3200,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/TeamProjectsLocalHub.app/Contents/MacOS/TeamProjectsLocalHub"
+        },
+        {
+          "pid": 3886,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/MacOS/CEPHtmlEngine"
+        },
+        {
+          "pid": 3936,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper (GPU).app/Contents/MacOS/CEPHtmlEngine Helper (GPU)"
+        },
+        {
+          "pid": 3938,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper.app/Contents/MacOS/CEPHtmlEngine Helper"
+        },
+        {
+          "pid": 3939,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper.app/Contents/MacOS/CEPHtmlEngine Helper"
+        },
+        {
+          "pid": 3941,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper (Renderer).app/Contents/MacOS/CEPHtmlEngine Helper (Renderer)"
+        },
+        {
+          "pid": 3942,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper (Renderer).app/Contents/MacOS/CEPHtmlEngine Helper (Renderer)"
+        },
+        {
+          "pid": 84367,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+        },
+        {
+          "pid": 84381,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/crashpad_handler"
+        }
+      ]
+    },
+    {
+      "name": "extension-build",
+      "at": "2026-11-27T08:56:35.220Z",
+      "hostScript": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-drag-poc-host.jsx"
+    },
+    {
+      "name": "drag-helper-build",
+      "at": "2026-11-27T08:56:40.439Z",
+      "dragBin": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/poc-drag"
+    },
+    {
+      "name": "fixture",
+      "at": "2026-11-27T08:56:40.442Z",
+      "path": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png"
+    },
+    {
+      "name": "launch",
+      "at": "2026-11-27T08:56:48.771Z",
+      "pid": 8520,
+      "info": {
+        "version": "27.0x78",
+        "build": "78"
+      }
+    },
+    {
+      "name": "recovery-target",
+      "at": "2026-11-27T08:56:48.996Z",
+      "pid": 8520
+    },
+    {
+      "name": "ensure-project",
+      "at": "2026-11-27T08:56:53.339Z",
+      "inAe": {
+        "file": null,
+        "items": 0
+      }
+    },
+    {
+      "name": "ensure-comp",
+      "at": "2026-11-27T08:56:53.722Z",
+      "inAe": {
+        "comp": "PoC Comp",
+        "id": 1,
+        "layers": [
+          {
+            "index": 1,
+            "name": "PoC Solid B"
+          },
+          {
+            "index": 2,
+            "name": "PoC Solid A"
+          }
+        ]
+      }
+    },
+    {
+      "name": "activate-open",
+      "at": "2026-11-27T08:56:53.769Z",
+      "ok": true,
+      "bundlePath": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app"
+    },
+    {
+      "name": "activate-frontmost",
+      "at": "2026-11-27T08:56:54.024Z",
+      "ok": true,
+      "output": "FRONTMOST-SET"
+    },
+    {
+      "name": "window-census",
+      "at": "2026-11-27T08:57:00.547Z",
+      "censusAvailable": true,
+      "allForPid": [
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": false,
+          "name": "",
+          "windowNumber": 1892,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": false,
+          "name": "",
+          "windowNumber": 1891,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1883,
+          "bounds": {
+            "x": 19,
+            "y": 556,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1882,
+          "bounds": {
+            "x": 346,
+            "y": 326,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1881,
+          "bounds": {
+            "x": 306,
+            "y": 286,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1880,
+          "bounds": {
+            "x": 301,
+            "y": 190,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1878,
+          "bounds": {
+            "x": 412,
+            "y": 338,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "名称未設定プロジェクト *",
+          "windowNumber": 1876,
+          "bounds": {
+            "x": 0,
+            "y": 38,
+            "width": 1710,
+            "height": 1074
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": false,
+          "name": "",
+          "windowNumber": 1875,
+          "bounds": {
+            "x": 0,
+            "y": 612,
+            "width": 500,
+            "height": 500
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": false,
+          "name": "",
+          "windowNumber": 1890,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": false,
+          "name": "",
+          "windowNumber": 1889,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1887,
+          "bounds": {
+            "x": 260,
+            "y": 236,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1886,
+          "bounds": {
+            "x": 487,
+            "y": 241,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1884,
+          "bounds": {
+            "x": 407,
+            "y": 161,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1879,
+          "bounds": {
+            "x": 452,
+            "y": 378,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1877,
+          "bounds": {
+            "x": 59,
+            "y": 596,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 8520,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1885,
+          "bounds": {
+            "x": 447,
+            "y": 201,
+            "width": 640,
+            "height": 504
+          }
+        }
+      ],
+      "largestOnScreen": {
+        "pid": 8520,
+        "owner": "After Effects",
+        "layer": 0,
+        "onScreen": true,
+        "name": "名称未設定プロジェクト *",
+        "windowNumber": 1876,
+        "bounds": {
+          "x": 0,
+          "y": 38,
+          "width": 1710,
+          "height": 1074
+        }
+      }
+    },
+    {
+      "name": "project-items-before",
+      "at": "2026-11-27T08:57:00.875Z",
+      "inAe": {
+        "count": 4,
+        "items": [
+          {
+            "id": 1,
+            "name": "PoC Comp",
+            "type": "undefined"
+          },
+          {
+            "id": 13,
+            "name": "平面",
+            "type": "undefined"
+          },
+          {
+            "id": 14,
+            "name": "PoC Solid A",
+            "type": "undefined"
+          },
+          {
+            "id": 16,
+            "name": "PoC Solid B",
+            "type": "undefined"
+          }
+        ]
+      }
+    },
+    {
+      "name": "comp-layers-before",
+      "at": "2026-11-27T08:57:01.225Z",
+      "inAe": {
+        "comp": "PoC Comp",
+        "layers": [
+          {
+            "index": 1,
+            "name": "PoC Solid B"
+          },
+          {
+            "index": 2,
+            "name": "PoC Solid A"
+          }
+        ]
+      }
+    },
+    {
+      "name": "screenshot-before",
+      "at": "2026-11-27T08:57:01.474Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/drag-before.png"
+    },
+    {
+      "name": "window-capture-1876",
+      "at": "2026-11-27T08:57:01.699Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/window-1876.png",
+      "windowNumber": 1876
+    },
+    {
+      "name": "window-capture-1883",
+      "at": "2026-11-27T08:57:01.833Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/window-1883.png",
+      "windowNumber": 1883
+    },
+    {
+      "name": "window-capture-1882",
+      "at": "2026-11-27T08:57:01.974Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/window-1882.png",
+      "windowNumber": 1882
+    },
+    {
+      "name": "window-capture-1881",
+      "at": "2026-11-27T08:57:02.113Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/window-1881.png",
+      "windowNumber": 1881
+    },
+    {
+      "name": "window-capture-1880",
+      "at": "2026-11-27T08:57:02.245Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/window-1880.png",
+      "windowNumber": 1880
+    },
+    {
+      "name": "window-capture-1878",
+      "at": "2026-11-27T08:57:02.393Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/window-1878.png",
+      "windowNumber": 1878
+    },
+    {
+      "name": "window-capture-1887",
+      "at": "2026-11-27T08:57:02.519Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/window-1887.png",
+      "windowNumber": 1887
+    },
+    {
+      "name": "window-capture-1886",
+      "at": "2026-11-27T08:57:02.659Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/window-1886.png",
+      "windowNumber": 1886
+    },
+    {
+      "name": "window-capture-1884",
+      "at": "2026-11-27T08:57:02.796Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/window-1884.png",
+      "windowNumber": 1884
+    },
+    {
+      "name": "window-capture-1879",
+      "at": "2026-11-27T08:57:02.925Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/window-1879.png",
+      "windowNumber": 1879
+    },
+    {
+      "name": "window-capture-1877",
+      "at": "2026-11-27T08:57:03.056Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/window-1877.png",
+      "windowNumber": 1877
+    },
+    {
+      "name": "window-capture-1885",
+      "at": "2026-11-27T08:57:03.189Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/window-1885.png",
+      "windowNumber": 1885
+    },
+    {
+      "name": "close-aux-windows",
+      "at": "2026-11-27T09:01:33.696Z",
+      "results": [
+        {
+          "round": 0,
+          "windowNumber": 1883,
+          "bounds": {
+            "x": 19,
+            "y": 556,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 0,
+          "windowNumber": 1882,
+          "bounds": {
+            "x": 346,
+            "y": 326,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 0,
+          "windowNumber": 1881,
+          "bounds": {
+            "x": 306,
+            "y": 286,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 0,
+          "windowNumber": 1880,
+          "bounds": {
+            "x": 301,
+            "y": 190,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 0,
+          "windowNumber": 1878,
+          "bounds": {
+            "x": 412,
+            "y": 338,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 0,
+          "windowNumber": 1887,
+          "bounds": {
+            "x": 260,
+            "y": 236,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 0,
+          "windowNumber": 1886,
+          "bounds": {
+            "x": 487,
+            "y": 241,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 0,
+          "windowNumber": 1884,
+          "bounds": {
+            "x": 407,
+            "y": 161,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 0,
+          "windowNumber": 1879,
+          "bounds": {
+            "x": 452,
+            "y": 378,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 0,
+          "windowNumber": 1877,
+          "bounds": {
+            "x": 59,
+            "y": 596,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 0,
+          "windowNumber": 1885,
+          "bounds": {
+            "x": 447,
+            "y": 201,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 1,
+          "windowNumber": 1883,
+          "bounds": {
+            "x": 19,
+            "y": 556,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 1,
+          "windowNumber": 1882,
+          "bounds": {
+            "x": 346,
+            "y": 326,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 1,
+          "windowNumber": 1881,
+          "bounds": {
+            "x": 306,
+            "y": 286,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 1,
+          "windowNumber": 1880,
+          "bounds": {
+            "x": 301,
+            "y": 190,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 1,
+          "windowNumber": 1878,
+          "bounds": {
+            "x": 412,
+            "y": 338,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 1,
+          "windowNumber": 1887,
+          "bounds": {
+            "x": 260,
+            "y": 236,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 1,
+          "windowNumber": 1886,
+          "bounds": {
+            "x": 487,
+            "y": 241,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 1,
+          "windowNumber": 1884,
+          "bounds": {
+            "x": 407,
+            "y": 161,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 1,
+          "windowNumber": 1879,
+          "bounds": {
+            "x": 452,
+            "y": 378,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 1,
+          "windowNumber": 1877,
+          "bounds": {
+            "x": 59,
+            "y": 596,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 1,
+          "windowNumber": 1885,
+          "bounds": {
+            "x": 447,
+            "y": 201,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 2,
+          "windowNumber": 1883,
+          "bounds": {
+            "x": 19,
+            "y": 556,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 2,
+          "windowNumber": 1882,
+          "bounds": {
+            "x": 346,
+            "y": 326,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 2,
+          "windowNumber": 1881,
+          "bounds": {
+            "x": 306,
+            "y": 286,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 2,
+          "windowNumber": 1880,
+          "bounds": {
+            "x": 301,
+            "y": 190,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 2,
+          "windowNumber": 1878,
+          "bounds": {
+            "x": 412,
+            "y": 338,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 2,
+          "windowNumber": 1887,
+          "bounds": {
+            "x": 260,
+            "y": 236,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 2,
+          "windowNumber": 1886,
+          "bounds": {
+            "x": 487,
+            "y": 241,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 2,
+          "windowNumber": 1884,
+          "bounds": {
+            "x": 407,
+            "y": 161,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 2,
+          "windowNumber": 1879,
+          "bounds": {
+            "x": 452,
+            "y": 378,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 2,
+          "windowNumber": 1877,
+          "bounds": {
+            "x": 59,
+            "y": 596,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        },
+        {
+          "round": 2,
+          "windowNumber": 1885,
+          "bounds": {
+            "x": 447,
+            "y": 201,
+            "width": 640,
+            "height": 504
+          },
+          "closed": false
+        }
+      ]
+    },
+    {
+      "name": "drag-attempt-0",
+      "at": "2026-11-27T09:02:46.624Z",
+      "index": 0,
+      "to": {
+        "x": 100,
+        "y": 300
+      },
+      "topmost": {
+        "pid": 8520,
+        "owner": "After Effects",
+        "windowNumber": 1876
+      },
+      "drag": {
+        "ok": false,
+        "exitStatus": 1,
+        "error": "exit 1",
+        "stdout": "",
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=100.0,300.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: posted leftMouseUp at 100.0,300.0\npoc-drag: timed out waiting for drag session to end\n"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-1",
+      "at": "2026-11-27T09:02:54.831Z",
+      "index": 1,
+      "to": {
+        "x": 200,
+        "y": 300
+      },
+      "topmost": {
+        "pid": 8520,
+        "owner": "After Effects",
+        "windowNumber": 1876
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            200,
+            812
+          ],
+          "operation": "none",
+          "durationMs": 2153
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=200.0,300.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 200.0,300.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-2",
+      "at": "2026-11-27T09:03:03.082Z",
+      "index": 2,
+      "to": {
+        "x": 300,
+        "y": 340
+      },
+      "topmost": {
+        "pid": 8520,
+        "owner": "After Effects",
+        "windowNumber": 1876
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            300,
+            772
+          ],
+          "operation": "none",
+          "durationMs": 2239
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=300.0,340.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,340.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-3",
+      "at": "2026-11-27T09:04:07.673Z",
+      "index": 3,
+      "to": {
+        "x": 100,
+        "y": 400
+      },
+      "topmost": {
+        "pid": 8520,
+        "owner": "After Effects",
+        "windowNumber": 1876
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            100,
+            712
+          ],
+          "operation": "none",
+          "durationMs": 2172
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=100.0,400.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 100.0,400.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-4",
+      "at": "2026-11-27T09:05:23.700Z",
+      "index": 4,
+      "to": {
+        "x": 200,
+        "y": 420
+      },
+      "topmost": {
+        "pid": 8520,
+        "owner": "After Effects",
+        "windowNumber": 1876
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            200,
+            692
+          ],
+          "operation": "none",
+          "durationMs": 2772
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=200.0,420.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 200.0,420.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-5",
+      "at": "2026-11-27T09:05:32.060Z",
+      "index": 5,
+      "to": {
+        "x": 300,
+        "y": 460
+      },
+      "topmost": {
+        "pid": 8520,
+        "owner": "After Effects",
+        "windowNumber": 1876
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            300,
+            652
+          ],
+          "operation": "none",
+          "durationMs": 2229
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=300.0,460.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,460.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-6",
+      "at": "2026-11-27T09:06:40.412Z",
+      "index": 6,
+      "to": {
+        "x": 150,
+        "y": 500
+      },
+      "topmost": {
+        "pid": 8520,
+        "owner": "After Effects",
+        "windowNumber": 1876
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            150,
+            612
+          ],
+          "operation": "none",
+          "durationMs": 5797
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=150.0,500.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 150.0,500.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-7",
+      "at": "2026-11-27T09:07:45.105Z",
+      "index": 7,
+      "to": {
+        "x": 60,
+        "y": 380
+      },
+      "topmost": {
+        "pid": 8520,
+        "owner": "After Effects",
+        "windowNumber": 1876
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            60,
+            732
+          ],
+          "operation": "none",
+          "durationMs": 2210
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=60.0,380.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 60.0,380.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-8",
+      "at": "2026-11-27T09:08:50.275Z",
+      "index": 8,
+      "to": {
+        "x": 250,
+        "y": 540
+      },
+      "topmost": {
+        "pid": 8520,
+        "owner": "After Effects",
+        "windowNumber": 1876
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            250,
+            572
+          ],
+          "operation": "none",
+          "durationMs": 2674
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=250.0,540.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 250.0,540.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-9",
+      "at": "2026-11-27T09:10:03.034Z",
+      "index": 9,
+      "to": {
+        "x": 350,
+        "y": 300
+      },
+      "topmost": {
+        "pid": 8520,
+        "owner": "After Effects",
+        "windowNumber": 1881
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            350,
+            812
+          ],
+          "operation": "none",
+          "durationMs": 2171
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=350.0,300.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 350.0,300.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "project-items-after",
+      "at": "2026-11-27T09:10:03.571Z",
+      "inAe": {
+        "count": 4,
+        "items": [
+          {
+            "id": 1,
+            "name": "PoC Comp",
+            "type": "undefined"
+          },
+          {
+            "id": 13,
+            "name": "平面",
+            "type": "undefined"
+          },
+          {
+            "id": 14,
+            "name": "PoC Solid A",
+            "type": "undefined"
+          },
+          {
+            "id": 16,
+            "name": "PoC Solid B",
+            "type": "undefined"
+          }
+        ]
+      }
+    },
+    {
+      "name": "comp-layers-after",
+      "at": "2026-11-27T09:11:04.288Z",
+      "inAe": {
+        "comp": "PoC Comp",
+        "layers": [
+          {
+            "index": 1,
+            "name": "PoC Solid B"
+          },
+          {
+            "index": 2,
+            "name": "PoC Solid A"
+          }
+        ]
+      }
+    },
+    {
+      "name": "screenshot-after",
+      "at": "2026-11-27T09:11:04.703Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/drag-after.png"
+    },
+    {
+      "name": "close",
+      "at": "2026-11-27T09:11:06.045Z",
+      "closed": {
+        "quit": true,
+        "ownership": {
+          "kind": "owned",
+          "evidence": "pid 8520 is still the only instance"
+        }
+      }
+    },
+    {
+      "name": "postflight-census",
+      "at": "2026-11-27T09:11:06.283Z",
+      "remainingInScope": [],
+      "aeCensus": [
+        {
+          "pid": 3198,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/dynamiclinkmanager"
+        },
+        {
+          "pid": 3200,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/TeamProjectsLocalHub.app/Contents/MacOS/TeamProjectsLocalHub"
+        },
+        {
+          "pid": 3886,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/MacOS/CEPHtmlEngine"
+        },
+        {
+          "pid": 3936,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper (GPU).app/Contents/MacOS/CEPHtmlEngine Helper (GPU)"
+        },
+        {
+          "pid": 3938,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper.app/Contents/MacOS/CEPHtmlEngine Helper"
+        },
+        {
+          "pid": 3939,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper.app/Contents/MacOS/CEPHtmlEngine Helper"
+        },
+        {
+          "pid": 3941,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper (Renderer).app/Contents/MacOS/CEPHtmlEngine Helper (Renderer)"
+        },
+        {
+          "pid": 3942,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper (Renderer).app/Contents/MacOS/CEPHtmlEngine Helper (Renderer)"
+        },
+        {
+          "pid": 8956,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/crashpad_handler"
+        },
+        {
+          "pid": 8961,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/dynamiclinkmanager"
+        },
+        {
+          "pid": 8963,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/TeamProjectsLocalHub.app/Contents/MacOS/TeamProjectsLocalHub"
+        },
+        {
+          "pid": 84367,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+        },
+        {
+          "pid": 84381,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/crashpad_handler"
+        }
+      ]
+    }
+  ],
+  "observations": {
+    "attempts": [
+      {
+        "index": 0,
+        "to": {
+          "x": 100,
+          "y": 300
+        },
+        "topmost": {
+          "pid": 8520,
+          "owner": "After Effects",
+          "windowNumber": 1876
+        },
+        "drag": {
+          "ok": false,
+          "exitStatus": 1,
+          "error": "exit 1",
+          "stdout": "",
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=100.0,300.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: posted leftMouseUp at 100.0,300.0\npoc-drag: timed out waiting for drag session to end\n"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 1,
+        "to": {
+          "x": 200,
+          "y": 300
+        },
+        "topmost": {
+          "pid": 8520,
+          "owner": "After Effects",
+          "windowNumber": 1876
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              200,
+              812
+            ],
+            "operation": "none",
+            "durationMs": 2153
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=200.0,300.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 200.0,300.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 2,
+        "to": {
+          "x": 300,
+          "y": 340
+        },
+        "topmost": {
+          "pid": 8520,
+          "owner": "After Effects",
+          "windowNumber": 1876
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              300,
+              772
+            ],
+            "operation": "none",
+            "durationMs": 2239
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=300.0,340.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,340.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 3,
+        "to": {
+          "x": 100,
+          "y": 400
+        },
+        "topmost": {
+          "pid": 8520,
+          "owner": "After Effects",
+          "windowNumber": 1876
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              100,
+              712
+            ],
+            "operation": "none",
+            "durationMs": 2172
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=100.0,400.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 100.0,400.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 4,
+        "to": {
+          "x": 200,
+          "y": 420
+        },
+        "topmost": {
+          "pid": 8520,
+          "owner": "After Effects",
+          "windowNumber": 1876
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              200,
+              692
+            ],
+            "operation": "none",
+            "durationMs": 2772
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=200.0,420.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 200.0,420.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 5,
+        "to": {
+          "x": 300,
+          "y": 460
+        },
+        "topmost": {
+          "pid": 8520,
+          "owner": "After Effects",
+          "windowNumber": 1876
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              300,
+              652
+            ],
+            "operation": "none",
+            "durationMs": 2229
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=300.0,460.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,460.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 6,
+        "to": {
+          "x": 150,
+          "y": 500
+        },
+        "topmost": {
+          "pid": 8520,
+          "owner": "After Effects",
+          "windowNumber": 1876
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              150,
+              612
+            ],
+            "operation": "none",
+            "durationMs": 5797
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=150.0,500.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 150.0,500.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 7,
+        "to": {
+          "x": 60,
+          "y": 380
+        },
+        "topmost": {
+          "pid": 8520,
+          "owner": "After Effects",
+          "windowNumber": 1876
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              60,
+              732
+            ],
+            "operation": "none",
+            "durationMs": 2210
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=60.0,380.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 60.0,380.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 8,
+        "to": {
+          "x": 250,
+          "y": 540
+        },
+        "topmost": {
+          "pid": 8520,
+          "owner": "After Effects",
+          "windowNumber": 1876
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              250,
+              572
+            ],
+            "operation": "none",
+            "durationMs": 2674
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=250.0,540.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 250.0,540.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 9,
+        "to": {
+          "x": 350,
+          "y": 300
+        },
+        "topmost": {
+          "pid": 8520,
+          "owner": "After Effects",
+          "windowNumber": 1881
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              350,
+              812
+            ],
+            "operation": "none",
+            "durationMs": 2171
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-1vEeQd/a8n-poc-fixture.png from=850.0,500.0 to=350.0,300.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 350.0,300.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      }
+    ],
+    "fixtureImported": false,
+    "newProjectItems": [],
+    "projectItemCountBefore": 4,
+    "projectItemCountAfter": 4,
+    "layerOrderChanged": false
+  },
+  "outcome": "completed"
+}

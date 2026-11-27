@@ -1,0 +1,1567 @@
+{
+  "schema": "a8n.poc-drag-drop/v1",
+  "issue": 369,
+  "recordedAt": "2026-11-27T08:17:47.542Z",
+  "install": "/Applications/Adobe After Effects 2027",
+  "mode": "file",
+  "steps": [
+    {
+      "name": "preflight",
+      "at": "2026-11-27T08:17:47.792Z",
+      "install": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "preexisting": [],
+      "aeCensus": [
+        {
+          "pid": 3198,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/dynamiclinkmanager"
+        },
+        {
+          "pid": 3200,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/TeamProjectsLocalHub.app/Contents/MacOS/TeamProjectsLocalHub"
+        },
+        {
+          "pid": 3886,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/MacOS/CEPHtmlEngine"
+        },
+        {
+          "pid": 3936,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper (GPU).app/Contents/MacOS/CEPHtmlEngine Helper (GPU)"
+        },
+        {
+          "pid": 3938,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper.app/Contents/MacOS/CEPHtmlEngine Helper"
+        },
+        {
+          "pid": 3939,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper.app/Contents/MacOS/CEPHtmlEngine Helper"
+        },
+        {
+          "pid": 3941,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper (Renderer).app/Contents/MacOS/CEPHtmlEngine Helper (Renderer)"
+        },
+        {
+          "pid": 3942,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper (Renderer).app/Contents/MacOS/CEPHtmlEngine Helper (Renderer)"
+        },
+        {
+          "pid": 84367,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+        },
+        {
+          "pid": 84381,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/crashpad_handler"
+        }
+      ]
+    },
+    {
+      "name": "extension-build",
+      "at": "2026-11-27T08:17:48.174Z",
+      "hostScript": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-drag-poc-host.jsx"
+    },
+    {
+      "name": "drag-helper-build",
+      "at": "2026-11-27T08:17:55.494Z",
+      "dragBin": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/poc-drag"
+    },
+    {
+      "name": "fixture",
+      "at": "2026-11-27T08:17:55.524Z",
+      "path": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png"
+    },
+    {
+      "name": "launch",
+      "at": "2026-11-27T08:18:06.236Z",
+      "pid": 85475,
+      "info": {
+        "version": "27.0x78",
+        "build": "78"
+      }
+    },
+    {
+      "name": "recovery-target",
+      "at": "2026-11-27T08:18:06.561Z",
+      "pid": 85475
+    },
+    {
+      "name": "ensure-project",
+      "at": "2026-11-27T08:18:06.903Z",
+      "inAe": {
+        "file": null,
+        "items": 0
+      }
+    },
+    {
+      "name": "ensure-comp",
+      "at": "2026-11-27T08:18:07.229Z",
+      "inAe": {
+        "comp": "PoC Comp",
+        "id": 1,
+        "layers": [
+          {
+            "index": 1,
+            "name": "PoC Solid B"
+          },
+          {
+            "index": 2,
+            "name": "PoC Solid A"
+          }
+        ]
+      }
+    },
+    {
+      "name": "activate-open",
+      "at": "2026-11-27T08:18:07.275Z",
+      "ok": true,
+      "bundlePath": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app"
+    },
+    {
+      "name": "activate-frontmost",
+      "at": "2026-11-27T08:18:07.529Z",
+      "ok": true,
+      "output": "FRONTMOST-SET"
+    },
+    {
+      "name": "window-census",
+      "at": "2026-11-27T08:18:11.815Z",
+      "censusAvailable": true,
+      "allForPid": [
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": false,
+          "name": "",
+          "windowNumber": 1743,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": false,
+          "name": "",
+          "windowNumber": 1741,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": false,
+          "name": "",
+          "windowNumber": 1740,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1739,
+          "bounds": {
+            "x": 260,
+            "y": 236,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1738,
+          "bounds": {
+            "x": 487,
+            "y": 241,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1737,
+          "bounds": {
+            "x": 447,
+            "y": 201,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1736,
+          "bounds": {
+            "x": 407,
+            "y": 161,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1735,
+          "bounds": {
+            "x": 19,
+            "y": 556,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1734,
+          "bounds": {
+            "x": 346,
+            "y": 326,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1733,
+          "bounds": {
+            "x": 306,
+            "y": 286,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": false,
+          "name": "",
+          "windowNumber": 1727,
+          "bounds": {
+            "x": 0,
+            "y": 612,
+            "width": 500,
+            "height": 500
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1730,
+          "bounds": {
+            "x": 412,
+            "y": 338,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1729,
+          "bounds": {
+            "x": 59,
+            "y": 596,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "名称未設定プロジェクト *",
+          "windowNumber": 1728,
+          "bounds": {
+            "x": 0,
+            "y": 38,
+            "width": 1710,
+            "height": 1074
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": false,
+          "name": "",
+          "windowNumber": 1742,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1732,
+          "bounds": {
+            "x": 301,
+            "y": 190,
+            "width": 640,
+            "height": 504
+          }
+        },
+        {
+          "pid": 85475,
+          "owner": "After Effects",
+          "layer": 0,
+          "onScreen": true,
+          "name": "",
+          "windowNumber": 1731,
+          "bounds": {
+            "x": 452,
+            "y": 378,
+            "width": 640,
+            "height": 504
+          }
+        }
+      ],
+      "largestOnScreen": {
+        "pid": 85475,
+        "owner": "After Effects",
+        "layer": 0,
+        "onScreen": true,
+        "name": "名称未設定プロジェクト *",
+        "windowNumber": 1728,
+        "bounds": {
+          "x": 0,
+          "y": 38,
+          "width": 1710,
+          "height": 1074
+        }
+      }
+    },
+    {
+      "name": "project-items-before",
+      "at": "2026-11-27T08:18:12.159Z",
+      "inAe": {
+        "count": 4,
+        "items": [
+          {
+            "id": 1,
+            "name": "PoC Comp",
+            "type": "undefined"
+          },
+          {
+            "id": 13,
+            "name": "平面",
+            "type": "undefined"
+          },
+          {
+            "id": 14,
+            "name": "PoC Solid A",
+            "type": "undefined"
+          },
+          {
+            "id": 16,
+            "name": "PoC Solid B",
+            "type": "undefined"
+          }
+        ]
+      }
+    },
+    {
+      "name": "comp-layers-before",
+      "at": "2026-11-27T08:18:12.520Z",
+      "inAe": {
+        "comp": "PoC Comp",
+        "layers": [
+          {
+            "index": 1,
+            "name": "PoC Solid B"
+          },
+          {
+            "index": 2,
+            "name": "PoC Solid A"
+          }
+        ]
+      }
+    },
+    {
+      "name": "screenshot-before",
+      "at": "2026-11-27T08:18:12.788Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/drag-before.png"
+    },
+    {
+      "name": "drag-attempt-0",
+      "at": "2026-11-27T08:18:21.767Z",
+      "index": 0,
+      "to": {
+        "x": 60,
+        "y": 160
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            60,
+            952
+          ],
+          "operation": "none",
+          "durationMs": 2841
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=60.0,160.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 60.0,160.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-1",
+      "at": "2026-11-27T08:19:25.719Z",
+      "index": 1,
+      "to": {
+        "x": 140,
+        "y": 160
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            140,
+            952
+          ],
+          "operation": "none",
+          "durationMs": 2414
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=140.0,160.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 140.0,160.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-2",
+      "at": "2026-11-27T08:20:29.681Z",
+      "index": 2,
+      "to": {
+        "x": 220,
+        "y": 160
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            220,
+            952
+          ],
+          "operation": "none",
+          "durationMs": 2205
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=220.0,160.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 220.0,160.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-3",
+      "at": "2026-11-27T08:21:33.849Z",
+      "index": 3,
+      "to": {
+        "x": 300,
+        "y": 160
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            300,
+            952
+          ],
+          "operation": "none",
+          "durationMs": 2510
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=300.0,160.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,160.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-4",
+      "at": "2026-11-27T08:22:37.766Z",
+      "index": 4,
+      "to": {
+        "x": 60,
+        "y": 260
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            60,
+            852
+          ],
+          "operation": "none",
+          "durationMs": 2203
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=60.0,260.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 60.0,260.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-5",
+      "at": "2026-11-27T08:22:45.585Z",
+      "index": 5,
+      "to": {
+        "x": 140,
+        "y": 260
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            140,
+            852
+          ],
+          "operation": "none",
+          "durationMs": 2268
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=140.0,260.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 140.0,260.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-6",
+      "at": "2026-11-27T08:23:51.733Z",
+      "index": 6,
+      "to": {
+        "x": 220,
+        "y": 260
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            220,
+            852
+          ],
+          "operation": "none",
+          "durationMs": 4371
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=220.0,260.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 220.0,260.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-7",
+      "at": "2026-11-27T08:24:56.057Z",
+      "index": 7,
+      "to": {
+        "x": 300,
+        "y": 260
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            300,
+            852
+          ],
+          "operation": "none",
+          "durationMs": 2577
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=300.0,260.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,260.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-8",
+      "at": "2026-11-27T08:25:59.859Z",
+      "index": 8,
+      "to": {
+        "x": 60,
+        "y": 360
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            60,
+            752
+          ],
+          "operation": "none",
+          "durationMs": 2176
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=60.0,360.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 60.0,360.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-9",
+      "at": "2026-11-27T08:27:03.974Z",
+      "index": 9,
+      "to": {
+        "x": 140,
+        "y": 360
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            140,
+            752
+          ],
+          "operation": "none",
+          "durationMs": 2210
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=140.0,360.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 140.0,360.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-10",
+      "at": "2026-11-27T08:28:07.834Z",
+      "index": 10,
+      "to": {
+        "x": 220,
+        "y": 360
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            220,
+            752
+          ],
+          "operation": "none",
+          "durationMs": 2264
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=220.0,360.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 220.0,360.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-11",
+      "at": "2026-11-27T08:29:14.399Z",
+      "index": 11,
+      "to": {
+        "x": 300,
+        "y": 360
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            300,
+            752
+          ],
+          "operation": "none",
+          "durationMs": 4869
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=300.0,360.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,360.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-12",
+      "at": "2026-11-27T08:30:19.169Z",
+      "index": 12,
+      "to": {
+        "x": 60,
+        "y": 480
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            60,
+            632
+          ],
+          "operation": "none",
+          "durationMs": 3118
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=60.0,480.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 60.0,480.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-13",
+      "at": "2026-11-27T08:31:23.124Z",
+      "index": 13,
+      "to": {
+        "x": 140,
+        "y": 480
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            140,
+            632
+          ],
+          "operation": "none",
+          "durationMs": 2261
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=140.0,480.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 140.0,480.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-14",
+      "at": "2026-11-27T08:32:27.348Z",
+      "index": 14,
+      "to": {
+        "x": 220,
+        "y": 480
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            220,
+            632
+          ],
+          "operation": "none",
+          "durationMs": 2554
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=220.0,480.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 220.0,480.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-15",
+      "at": "2026-11-27T08:32:40.299Z",
+      "index": 15,
+      "to": {
+        "x": 300,
+        "y": 480
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            300,
+            632
+          ],
+          "operation": "none",
+          "durationMs": 4631
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=300.0,480.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,480.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-16",
+      "at": "2026-11-27T08:33:44.557Z",
+      "index": 16,
+      "to": {
+        "x": 60,
+        "y": 620
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            60,
+            492
+          ],
+          "operation": "none",
+          "durationMs": 2507
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=60.0,620.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 60.0,620.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-17",
+      "at": "2026-11-27T08:35:50.007Z",
+      "index": 17,
+      "to": {
+        "x": 140,
+        "y": 620
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            140,
+            492
+          ],
+          "operation": "none",
+          "durationMs": 2171
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=140.0,620.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 140.0,620.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-18",
+      "at": "2026-11-27T08:36:55.021Z",
+      "index": 18,
+      "to": {
+        "x": 220,
+        "y": 620
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            220,
+            492
+          ],
+          "operation": "none",
+          "durationMs": 2462
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=220.0,620.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 220.0,620.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "drag-attempt-19",
+      "at": "2026-11-27T08:38:07.167Z",
+      "index": 19,
+      "to": {
+        "x": 300,
+        "y": 620
+      },
+      "drag": {
+        "ok": true,
+        "receipt": {
+          "ok": true,
+          "mode": "filedrag",
+          "endedAt": [
+            300,
+            492
+          ],
+          "operation": "none",
+          "durationMs": 3038
+        },
+        "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=300.0,620.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,620.0"
+      },
+      "projectItemCount": 4,
+      "fixturePresent": false,
+      "layerOrderChanged": false
+    },
+    {
+      "name": "project-items-after",
+      "at": "2026-11-27T08:38:07.761Z",
+      "inAe": {
+        "count": 4,
+        "items": [
+          {
+            "id": 1,
+            "name": "PoC Comp",
+            "type": "undefined"
+          },
+          {
+            "id": 13,
+            "name": "平面",
+            "type": "undefined"
+          },
+          {
+            "id": 14,
+            "name": "PoC Solid A",
+            "type": "undefined"
+          },
+          {
+            "id": 16,
+            "name": "PoC Solid B",
+            "type": "undefined"
+          }
+        ]
+      }
+    },
+    {
+      "name": "comp-layers-after",
+      "at": "2026-11-27T08:38:08.108Z",
+      "inAe": {
+        "comp": "PoC Comp",
+        "layers": [
+          {
+            "index": 1,
+            "name": "PoC Solid B"
+          },
+          {
+            "index": 2,
+            "name": "PoC Solid A"
+          }
+        ]
+      }
+    },
+    {
+      "name": "screenshot-after",
+      "at": "2026-11-27T08:38:08.392Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.369/docs/evidence/realhost-2026-11-27/drag-after.png"
+    },
+    {
+      "name": "close",
+      "at": "2026-11-27T08:38:09.740Z",
+      "closed": {
+        "quit": true,
+        "ownership": {
+          "kind": "owned",
+          "evidence": "pid 85475 is still the only instance"
+        }
+      }
+    },
+    {
+      "name": "postflight-census",
+      "at": "2026-11-27T08:38:10.176Z",
+      "remainingInScope": [],
+      "aeCensus": [
+        {
+          "pid": 3198,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/dynamiclinkmanager"
+        },
+        {
+          "pid": 3200,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/TeamProjectsLocalHub.app/Contents/MacOS/TeamProjectsLocalHub"
+        },
+        {
+          "pid": 3886,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/MacOS/CEPHtmlEngine"
+        },
+        {
+          "pid": 3936,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper (GPU).app/Contents/MacOS/CEPHtmlEngine Helper (GPU)"
+        },
+        {
+          "pid": 3938,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper.app/Contents/MacOS/CEPHtmlEngine Helper"
+        },
+        {
+          "pid": 3939,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper.app/Contents/MacOS/CEPHtmlEngine Helper"
+        },
+        {
+          "pid": 3941,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper (Renderer).app/Contents/MacOS/CEPHtmlEngine Helper (Renderer)"
+        },
+        {
+          "pid": 3942,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/CEPHtmlEngine.app/Contents/Frameworks/CEPHtmlEngine Helper (Renderer).app/Contents/MacOS/CEPHtmlEngine Helper (Renderer)"
+        },
+        {
+          "pid": 84367,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+        },
+        {
+          "pid": 84381,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/crashpad_handler"
+        },
+        {
+          "pid": 85999,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/crashpad_handler"
+        },
+        {
+          "pid": 86557,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/dynamiclinkmanager"
+        },
+        {
+          "pid": 86568,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/TeamProjectsLocalHub.app/Contents/MacOS/TeamProjectsLocalHub"
+        }
+      ]
+    }
+  ],
+  "observations": {
+    "attempts": [
+      {
+        "index": 0,
+        "to": {
+          "x": 60,
+          "y": 160
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              60,
+              952
+            ],
+            "operation": "none",
+            "durationMs": 2841
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=60.0,160.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 60.0,160.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 1,
+        "to": {
+          "x": 140,
+          "y": 160
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              140,
+              952
+            ],
+            "operation": "none",
+            "durationMs": 2414
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=140.0,160.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 140.0,160.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 2,
+        "to": {
+          "x": 220,
+          "y": 160
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              220,
+              952
+            ],
+            "operation": "none",
+            "durationMs": 2205
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=220.0,160.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 220.0,160.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 3,
+        "to": {
+          "x": 300,
+          "y": 160
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              300,
+              952
+            ],
+            "operation": "none",
+            "durationMs": 2510
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=300.0,160.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,160.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 4,
+        "to": {
+          "x": 60,
+          "y": 260
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              60,
+              852
+            ],
+            "operation": "none",
+            "durationMs": 2203
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=60.0,260.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 60.0,260.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 5,
+        "to": {
+          "x": 140,
+          "y": 260
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              140,
+              852
+            ],
+            "operation": "none",
+            "durationMs": 2268
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=140.0,260.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 140.0,260.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 6,
+        "to": {
+          "x": 220,
+          "y": 260
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              220,
+              852
+            ],
+            "operation": "none",
+            "durationMs": 4371
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=220.0,260.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 220.0,260.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 7,
+        "to": {
+          "x": 300,
+          "y": 260
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              300,
+              852
+            ],
+            "operation": "none",
+            "durationMs": 2577
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=300.0,260.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,260.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 8,
+        "to": {
+          "x": 60,
+          "y": 360
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              60,
+              752
+            ],
+            "operation": "none",
+            "durationMs": 2176
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=60.0,360.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 60.0,360.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 9,
+        "to": {
+          "x": 140,
+          "y": 360
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              140,
+              752
+            ],
+            "operation": "none",
+            "durationMs": 2210
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=140.0,360.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 140.0,360.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 10,
+        "to": {
+          "x": 220,
+          "y": 360
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              220,
+              752
+            ],
+            "operation": "none",
+            "durationMs": 2264
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=220.0,360.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 220.0,360.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 11,
+        "to": {
+          "x": 300,
+          "y": 360
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              300,
+              752
+            ],
+            "operation": "none",
+            "durationMs": 4869
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=300.0,360.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,360.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 12,
+        "to": {
+          "x": 60,
+          "y": 480
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              60,
+              632
+            ],
+            "operation": "none",
+            "durationMs": 3118
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=60.0,480.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 60.0,480.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 13,
+        "to": {
+          "x": 140,
+          "y": 480
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              140,
+              632
+            ],
+            "operation": "none",
+            "durationMs": 2261
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=140.0,480.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 140.0,480.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 14,
+        "to": {
+          "x": 220,
+          "y": 480
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              220,
+              632
+            ],
+            "operation": "none",
+            "durationMs": 2554
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=220.0,480.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 220.0,480.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 15,
+        "to": {
+          "x": 300,
+          "y": 480
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              300,
+              632
+            ],
+            "operation": "none",
+            "durationMs": 4631
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=300.0,480.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,480.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 16,
+        "to": {
+          "x": 60,
+          "y": 620
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              60,
+              492
+            ],
+            "operation": "none",
+            "durationMs": 2507
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=60.0,620.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 60.0,620.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 17,
+        "to": {
+          "x": 140,
+          "y": 620
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              140,
+              492
+            ],
+            "operation": "none",
+            "durationMs": 2171
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=140.0,620.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 140.0,620.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 18,
+        "to": {
+          "x": 220,
+          "y": 620
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              220,
+              492
+            ],
+            "operation": "none",
+            "durationMs": 2462
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=220.0,620.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 220.0,620.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      },
+      {
+        "index": 19,
+        "to": {
+          "x": 300,
+          "y": 620
+        },
+        "drag": {
+          "ok": true,
+          "receipt": {
+            "ok": true,
+            "mode": "filedrag",
+            "endedAt": [
+              300,
+              492
+            ],
+            "operation": "none",
+            "durationMs": 3038
+          },
+          "stderr": "poc-drag: filedrag starting, file=/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-drag-poc-9ySHcu/a8n-poc-fixture.png from=850.0,500.0 to=300.0,620.0\npoc-drag: window frame=(826.0, 588.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 850.0,500.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 300.0,620.0"
+        },
+        "projectItemCount": 4,
+        "fixturePresent": false,
+        "layerOrderChanged": false
+      }
+    ],
+    "fixtureImported": false,
+    "newProjectItems": [],
+    "projectItemCountBefore": 4,
+    "projectItemCountAfter": 4,
+    "layerOrderChanged": false
+  },
+  "outcome": "completed"
+}

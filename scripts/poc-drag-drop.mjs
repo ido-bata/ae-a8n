@@ -41,7 +41,7 @@
  *
  * Outcome is one JSON document on stdout (and `--out` when given).
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -71,6 +71,8 @@ function parseArgs(argv) {
     mode: "file",
     from: undefined,
     to: undefined,
+    attempts: undefined,
+    sessionRoot: undefined,
     probe: false,
     settleMs: 1200,
     steps: 24,
@@ -84,6 +86,8 @@ function parseArgs(argv) {
     else if (arg === "--mode") options.mode = argv[++i];
     else if (arg === "--from") options.from = argv[++i];
     else if (arg === "--to") options.to = argv[++i];
+    else if (arg === "--attempts") options.attempts = argv[++i];
+    else if (arg === "--session-root") options.sessionRoot = argv[++i];
     else if (arg === "--probe") options.probe = true;
     else if (arg === "--settle-ms") options.settleMs = Number(argv[++i]);
     else if (arg === "--steps") options.steps = Number(argv[++i]);
@@ -97,11 +101,16 @@ function parseArgs(argv) {
     fail("--mode expects file or drag");
   }
   if (!options.probe) {
-    for (const key of ["from", "to"]) {
-      const v = options[key];
-      if (typeof v !== "string" || !/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(v)) {
-        fail(`--${key} X,Y is required unless --probe`);
-      }
+    if (typeof options.from !== "string" ||
+        !/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(options.from)) {
+      fail("--from X,Y is required unless --probe");
+    }
+    const pointOk = (v) => typeof v === "string" && /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(v);
+    const hasTo = pointOk(options.to);
+    const hasAttempts = typeof options.attempts === "string" &&
+      options.attempts.split(";").every(pointOk);
+    if (!hasTo && !hasAttempts) {
+      fail("--to X,Y or --attempts X,Y;X,Y;... is required unless --probe");
     }
   }
   if (!Number.isFinite(options.settleMs) || options.settleMs < 0) {
@@ -211,6 +220,50 @@ const AX_ACTIVATE_SCRIPT = `on run argv
 end run
 `;
 
+// Path A of aux-window clearing: try AXMinimized on every window of the
+// OWNED pid. #406 showed AE's main window is not AX-enumerable; this
+// script reports what System Events actually sees (count + geometry) so
+// the evidence records whether aux panels are reachable at all. It only
+// ever touches windows of the pid we launched.
+const AX_MINIMIZE_SCRIPT = `on run argv
+  set targetPid to (item 1 of argv) as integer
+  tell application "System Events"
+    set procs to (every application process whose unix id is targetPid)
+    if (count of procs) is 0 then return "MISSING"
+    set p to item 1 of procs
+    set out to ""
+    try
+      set ws to windows of p
+    on error errMsg
+      return "WINDOWS-ERROR " & errMsg
+    end try
+    set out to out & "count=" & (count of ws) & linefeed
+    repeat with w in ws
+      try
+        set pos to position of w
+        set sz to size of w
+        set nm to ""
+        try
+          set nm to name of w
+        end try
+        set out to out & "win pos=" & (pos as text) & " size=" & (sz as text) & " name=" & nm & linefeed
+        if (item 1 of sz) <= 800 and (item 2 of sz) <= 700 then
+          try
+            set value of attribute "AXMinimized" of w to true
+            set out to out & "  -> minimized" & linefeed
+          on error errMsg
+            set out to out & "  -> minimize-error " & errMsg & linefeed
+          end try
+        end if
+      on error errMsg
+        set out to out & "win-error " & errMsg & linefeed
+      end try
+    end repeat
+    return out
+  end tell
+end run
+`;
+
 function screenshot(path) {
   try {
     execFileSync("/usr/sbin/screencapture", ["-x", path], { timeout: 30_000 });
@@ -218,6 +271,21 @@ function screenshot(path) {
   } catch (error) {
     return {
       ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function captureWindow(path, windowNumber) {
+  try {
+    execFileSync("/usr/sbin/screencapture", [
+      "-x", "-o", "-l", String(windowNumber), path,
+    ], { timeout: 30_000 });
+    return { ok: true, path, windowNumber };
+  } catch (error) {
+    return {
+      ok: false,
+      windowNumber,
       error: error instanceof Error ? error.message : String(error),
     };
   }
@@ -284,14 +352,16 @@ async function main() {
   makePng(fixturePath);
   step("fixture", { path: fixturePath });
 
-  const artifactDir = outDir ? join(outDir, "drag-artifacts") : join(workdir, "artifacts");
-
-  const ae = await AfterEffects.launch({
+  const launchOptions = {
     installDir: options.install,
     hostScript,
     timeoutMs: 300_000,
     readinessTimeoutMs: 240_000,
-  });
+  };
+  if (options.sessionRoot !== undefined) {
+    launchOptions.sessionRoot = options.sessionRoot;
+  }
+  const ae = await AfterEffects.launch(launchOptions);
   step("launch", { pid: ae.recoveryTarget()?.pid ?? null, info: ae.info() });
 
   try {
@@ -331,6 +401,26 @@ async function main() {
     // geometry oracle — drop coordinates are derived from it plus
     // empirical offsets recorded in this evidence.
     const census = windowServerCensus(execFileCensusRunner());
+    /**
+     * Z-order oracle: CGWindowListCopyWindowInfo returns on-screen windows
+     * front-to-back, so the FIRST window whose bounds contain the point is
+     * what a real drop would hit. Returns {pid, owner, windowNumber} or
+     * null. Used to prove the drop target is the OWNED AE — never a
+     * foreign instance sharing the same screen rect.
+     */
+    const topmostAt = (x, y) => {
+      // Fresh census per call: z-order changes as windows come and go.
+      const fresh = windowServerCensus(execFileCensusRunner());
+      if (!fresh.available) return { error: "census unavailable" };
+      for (const w of fresh.windows) {
+        if (w.onScreen !== true || w.bounds === null) continue;
+        const b = w.bounds;
+        if (x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height) {
+          return { pid: w.pid, owner: w.owner, windowNumber: w.windowNumber ?? null };
+        }
+      }
+      return null;
+    };
     const aeWindows = census.available
       ? census.windows.filter((w) => w.pid === target.pid)
       : [];
@@ -350,6 +440,15 @@ async function main() {
 
     if (outDir) {
       step("screenshot-before", screenshot(join(outDir, "drag-before.png")));
+      // Per-window captures (`screencapture -l` by CGWindowID): AE panels
+      // are AX-invisible, so these images + OCR are the only way to learn
+      // what each census window actually is.
+      for (const w of onScreen) {
+        if (typeof w.windowNumber !== "number") continue;
+        step(`window-capture-${w.windowNumber}`, captureWindow(
+          join(outDir, `window-${w.windowNumber}.png`), w.windowNumber,
+        ));
+      }
     } else {
       step("screenshot-before", { skipped: "no --out dir" });
     }
@@ -357,36 +456,204 @@ async function main() {
     if (options.probe) {
       evidence.outcome = "probe-complete";
     } else {
-      const from = parsePoint(options.from);
-      const to = parsePoint(options.to);
-      const dragArgs = [
-        options.mode === "file" ? "filedrag" : "drag",
-        ...(options.mode === "file" ? ["--file", fixturePath] : []),
-        "--from", `${from.x},${from.y}`,
-        "--to", `${to.x},${to.y}`,
-        "--steps", String(options.steps),
-        "--step-delay-ms", String(options.stepDelayMs),
-      ];
-      let dragResult;
-      try {
-        const stdout = execFileSync(dragBin, dragArgs, {
-          encoding: "utf-8",
-          timeout: 120_000,
-        });
-        dragResult = { ok: true, receipt: JSON.parse(stdout.trim()) };
-      } catch (error) {
-        dragResult = {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-          stdout: error && typeof error === "object" && "stdout" in error
-            ? String(error.stdout) : undefined,
-          stderr: error && typeof error === "object" && "stderr" in error
-            ? String(error.stderr) : undefined,
+      // Auxiliary floating panels (measured: "ty-plus" CEP windows,
+      // 640x504 each) tile over the main window and cover the Project
+      // panel, so every drop lands on a panel instead of AE chrome. AE
+      // panels are AX-invisible (#406) and windowOps needs AX, so the
+      // only way to clear them is a real click on each window's close
+      // button — verified by the z-ordered census before EVERY click so
+      // a foreign window can never be hit. Only small on-screen windows
+      // owned by OUR pid are touched; the main window is never a target.
+      const auxResults = [];
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const auxWindowsOf = () => {
+        const fresh = windowServerCensus(execFileCensusRunner());
+        if (!fresh.available) return { error: "census unavailable" };
+        const ours = fresh.windows.filter(
+          (w) => w.pid === target.pid && w.onScreen === true && w.bounds !== null,
+        );
+        const main = ours.reduce(
+          (a, b) => ((a === null ? -1 : a.bounds.width * a.bounds.height) >=
+            (b.bounds.width * b.bounds.height) ? a : b),
+          null,
+        );
+        return {
+          aux: ours.filter((w) =>
+            w !== main && w.bounds.width <= 800 && w.bounds.height <= 700),
         };
-      }
-      step("drag", { args: dragArgs, result: dragResult });
-      await new Promise((r) => setTimeout(r, options.settleMs + 1500));
+      };
 
+      // Path A: AX minimize. #406 showed AE's MAIN window is not
+      // AX-enumerable, but the ty-plus aux windows may still be — cheap
+      // to test, and AXMinimized is the cleanest possible close.
+      const axMinPath = join(workdir, "axmin.scpt");
+      writeFileSync(axMinPath, AX_MINIMIZE_SCRIPT, "utf-8");
+      auxResults.push({
+        path: "ax-minimize",
+        ...runOsascript(axMinPath, [String(target.pid)]),
+      });
+      await sleep(800);
+
+      // Path B (fallback): MOVE each remaining aux window DOWN by ~520pt
+      // via a title-strip drag, parking it mostly off the bottom edge.
+      // Every aux window top is >=161 and the Project panel content ends
+      // around y~640, so +520 clears the panel entirely while the title
+      // strip (y~681+) stays grabbable for verification. A uniform
+      // downward shift also cannot cover OTHER windows' title points
+      // (moved windows only occupy y>=~660, unmoved titles are y<=~620),
+      // so rounds monotonically expose more windows. A Cmd+M minimize
+      // was rejected: CEP/ScriptUI panels are often non-activating, so
+      // the keystroke would land on the still-key MAIN window. Moves are
+      // pure pointer traffic and every one is census-verified.
+      runOsascript(activatePath, [String(target.pid)]);
+      await sleep(600);
+      const MOVE_DY = 520;
+      for (let round = 0; round < 6; round += 1) {
+        const { aux, error } = auxWindowsOf();
+        if (error !== undefined) {
+          auxResults.push({ round, path: "census", error });
+          break;
+        }
+        if (aux.length === 0) {
+          auxResults.push({ round, remainingAux: 0 });
+          break;
+        }
+        let movedThisRound = 0;
+        for (const w of aux) {
+          const b = w.bounds;
+          // Already parked low enough? Then it cannot cover the Project
+          // panel — leave it and stop retrying it.
+          if (b.y >= 660) continue;
+          const record = {
+            round,
+            windowNumber: w.windowNumber,
+            boundsBefore: b,
+            moved: false,
+          };
+          const fx = b.x + b.width / 2;
+          // Try two title-strip heights: ty-plus chrome looked ~40-50pt
+          // tall in the window captures, so 20pt may be too high.
+          for (const titleDy of [20, 36]) {
+            const fy = b.y + titleDy;
+            const top = topmostAt(fx, fy);
+            if (top === null || top.windowNumber !== w.windowNumber) {
+              record.skipped = "window not topmost at title point";
+              break;
+            }
+            const res = spawnSync(dragBin, [
+              "drag",
+              "--from", `${fx},${fy}`,
+              "--to", `${fx},${fy + MOVE_DY}`,
+              "--steps", "16",
+              "--step-delay-ms", "20",
+            ], { encoding: "utf-8", timeout: 30_000 });
+            record.dragExit = res.status;
+            await sleep(500);
+            const after = windowServerCensus(execFileCensusRunner());
+            const now = after.available
+              ? after.windows.find((x) => x.windowNumber === w.windowNumber)
+              : undefined;
+            record.boundsAfter = now?.bounds ?? null;
+            record.moved = now?.bounds != null && now.bounds.y > b.y + 100;
+            if (record.moved) {
+              movedThisRound += 1;
+              break;
+            }
+          }
+          auxResults.push(record);
+        }
+        if (movedThisRound === 0) break; // no progress possible
+      }
+      step("close-aux-windows", { results: auxResults });
+
+      const from = parsePoint(options.from);
+      // --attempts is a ";"-separated drop-target scan: each target gets
+      // one drag, readback after each, stop at the first observed landing.
+      // Used to discover panel geometry empirically when AX cannot see it.
+      const targets = options.attempts !== undefined
+        ? options.attempts.split(";").map(parsePoint)
+        : [parsePoint(options.to)];
+      const attemptResults = [];
+      let landed = false;
+      for (const [index, to] of targets.entries()) {
+        if (landed) break;
+        // Safety gate per attempt: re-activate the owned AE and prove via
+        // z-ordered census that the point belongs to OUR window before a
+        // single event is posted. A foreign topmost window → skip, never
+        // drag onto it.
+        runOsascript(activatePath, [String(target.pid)]);
+        await new Promise((r) => setTimeout(r, 400));
+        const top = topmostAt(to.x, to.y);
+        const topIsOurs = top !== null && top.pid === target.pid;
+        if (!topIsOurs) {
+          attemptResults.push({
+            index,
+            to,
+            skipped: "foreign-or-no topmost window at target",
+            topmost: top,
+          });
+          step(`drag-attempt-${index}`, attemptResults[attemptResults.length - 1]);
+          continue;
+        }
+        const dragArgs = [
+          options.mode === "file" ? "filedrag" : "drag",
+          ...(options.mode === "file" ? ["--file", fixturePath] : []),
+          "--from", `${from.x},${from.y}`,
+          "--to", `${to.x},${to.y}`,
+          "--steps", String(options.steps),
+          "--step-delay-ms", String(options.stepDelayMs),
+        ];
+        let dragResult;
+        try {
+          const res = spawnSync(dragBin, dragArgs, {
+            encoding: "utf-8",
+            timeout: 120_000,
+          });
+          if (res.status === 0) {
+            dragResult = {
+              ok: true,
+              receipt: JSON.parse(res.stdout.trim()),
+              stderr: res.stderr?.trim() || undefined,
+            };
+          } else {
+            dragResult = {
+              ok: false,
+              exitStatus: res.status,
+              error: res.error?.message ?? `exit ${res.status}`,
+              stdout: res.stdout,
+              stderr: res.stderr,
+            };
+          }
+        } catch (error) {
+          dragResult = {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+        await new Promise((r) => setTimeout(r, options.settleMs + 800));
+        const itemsNow = await ae.call("poc.projectItems", {});
+        const layersNow = await ae.call("poc.compLayers", { name: "PoC Comp" });
+        const names = itemsNow && Array.isArray(itemsNow.items)
+          ? itemsNow.items.map((it) => it.name) : [];
+        const hit = names.some(
+          (n) => typeof n === "string" && n.includes("a8n-poc-fixture"),
+        );
+        const layerDelta =
+          JSON.stringify(layersNow?.layers) !== JSON.stringify(layersBefore?.layers);
+        attemptResults.push({
+          index,
+          to,
+          topmost: top,
+          drag: dragResult,
+          projectItemCount: itemsNow?.count ?? null,
+          fixturePresent: hit,
+          layerOrderChanged: layerDelta,
+        });
+        step(`drag-attempt-${index}`, attemptResults[attemptResults.length - 1]);
+        // Stop at the first OBSERVED effect — a project-item import or a
+        // layer-order/layer-count change both mean the drop reached AE.
+        landed = hit || layerDelta;
+      }
       const itemsAfter = await ae.call("poc.projectItems", {});
       step("project-items-after", { inAe: itemsAfter });
       const layersAfter = await ae.call("poc.compLayers", { name: "PoC Comp" });
@@ -398,16 +665,12 @@ async function main() {
       // Honest verdict inputs: did the fixture appear as a project item?
       const afterItems = itemsAfter && Array.isArray(itemsAfter.items)
         ? itemsAfter.items : [];
-      const beforeItems = itemsBefore && Array.isArray(itemsBefore.items)
-        ? itemsBefore.items : [];
-      const landed = afterItems.some(
-        (it) => it.name === "a8n-poc-fixture.png" ||
-               it.name === "a8n-poc-fixture" ||
-               (typeof it.name === "string" && it.name.includes("a8n-poc-fixture")),
+      const beforeNames = new Set(
+        (itemsBefore?.items ?? []).map((it) => it.name),
       );
-      const beforeNames = new Set(beforeItems.map((it) => it.name));
       const newItems = afterItems.filter((it) => !beforeNames.has(it.name));
       evidence.observations = {
+        attempts: attemptResults,
         fixtureImported: landed,
         newProjectItems: newItems,
         projectItemCountBefore: itemsBefore?.count ?? null,
@@ -423,7 +686,11 @@ async function main() {
     evidence.errorStack = error instanceof Error ? error.stack : undefined;
   } finally {
     try {
-      const closed = await ae.close();
+      // The PoC project is created by this script (ensureComp) and is
+      // disposable: discard unsaved changes so close() can quit the owned
+      // host. This is safe ONLY because launch() proved ownership — an
+      // attached session would refuse here by design.
+      const closed = await ae.close({ unsavedChanges: "discard" });
       step("close", { closed });
     } catch (error) {
       step("close", {
