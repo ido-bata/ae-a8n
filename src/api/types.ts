@@ -69,6 +69,20 @@ export type ProjectInfo = {
   readonly itemCount: number;
 };
 
+/**
+ * The project facts the DOM exposes for readback (#359): item count, the
+ * unsaved-changes flag, and the active item. `activeItem.comp` is true only
+ * for a composition — footage and other items still report their name.
+ */
+export type ProjectState = {
+  readonly itemCount: number;
+  readonly dirty: boolean;
+  readonly activeItem: {
+    readonly name: string;
+    readonly comp: boolean;
+  } | null;
+};
+
 export type CompInfo = {
   readonly name: string;
   readonly width: number;
@@ -76,6 +90,20 @@ export type CompInfo = {
   readonly duration: number;
   readonly frameRate: number;
   readonly layerCount: number;
+};
+
+/**
+ * `CompItem.time` — the current-time indicator (#359). Read-only here:
+ * setting it is a scripting mutation and stays setup-only. `frame` is
+ * `time` in frames and can be fractional while the indicator sits between
+ * frames.
+ */
+export type CompTime = {
+  readonly comp: string;
+  /** Seconds. */
+  readonly time: number;
+  /** `time * frameRate`; fractional mid-scrub. */
+  readonly frame: number;
 };
 
 /** `TextLayer`, `ShapeLayer`, any other `AVLayer`, or a camera/light. */
@@ -228,12 +256,36 @@ export type ValueProperty =
     };
 
 /**
- * One property of an effect. `value` is present exactly when `kind` is
- * `"value"`; narrow on `kind`, then on `valueType`, to read it.
+ * One keyframe of a property, as AE numbers it (#359): `index` is 1-based,
+ * `time` is in seconds of comp time. `value` is carried only in the shapes
+ * this API reads elsewhere (`ParameterValue`) and is `null` when the host
+ * cannot read it — NO_VALUE and CUSTOM_VALUE properties refuse `keyValue`,
+ * as they refuse `value`.
+ */
+export type KeyframeInfo = {
+  readonly index: number;
+  readonly time: number;
+  readonly value: ParameterValue | null;
+};
+
+/**
+ * One property of an effect or layer. `value` is present exactly when
+ * `kind` is `"value"`; narrow on `kind`, then on `valueType`, to read it.
+ *
+ * The readback fields (#359) are present only where the host exposes them:
+ * `selected` is the timeline selection state (`Property.selected`), and
+ * `isTimeVarying`/`keyframes` exist on properties, not groups — a `"group"`
+ * never carries them.
  */
 export type PropertyInfo = {
   readonly name: string;
   readonly matchName?: string;
+  /** `Property.selected`: whether the property row is selected in the timeline. */
+  readonly selected?: boolean;
+  /** Whether the property varies over time; absent on groups. */
+  readonly isTimeVarying?: boolean;
+  /** Every keyframe, in time order; `[]` when the property has none. */
+  readonly keyframes?: readonly KeyframeInfo[];
 } & (
   | ValueProperty
   | { readonly kind: "no-value"; readonly valueType: "NO_VALUE"; readonly value?: undefined }

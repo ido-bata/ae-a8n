@@ -100,7 +100,16 @@ describe("driver against the fake host", () => {
       parameter: "Amount",
       value: 50,
     });
-    expect(set).toEqual({ name: "Amount", kind: "value", matchName: "ADBE Fake Gaussian Blur-0001", valueType: "OneD", value: 50 });
+    expect(set).toEqual({
+      name: "Amount",
+      kind: "value",
+      matchName: "ADBE Fake Gaussian Blur-0001",
+      valueType: "OneD",
+      value: 50,
+      selected: false,
+      isTimeVarying: false,
+      keyframes: [],
+    });
 
     const read = await driver.call<{ value: number }>("effect.getParameter", {
       comp: "Main",
