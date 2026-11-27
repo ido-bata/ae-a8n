@@ -846,7 +846,7 @@ describe("panel window operations (#343)", () => {
       gui.resizePanelWindow(panelWindow, { width: 800.4, height: 600 }),
     ).toBe(true);
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.program).toBe("/fake/helpers/window-ops");
+    expect(calls[0]?.program).toBe(join("/fake/helpers", "window-ops"));
     expect(calls[0]?.args).toEqual([
       "act",
       "--pid",
