@@ -37,6 +37,7 @@ import {
   MacGuiRecovery,
   censusRunnerInSession,
   type GuiRecoveryOptions,
+  type GuiWindowInfo,
 } from "../driver/gui-recovery.js";
 import { defaultGuiLeaseRoot, type GuiLease } from "../platform/darwin/gui-lease.js";
 import { runInSession } from "../driver/mac-session.js";
@@ -62,6 +63,7 @@ import {
   type DragDropResult,
   type DragDropSnapshot,
   type DragDropTopmost,
+  type GuiAppStateLike,
 } from "../dragdrop/index.js";
 import type { GuiObservationTarget, GuiObservationSeams } from "./gui-state.js";
 import type { Session } from "./session.js";
@@ -71,6 +73,19 @@ import {
   type DarwinInputExec,
 } from "../input/darwin.js";
 import { ensureDarwinInputHelpers } from "./input.js";
+import { ensureDarwinWindowOpsHelpers } from "./window-ops.js";
+import {
+  darwinWindowOpsOps,
+  sessionWindowOpsExec,
+  type DarwinWindowOpsExec,
+} from "../windowops/darwin.js";
+import type {
+  WindowOpsListing,
+  WindowOpsSurfaceOps,
+  WindowOpsWindowInfo,
+} from "../windowops/types.js";
+import type { WindowServerWindow } from "../platform/darwin/window-census.js";
+import { framesMatch } from "../driver/gui-recovery.js";
 
 // The contract vocabulary is re-exported so `ae.dragDrop()` callers and
 // `src/index.ts` get one import surface, like every sibling API module.
@@ -159,7 +174,13 @@ export function dragDropCapabilities(
 export type DragDropSeams = GuiObservationSeams & {
   /** Mutation gate override — production falls back to the A-SAFETY gate. */
   readonly authorizeMutation?: DragDropMutationGate;
-  /** Compiled darwin input-helper directory (tests / prebuilt helpers). */
+  /**
+   * Compiled helper directory override (tests / prebuilt helpers). When
+   * set it must contain BOTH helper sets the surface needs:
+   * `input-drag` (the drag vehicle) and `window-ops` + `input-focus`
+   * (the window listing); production compiles each set into its own
+   * hashed tmpdir when this is unset.
+   */
   readonly helpersDir?: string | undefined;
   /** Postcondition poll budget override. */
   readonly poll?: DragDropPollOptions;
@@ -244,6 +265,141 @@ function censusTopmostAt(
     };
   }
   return null;
+}
+
+/**
+ * One `window-ops state` listing row → the `GuiWindowInfo` shape the
+ * drag-drop controller consumes. `buttons`/`texts` stay empty — the
+ * drag surface never reads them — and census attribution is resolved
+ * by the caller through `attributePanelWindow`, the same arbiter
+ * `ae.panel()`/`ae.windowOps()` use.
+ */
+function toGuiWindowInfo(info: WindowOpsWindowInfo): GuiWindowInfo {
+  return {
+    title: info.title,
+    role: info.role,
+    subrole: info.subrole,
+    buttons: [],
+    texts: [],
+    ...(info.frame === null
+      ? {}
+      : {
+          frame: {
+            x: info.frame.x,
+            y: info.frame.y,
+            width: info.frame.width,
+            height: info.frame.height,
+          },
+        }),
+  };
+}
+
+/**
+ * Pid-scoped census attribution for a `window-ops state` row. The
+ * window-ops helper enumerates through `AXUIElementCreateApplication(pid)`
+ * — the element IS this pid's window by construction, so the #330
+ * System-Events bundle-confusion that `attributePanelWindow` guards
+ * against cannot occur here. What remains to prove is that the AX
+ * window corresponds to a REAL on-screen census window of this pid
+ * (not an AX phantom or a window parked on another Space): exactly one
+ * census row of THIS pid may frame-match.
+ *
+ * Deliberately NOT `attributePanelWindow`: on a busy console many apps
+ * keep fullscreen windows at ~(0,38,screenW,screenH-38), and its
+ * "frame shared by >1 pid ⇒ unmatched" rule makes every fullscreen
+ * window unattributable (measured on this host, #422 e2e). Scoping the
+ * match to our pid first keeps the phantom/off-Space refusal without
+ * the cross-pid ambiguity — a foreign app's same-frame window can
+ * never be "our" window anyway.
+ */
+function attributeWindowOpsRow(
+  info: WindowOpsWindowInfo,
+  pid: number,
+  census: readonly WindowServerWindow[],
+): "owned" | "unmatched" {
+  if (info.frame === null || census.length === 0) {
+    return "unmatched";
+  }
+  const frame = info.frame;
+  const mine = census.filter(
+    (ws) => ws.pid === pid && ws.bounds !== null && framesMatch(frame, ws.bounds),
+  );
+  // Exactly one of OUR pid's census windows may claim this frame —
+  // zero means AX phantom/off-Space, two means the pid itself has an
+  // ambiguous pair; both refuse.
+  return mine.length === 1 ? "owned" : "unmatched";
+}
+
+/**
+ * The `observe()` the drag-drop controller runs. Production prefers
+ * the compiled `window-ops state` listing — the AXUIElement channel
+ * that actually sees After Effects' windows — over
+ * `MacGuiRecovery.listWindows()`, whose System Events `windows of
+ * process` query AE never answers (#406: AppleScript/System Events see
+ * ZERO windows on AE 2026/2027 while AXUIElement enumerates them once
+ * the app has been frontmost). When the window-ops helpers cannot be
+ * built the System Events listing remains the fallback — on hosts
+ * where it lists nothing the controller's resolve fails `not-found`,
+ * fail-closed either way.
+ *
+ * `listing.focusedWindow` is appended when the enumeration is empty
+ * or lacks it — on AE it can be the ONLY AX-reachable window (#406),
+ * and a drop onto the focused window is still census-gated.
+ */
+function windowOpsObserve(
+  ops: WindowOpsSurfaceOps,
+  pid: number,
+  census: () => WindowCensus,
+): () => GuiAppStateLike {
+  return () => {
+    let listing: WindowOpsListing;
+    try {
+      listing = ops.observeWindows();
+    } catch (error) {
+      throw new DragDropError(
+        "unavailable",
+        `the window listing could not be produced: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        { cause: error },
+      );
+    }
+    const censusResult = census();
+    const censusRows = censusResult.available ? censusResult.windows : [];
+    const rows: WindowOpsWindowInfo[] = [...listing.windows];
+    const focused = listing.focusedWindow;
+    if (
+      focused !== null &&
+      !rows.some(
+        (w) =>
+          w.title === focused.title &&
+          w.subrole === focused.subrole &&
+          w.frame !== null &&
+          focused.frame !== null &&
+          w.frame.x === focused.frame.x &&
+          w.frame.y === focused.frame.y &&
+          w.frame.width === focused.frame.width &&
+          w.frame.height === focused.frame.height,
+      )
+    ) {
+      rows.push({ ...focused, index: 0 });
+    }
+    const windows = rows.map((info) => {
+      const gui = toGuiWindowInfo(info);
+      // Pid-scoped attribution — see `attributeWindowOpsRow`. The
+      // result is already in the `AxWindowAttribution` vocabulary, and
+      // anything short of "owned" is written down so
+      // `isPidAttributedWindow` can never read an absent verdict as
+      // attributed.
+      const censusAttribution = attributeWindowOpsRow(info, pid, censusRows);
+      return { ...gui, censusAttribution };
+    });
+    return {
+      pid,
+      frontmost: listing.frontmostPid === pid,
+      windows,
+    };
+  };
 }
 
 /** Fixture-file probe: exists, regular file, size, content digest. */
@@ -497,9 +653,38 @@ export function dragDropForTarget(
           observedAt: new Date().toISOString(),
         })));
 
+  // The window listing: prefer the compiled `window-ops state` helper —
+  // the AXUIElement channel that sees AE's windows where System Events
+  // sees none (#406). `seams.helpersDir` injects a prebuilt helpers dir
+  // for tests; production compiles via `ensureDarwinWindowOpsHelpers`.
+  // When it cannot be built, `observe` falls back to the System Events
+  // listing, which on AE is empty and fails `not-found` — fail-closed.
+  let surfaceOps: WindowOpsSurfaceOps | null = null;
+  const windowOpsHelpersDir =
+    seams.helpersDir ?? ensureDarwinWindowOpsHelpers();
+  if (windowOpsHelpersDir !== null) {
+    try {
+      const exec: DarwinWindowOpsExec = sessionWindowOpsExec({
+        session: target.session,
+        helpersDir: windowOpsHelpersDir,
+        timeoutMs: 30_000,
+      });
+      surfaceOps = darwinWindowOpsOps({ pid: target.pid, exec, census });
+    } catch {
+      surfaceOps = null;
+    }
+  }
+  const guiRecovery = new MacGuiRecovery(guiOptions(target, seams, true));
+  const observeState =
+    surfaceOps === null
+      ? null
+      : windowOpsObserve(surfaceOps, target.pid, census);
+
   const ops: DragDropOps = {
     observe: () =>
-      new MacGuiRecovery(guiOptions(target, seams, true)).listWindows(),
+      observeState === null
+        ? guiRecovery.listWindows()
+        : observeState(),
     topmostAt:
       seams.topmostAt ?? ((point) => censusTopmostAt(census, point)),
     activate:

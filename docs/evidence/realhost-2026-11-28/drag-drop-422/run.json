@@ -1,0 +1,221 @@
+{
+  "schema": "a8n.poc-drag-drop-422/v1",
+  "issue": 422,
+  "recordedAt": "2026-11-27T19:16:40.813Z",
+  "install": "/Applications/Adobe After Effects 2027",
+  "steps": [
+    {
+      "name": "preflight",
+      "at": "2026-11-27T19:16:41.217Z",
+      "install": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "preexisting": []
+    },
+    {
+      "name": "fixture",
+      "at": "2026-11-27T19:16:41.228Z",
+      "path": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-dragdrop-422-w3cXCZ/a8n-dragdrop422-fixture.png",
+      "size": 74
+    },
+    {
+      "name": "launch",
+      "at": "2026-11-27T19:16:49.895Z",
+      "pid": 83819,
+      "info": {
+        "version": "27.0x78",
+        "build": "78"
+      },
+      "dialogDismissals": 0
+    },
+    {
+      "name": "recovery-target",
+      "at": "2026-11-27T19:16:50.533Z",
+      "pid": 83819,
+      "sessionKind": "Aqua"
+    },
+    {
+      "name": "activate",
+      "at": "2026-11-27T19:16:56.231Z",
+      "ok": true
+    },
+    {
+      "name": "window-ops-helpers",
+      "at": "2026-11-27T19:16:56.266Z",
+      "dir": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-window-ops-helpers-501602f1985d94e8"
+    },
+    {
+      "name": "surface",
+      "at": "2026-11-27T19:17:00.916Z",
+      "windowIndex": 1,
+      "title": "名称未設定プロジェクト",
+      "subrole": "AXDialog",
+      "frame": {
+        "x": 0,
+        "y": 38,
+        "width": 1710,
+        "height": 1074
+      },
+      "windows": 1,
+      "attribution": "owned",
+      "census": {
+        "available": true,
+        "reason": null,
+        "pidRows": [
+          {
+            "windowNumber": 6803,
+            "onScreen": true,
+            "layer": 0,
+            "bounds": {
+              "x": 0,
+              "y": 38,
+              "width": 1710,
+              "height": 1074
+            }
+          },
+          {
+            "windowNumber": 6795,
+            "onScreen": false,
+            "layer": 0,
+            "bounds": {
+              "x": 0,
+              "y": 612,
+              "width": 500,
+              "height": 500
+            }
+          },
+          {
+            "windowNumber": 6801,
+            "onScreen": false,
+            "layer": 0,
+            "bounds": {
+              "x": 0,
+              "y": 0,
+              "width": 1710,
+              "height": 38
+            }
+          },
+          {
+            "windowNumber": 6800,
+            "onScreen": false,
+            "layer": 0,
+            "bounds": {
+              "x": 0,
+              "y": 0,
+              "width": 1710,
+              "height": 38
+            }
+          },
+          {
+            "windowNumber": 6799,
+            "onScreen": false,
+            "layer": 0,
+            "bounds": {
+              "x": 0,
+              "y": 0,
+              "width": 1710,
+              "height": 38
+            }
+          },
+          {
+            "windowNumber": 6802,
+            "onScreen": false,
+            "layer": 0,
+            "bounds": {
+              "x": 0,
+              "y": 0,
+              "width": 1710,
+              "height": 38
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "screenshot-before",
+      "at": "2026-11-27T19:17:01.743Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.422/docs/evidence/realhost-2026-11-28/drag-drop-422/drag-drop-422-before.png"
+    },
+    {
+      "name": "window-capture-before",
+      "at": "2026-11-27T19:17:02.288Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.422/docs/evidence/realhost-2026-11-28/drag-drop-422/drag-drop-422-window-before.png",
+      "windowNumber": 6803
+    },
+    {
+      "name": "project-state-before",
+      "at": "2026-11-27T19:17:07.035Z",
+      "itemCount": 0,
+      "dirty": false,
+      "activeItem": null
+    },
+    {
+      "name": "docked-pane-probe",
+      "at": "2026-11-27T19:17:10.124Z",
+      "ok": false,
+      "error": "window 6803 exists in the census but no framed Accessibility window both matches its frame and the locator — it cannot parent a docked pane"
+    },
+    {
+      "name": "drop-point",
+      "at": "2026-11-27T19:17:10.124Z",
+      "channel": "main-window-heuristic",
+      "point": {
+        "x": 220,
+        "y": 446
+      },
+      "paneFrame": null
+    },
+    {
+      "name": "drop-file-result",
+      "at": "2026-11-27T19:17:21.915Z",
+      "result": {
+        "kind": "file-drop",
+        "vehicle": "performed",
+        "dragOperation": "copy",
+        "delta": {
+          "addedNames": [
+            "a8n-dragdrop422-fixture.png"
+          ],
+          "removedNames": [],
+          "orderChanged": false,
+          "countDelta": 1
+        },
+        "verified": true,
+        "file": {
+          "path": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-dragdrop-422-w3cXCZ/a8n-dragdrop422-fixture.png",
+          "name": "a8n-dragdrop422-fixture.png",
+          "size": 74,
+          "sha256": "765e6f001d0078c07a53d6b54980b245d8a4fcb38055c75469843d9191722d59"
+        },
+        "segments": [],
+        "aborted": null,
+        "observedAt": "2026-11-27T19:17:21.914Z"
+      },
+      "opError": null
+    },
+    {
+      "name": "project-state-after",
+      "at": "2026-11-27T19:17:26.927Z",
+      "itemCount": 1,
+      "dirty": true,
+      "activeItem": {
+        "name": "a8n-dragdrop422-fixture.png",
+        "comp": false
+      }
+    },
+    {
+      "name": "screenshot-after",
+      "at": "2026-11-27T19:17:27.489Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.422/docs/evidence/realhost-2026-11-28/drag-drop-422/drag-drop-422-after.png"
+    },
+    {
+      "name": "window-capture-after",
+      "at": "2026-11-27T19:17:28.164Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.422/docs/evidence/realhost-2026-11-28/drag-drop-422/drag-drop-422-window-after.png",
+      "windowNumber": 6803
+    }
+  ],
+  "outcome": "verified"
+}
