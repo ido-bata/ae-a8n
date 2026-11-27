@@ -681,3 +681,66 @@ describe("capabilities (spec §7)", () => {
     );
   });
 });
+
+describe("compositionObserve (spec §6, #376)", () => {
+  const fixtureJsonl = [
+    JSON.stringify({
+      v: 1,
+      fixture: "ae-a8n-ime-input",
+      surface: "cep-composition",
+      ts: "2026-01-01T00:00:00.000Z",
+      kind: "surface-ready",
+      channel: "none",
+      tier: "1a",
+      provesOsIme: false,
+      verification: "implemented",
+      data: { compositionObserve: "supported", valueReadback: "supported" },
+    }),
+    JSON.stringify({
+      v: 1,
+      fixture: "ae-a8n-ime-input",
+      surface: "cep-composition",
+      ts: "2026-01-01T00:00:01.000Z",
+      kind: "compositionend",
+      channel: "composition-event",
+      tier: "1a",
+      provesOsIme: false,
+      verification: "implemented",
+      data: { data: "にほん" },
+      committedValue: "にほん",
+    }),
+  ].join("\n");
+
+  it("ingests the fixture self-report seam and returns the Tier-1a record", async () => {
+    const { input, lease } = makeInput({
+      seams: { fixtureReport: () => fixtureJsonl },
+    });
+    const report = await input.compositionObserve({ surface: "cep-composition" });
+    expect(report.surface).toBe("cep-composition");
+    expect(report.tier1a?.verdict).toBe("observed");
+    expect(report.tier1a?.provesOsIme).toBe(false);
+    expect(report.tier1a?.committedDomValue).toBe("にほん");
+    expect(report.coverage[0]?.compositionObserve).toBe("supported");
+    expect(report.channels.find((c) => c.channel === "cdp")?.status).toBe("unverified");
+    // Observe-class: no GUI lease, no mutation.
+    expect(lease.acquisitions).toEqual([]);
+  });
+
+  it("accepts per-call fixtureReport text and reports ingest rejections", async () => {
+    const { input } = makeInput({});
+    const report = await input.compositionObserve({
+      fixtureReport: `{bad\n${fixtureJsonl}`,
+    });
+    expect(report.ingestRejections).toHaveLength(1);
+    expect(report.tier1a).toBeNull();
+  });
+
+  it("answers honestly when no report source is wired", async () => {
+    const { input } = makeInput({});
+    const report = await input.compositionObserve();
+    expect(report.surface).toBeNull();
+    expect(report.tier1a).toBeNull();
+    expect(report.coverage).toEqual([]);
+    expect(report.channels.length).toBeGreaterThan(0);
+  });
+});

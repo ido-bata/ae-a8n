@@ -69,6 +69,11 @@ import {
   type DarwinInputExec,
 } from "../input/darwin.js";
 import { inputMutationGate, type InputMutationGate } from "../input/gate.js";
+import {
+  buildCompositionObserveReport,
+  parseFixtureReport,
+  type CompositionObserveReport,
+} from "../input/evidence.js";
 import { runInputPlan, type InputRunnerDeps } from "../input/runner.js";
 import {
   INPUT_OPERATION_GATES,
@@ -349,6 +354,13 @@ export type InputSeams = GuiObservationSeams & {
   readonly channel?: WindowsInputChannel | undefined;
   /** Surface ops override — production binds `MacGuiRecovery` observation. */
   readonly surfaceOps?: InputSurfaceOps;
+  /**
+   * Fixture self-report JSONL source for `compositionObserve` (spec
+   * §4.1 channel 1): returns the report text the fixture bridge wrote.
+   * Absent → the report answers with zero records and honest
+   * `unverified` coverage, never a guessed channel.
+   */
+  readonly fixtureReport?: () => string | Promise<string>;
   /** Focus re-proof interval in steps; default 1 (every step). */
   readonly recheckEvery?: number;
   readonly newOperationId?: () => string;
@@ -370,6 +382,7 @@ function macInputSurfaceOps(
     helpersDir: _helpers,
     channel: _channel,
     surfaceOps: _surface,
+    fixtureReport: _fixtureReport,
     recheckEvery: _recheck,
     newOperationId: _opId,
     now: _now,
@@ -727,6 +740,57 @@ export class Input {
         );
         throw asInputError(error);
       }
+    });
+  }
+
+  /**
+   * The `composition-observe` operation (spec §6, observe-class,
+   * #376). Ingests the fixture self-report stream (spec §4.1 channel 1
+   * — the primary Tier-1a channel) and returns per-surface coverage,
+   * the honest per-channel status table, ingest rejections, and — when
+   * `surface` names one — its Tier-1a record.
+   *
+   * The report source is `options.fixtureReport` (JSONL text or a
+   * function returning it) falling back to the `fixtureReport` seam;
+   * with neither wired the report still answers honestly — every
+   * surface is `unverified`, channels report `unverified`/`supported`
+   * per `compositionObserveChannels()`, and nothing is silently
+   * skipped. CDP feasibility is `unverified` by contract; this method
+   * never claims it.
+   */
+  compositionObserve(
+    options: {
+      /** Surface id to build a Tier-1a record for (e.g. "cep-composition"). */
+      surface?: string;
+      /** Fixture JSONL text, or a function returning it (e.g. file read). */
+      fixtureReport?: string | (() => string | Promise<string>);
+    } = {},
+  ): Promise<CompositionObserveReport> {
+    return Promise.resolve().then(async () => {
+      this.#requireOwnedTarget();
+      const source = options.fixtureReport ?? this.#seams.fixtureReport;
+      let jsonl: string | null = null;
+      if (typeof source === "string") {
+        jsonl = source;
+      } else if (typeof source === "function") {
+        jsonl = await source();
+      }
+      const { records, rejections } =
+        jsonl === null
+          ? { records: [], rejections: [] }
+          : parseFixtureReport(jsonl);
+      const report = buildCompositionObserveReport({
+        surface: options.surface ?? null,
+        records,
+        ingestRejections: rejections,
+        observedAt: this.#now().toISOString(),
+      });
+      this.#auditObserve(
+        "input:composition-observe",
+        "performed",
+        `surfaces=${report.coverage.length} rejections=${report.ingestRejections.length}`,
+      );
+      return report;
     });
   }
 
