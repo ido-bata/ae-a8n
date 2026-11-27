@@ -1267,14 +1267,14 @@ export class AeDriver {
           return {
             status: "ok",
             value,
-            detail: { args: { method, ...params }, result: summariseResult(value) },
+            detail: { args: { method, ...params, requestId: id }, result: summariseResult(value) },
           };
         }
         return {
           status: "error",
           error: new HostError(parsed.error),
           detail: {
-            args: { method, ...params },
+            args: { method, ...params, requestId: id },
             error: { name: parsed.error.name, message: parsed.error.message },
           },
         };
@@ -1299,7 +1299,7 @@ export class AeDriver {
               status: "error",
               error: attempt.error,
               detail: {
-                args: { method, ...params },
+                args: { method, ...params, requestId: id },
                 error: { name: attempt.error.name, message: attempt.error.message },
               },
             };
@@ -1324,7 +1324,7 @@ export class AeDriver {
           status: "error",
           error: cause ?? new TimeoutError(method, timeoutMs),
           detail: {
-            args: { method, ...params, timeoutMs, ...(cause === null ? {} : { requestId: id }) },
+            args: { method, ...params, timeoutMs, requestId: id },
             error:
               cause === null
                 ? { name: "TimeoutError", message: `${method} timed out after ${timeoutMs}ms` }

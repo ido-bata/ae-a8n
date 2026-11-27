@@ -54,7 +54,15 @@ export function guiEvidenceCapabilities(
       platform: platform === "win32" ? "win32" : "darwin",
       index,
       screenStill: unsupported,
-      screenRecording: unsupported,
+      screenRecording: {
+        support: "partial",
+        verification: CONTRACT_TESTED,
+        reason:
+          "the record.start/stop lifecycle is implemented (#381) against " +
+          "a pluggable recorder seam, but no OS backend exists on this " +
+          "platform — starts refuse until a backend (SCStream #382 / WGC " +
+          "#384) registers",
+      },
       renderEvidence: {
         support: "partial",
         verification: CONTRACT_TESTED,
@@ -78,12 +86,13 @@ export function guiEvidenceCapabilities(
         "not exposed, and real-host capture verification is still pending",
     },
     screenRecording: {
-      support: "unsupported",
-      verification: "implemented",
+      support: "partial",
+      verification: CONTRACT_TESTED,
       reason:
-        "no recording path exists on macOS yet (spec §4.1); the E2 slice " +
-        "adds the ScreenCaptureKit/screencapture -V lifecycle — this " +
-        "ticket ships the index contract only",
+        "the record.start/stop lifecycle is implemented (#381) against " +
+        "a pluggable recorder seam, but no macOS backend exists yet " +
+        "(ScreenCaptureKit is #382, screencapture -V its fallback tier) " +
+        "— starts refuse until a backend registers",
     },
     renderEvidence: {
       support: "partial",

@@ -55,7 +55,7 @@ export type DockedPaneSeams = GuiObservationSeams & {
  * like `ae.guiState()`): the walk is read-only AX attribute reads inside
  * the target session.
  */
-function macDockedPaneOps(
+export function macDockedPaneOps(
   target: GuiObservationTarget,
   seams: DockedPaneSeams,
 ): DockedPaneOps {

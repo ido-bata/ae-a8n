@@ -21,6 +21,9 @@ export {
   Parameter,
   Project,
   REDO_COMMAND_ID,
+  Timeline,
+  TimelineError,
+  timelineCapabilities,
   UNDO_COMMAND_ID,
 } from "./api/index.js";
 
@@ -144,6 +147,78 @@ export type {
   RenderQueueOracle,
   RenderQueueSnapshot,
   RenderQueueWalkInfo,
+} from "./api/index.js";
+
+/*
+ * GUI evidence recording surface (#381, specs/gui-evidence/spec.md §5.4):
+ * `ae.record.start/stop` plus the `ScreenRecorder` seam OS backends
+ * (#382/#384) implement. The lifecycle is platform-neutral; with no
+ * backend registered starts refuse honestly.
+ */
+export {
+  RECORDING_DEFAULT_MAX_DURATION_MS,
+  RECORDING_MAX_DURATION_MS_CAP,
+  RecordingController,
+  RecordingError,
+  recordingAttributionRefusal,
+  recordingRequiresAuthorization,
+} from "./evidence/recording.js";
+export type {
+  RecorderFileProbe,
+  RecorderHandle,
+  RecorderStartRequest,
+  RecorderStartResult,
+  RecorderStopResult,
+  RecordStartOptions,
+  RecordingApiSeams,
+  RecordingAuthorizer,
+  RecordingAuthorizationRequest,
+  RecordingControllerOptions,
+  RecordingErrorCode,
+  RecordingLease,
+  RecordingSession,
+  RecordingStopResult,
+  RecordingApi,
+  ScreenRecorder,
+} from "./api/record.js";
+export type {
+  CaptureScope,
+  EvidenceArtifact,
+  EvidenceExclusion,
+  EvidenceIndexSession,
+  EvidenceSegment,
+  GuiEvidenceIndexDocument,
+} from "./evidence/types.js";
+
+/*
+ * Timeline editing surface (#364, specs/workspace-editing/spec.md §3 W2):
+ * `ae.timeline(locator)` — timeline scrub, layer/property row selection
+ * and keyframe navigation. Every act is mutate-gui (GUI input + DOM
+ * readback oracle), gated pending A-SAFETY clearance; `rows` is
+ * observe-class. Real-host fidelity is unverified; see
+ * `timelineCapabilities()`.
+ */
+export type {
+  NavigateKeyframeRequest,
+  NavigateKeyframeResult,
+  ScrubRequest,
+  ScrubResult,
+  SelectRowRequest,
+  SelectRowResult,
+  TimelineCapabilities,
+  TimelineCapability,
+  TimelineErrorCode,
+  TimelineKeyTarget,
+  TimelineKeyframeVia,
+  TimelineMouseOps,
+  TimelineOpRecord,
+  TimelinePoint,
+  TimelinePostcondition,
+  TimelineRulerGeometry,
+  TimelineRowLocator,
+  TimelineRowVerify,
+  TimelineSeams,
+  TimelineVerdict,
 } from "./api/index.js";
 
 /*

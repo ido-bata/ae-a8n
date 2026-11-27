@@ -46,10 +46,12 @@ export {
   indexClockSkew,
   operationCoverage,
   segmentTraceCoverage,
+  segmentOperationCoverage,
 } from "./correlate.js";
 export type {
   DualClockPoint,
   EvidenceTraceRow,
+  SegmentOperationCoverage,
   SegmentTraceCoverage,
 } from "./correlate.js";
 export { guiEvidenceCapabilities } from "./capabilities.js";
@@ -67,6 +69,7 @@ export type {
   EvidenceClock,
   EvidenceConsumerRefs,
   EvidenceCoverage,
+  EvidenceExclusion,
   EvidenceHostRef,
   EvidenceIndexSession,
   EvidenceKind,

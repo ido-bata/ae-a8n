@@ -66,6 +66,7 @@ import {
   aeScriptingPermission,
   currentUsername,
 } from "./scripting-permission.js";
+import { inputCapabilities } from "../../input/capabilities.js";
 import {
   deferredTccProbe,
   runTccProbe,
@@ -518,6 +519,11 @@ export function darwinCapabilities(): Capabilities {
     // This adapter starts no After Effects and its close() quits nothing, so
     // no attached instance can ever be quit through it (#129).
     quitsOnlyOwned: true,
+    // B-IME input capabilities (#371 contract, #372 macOS helpers): the
+    // helpers exist and are compile/validation tested, but every mutation
+    // path sits behind the closed input gate — honest `implemented` /
+    // `automated test`, never `verified on real host`.
+    input: inputCapabilities("darwin", "unknown"),
   };
 }
 

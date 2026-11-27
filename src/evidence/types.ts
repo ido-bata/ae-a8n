@@ -179,9 +179,22 @@ export type EvidenceArtifact = {
 };
 
 /**
+ * A declarative exclusion request recorded on a recording segment
+ * (spec §7.2): what the caller asked the recorder to leave out. The
+ * request is recorded verbatim; whether the backend honored it is
+ * backend-reported — an exclusion that cannot be honored surfaces as an
+ * `unavailable`/`uncapturable` reason, never silently.
+ */
+export type EvidenceExclusion = {
+  readonly kind: "window" | "region" | "display" | "application" | "process";
+  /** Opaque backend predicate, recorded verbatim for audit. */
+  readonly predicate?: string;
+};
+
+/**
  * One bounded recording segment, summarized on the index (spec §5.4).
- * The lifecycle itself — start/stop/finalize — is a later slice; this is
- * the record shape that lifecycle writes.
+ * The lifecycle that writes it is `RecordingController` (#381,
+ * `recording.ts`); this is the record shape.
  */
 export type EvidenceSegment = {
   readonly id: string;
@@ -207,6 +220,8 @@ export type EvidenceSegment = {
   readonly operationIds: readonly string[];
   /** Recorder process residue after teardown (spec §5.4). */
   readonly recorderResidue?: "none" | "terminated" | "unknown";
+  /** Exclusion requests the caller made, recorded verbatim (spec §7.2). */
+  readonly exclude?: readonly EvidenceExclusion[];
 };
 
 /**
