@@ -62,6 +62,31 @@ export type {
 } from "./panels/types.js";
 
 /*
+ * Menu-bar surface (#360, specs/workspace-editing/spec.md): `ae.menuBar()`
+ * plus the capability report. Enumerate and checkmark readback are
+ * observe-class; invoke is mutate-gui and gate-pending.
+ */
+export {
+  MenuBar,
+  MenuError,
+  menuBarForTarget,
+  menuCapabilities,
+} from "./api/menus.js";
+export type {
+  MenuBarItemInfo,
+  MenuBarSnapshot,
+  MenuCapabilities,
+  MenuCapability,
+  MenuCheckReading,
+  MenuCheckState,
+  MenuErrorCode,
+  MenuInvokeResult,
+  MenuItemLocator,
+  MenuItemNode,
+  ResolvedMenuItem,
+} from "./menus/types.js";
+
+/*
  * Capability handshake surface (#102): `ae.capabilities()` plus the
  * negotiation and dispatch-authorization helpers, structurally conforming
  * to ae-devtools `ae-devtools.capability-handshake/v1`.
