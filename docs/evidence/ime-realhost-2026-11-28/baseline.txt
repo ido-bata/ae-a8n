@@ -1,0 +1,11 @@
+# Baseline 2026-11-27T19:46:28Z
+## census
+4536 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects
+4610 osascript -e on run argv -e   with timeout of 3600 seconds -e     tell application (item 1 of argv) -e       «event miscfile» (item 2 of argv) -e     end tell -e   end timeout -e end run /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app /Users/rebui/work/Aulymo_v04/dist/host/runs/spec-bundled-presets/20261127T185955247Z-f8a64780/a8n/staging/1ed7697f-9a18-4f0f-a120-4a23e6496e52.entry.jsx
+4723 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/crashpad_handler --no-rate-limit --database=/Users/rebui/Library/Caches/Adobe/After Effects/26.0/SentryIO-db --metrics-dir=/Users/rebui/Library/Caches/Adobe/After Effects/26.0/SentryIO-db --attachment=/Users/rebui/Library/Caches/Adobe/After Effects/26.0/SentryIO-db/3f2e480e-08e0-412d-0241-ad74eab900ce.run/__sentry-event --attachment=/Users/rebui/Library/Caches/Adobe/After Effects/26.0/SentryIO-db/3f2e480e-08e0-412d-0241-ad74eab900ce.run/__sentry-breadcrumb1 --attachment=/Users/rebui/Library/Caches/Adobe/After Effects/26.0/SentryIO-db/3f2e480e-08e0-412d-0241-ad74eab900ce.run/__sentry-breadcrumb2 --crash-reporter=/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/AdobeCrashReport.app --crash-envelope=/Users/rebui/Library/Caches/Adobe/After Effects/26.0/SentryIO-db/external/dfb6da02-954e-4bb3-cfd2-b151a55f7c22.envelope --report-id=dfb6da02-954e-4bb3-cfd2-b151a55f7c22 --handshake-fd=5
+## input-source current
+{"mode":"com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese","id":"com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese","name":"Hiragana","type":"TISTypeKeyboardInputMode","enabled":true,"selectable":true,"selected":true}
+## input-focus
+{"pid":4536,"app":"After Effects","element":null,"focusedWindowIndex":null,"observedAt":"2026-11-27T19:46:29Z"}
+## HID idle
+    | | |   "HIDIdleTime" = 1751999949083

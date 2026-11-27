@@ -136,3 +136,32 @@ keyDown NSEvent は届くが `insertText`/marked text が一度も発火しな�
 - AX trust 喪失 / `AXIsProcessTrusted=false` → posting 前に refuse。
 - owned AE が readiness timeout / wedge → supervision の既存契約
   （`gui-supervision-safety-gates.md`）に従い `needs-human`。
+
+## Results — 2026-11-28 run (`docs/evidence/ime-realhost-2026-11-28/`)
+
+W0–W5 を owned AE 2027 (`27.0x78`) で実行。foreign AE 2026 (pid 4536)
+は終始 untouched、owned instance は各 run 後に `ae.close()` で quit、
+input-source は baseline に restore 済み。
+
+| Step | Result |
+| --- | --- |
+| W0 witness .app | `implemented` — bundle 起動・AX focus 確認できたが `insertText`/`setMarkedText` は不発（witness の NSTextView が `NSTextInputClient` を完全に engage しない制限として記録。insertion oracle は TextEdit/実 fixture が担う） |
+| W1 session-stream 挿入 | `verified on real host` — `key press`/`type` とも TextEdit に実挿入 |
+| W2 Kotoeri IME pass-through | `verified on real host` — keycode events のみ IME を通過（`type`/unicode events は literal 挿入 = direct-entry）。`input-source select` 後は focus re-cycle が必要 |
+| W3 CGEventPostToPid | `verified on real host`（TextEdit）— active-app-gated（non-global channel ではない）、focused 時は IME 透過。AE panel 宛は `unverified` |
+| W4 AX marked-text | `verified on real host`（部分）— ScriptUI `edittext` の `AXValue` が live composition を露出。`AXSelectedText` は -25212 で `unsupported`、CEP/CEF panel は AX 非公開（`AXUnknown`） |
+| W5 Tier1a CEP composition | `verified on real host` — fixture self-report JSONL + CDP `Runtime.evaluate` の両 channel で compositionstart/update/end・`insertCompositionText`・committed value `知恵test` を記録 |
+| W5 Tier2 ScriptUI edittext | `verified on real host` — 実キー + Kotoeri IME で `eozqqこんにちはこんにちはテスト日本` を commit、ExtendScript readback で確認 |
+| W5 clipboard round-trip | `verified on real host` — snapshot→write→`cmd+v` 実キー paste→restore、digest 一致 |
+
+Runbook 運用上の新規知見（spec §7 に反映済み）:
+
+- **keyDown/keyUp 間 ~60 ms の delay が必須** — instant pair は AE/ScriptUI
+  に drop される（`hello`→`eo` 等）。`input-post --delay-ms 60`。
+- AE panel へのキー入力は **key window の focused control にのみ届く**。
+  実 click で panel/palette を key window 化してから post する。
+  CDP `el.focus()` は DOM focus のみで OS key focus を与えない。
+- `window.close()` (CDP) は CEP extension を hard-unload し menu からの
+  再 launch を拒否する — owned AE restart が必要だった。
+- `input-source select` 直後の既存 text-input context は旧 source を
+  保持し続ける — IME evidence には focus re-cycle + 再確認が必須。
