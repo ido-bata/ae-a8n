@@ -39,6 +39,11 @@ import {
   type PanelCapabilities,
   type PanelLocator,
 } from "./panels.js";
+import {
+  type DockedPane,
+  dockedPaneForTarget,
+  type DockedPaneLocator,
+} from "./docked-pane.js";
 import { supervisionReport, type SupervisionReport } from "../supervision/index.js";
 import {
   AfterEffectsError,
@@ -114,6 +119,18 @@ export {
   type PanelMeasurement,
   type PanelTarget,
 } from "./panels.js";
+export {
+  DockedPane,
+  DockedPaneObserver,
+  dockedPaneForTarget,
+  type DockedPaneBounds,
+  type DockedPaneLocator,
+  type DockedPaneOps,
+  type DockedPaneResolution,
+  type DockedPaneRow,
+  type DockedPaneSeams,
+  type DockedPaneTree,
+} from "./docked-pane.js";
 // The capability-handshake surface is exported once, from the package
 // entry point (src/index.ts → ./api/capabilities.js); re-exporting it here
 // too would duplicate the list and leak test-only symbols twice.
@@ -619,6 +636,27 @@ export class AfterEffects {
    */
   panel(locator: PanelLocator): Panel {
     return panelForTarget(this.recoveryTarget(), locator, this.artifactsDir);
+  }
+
+  /**
+   * A handle to one docked-region pane of the owned After Effects
+   * instance (#361, `specs/workspace-editing/spec.md` §6/§7): the Timeline,
+   * Comp or Render Queue area inside the main window's AX tree — a surface
+   * with no window of its own, resolved through a bounded, depth/node/
+   * time-limited subtree walk.
+   *
+   * `identify`/`tree`/`rows` are observe-class: they re-run the AX listing,
+   * the window census and the bounded walk on every call, and re-resolve
+   * the pane each time. A recorded `axPath` that drifted is refused as
+   * `stale-locator` — never remapped by guesswork, and there is no
+   * coordinate fallback. Real-host AX fidelity of docked panes is
+   * unverified; see `panelCapabilities().dockedRegion`.
+   *
+   * Throws `PanelError` when no owned target is attested, the platform is
+   * unsupported, or the pane cannot be resolved.
+   */
+  dockedPane(locator: DockedPaneLocator): DockedPane {
+    return dockedPaneForTarget(this.recoveryTarget(), locator);
   }
 
   /**

@@ -113,11 +113,14 @@ export function panelCapabilities(platform: NodeJS.Platform): PanelCapabilities 
         "screencapture -l by CGWindowID is wired but unverified on a real host",
     },
     dockedRegion: {
-      support: "unsupported",
-      verification: "implemented",
+      support: "partial",
+      verification: VERIFICATION,
       reason:
-        "a docked panel has no window of its own; it needs AX region " +
-        "identification inside the main window — a later slice",
+        "observe-class pane walk is implemented for macOS (#361, " +
+        "ae.dockedPane): bounded AX subtree walk, axPath re-resolution " +
+        "and row enumeration. What AE's AX tree actually exposes for " +
+        "docked panes is unverified on a real host; resize/capture of a " +
+        "docked region remain unsupported because it is not a window",
     },
     inAeReadback: {
       support: "unsupported",

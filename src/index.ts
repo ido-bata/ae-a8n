@@ -12,6 +12,7 @@
 export {
   AfterEffects,
   Comp,
+  DockedPane,
   Effects,
   Effect,
   Layer,
@@ -60,6 +61,22 @@ export type {
   PanelSurface,
   PanelTarget,
 } from "./panels/types.js";
+
+/*
+ * Docked-region pane surface (#361, specs/workspace-editing/spec.md §6/§7):
+ * `ae.dockedPane(locator)` — observe-class bounded AX walk of a pane inside
+ * the main window. Real-host AX fidelity is unverified; see
+ * `panelCapabilities().dockedRegion`.
+ */
+export type {
+  DockedPaneBounds,
+  DockedPaneLocator,
+  DockedPaneOps,
+  DockedPaneResolution,
+  DockedPaneRow,
+  DockedPaneSeams,
+  DockedPaneTree,
+} from "./api/index.js";
 
 /*
  * Capability handshake surface (#102): `ae.capabilities()` plus the

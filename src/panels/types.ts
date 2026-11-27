@@ -49,11 +49,12 @@ export type PanelAttribution = "owned" | "foreign" | "unmatched" | "unproven";
 /** The resolved surface a panel operation addresses. */
 export type PanelSurface = {
   /**
-   * `"window"` is the only kind this slice implements: a top-level window
-   * (floating panel/palette, or a dialog-shaped surface the locator named).
-   * `"docked-region"` — a panel docked inside the main window with no
-   * window of its own — is a declared contract value the current
-   * implementation reports as unsupported.
+   * `"window"` is a top-level window (floating panel/palette, or a
+   * dialog-shaped surface the locator named). `"docked-region"` — a panel
+   * docked inside the main window with no window of its own — resolves
+   * through the bounded pane walk (`src/panels/docked/`, #361) as an
+   * observe-class surface; it is not resizable or capturable by window
+   * number because it is not a window.
    */
   readonly kind: "window" | "docked-region";
   /**
@@ -193,10 +194,16 @@ export type PanelErrorCode =
   | "ambiguous"
   /** The surface exists but its pid attribution is not "owned". */
   | "unproven"
-  /** This platform/kind has no implementation (e.g. win32, docked-region). */
+  /** This platform/kind has no implementation (e.g. win32 panels). */
   | "unsupported"
   /** The capability exists but a safety/permission gate refuses it now. */
   | "refused"
+  /**
+   * A recorded locator (e.g. an `axPath` inside a walked pane subtree)
+   * no longer resolves to the same element — the tree drifted. The
+   * caller re-walks; nothing is remapped by guesswork (#361, spec §6).
+   */
+  | "stale-locator"
   /** The target session or process could not be entered/proven. */
   | "unavailable"
   /** A mutation was attempted and its outcome is unknown. */

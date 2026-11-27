@@ -588,7 +588,9 @@ describe("panelForTarget / public surface", () => {
     const darwin = panelCapabilities("darwin");
     expect(darwin.platform).toBe("darwin");
     expect(darwin.resize.support).toBe("unavailable");
-    expect(darwin.dockedRegion.support).toBe("unsupported");
+    // #361: the docked-region observe walk exists on macOS; mutation of a
+    // docked region stays unsupported because it is not a window.
+    expect(darwin.dockedRegion.support).toBe("partial");
     expect(darwin.inAeReadback.support).toBe("unsupported");
     for (const cap of Object.values(darwin)) {
       if (typeof cap === "object" && cap !== null && "verification" in cap) {
