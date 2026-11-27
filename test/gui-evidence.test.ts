@@ -398,12 +398,15 @@ describe("capability matrix", () => {
   it("is honest about unimplemented screen channels", () => {
     const darwin = guiEvidenceCapabilities("darwin");
     expect(darwin.screenStill.support).toBe("partial");
-    expect(darwin.screenRecording.support).toBe("unsupported");
-    expect(darwin.screenRecording.reason).toContain("no recording path");
+    // #381: the record lifecycle is contract-tested, but no OS backend
+    // exists yet — "partial", never "implemented"/"verified".
+    expect(darwin.screenRecording.support).toBe("partial");
+    expect(darwin.screenRecording.verification).toBe("automated test");
+    expect(darwin.screenRecording.reason).toContain("no macOS backend");
 
     const win32 = guiEvidenceCapabilities("win32");
     expect(win32.screenStill.support).toBe("unsupported");
-    expect(win32.screenRecording.support).toBe("unsupported");
+    expect(win32.screenRecording.support).toBe("partial");
     // Render evidence is contract-level everywhere until E4.
     expect(win32.renderEvidence.support).toBe("partial");
   });

@@ -104,6 +104,47 @@ export type {
 } from "./api/index.js";
 
 /*
+ * GUI evidence recording surface (#381, specs/gui-evidence/spec.md §5.4):
+ * `ae.record.start/stop` plus the `ScreenRecorder` seam OS backends
+ * (#382/#384) implement. The lifecycle is platform-neutral; with no
+ * backend registered starts refuse honestly.
+ */
+export {
+  RECORDING_DEFAULT_MAX_DURATION_MS,
+  RECORDING_MAX_DURATION_MS_CAP,
+  RecordingController,
+  RecordingError,
+  recordingAttributionRefusal,
+  recordingRequiresAuthorization,
+} from "./evidence/recording.js";
+export type {
+  RecorderFileProbe,
+  RecorderHandle,
+  RecorderStartRequest,
+  RecorderStartResult,
+  RecorderStopResult,
+  RecordStartOptions,
+  RecordingApiSeams,
+  RecordingAuthorizer,
+  RecordingAuthorizationRequest,
+  RecordingControllerOptions,
+  RecordingErrorCode,
+  RecordingLease,
+  RecordingSession,
+  RecordingStopResult,
+  RecordingApi,
+  ScreenRecorder,
+} from "./api/record.js";
+export type {
+  CaptureScope,
+  EvidenceArtifact,
+  EvidenceExclusion,
+  EvidenceIndexSession,
+  EvidenceSegment,
+  GuiEvidenceIndexDocument,
+} from "./evidence/types.js";
+
+/*
  * Capability handshake surface (#102): `ae.capabilities()` plus the
  * negotiation and dispatch-authorization helpers, structurally conforming
  * to ae-devtools `ae-devtools.capability-handshake/v1`.

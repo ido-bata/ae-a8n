@@ -50,6 +50,12 @@ import {
   dockedPaneForTarget,
   type DockedPaneLocator,
 } from "./docked-pane.js";
+import {
+  createRecordingController,
+  recordingApiForController,
+  type RecordingApi,
+} from "./record.js";
+import type { RecordingController } from "../evidence/recording.js";
 import { supervisionReport, type SupervisionReport } from "../supervision/index.js";
 import type { StillEvidenceContext } from "../evidence/stills.js";
 import type {
@@ -200,6 +206,12 @@ export class AfterEffects {
   /** Fallback `hostId` when the transport cannot attest a process identity. */
   readonly #hostNonce = newCapabilityHostNonce();
   #closed = false;
+  /**
+   * The session's recording lifecycle (#381), created lazily on first
+   * `ae.record` use and finalized by `close()` — the `finally` stop the
+   * spec requires on session teardown.
+   */
+  #recordingController: RecordingController | null = null;
 
   constructor(session: Session, probe: ApplicationInfo, extensionMethods: readonly string[] = []) {
     this.#session = session;
@@ -770,6 +782,30 @@ export class AfterEffects {
   }
 
   /**
+   * Screen recording lifecycle (#381, `specs/gui-evidence/spec.md` §5.4):
+   * `record.start(scope, { maxDurationMs?, fps?, audio? })` opens a
+   * bounded segment (`seg-001`, …) and `record.stop(id)` finalizes it —
+   * container probe, `coversOperations`, recorder residue — into the
+   * session's `ae-a8n.gui-evidence/v1` index under `artifacts/`.
+   *
+   * `window`/`region` scopes need the `PanelTarget` from
+   * `panel(locator).identify()` (attribution must be `"owned"`) and
+   * serialize on the GUI lease for the segment's duration.
+   * `display`/`session` scopes — and every scope on a session whose kind
+   * is not proven `"isolated"` — require recording authorization, which
+   * is not implemented yet: those starts refuse and the refusal is
+   * recorded in the index gaps. With no OS recorder backend registered
+   * (ScreenCaptureKit #382, WGC #384 are later tickets) every start
+   * refuses `unsupported` — after the gates have run.
+   *
+   * `close()` finalizes every open segment before the host is stopped.
+   */
+  get record(): RecordingApi {
+    this.#recordingController ??= createRecordingController(this.#session);
+    return recordingApiForController(this.#recordingController);
+  }
+
+  /**
    * The session's durable supervision report (#287,
    * `specs/gui-supervision/spec.md`): the phase the monitor last proved
    * (`running`/`blocked`/`recovering`/`needs-human`/`quarantined`/`resumed`),
@@ -863,6 +899,15 @@ export class AfterEffects {
       return { quit: false, ownership: this.ownership(), reason: "already closed" };
     }
     try {
+      // `finally` finalize (spec §5.4): every open recording segment gets
+      // a stop attempt — and a residue sweep — before the host stops.
+      // finalizeAll never throws; the catch is belt-and-braces so a
+      // recording problem can never block the session close it belongs to.
+      try {
+        await this.#recordingController?.finalizeAll();
+      } catch {
+        // recorded on the index gaps by the controller itself
+      }
       const result = await this.#session.driver.stop(options);
       this.#closed = true;
       // The monitor outlives the quit attempt on purpose: `app.quit` can
