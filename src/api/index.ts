@@ -56,6 +56,12 @@ import {
   type RecordingApi,
 } from "./record.js";
 import type { RecordingController } from "../evidence/recording.js";
+import {
+  type Timeline,
+  timelineCapabilities,
+  timelineForTarget,
+  type TimelineCapabilities,
+} from "./timeline.js";
 import { supervisionReport, type SupervisionReport } from "../supervision/index.js";
 import type { StillEvidenceContext } from "../evidence/stills.js";
 import type {
@@ -165,6 +171,32 @@ export {
   type DockedPaneSeams,
   type DockedPaneTree,
 } from "./docked-pane.js";
+export {
+  Timeline,
+  TimelineError,
+  timelineCapabilities,
+  timelineForTarget,
+  type NavigateKeyframeRequest,
+  type NavigateKeyframeResult,
+  type ScrubRequest,
+  type ScrubResult,
+  type SelectRowRequest,
+  type SelectRowResult,
+  type TimelineCapabilities,
+  type TimelineCapability,
+  type TimelineErrorCode,
+  type TimelineKeyTarget,
+  type TimelineKeyframeVia,
+  type TimelineMouseOps,
+  type TimelineOpRecord,
+  type TimelinePoint,
+  type TimelinePostcondition,
+  type TimelineRulerGeometry,
+  type TimelineRowLocator,
+  type TimelineRowVerify,
+  type TimelineSeams,
+  type TimelineVerdict,
+} from "./timeline.js";
 // The capability-handshake surface is exported once, from the package
 // entry point (src/index.ts → ./api/capabilities.js); re-exporting it here
 // too would duplicate the list and leak test-only symbols twice.
@@ -803,6 +835,34 @@ export class AfterEffects {
   get record(): RecordingApi {
     this.#recordingController ??= createRecordingController(this.#session);
     return recordingApiForController(this.#recordingController);
+  }
+
+  /**
+   * What this build can do with the Timeline pane on this platform
+   * (#364, `specs/workspace-editing/spec.md` §3 W2): per-op support,
+   * verification level and gate status. `rows` is observe-class;
+   * `scrub`/`selectRow`/`navigateKeyframe` are mutate-gui and report
+   * `unavailable` while the A-SAFETY gate keeps them refused — see
+   * `timelineCapabilities()`.
+   */
+  timelineCapabilities(): TimelineCapabilities {
+    return timelineCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the Timeline docked pane of the owned After Effects
+   * instance (#364): `rows` is observe-class; `scrub`, `selectRow` and
+   * `navigateToKeyframe` are mutate-gui — GUI act + DOM readback oracle,
+   * gated and bounded (no resend). Throws `TimelineError` when no owned
+   * target is attested or the platform is unsupported.
+   *
+   * `locator` names the pane inside the main window's AX tree — the same
+   * `DockedPaneLocator` `ae.dockedPane()` takes. Real-host fidelity of
+   * timeline rows, the current-time indicator and keyframe diamonds is
+   * unverified (spec §11); see `timelineCapabilities()`.
+   */
+  timeline(locator: DockedPaneLocator): Timeline {
+    return timelineForTarget(this.recoveryTarget(), this.#session, locator);
   }
 
   /**
