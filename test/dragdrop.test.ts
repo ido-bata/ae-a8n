@@ -578,7 +578,9 @@ describe("dragDropForTarget / capabilities / gate", () => {
     expect(refused.allowed).toBe(false);
   });
 
-  it("binds a handle for an attested target without posting anything", () => {
+  it.runIf(process.platform === "darwin")(
+    "binds a handle for an attested target without posting anything",
+    () => {
     const session: MacSession = { uid: 501, username: "u", asid: 1, kind: "Aqua" };
     const handle = dragDropForTarget(
       { pid: PID, session },
@@ -590,5 +592,6 @@ describe("dragDropForTarget / capabilities / gate", () => {
     expect(typeof handle.run).toBe("function");
     expect(typeof handle.dropFile).toBe("function");
     expect(typeof handle.dragElement).toBe("function");
-  });
+    },
+  );
 });
