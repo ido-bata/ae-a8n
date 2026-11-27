@@ -18,6 +18,7 @@
 
 import type { DiagnosticCheck } from "../doctor/diagnostics.js";
 import { diagnostic } from "../doctor/diagnostics.js";
+import type { InputCapabilities } from "../input/capabilities.js";
 
 export type PlatformId = "darwin" | "win32";
 
@@ -40,6 +41,14 @@ export type Capabilities = {
    * per-run) evidence; a backend that quits nothing also satisfies it.
    */
   readonly quitsOnlyOwned: boolean;
+  /**
+   * Input-delivery capabilities (B-IME, #371, `specs/ime-input/spec.md`
+   * §3.3/§7). Optional: adapters populate it when input helpers land
+   * (#372/#373); absent means "no input capability claimed". Values
+   * are honest per the repo verification taxonomy — nothing may report
+   * `verified on real host` without real-host evidence.
+   */
+  readonly input?: InputCapabilities;
 };
 
 export type TargetSpec = {
