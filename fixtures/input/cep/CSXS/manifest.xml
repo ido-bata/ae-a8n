@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ae-a8n IME input fixture — self-reporting CEP extension (specs/ime-input/spec.md §4.1, §8).
+
+  Fixture code only: `implemented`, not verified on a real host. Install and
+  launch are the responsibility of the real-host verification ticket; this
+  manifest is never auto-installed by ae-a8n.
+
+  --enable-nodejs + --mixed-context let the panel JS reach Node `fs` through
+  lib/report.js, which is the fixture's own bridge to the result file
+  (spec §4.1 channel 1 — fixture self-report, the primary Tier-1a channel).
+-->
+<ExtensionManifest Version="9.0"
+  ExtensionBundleId="com.ae-a8n.input-fixture"
+  ExtensionBundleVersion="1.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <ExtensionList>
+    <Extension Id="com.ae-a8n.input-fixture" Version="1.0.0"/>
+  </ExtensionList>
+  <ExecutionEnvironment>
+    <HostList>
+      <Host Name="AEFT" Version="[17.0,99.9]"/>
+    </HostList>
+    <LocaleList>
+      <Locale Code="All"/>
+    </LocaleList>
+    <RequiredRuntimeList>
+      <RequiredRuntime Name="CSXS" Version="9.0"/>
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+  <DispatchInfoList>
+    <Extension Id="com.ae-a8n.input-fixture">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./index.html</MainPath>
+          <CEFCommandLine>
+            <Parameter>--enable-nodejs</Parameter>
+            <Parameter>--mixed-context</Parameter>
+          </CEFCommandLine>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>ae-a8n IME Input Fixture</Menu>
+          <Geometry>
+            <Size>
+              <Width>380</Width>
+              <Height>420</Height>
+            </Size>
+          </Geometry>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest>
