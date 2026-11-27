@@ -154,7 +154,7 @@ Verification levels: `implemented` / `automated test` / `fake/mock only` / `veri
 | Layer/property/keyframe row click | same mouse path + AX row locator | same | implementable; row geometry stability unverified |
 | Render Queue observe | docked-pane AX walk + capture | UIA tree of RQ pane | unverified; DOM has no RQ — GUI/AX is the only channel |
 | File dialog (Open/Save/Import) | existing dialog classification + B-IME text entry + `screencapture`/AX filename field | existing Win32 dialog census + UIA edit control + SendInput | partially exists (recovery observes dialogs); filename entry depends on B-IME gates — `needs-human`/gated |
-| File/element drag-drop | `CGEvent` press-drag-release with drag-payload semantics; source = our fixture file | `SendInput` mouse + `DoDragDrop`-compatible sequence | **highest-risk cell**: OS drag sessions have timing/autoscroll semantics, drop-target hit-testing is not observable pre-drop; mark `unverified`, first ticket must be a real-host PoC before any claim |
+| File/element drag-drop | `CGEvent` press-drag-release with drag-payload semantics; source = our fixture file | `SendInput` mouse + `DoDragDrop`-compatible sequence | **highest-risk cell**: OS drag sessions have timing/autoscroll semantics, drop-target hit-testing is not observable pre-drop. **PoC 結果 (#369, verified on real host): `unsupported`** — synthetic `NSDraggingSession`(.fileURL)+CGEvent file drop は owned AE 2027 へ 39 attempt 全て AE 側拒否（`operation:"none"`、drop 地点到達・z-order 所有証明済み）。証跡 `docs/evidence/realhost-2026-11-27/drag-drop-poc.md`。再 PoC hypotheses は同 README 参照 |
 | Workspace XML read | direct file read (observe) | same | `implemented`-safe (read-only); path layout `unverified` per-version |
 | Multi-monitor / DPI | census+AX frames are points; `backingScale` per capture (B-PANEL §6.3); workspace XML stores monitor config | census is physical px; `GetDpiForWindow`/awareness context required | partial — inherits B-PANEL DPI contract; per-monitor workspace restore unverified |
 
@@ -192,7 +192,7 @@ Verification levels: `implemented` / `automated test` / `fake/mock only` / `veri
 | W1 | workspace switch + arrange + save/restore | B-PANEL `PanelTarget`/`docked-region`, menu-bar AX surface, workspace XML reader | #345-T002 (this issue's first impl ticket) |
 | W2 | timeline scrub + layer/property/keyframe selection | B-IME mouse/key ops, host readback additions | follow-up ticket |
 | W3 | menu-driven RQ + file dialog | menu AX surface, dialog machinery, B-IME text entry | follow-up ticket |
-| W4+ | window ops cycle, comp-view pan/zoom, effect controls, context menus, Open/Save round-trip, drag-drop, multi-monitor | per-slice | ordered by consumer demand (B-CONSUMER/B-TEST) |
+| W4+ | window ops cycle, comp-view pan/zoom, effect controls, context menus, Open/Save round-trip, drag-drop (#369 PoC: `unsupported`), multi-monitor | per-slice | ordered by consumer demand (B-CONSUMER/B-TEST) |
 
 Each lands as its own PR against the then-current release train; shared contract changes to §5/§6 amend this spec first.
 
@@ -235,5 +235,6 @@ Each lands as its own PR against the then-current release train; shared contract
 | Workspace XML storage locations & AE write timing | `unverified` — Adobe/community documentation only; probe required on real host |
 | `app.executeCommand` workspace switching | `unverified` on our host (community-reported) |
 | Menu bar / docked-pane / context-menu AX fidelity on AE | `unverified` — new surfaces, §7 |
-| All mutation feasibility (drag, menu click, dialog entry, drag-drop) | `unverified` — gated, real-host PoC required |
+| All mutation feasibility (drag, menu click, dialog entry) | `unverified` — gated, real-host PoC required |
+| File/element drag-drop feasibility | `unsupported` on macOS AE 2027 — #369 real-host PoC (CGEvent/NSDraggingSession refused, 39 attempts); see `docs/evidence/realhost-2026-11-27/drag-drop-poc.md` |
 | Contract, taxonomy, boundary rule, slice decomposition | this document; `automated test` arrives with implementation tickets |
