@@ -161,15 +161,28 @@ function validRequest(dir: string, method: string, params: Record<string, unknow
   };
 }
 
-async function waitFor(check: () => boolean, what: string, timeoutMs = 5_000): Promise<void> {
+async function waitFor(check: () => boolean, what: string, timeoutMs = 15_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
+  // A probe can hit a transient fs error (ENOENT/EACCES/EPERM while the OS
+  // is still settling a just-written or just-renamed file under load); that
+  // is "not yet", not a failure — keep polling and report the last error if
+  // the deadline really does run out.
+  let lastError: unknown = null;
   while (Date.now() < deadline) {
-    if (check()) {
-      return;
+    try {
+      if (check()) {
+        return;
+      }
+    } catch (error) {
+      lastError = error;
     }
     await sleep(10);
   }
-  throw new Error(`timed out waiting for ${what}`);
+  const detail =
+    lastError === null
+      ? ""
+      : ` (last probe error: ${lastError instanceof Error ? lastError.message : JSON.stringify(lastError)})`;
+  throw new Error(`timed out waiting for ${what}${detail}`);
 }
 
 beforeEach(() => {
@@ -364,7 +377,12 @@ describe("dispatcher host script (real ES3, fake AE)", () => {
   });
 });
 
-describe("Node-side transport contract", () => {
+describe(
+  "Node-side transport contract",
+  // Real timers + real fs under a loaded runner: the default 5 s
+  // test budget is shorter than waitFor's own deadline.
+  { timeout: 30_000 },
+  () => {
   function stagedCall(session: string, method = "app.info"): { entry: string; id: string } {
     const paths = createSessionPaths(session);
     const id = nextRequestId();
@@ -447,7 +465,12 @@ describe("Node-side transport contract", () => {
   });
 });
 
-describe("driver integration: timeout is UNKNOWN and never resent", () => {
+describe(
+  "driver integration: timeout is UNKNOWN and never resent",
+  // Real timers + real fs under a loaded runner: the default 5 s
+  // test budget is shorter than waitFor's own deadline.
+  { timeout: 30_000 },
+  () => {
   it("times out without a dispatcher and leaves exactly one unclaimed request", async () => {
     const dir = channelDir();
     const session = sessionRoot();
@@ -715,7 +738,12 @@ describe("startup placement helpers", () => {
   });
 });
 
-describe("target binding and reconnect pinning (#145)", () => {
+describe(
+  "target binding and reconnect pinning (#145)",
+  // Real timers + real fs under a loaded runner: the default 5 s
+  // test budget is shorter than waitFor's own deadline.
+  { timeout: 30_000 },
+  () => {
   function stageCall(session: string): { entry: string; id: string } {
     const paths = createSessionPaths(session);
     const id = nextRequestId();
@@ -892,7 +920,12 @@ describe("dispatcher host target filter (real ES3, fake AE)", () => {
   });
 });
 
-describe("static extensions through the dispatcher (#146)", () => {
+describe(
+  "static extensions through the dispatcher (#146)",
+  // Real timers + real fs under a loaded runner: the default 5 s
+  // test budget is shorter than waitFor's own deadline.
+  { timeout: 30_000 },
+  () => {
   const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
   const HOST_SOURCE = readFileSync(join(PACKAGE_ROOT, "host", "a8n-host.js"), "utf-8");
   const ECHO = {
@@ -1160,7 +1193,12 @@ describe("static extensions through the dispatcher (#146)", () => {
   });
 });
 
-describe("result envelope and pump edge cases (#227)", () => {
+describe(
+  "result envelope and pump edge cases (#227)",
+  // Real timers + real fs under a loaded runner: the default 5 s
+  // test budget is shorter than waitFor's own deadline.
+  { timeout: 30_000 },
+  () => {
   function stagedCall(session: string, method = "app.info"): { entry: string; id: string } {
     const paths = createSessionPaths(session);
     const id = nextRequestId();

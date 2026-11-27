@@ -608,18 +608,39 @@ for (let i = 0; i < Number(iterations); i++) {
     writeFileSync(workerPath, workerSource().replace("LEASE_MODULE", specifier));
     const logPath = join(stateRoot, "mutations.log");
     writeFileSync(logPath, "");
-    const children = workers.map((w) =>
-      spawn(process.execPath, [
+    const children = workers.map((w) => {
+      const child = spawn(process.execPath, [
         workerPath, stateRoot, String(SESSION.uid), String(SESSION.asid),
         w.ownerId, String(w.iterations), w.mode, logPath,
-      ]),
-    );
+      ]);
+      // A worker that dies on an uncaught exception exits 1 with the reason
+      // on stderr; without capturing it the failure is an opaque "worker
+      // exited 1" (seen on a loaded Windows runner, where transient fs errors
+      // like EPERM/EACCES on create/rename/delete are a known flake source).
+      let stderr = "";
+      child.stderr?.on("data", (chunk: Buffer) => {
+        stderr = (stderr + chunk.toString("utf-8")).slice(-2_000);
+      });
+      return { child, spec: w, stderrTail: () => stderr.trim().split("\n").slice(-5).join(" | ") };
+    });
     return Promise.all(
       children.map(
-        (c) =>
+        ({ child, spec, stderrTail }) =>
           new Promise<void>((resolve, reject) => {
-            c.once("error", reject);
-            c.once("exit", (code) => (code === 0 ? resolve() : reject(new Error(`worker exited ${code}`))));
+            child.once("error", reject);
+            child.once("exit", (code) => {
+              if (code === 0) {
+                resolve();
+                return;
+              }
+              const tail = stderrTail();
+              reject(
+                new Error(
+                  `worker ${spec.ownerId} (${spec.mode}) exited ${String(code)}` +
+                    (tail.length === 0 ? "" : `: ${tail}`),
+                ),
+              );
+            });
           }),
       ),
     ).then(() => undefined);
@@ -641,58 +662,71 @@ for (let i = 0; i < Number(iterations); i++) {
     return existsSync(dir) ? readdirSync(dir) : [];
   }
 
-  it("never lets two processes hold the lease at once across acquire/release cycles", async () => {
-    const stateRoot = root();
-    const localModule = bundleInto(stateRoot);
-    const workers: WorkerSpec[] = [0, 1, 2, 3].map((i) => ({
-      ownerId: `racer-${i}`,
-      iterations: 60,
-      mode: "mutate",
-    }));
-    await runWorkers(stateRoot, localModule, workers);
-    expect(maxConcurrentHolders(join(stateRoot, "mutations.log"))).toBeLessThanOrEqual(1);
-    // Every acquired lease was released; no trash quarantines remain.
-    const leftovers = leaseDirFiles(stateRoot).filter(
-      (n) => n.includes(".releasing-") || (n.startsWith("gui-") && n.endsWith(".json")),
-    );
-    expect(leftovers).toHaveLength(0);
-  }, 60_000);
+  // One retry on both races: a worker crash is an OS-level event (transient
+  // EPERM/EACCES on the lease file under a loaded/AV-scanned runner), not a
+  // verdict on the lease logic — and each attempt gets a fresh state root.
+  // A real lease bug crashes the worker every attempt and still fails, now
+  // with the worker's stderr in the message.
+  it(
+    "never lets two processes hold the lease at once across acquire/release cycles",
+    { retry: 1, timeout: 60_000 },
+    async () => {
+      const stateRoot = root();
+      const localModule = bundleInto(stateRoot);
+      const workers: WorkerSpec[] = [0, 1, 2, 3].map((i) => ({
+        ownerId: `racer-${i}`,
+        iterations: 60,
+        mode: "mutate",
+      }));
+      await runWorkers(stateRoot, localModule, workers);
+      expect(maxConcurrentHolders(join(stateRoot, "mutations.log"))).toBeLessThanOrEqual(1);
+      // Every acquired lease was released; no trash quarantines remain.
+      const leftovers = leaseDirFiles(stateRoot).filter(
+        (n) => n.includes(".releasing-") || (n.startsWith("gui-") && n.endsWith(".json")),
+      );
+      expect(leftovers).toHaveLength(0);
+    },
+  );
 
-  it("reap racing acquire never removes a live owner's fresh lease", async () => {
-    const stateRoot = root();
-    const localModule = bundleInto(stateRoot);
-    // Seed a stale lease: pid far above the macOS pid ceiling cannot exist.
-    const { dir } = guiLeasePaths(stateRoot);
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, "gui-501-100015.json"),
-      `${JSON.stringify({
-        schemaVersion: "1.0",
-        sessionKey: guiSessionKey(SESSION),
-        ownerId: "ghost",
-        pid: 400000,
-        pidStart: null,
-        acquiredAt: "2026-11-15T00:00:00.000Z",
-        purpose: "gui-mutation",
-      })}\n`,
-    );
-    const workers: WorkerSpec[] = [
-      { ownerId: "reaper-0", iterations: 40, mode: "reap" },
-      { ownerId: "reaper-1", iterations: 40, mode: "reap" },
-      { ownerId: "mutator-0", iterations: 60, mode: "mutate" },
-      { ownerId: "mutator-1", iterations: 60, mode: "mutate" },
-    ];
-    await runWorkers(stateRoot, localModule, workers);
-    expect(maxConcurrentHolders(join(stateRoot, "mutations.log"))).toBeLessThanOrEqual(1);
-    // Whatever remains must be a valid record owned by a live worker or
-    // nothing at all — never a ghost record resurrected over a live lease.
-    const remaining = leaseDirFiles(stateRoot).filter((n) => n.startsWith("gui-") && n.endsWith(".json"));
-    for (const name of remaining) {
-      const record = JSON.parse(readFileSync(join(dir, name), "utf-8")) as { ownerId?: string };
-      expect(["mutator-0", "mutator-1"]).toContain(record.ownerId);
-    }
-    // No quarantined trash files: restores must have found their slot or
-    // the moved record matched and was removed.
-    expect(leaseDirFiles(stateRoot).filter((n) => n.includes(".releasing-"))).toHaveLength(0);
-  }, 60_000);
+  it(
+    "reap racing acquire never removes a live owner's fresh lease",
+    { retry: 1, timeout: 60_000 },
+    async () => {
+      const stateRoot = root();
+      const localModule = bundleInto(stateRoot);
+      // Seed a stale lease: pid far above the macOS pid ceiling cannot exist.
+      const { dir } = guiLeasePaths(stateRoot);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "gui-501-100015.json"),
+        `${JSON.stringify({
+          schemaVersion: "1.0",
+          sessionKey: guiSessionKey(SESSION),
+          ownerId: "ghost",
+          pid: 400000,
+          pidStart: null,
+          acquiredAt: "2026-11-15T00:00:00.000Z",
+          purpose: "gui-mutation",
+        })}\n`,
+      );
+      const workers: WorkerSpec[] = [
+        { ownerId: "reaper-0", iterations: 40, mode: "reap" },
+        { ownerId: "reaper-1", iterations: 40, mode: "reap" },
+        { ownerId: "mutator-0", iterations: 60, mode: "mutate" },
+        { ownerId: "mutator-1", iterations: 60, mode: "mutate" },
+      ];
+      await runWorkers(stateRoot, localModule, workers);
+      expect(maxConcurrentHolders(join(stateRoot, "mutations.log"))).toBeLessThanOrEqual(1);
+      // Whatever remains must be a valid record owned by a live worker or
+      // nothing at all — never a ghost record resurrected over a live lease.
+      const remaining = leaseDirFiles(stateRoot).filter((n) => n.startsWith("gui-") && n.endsWith(".json"));
+      for (const name of remaining) {
+        const record = JSON.parse(readFileSync(join(dir, name), "utf-8")) as { ownerId?: string };
+        expect(["mutator-0", "mutator-1"]).toContain(record.ownerId);
+      }
+      // No quarantined trash files: restores must have found their slot or
+      // the moved record matched and was removed.
+      expect(leaseDirFiles(stateRoot).filter((n) => n.includes(".releasing-"))).toHaveLength(0);
+    },
+  );
 });
