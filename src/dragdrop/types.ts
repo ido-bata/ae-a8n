@@ -10,7 +10,14 @@
  *     (fixture files only; #411 proved `vend=fileurl` + CGEvent lands
  *     on AE 2027's Project panel); and `"element-drag"` — a plain
  *     CGEvent press→move→release inside the owned window for in-app
- *     element drags (Project/Timeline reorder proved in #411).
+ *     element drags. The element class is DECLARED on the request
+ *     (`element`): `"project-item"`, `"timeline-layer"` and
+ *     `"panel-tab"` reorder/tear-off are the #411+#427-proven,
+ *     permitted classes — `panel-tab` verifies through the census
+ *     window-count oracle, not the DOM delta; `"other"` (any
+ *     undeclared/arbitrary in-app drag) stays gate-refused — the
+ *     declaration is the contract's honesty boundary, the census/
+ *     frame envelope is the mechanical one.
  *   - The target is a `DragDropSurfaceLocator`: the window listing
  *     index plus the identity that entry must still carry at act time —
  *     the same "locator, not handle" rule `ContextMenuTargetLocator`
@@ -175,10 +182,34 @@ export type DragDropFileRequest = {
   readonly from?: DragDropPoint;
 };
 
+/**
+ * The in-app element class an `element-drag` moves (#427 A-SAFETY
+ * decision). Declared by the caller — the contract cannot verify which
+ * UI element sits under `from`/`to`, so the value is intent recorded in
+ * evidence, not proof. Only the classes proven on real host are
+ * permitted: `"project-item"` and `"timeline-layer"` reorder (#411,
+ * DOM-delta oracle) and `"panel-tab"` dock→float tear-off (#427,
+ * census window-count oracle — a float→dock drag cannot start inside
+ * the main window's frame, so only the tear-off direction is
+ * reachable). `"other"` (any undeclared/arbitrary in-app drag) stays
+ * refused.
+ */
+export type DragDropElementTarget =
+  | "project-item"
+  | "timeline-layer"
+  | "panel-tab"
+  | "other";
+
 /** An `element-drag` request: press at `from`, release at `to`. */
 export type DragDropElementRequest = {
   readonly kind: "element-drag";
   readonly surface: DragDropSurfaceLocator;
+  /**
+   * The declared element class — selects the gate decision AND the
+   * readback oracle (`"timeline-layer"` reads `comp.layers` order of
+   * the active comp; every other permitted class reads `project.items`).
+   */
+  readonly element: DragDropElementTarget;
   /** Press point — inside the re-verified frame, census-proven owned. */
   readonly from: DragDropPoint;
   /** Release point — inside the re-verified frame. */
@@ -196,9 +227,15 @@ export type DragDropRequest = DragDropFileRequest | DragDropElementRequest;
 /** The mutation ops the gate distinguishes (spec §5 row). */
 export type DragDropMutationOp = "drop-file" | "element-drag";
 
-/** The mutate-gui gate row; fail-closed like every sibling gate. */
+/**
+ * The mutate-gui gate row; fail-closed like every sibling gate. The
+ * optional `request` lets the gate scope a permit to the declared
+ * element class (#427): `element-drag` is allowed only for the
+ * real-host-proven targets, never for `panel-tab`/`other`/undeclared.
+ */
 export type DragDropMutationGate = (
   op: DragDropMutationOp,
+  request?: DragDropRequest,
 ) => { readonly allowed: true } | { readonly allowed: false; readonly reason: string };
 
 /**
@@ -221,13 +258,23 @@ export type DragDropSegmentCheck = {
   /** What the topmost census reported at the point. */
   readonly topmostPid: number | null;
   readonly topmostWindowNumber: number | null;
-  /** Whether the check passed (topmost still the owned surface's pid). */
+  /**
+   * Whether the check passed: topmost still the owned surface's pid
+   * AND (for reorder drags) bounds matching the surface frame. For
+   * `panel-tab` tear-off the dragged panel's own floating window is
+   * the expected mid-drag topmost, so the check is pid-only (#427).
+   */
   readonly ok: boolean;
 };
 
 /** What a completed drag op proved, with before/after evidence. */
 export type DragDropResult = {
   readonly kind: DragDropRequest["kind"];
+  /**
+   * The declared element class for `element-drag`; `null` for
+   * `file-drop` (recorded for evidence, never verified by the contract).
+   */
+  readonly element: DragDropElementTarget | null;
   /** The vehicle verdict — "performed" means posted, not landed. */
   readonly vehicle: DragDropVerdict;
   /** The NSDraggingSession operation when the vehicle reported one. */
@@ -245,6 +292,12 @@ export type DragDropResult = {
   } | null;
   /** Per-segment re-check records for element-drag; empty for file-drop. */
   readonly segments: readonly DragDropSegmentCheck[];
+  /**
+   * Census window-count oracle evidence for `panel-tab` drags; `null`
+   * for every other op (and when the oracle was unavailable).
+   */
+  readonly windowCountBefore: number | null;
+  readonly windowCountAfter: number | null;
   /** Why the sequence aborted early, when it did. */
   readonly aborted: string | null;
   readonly observedAt: string;
@@ -294,11 +347,27 @@ export type DragDropOps = {
    */
   probeFile?(path: string): DragDropFileProbe | null;
   /**
-   * The DOM oracle: `project.items` + `project.state.itemCount` in one
-   * snapshot. Optional — absent means the op cannot verify a drop and
-   * reports `unavailable` rather than posting unverifiable mutation.
+   * The DOM oracle: ordered name/type entries plus `itemCount` in one
+   * snapshot — `project.items` for file-drop and project-item drags,
+   * `comp.layers` order of the active comp for `timeline-layer` drags
+   * (#427). The declared `element` selects the channel; `undefined`
+   * means the file/project oracle. Not consulted for `panel-tab`
+   * (workspace changes are invisible to the DOM). Optional — absent
+   * means the op cannot verify a DOM-observed drag and reports
+   * `unavailable` rather than posting unverifiable mutation.
    */
-  readback?(): Promise<DragDropSnapshot> | DragDropSnapshot;
+  readback?(
+    element?: DragDropElementTarget,
+  ): Promise<DragDropSnapshot> | DragDropSnapshot;
+  /**
+   * Owned-pid on-screen census window count — the oracle for
+   * workspace-changing element drags (`panel-tab` tear-off, #427):
+   * `project.items`/`comp.layers` cannot see a dock↔float change, so
+   * the postcondition is "the owned window count changed inside the
+   * bounded wait". Optional — absent means `panel-tab` refuses
+   * `unsupported` before anything posts.
+   */
+  ownedWindowCount?(): number | Promise<number>;
   /**
    * Segmented element-drag vehicle (spec §10). `press` posts
    * mouseMoved+leftMouseDown, `move` one leftMouseDragged to the point,

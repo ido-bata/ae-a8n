@@ -224,6 +224,7 @@ function elementRequest(over: Record<string, unknown> = {}): DragDropRequest {
   return {
     kind: "element-drag",
     surface: locator(),
+    element: "project-item",
     from: { ...FROM },
     to: { ...TO },
     steps: 4,
@@ -233,14 +234,27 @@ function elementRequest(over: Record<string, unknown> = {}): DragDropRequest {
 }
 
 describe("dragDropMutationGate", () => {
-  it("permits drop-file and refuses element-drag with the audit citation", () => {
+  it("permits drop-file and every real-host-proven element class (#427)", () => {
     const gate = dragDropMutationGate();
     expect(gate("drop-file")).toEqual({ allowed: true });
-    const refused = gate("element-drag");
+    for (const element of ["project-item", "timeline-layer", "panel-tab"] as const) {
+      expect(gate("element-drag", elementRequest({ element }))).toEqual({
+        allowed: true,
+      });
+    }
+  });
+
+  it("refuses undeclared element classes with the audit citation", () => {
+    const gate = dragDropMutationGate();
+    const refused = gate("element-drag", elementRequest({ element: "other" }));
     expect(refused.allowed).toBe(false);
     if (!refused.allowed) {
       expect(refused.reason).toContain("docs/gui-supervision-safety-gates.md");
+      expect(refused.reason).toContain("other");
     }
+    // No request at all is undeclared — fail-closed.
+    const undeclared = gate("element-drag");
+    expect(undeclared.allowed).toBe(false);
   });
 });
 
@@ -308,14 +322,47 @@ describe("DragDropController file-drop", () => {
     expect(posted).toBe(0);
   });
 
-  it("refuses element-drag under the production gate", async () => {
+  it("refuses an undeclared element class under the production gate", async () => {
     const { controller, calls } = makeController({}, {
       authorizeMutation: dragDropMutationGate(),
     });
-    await expect(controller.run(elementRequest())).rejects.toMatchObject({
+    await expect(
+      controller.run(elementRequest({ element: "other" })),
+    ).rejects.toMatchObject({
       code: "refused",
     });
     expect(calls.press).toBe(0);
+  });
+
+  it("permits a proven element class under the production gate", async () => {
+    let reads = 0;
+    const { controller } = makeController(
+      {
+        readback: () => {
+          reads += 1;
+          return reads === 1 ? snapshot(["a", "b"]) : snapshot(["b", "a"]);
+        },
+      },
+      { authorizeMutation: dragDropMutationGate() },
+    );
+    const result = await controller.run(elementRequest());
+    expect(result.verified).toBe(true);
+    expect(result.element).toBe("project-item");
+  });
+
+  it("passes the declared element to the readback oracle", async () => {
+    const seen: (string | undefined)[] = [];
+    let reads = 0;
+    const { controller } = makeController({
+      readback: (element) => {
+        seen.push(element);
+        reads += 1;
+        return reads === 1 ? snapshot(["a", "b"]) : snapshot(["b", "a"]);
+      },
+    });
+    await controller.run(elementRequest({ element: "timeline-layer" }));
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((e) => e === "timeline-layer")).toBe(true);
   });
 
   it("drop-file is permitted under the production gate", async () => {
@@ -472,6 +519,20 @@ describe("DragDropController element-drag", () => {
     expect(result.segments.every((s) => s.ok)).toBe(true);
   });
 
+  it("a flat DOM delta is indeterminate — countDelta 0 is not a delta", async () => {
+    // Regression (#427 real-host run): `countDelta !== null` used to
+    // satisfy the postcondition on the FIRST poll even with zero
+    // change, reporting verified:true on a drag that reordered
+    // nothing. Only a nonzero count change or a name/order delta
+    // verifies.
+    const { controller, calls } = makeController();
+    await expect(controller.run(elementRequest())).rejects.toMatchObject({
+      code: "indeterminate",
+    });
+    expect(calls.press).toBe(1);
+    expect(calls.release).toBe(1);
+  });
+
   it("aborts mid-drag when the topmost window turns foreign — never finishes", async () => {
     let censusCalls = 0;
     const moves: DragDropPoint[] = [];
@@ -548,6 +609,103 @@ describe("DragDropController element-drag", () => {
     });
     expect(calls.press).toBe(0);
   });
+
+  it("panel-tab verifies through the census window-count oracle", async () => {
+    // DOM readback deliberately absent: panel-tab must not need it.
+    // First call is the pre-act count (2); the postcondition poll sees 3.
+    let oracleCalls = 0;
+    const { controller, calls } = makeController({
+      readback: undefined,
+      ownedWindowCount: () => {
+        oracleCalls += 1;
+        return oracleCalls === 1 ? 2 : 3;
+      },
+    });
+    const result = await controller.run(elementRequest({ element: "panel-tab" }));
+    expect(result.verified).toBe(true);
+    expect(result.element).toBe("panel-tab");
+    expect(result.windowCountBefore).toBe(2);
+    expect(result.windowCountAfter).toBe(3);
+    expect(calls.press).toBe(1);
+    expect(calls.release).toBe(1);
+  });
+
+  it("panel-tab tolerates its own floating window mid-drag but not foreign", async () => {
+    // During a tear-off the dragged panel's floating window legitimately
+    // becomes the topmost owned window — the segment check is pid-only
+    // for panel-tab. Pre-act endpoints still require the surface frame.
+    let censusCalls = 0;
+    let oracleCalls = 0;
+    const { controller, calls } = makeController({
+      readback: undefined,
+      ownedWindowCount: () => {
+        oracleCalls += 1;
+        return oracleCalls === 1 ? 2 : 3;
+      },
+      topmostAt: () => {
+        censusCalls += 1;
+        // Pre-act `from`/`to` gates need the surface frame; mid-drag the
+        // tear-off's own floating window (different bounds, same pid)
+        // takes over — that must NOT abort.
+        if (censusCalls <= 2) return ownedTopmost();
+        return {
+          pid: PID,
+          windowNumber: 999,
+          layer: 0,
+          bounds: { x: 40, y: 40, width: 300, height: 200 },
+        };
+      },
+    });
+    const result = await controller.run(
+      elementRequest({ element: "panel-tab" }),
+    );
+    expect(result.verified).toBe(true);
+    expect(result.windowCountBefore).toBe(2);
+    expect(result.windowCountAfter).toBe(3);
+    expect(calls.release).toBe(1);
+  });
+
+  it("panel-tab still aborts mid-drag on a FOREIGN topmost window", async () => {
+    let censusCalls = 0;
+    const { controller } = makeController({
+      readback: undefined,
+      ownedWindowCount: () => 2,
+      topmostAt: () => {
+        censusCalls += 1;
+        // Pre-act gates (calls 1-2) + first segments stay owned; a
+        // foreign window appears mid-drag — pid-only relaxation must
+        // NOT tolerate it.
+        if (censusCalls <= 4) return ownedTopmost();
+        return { pid: FOREIGN_PID, windowNumber: 1, layer: 0, bounds: null };
+      },
+    });
+    await expect(
+      controller.run(elementRequest({ element: "panel-tab" })),
+    ).rejects.toMatchObject({ code: "indeterminate" });
+  });
+
+  it("panel-tab is indeterminate when the window count never changes", async () => {
+    const { controller, calls } = makeController({
+      readback: undefined,
+      ownedWindowCount: () => 2,
+    });
+    await expect(
+      controller.run(elementRequest({ element: "panel-tab" })),
+    ).rejects.toMatchObject({ code: "indeterminate" });
+    expect(calls.press).toBe(1);
+    expect(calls.release).toBe(1);
+  });
+
+  it("panel-tab refuses unsupported when no window-count oracle is wired", async () => {
+    const { controller, calls } = makeController({
+      readback: undefined,
+      ownedWindowCount: undefined,
+    });
+    await expect(
+      controller.run(elementRequest({ element: "panel-tab" })),
+    ).rejects.toMatchObject({ code: "unsupported" });
+    expect(calls.press).toBe(0);
+  });
 });
 
 describe("dragDropForTarget / capabilities / gate", () => {
@@ -567,14 +725,21 @@ describe("dragDropForTarget / capabilities / gate", () => {
     const caps = dragDropCapabilities("darwin");
     expect(caps.dropFile.support).toBe("implemented");
     expect(caps.dropFile.reason).toContain("#411");
-    expect(caps.elementDrag.support).toBe("unavailable");
-    expect(caps.elementDrag.reason).toContain("A-SAFETY");
+    expect(caps.elementDrag.support).toBe("implemented");
+    expect(caps.elementDrag.reason).toContain("#427");
   });
 
-  it("the production gate permits drop-file and refuses element-drag", () => {
+  it("the production gate permits drop-file and proven element classes only", () => {
     const gate = dragDropMutationGate();
     expect(gate("drop-file").allowed).toBe(true);
-    const refused = gate("element-drag");
+    expect(gate("element-drag", elementRequest()).allowed).toBe(true);
+    expect(
+      gate("element-drag", elementRequest({ element: "panel-tab" })).allowed,
+    ).toBe(true);
+    const refused = gate(
+      "element-drag",
+      elementRequest({ element: "other" }),
+    );
     expect(refused.allowed).toBe(false);
   });
 

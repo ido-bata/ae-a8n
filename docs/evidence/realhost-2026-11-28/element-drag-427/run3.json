@@ -1,0 +1,522 @@
+{
+  "schema": "a8n.poc-element-drag-427/v1",
+  "issue": 427,
+  "recordedAt": "2026-11-27T22:18:26.762Z",
+  "install": "/Applications/Adobe After Effects 2027",
+  "steps": [
+    {
+      "name": "preflight",
+      "at": "2026-11-27T22:18:27.042Z",
+      "install": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "preexisting": []
+    },
+    {
+      "name": "launch",
+      "at": "2026-11-27T22:18:35.784Z",
+      "pid": 96428,
+      "info": {
+        "version": "27.0x78",
+        "build": "78"
+      },
+      "dialogDismissals": 0
+    },
+    {
+      "name": "recovery-target",
+      "at": "2026-11-27T22:18:36.503Z",
+      "pid": 96428,
+      "sessionKind": "Aqua"
+    },
+    {
+      "name": "window-ops-helpers",
+      "at": "2026-11-27T22:18:42.597Z",
+      "dir": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-window-ops-helpers-501602f1985d94e8"
+    },
+    {
+      "name": "surface",
+      "at": "2026-11-27T22:18:47.768Z",
+      "windowIndex": 3,
+      "title": "名称未設定プロジェクト",
+      "frame": {
+        "x": 0,
+        "y": 38,
+        "width": 1710,
+        "height": 1074
+      },
+      "windows": 3,
+      "attribution": "owned"
+    },
+    {
+      "name": "screenshot-setup",
+      "at": "2026-11-27T22:18:48.636Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-setup.png"
+    },
+    {
+      "name": "window-capture-setup",
+      "at": "2026-11-27T22:18:48.844Z",
+      "ok": false,
+      "windowNumber": -1,
+      "error": "Command failed: /usr/sbin/screencapture -x -o -l -1 /Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-window-setup.png\ncould not create image from window\n"
+    },
+    {
+      "name": "created-comps",
+      "at": "2026-11-27T22:19:13.382Z",
+      "count": 8,
+      "names": [
+        "e427-C01",
+        "e427-C02",
+        "e427-C03",
+        "e427-C04",
+        "e427-C05",
+        "e427-C06",
+        "e427-C07",
+        "e427-C08"
+      ]
+    },
+    {
+      "name": "project-comps-before",
+      "at": "2026-11-27T22:19:33.253Z",
+      "count": 8,
+      "names": [
+        "e427-C01",
+        "e427-C02",
+        "e427-C03",
+        "e427-C04",
+        "e427-C05",
+        "e427-C06",
+        "e427-C07",
+        "e427-C08"
+      ]
+    },
+    {
+      "name": "layers-before",
+      "at": "2026-11-27T22:19:34.335Z",
+      "count": 6,
+      "names": [
+        "e427-L6",
+        "e427-L5",
+        "e427-L4",
+        "e427-L3",
+        "e427-L2",
+        "e427-L1"
+      ]
+    },
+    {
+      "name": "project-state-before",
+      "at": "2026-11-27T22:19:38.392Z",
+      "itemCount": 8,
+      "dirty": true,
+      "activeItem": {
+        "name": "e427-C01",
+        "comp": true
+      }
+    },
+    {
+      "name": "surface-after-setup",
+      "at": "2026-11-27T22:19:39.071Z",
+      "windowIndex": 3,
+      "title": "名称未設定プロジェクト *",
+      "frame": {
+        "x": 0,
+        "y": 38,
+        "width": 1710,
+        "height": 1074
+      },
+      "previousTitle": "名称未設定プロジェクト",
+      "windows": [
+        {
+          "title": "",
+          "subrole": "AXFloatingWindow",
+          "frame": {
+            "x": 100,
+            "y": 76,
+            "width": 640,
+            "height": 504
+          },
+          "attribution": "owned"
+        },
+        {
+          "title": "",
+          "subrole": "AXFloatingWindow",
+          "frame": {
+            "x": 698,
+            "y": 720,
+            "width": 324,
+            "height": 708
+          },
+          "attribution": "owned"
+        },
+        {
+          "title": "名称未設定プロジェクト *",
+          "subrole": "AXDialog",
+          "frame": {
+            "x": 0,
+            "y": 38,
+            "width": 1710,
+            "height": 1074
+          },
+          "attribution": "owned"
+        }
+      ]
+    },
+    {
+      "name": "project-pane-error",
+      "at": "2026-11-27T22:19:41.823Z",
+      "error": "PanelError: no framed window of pid 96428 can parent a docked pane (locator {}; 0 window(s) observed)"
+    },
+    {
+      "name": "timeline-pane-error",
+      "at": "2026-11-27T22:19:44.792Z",
+      "error": "PanelError: no framed window of pid 96428 can parent a docked pane (locator {}; 0 window(s) observed)"
+    },
+    {
+      "name": "anchors",
+      "at": "2026-11-27T22:19:44.792Z",
+      "frame": {
+        "x": 0,
+        "y": 38,
+        "width": 1710,
+        "height": 1074
+      },
+      "anchors": {
+        "projectRow1": {
+          "x": 150,
+          "y": 263
+        },
+        "projectRow2": {
+          "x": 150,
+          "y": 284
+        },
+        "timelineRow1": {
+          "x": 250,
+          "y": 847
+        },
+        "timelineRow3": {
+          "x": 250,
+          "y": 887
+        },
+        "tab": {
+          "x": 56,
+          "y": 86
+        },
+        "tabTo": {
+          "x": 700,
+          "y": 712
+        }
+      }
+    },
+    {
+      "name": "row-resolution",
+      "at": "2026-11-27T22:19:44.792Z",
+      "projectItemName": "e427-C01",
+      "projectRowFrame": null,
+      "timelineRowsFound": 0
+    },
+    {
+      "name": "timeline-drag-points",
+      "at": "2026-11-27T22:19:45.396Z",
+      "from": {
+        "x": 250,
+        "y": 885
+      },
+      "to": {
+        "x": 250,
+        "y": 945
+      },
+      "axRows": 0
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T22:19:46.593Z",
+      "dy": 0,
+      "code": "unproven",
+      "message": "the drag origin point 250,885 is covered by pid 4536 (window 6744), not the owned After Effects pid 96428; drops onto foreign apps/windows are refused"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T22:19:48.007Z",
+      "dy": -20,
+      "code": "unproven",
+      "message": "the drag origin point 250,865 is covered by pid 4536 (window 6744), not the owned After Effects pid 96428; drops onto foreign apps/windows are refused"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T22:19:49.285Z",
+      "dy": 20,
+      "code": "unproven",
+      "message": "the drag origin point 250,905 is covered by pid 4536 (window 6744), not the owned After Effects pid 96428; drops onto foreign apps/windows are refused"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T22:19:50.676Z",
+      "dy": -40,
+      "code": "unproven",
+      "message": "the drag origin point 250,845 is covered by pid 4536 (window 6744), not the owned After Effects pid 96428; drops onto foreign apps/windows are refused"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T22:19:52.055Z",
+      "dy": 40,
+      "code": "unproven",
+      "message": "the drag origin point 250,925 is covered by pid 4536 (window 6744), not the owned After Effects pid 96428; drops onto foreign apps/windows are refused"
+    },
+    {
+      "name": "layers-after",
+      "at": "2026-11-27T22:19:56.232Z",
+      "names": [
+        "e427-L6",
+        "e427-L5",
+        "e427-L4",
+        "e427-L3",
+        "e427-L2",
+        "e427-L1"
+      ]
+    },
+    {
+      "name": "screenshot-after-timeline",
+      "at": "2026-11-27T22:19:56.775Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-after-timeline.png"
+    },
+    {
+      "name": "project-drag-points",
+      "at": "2026-11-27T22:19:56.775Z",
+      "from": {
+        "x": 150,
+        "y": 301
+      }
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T22:19:58.208Z",
+      "dy": 0,
+      "code": "unproven",
+      "message": "the drag origin point is covered by an owned window whose census bounds {\"x\":100,\"y\":76,\"width\":640,\"height\":504} do not match the resolved surface frame {\"x\":0,\"y\":38,\"width\":1710,\"height\":1074} (±8pt) — an aux panel or another owned window sits on top; refusing rather than dropping onto the wrong surface"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T22:19:59.730Z",
+      "dy": -21,
+      "code": "unproven",
+      "message": "the drag origin point is covered by an owned window whose census bounds {\"x\":100,\"y\":76,\"width\":640,\"height\":504} do not match the resolved surface frame {\"x\":0,\"y\":38,\"width\":1710,\"height\":1074} (±8pt) — an aux panel or another owned window sits on top; refusing rather than dropping onto the wrong surface"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T22:20:00.969Z",
+      "dy": 21,
+      "code": "unproven",
+      "message": "the drag origin point is covered by an owned window whose census bounds {\"x\":100,\"y\":76,\"width\":640,\"height\":504} do not match the resolved surface frame {\"x\":0,\"y\":38,\"width\":1710,\"height\":1074} (±8pt) — an aux panel or another owned window sits on top; refusing rather than dropping onto the wrong surface"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T22:20:02.165Z",
+      "dy": -42,
+      "code": "unproven",
+      "message": "the drag origin point is covered by an owned window whose census bounds {\"x\":100,\"y\":76,\"width\":640,\"height\":504} do not match the resolved surface frame {\"x\":0,\"y\":38,\"width\":1710,\"height\":1074} (±8pt) — an aux panel or another owned window sits on top; refusing rather than dropping onto the wrong surface"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T22:20:03.492Z",
+      "dy": 42,
+      "code": "unproven",
+      "message": "the drag origin point is covered by an owned window whose census bounds {\"x\":100,\"y\":76,\"width\":640,\"height\":504} do not match the resolved surface frame {\"x\":0,\"y\":38,\"width\":1710,\"height\":1074} (±8pt) — an aux panel or another owned window sits on top; refusing rather than dropping onto the wrong surface"
+    },
+    {
+      "name": "project-comps-after",
+      "at": "2026-11-27T22:20:07.752Z",
+      "count": 8,
+      "names": [
+        "e427-C01",
+        "e427-C02",
+        "e427-C03",
+        "e427-C04",
+        "e427-C05",
+        "e427-C06",
+        "e427-C07",
+        "e427-C08"
+      ]
+    },
+    {
+      "name": "screenshot-after-project",
+      "at": "2026-11-27T22:20:08.549Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-after-project.png"
+    },
+    {
+      "name": "window-capture-after",
+      "at": "2026-11-27T22:20:08.734Z",
+      "ok": false,
+      "windowNumber": -1,
+      "error": "Command failed: /usr/sbin/screencapture -x -o -l -1 /Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-window-after.png\ncould not create image from window\n"
+    },
+    {
+      "name": "panel-tab-attempt",
+      "at": "2026-11-27T22:20:14.091Z",
+      "to": {
+        "x": 1200,
+        "y": 400
+      },
+      "note": "right-of-viewer upper",
+      "gateFromOk": true,
+      "gateTo": {
+        "ok": true,
+        "pid": 96428,
+        "windowNumber": 7065,
+        "bounds": {
+          "x": 0,
+          "y": 38,
+          "width": 1710,
+          "height": 1074
+        }
+      },
+      "error": "the drag aborted before the first move: segment 1 at 103.66666666666666,135.5: topmost window is pid 96428 (window 7066), not the owned surface — aborting the drag instead of finishing it; nothing was dragged — re-resolve and retry",
+      "code": "stale-locator"
+    },
+    {
+      "name": "panel-tab-attempt",
+      "at": "2026-11-27T22:20:20.926Z",
+      "to": {
+        "x": 660,
+        "y": 745
+      },
+      "note": "left-of-viewer mid",
+      "gateFromOk": true,
+      "gateTo": {
+        "ok": true,
+        "pid": 96428,
+        "windowNumber": 7065,
+        "bounds": {
+          "x": 0,
+          "y": 38,
+          "width": 1710,
+          "height": 1074
+        }
+      },
+      "error": "the drag aborted mid-sequence after 1 move(s): segment 2 at 106.33333333333333,175.75: topmost window is pid 96428 (window 7066), not the owned surface — aborting the drag instead of finishing it; a partial drag may have landed — re-observe before any retry, never resend",
+      "code": "indeterminate"
+    },
+    {
+      "name": "tearoff-probe",
+      "at": "2026-11-27T22:20:24.730Z",
+      "verified": false,
+      "posted": false,
+      "reason": "no candidate destination passed the census gate",
+      "attempts": [
+        {
+          "to": {
+            "x": 1200,
+            "y": 400
+          },
+          "note": "right-of-viewer upper",
+          "gateFromOk": true,
+          "gateTo": {
+            "ok": true,
+            "pid": 96428,
+            "windowNumber": 7065,
+            "bounds": {
+              "x": 0,
+              "y": 38,
+              "width": 1710,
+              "height": 1074
+            }
+          },
+          "error": "the drag aborted before the first move: segment 1 at 103.66666666666666,135.5: topmost window is pid 96428 (window 7066), not the owned surface — aborting the drag instead of finishing it; nothing was dragged — re-resolve and retry",
+          "code": "stale-locator"
+        },
+        {
+          "to": {
+            "x": 660,
+            "y": 745
+          },
+          "note": "left-of-viewer mid",
+          "gateFromOk": true,
+          "gateTo": {
+            "ok": true,
+            "pid": 96428,
+            "windowNumber": 7065,
+            "bounds": {
+              "x": 0,
+              "y": 38,
+              "width": 1710,
+              "height": 1074
+            }
+          },
+          "error": "the drag aborted mid-sequence after 1 move(s): segment 2 at 106.33333333333333,175.75: topmost window is pid 96428 (window 7066), not the owned surface — aborting the drag instead of finishing it; a partial drag may have landed — re-observe before any retry, never resend",
+          "code": "indeterminate"
+        }
+      ],
+      "windowsBefore": 3,
+      "windowsAfter": 3,
+      "newOwnedWindow": 0
+    },
+    {
+      "name": "screenshot-after-tearoff",
+      "at": "2026-11-27T22:20:25.378Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-after-tearoff.png"
+    }
+  ],
+  "outcome": "failed",
+  "results": {
+    "timelineLayer": {
+      "error": "the drag origin point 250,925 is covered by pid 4536 (window 6744), not the owned After Effects pid 96428; drops onto foreign apps/windows are refused",
+      "code": "unproven"
+    },
+    "projectItem": {
+      "error": "the drag origin point is covered by an owned window whose census bounds {\"x\":100,\"y\":76,\"width\":640,\"height\":504} do not match the resolved surface frame {\"x\":0,\"y\":38,\"width\":1710,\"height\":1074} (±8pt) — an aux panel or another owned window sits on top; refusing rather than dropping onto the wrong surface",
+      "code": "unproven"
+    },
+    "tabTearoffProbe": {
+      "verified": false,
+      "posted": false,
+      "reason": "no candidate destination passed the census gate",
+      "attempts": [
+        {
+          "to": {
+            "x": 1200,
+            "y": 400
+          },
+          "note": "right-of-viewer upper",
+          "gateFromOk": true,
+          "gateTo": {
+            "ok": true,
+            "pid": 96428,
+            "windowNumber": 7065,
+            "bounds": {
+              "x": 0,
+              "y": 38,
+              "width": 1710,
+              "height": 1074
+            }
+          },
+          "error": "the drag aborted before the first move: segment 1 at 103.66666666666666,135.5: topmost window is pid 96428 (window 7066), not the owned surface — aborting the drag instead of finishing it; nothing was dragged — re-resolve and retry",
+          "code": "stale-locator"
+        },
+        {
+          "to": {
+            "x": 660,
+            "y": 745
+          },
+          "note": "left-of-viewer mid",
+          "gateFromOk": true,
+          "gateTo": {
+            "ok": true,
+            "pid": 96428,
+            "windowNumber": 7065,
+            "bounds": {
+              "x": 0,
+              "y": 38,
+              "width": 1710,
+              "height": 1074
+            }
+          },
+          "error": "the drag aborted mid-sequence after 1 move(s): segment 2 at 106.33333333333333,175.75: topmost window is pid 96428 (window 7066), not the owned surface — aborting the drag instead of finishing it; a partial drag may have landed — re-observe before any retry, never resend",
+          "code": "indeterminate"
+        }
+      ],
+      "windowsBefore": 3,
+      "windowsAfter": 3,
+      "newOwnedWindow": 0
+    }
+  }
+}

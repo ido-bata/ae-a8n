@@ -1,0 +1,1359 @@
+{
+  "schema": "a8n.poc-element-drag-427/v1",
+  "issue": 427,
+  "recordedAt": "2026-11-27T22:04:04.960Z",
+  "install": "/Applications/Adobe After Effects 2027",
+  "steps": [
+    {
+      "name": "preflight",
+      "at": "2026-11-27T22:04:05.204Z",
+      "install": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "preexisting": []
+    },
+    {
+      "name": "launch",
+      "at": "2026-11-27T22:04:11.815Z",
+      "pid": 47395,
+      "info": {
+        "version": "27.0x78",
+        "build": "78"
+      },
+      "dialogDismissals": 0
+    },
+    {
+      "name": "recovery-target",
+      "at": "2026-11-27T22:04:12.725Z",
+      "pid": 47395,
+      "sessionKind": "Aqua"
+    },
+    {
+      "name": "window-ops-helpers",
+      "at": "2026-11-27T22:04:19.189Z",
+      "dir": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-window-ops-helpers-501602f1985d94e8"
+    },
+    {
+      "name": "surface",
+      "at": "2026-11-27T22:04:23.157Z",
+      "windowIndex": 3,
+      "title": "名称未設定プロジェクト",
+      "frame": {
+        "x": 0,
+        "y": 38,
+        "width": 1710,
+        "height": 1074
+      },
+      "windows": 3,
+      "attribution": "owned"
+    },
+    {
+      "name": "screenshot-setup",
+      "at": "2026-11-27T22:04:23.901Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-setup.png"
+    },
+    {
+      "name": "window-capture-setup",
+      "at": "2026-11-27T22:04:24.030Z",
+      "ok": false,
+      "windowNumber": -1,
+      "error": "Command failed: /usr/sbin/screencapture -x -o -l -1 /Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-window-setup.png\ncould not create image from window\n"
+    },
+    {
+      "name": "created-comps",
+      "at": "2026-11-27T22:04:36.380Z",
+      "count": 8,
+      "names": [
+        "e427-C01",
+        "e427-C02",
+        "e427-C03",
+        "e427-C04",
+        "e427-C05",
+        "e427-C06",
+        "e427-C07",
+        "e427-C08"
+      ]
+    },
+    {
+      "name": "project-comps-before",
+      "at": "2026-11-27T22:04:53.148Z",
+      "count": 8,
+      "names": [
+        "e427-C01",
+        "e427-C02",
+        "e427-C03",
+        "e427-C04",
+        "e427-C05",
+        "e427-C06",
+        "e427-C07",
+        "e427-C08"
+      ]
+    },
+    {
+      "name": "layers-before",
+      "at": "2026-11-27T22:04:53.753Z",
+      "count": 6,
+      "names": [
+        "e427-L6",
+        "e427-L5",
+        "e427-L4",
+        "e427-L3",
+        "e427-L2",
+        "e427-L1"
+      ]
+    },
+    {
+      "name": "project-state-before",
+      "at": "2026-11-27T22:04:54.366Z",
+      "itemCount": 8,
+      "dirty": true,
+      "activeItem": {
+        "name": "e427-C01",
+        "comp": true
+      }
+    },
+    {
+      "name": "surface-after-setup",
+      "at": "2026-11-27T22:04:54.798Z",
+      "windowIndex": 3,
+      "title": "名称未設定プロジェクト *",
+      "frame": {
+        "x": 0,
+        "y": 38,
+        "width": 1710,
+        "height": 1074
+      },
+      "previousTitle": "名称未設定プロジェクト"
+    },
+    {
+      "name": "project-pane-error",
+      "at": "2026-11-27T22:04:56.621Z",
+      "error": "PanelError: no framed window of pid 47395 can parent a docked pane (locator {}; 0 window(s) observed)"
+    },
+    {
+      "name": "timeline-pane-error",
+      "at": "2026-11-27T22:04:58.390Z",
+      "error": "PanelError: no framed window of pid 47395 can parent a docked pane (locator {}; 0 window(s) observed)"
+    },
+    {
+      "name": "anchors",
+      "at": "2026-11-27T22:04:58.390Z",
+      "frame": {
+        "x": 0,
+        "y": 38,
+        "width": 1710,
+        "height": 1074
+      },
+      "anchors": {
+        "projectRow1": {
+          "x": 150,
+          "y": 263
+        },
+        "projectRow2": {
+          "x": 150,
+          "y": 284
+        },
+        "timelineRow1": {
+          "x": 250,
+          "y": 847
+        },
+        "timelineRow3": {
+          "x": 250,
+          "y": 887
+        },
+        "tab": {
+          "x": 56,
+          "y": 86
+        },
+        "tabTo": {
+          "x": 700,
+          "y": 712
+        }
+      }
+    },
+    {
+      "name": "row-resolution",
+      "at": "2026-11-27T22:04:58.390Z",
+      "projectItemName": "e427-C01",
+      "projectRowFrame": null,
+      "timelineRowsFound": 0
+    },
+    {
+      "name": "timeline-drag-points",
+      "at": "2026-11-27T22:04:58.766Z",
+      "from": {
+        "x": 250,
+        "y": 885
+      },
+      "to": {
+        "x": 250,
+        "y": 945
+      },
+      "axRows": 0
+    },
+    {
+      "name": "timeline-layer-result",
+      "at": "2026-11-27T22:05:32.457Z",
+      "attempt": 0,
+      "result": {
+        "kind": "element-drag",
+        "element": "timeline-layer",
+        "vehicle": "performed",
+        "dragOperation": null,
+        "delta": {
+          "addedNames": [],
+          "removedNames": [],
+          "orderChanged": false,
+          "countDelta": 0
+        },
+        "verified": true,
+        "file": null,
+        "segments": [
+          {
+            "index": 1,
+            "point": {
+              "x": 250,
+              "y": 887.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 2,
+            "point": {
+              "x": 250,
+              "y": 890
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 3,
+            "point": {
+              "x": 250,
+              "y": 892.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 4,
+            "point": {
+              "x": 250,
+              "y": 895
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 5,
+            "point": {
+              "x": 250,
+              "y": 897.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 6,
+            "point": {
+              "x": 250,
+              "y": 900
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 7,
+            "point": {
+              "x": 250,
+              "y": 902.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 8,
+            "point": {
+              "x": 250,
+              "y": 905
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 9,
+            "point": {
+              "x": 250,
+              "y": 907.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 10,
+            "point": {
+              "x": 250,
+              "y": 910
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 11,
+            "point": {
+              "x": 250,
+              "y": 912.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 12,
+            "point": {
+              "x": 250,
+              "y": 915
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 13,
+            "point": {
+              "x": 250,
+              "y": 917.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 14,
+            "point": {
+              "x": 250,
+              "y": 920
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 15,
+            "point": {
+              "x": 250,
+              "y": 922.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 16,
+            "point": {
+              "x": 250,
+              "y": 925
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 17,
+            "point": {
+              "x": 250,
+              "y": 927.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 18,
+            "point": {
+              "x": 250,
+              "y": 930
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 19,
+            "point": {
+              "x": 250,
+              "y": 932.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 20,
+            "point": {
+              "x": 250,
+              "y": 935
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 21,
+            "point": {
+              "x": 250,
+              "y": 937.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 22,
+            "point": {
+              "x": 250,
+              "y": 940
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 23,
+            "point": {
+              "x": 250,
+              "y": 942.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 24,
+            "point": {
+              "x": 250,
+              "y": 945
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          }
+        ],
+        "windowCountBefore": null,
+        "windowCountAfter": null,
+        "aborted": null,
+        "observedAt": "2026-11-27T22:05:32.456Z"
+      }
+    },
+    {
+      "name": "layers-after",
+      "at": "2026-11-27T22:05:36.149Z",
+      "names": [
+        "e427-L6",
+        "e427-L5",
+        "e427-L4",
+        "e427-L3",
+        "e427-L2",
+        "e427-L1"
+      ]
+    },
+    {
+      "name": "screenshot-after-timeline",
+      "at": "2026-11-27T22:05:36.876Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-after-timeline.png"
+    },
+    {
+      "name": "project-drag-points",
+      "at": "2026-11-27T22:05:36.877Z",
+      "from": {
+        "x": 150,
+        "y": 301
+      },
+      "to": {
+        "x": 150,
+        "y": 385
+      }
+    },
+    {
+      "name": "project-item-result",
+      "at": "2026-11-27T22:06:07.793Z",
+      "attempt": 0,
+      "result": {
+        "kind": "element-drag",
+        "element": "project-item",
+        "vehicle": "performed",
+        "dragOperation": null,
+        "delta": {
+          "addedNames": [],
+          "removedNames": [],
+          "orderChanged": false,
+          "countDelta": 0
+        },
+        "verified": true,
+        "file": null,
+        "segments": [
+          {
+            "index": 1,
+            "point": {
+              "x": 150,
+              "y": 304.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 2,
+            "point": {
+              "x": 150,
+              "y": 308
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 3,
+            "point": {
+              "x": 150,
+              "y": 311.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 4,
+            "point": {
+              "x": 150,
+              "y": 315
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 5,
+            "point": {
+              "x": 150,
+              "y": 318.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 6,
+            "point": {
+              "x": 150,
+              "y": 322
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 7,
+            "point": {
+              "x": 150,
+              "y": 325.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 8,
+            "point": {
+              "x": 150,
+              "y": 329
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 9,
+            "point": {
+              "x": 150,
+              "y": 332.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 10,
+            "point": {
+              "x": 150,
+              "y": 336
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 11,
+            "point": {
+              "x": 150,
+              "y": 339.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 12,
+            "point": {
+              "x": 150,
+              "y": 343
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 13,
+            "point": {
+              "x": 150,
+              "y": 346.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 14,
+            "point": {
+              "x": 150,
+              "y": 350
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 15,
+            "point": {
+              "x": 150,
+              "y": 353.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 16,
+            "point": {
+              "x": 150,
+              "y": 357
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 17,
+            "point": {
+              "x": 150,
+              "y": 360.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 18,
+            "point": {
+              "x": 150,
+              "y": 364
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 19,
+            "point": {
+              "x": 150,
+              "y": 367.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 20,
+            "point": {
+              "x": 150,
+              "y": 371
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 21,
+            "point": {
+              "x": 150,
+              "y": 374.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 22,
+            "point": {
+              "x": 150,
+              "y": 378
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 23,
+            "point": {
+              "x": 150,
+              "y": 381.5
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          },
+          {
+            "index": 24,
+            "point": {
+              "x": 150,
+              "y": 385
+            },
+            "topmostPid": 47395,
+            "topmostWindowNumber": 7041,
+            "ok": true
+          }
+        ],
+        "windowCountBefore": null,
+        "windowCountAfter": null,
+        "aborted": null,
+        "observedAt": "2026-11-27T22:06:07.791Z"
+      }
+    },
+    {
+      "name": "project-comps-after",
+      "at": "2026-11-27T22:06:09.571Z",
+      "count": 8,
+      "names": [
+        "e427-C01",
+        "e427-C02",
+        "e427-C03",
+        "e427-C04",
+        "e427-C05",
+        "e427-C06",
+        "e427-C07",
+        "e427-C08"
+      ]
+    },
+    {
+      "name": "screenshot-after-project",
+      "at": "2026-11-27T22:06:10.305Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-after-project.png"
+    },
+    {
+      "name": "window-capture-after",
+      "at": "2026-11-27T22:06:10.359Z",
+      "ok": false,
+      "windowNumber": -1,
+      "error": "Command failed: /usr/sbin/screencapture -x -o -l -1 /Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-window-after.png\ncould not create image from window\n"
+    },
+    {
+      "name": "tearoff-gates",
+      "at": "2026-11-27T22:06:10.762Z",
+      "from": {
+        "x": 56,
+        "y": 124
+      },
+      "gateFrom": {
+        "ok": true,
+        "pid": 47395,
+        "windowNumber": 7041
+      },
+      "to": {
+        "x": 700,
+        "y": 750
+      },
+      "gateTo": {
+        "ok": true,
+        "pid": 47395,
+        "windowNumber": 7043
+      }
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T22:06:12.423Z",
+      "verified": false,
+      "error": "the drag destination point is covered by an owned window whose census bounds {\"x\":698,\"y\":720,\"width\":324,\"height\":708} do not match the resolved surface frame {\"x\":0,\"y\":38,\"width\":1710,\"height\":1074} (±8pt) — an aux panel or another owned window sits on top; refusing rather than dropping onto the wrong surface",
+      "code": "unproven"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T22:06:15.141Z",
+      "verified": false,
+      "error": "the drag destination point is covered by an owned window whose census bounds {\"x\":698,\"y\":720,\"width\":324,\"height\":708} do not match the resolved surface frame {\"x\":0,\"y\":38,\"width\":1710,\"height\":1074} (±8pt) — an aux panel or another owned window sits on top; refusing rather than dropping onto the wrong surface",
+      "code": "unproven",
+      "windowsBefore": 3,
+      "windowsAfter": 3,
+      "newOwnedWindow": 0
+    },
+    {
+      "name": "screenshot-after-tearoff",
+      "at": "2026-11-27T22:06:15.797Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-after-tearoff.png"
+    }
+  ],
+  "outcome": "partial",
+  "results": {
+    "timelineLayer": {
+      "kind": "element-drag",
+      "element": "timeline-layer",
+      "vehicle": "performed",
+      "dragOperation": null,
+      "delta": {
+        "addedNames": [],
+        "removedNames": [],
+        "orderChanged": false,
+        "countDelta": 0
+      },
+      "verified": true,
+      "file": null,
+      "segments": [
+        {
+          "index": 1,
+          "point": {
+            "x": 250,
+            "y": 887.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 2,
+          "point": {
+            "x": 250,
+            "y": 890
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 3,
+          "point": {
+            "x": 250,
+            "y": 892.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 4,
+          "point": {
+            "x": 250,
+            "y": 895
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 5,
+          "point": {
+            "x": 250,
+            "y": 897.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 6,
+          "point": {
+            "x": 250,
+            "y": 900
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 7,
+          "point": {
+            "x": 250,
+            "y": 902.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 8,
+          "point": {
+            "x": 250,
+            "y": 905
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 9,
+          "point": {
+            "x": 250,
+            "y": 907.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 10,
+          "point": {
+            "x": 250,
+            "y": 910
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 11,
+          "point": {
+            "x": 250,
+            "y": 912.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 12,
+          "point": {
+            "x": 250,
+            "y": 915
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 13,
+          "point": {
+            "x": 250,
+            "y": 917.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 14,
+          "point": {
+            "x": 250,
+            "y": 920
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 15,
+          "point": {
+            "x": 250,
+            "y": 922.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 16,
+          "point": {
+            "x": 250,
+            "y": 925
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 17,
+          "point": {
+            "x": 250,
+            "y": 927.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 18,
+          "point": {
+            "x": 250,
+            "y": 930
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 19,
+          "point": {
+            "x": 250,
+            "y": 932.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 20,
+          "point": {
+            "x": 250,
+            "y": 935
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 21,
+          "point": {
+            "x": 250,
+            "y": 937.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 22,
+          "point": {
+            "x": 250,
+            "y": 940
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 23,
+          "point": {
+            "x": 250,
+            "y": 942.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 24,
+          "point": {
+            "x": 250,
+            "y": 945
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        }
+      ],
+      "windowCountBefore": null,
+      "windowCountAfter": null,
+      "aborted": null,
+      "observedAt": "2026-11-27T22:05:32.456Z"
+    },
+    "projectItem": {
+      "kind": "element-drag",
+      "element": "project-item",
+      "vehicle": "performed",
+      "dragOperation": null,
+      "delta": {
+        "addedNames": [],
+        "removedNames": [],
+        "orderChanged": false,
+        "countDelta": 0
+      },
+      "verified": true,
+      "file": null,
+      "segments": [
+        {
+          "index": 1,
+          "point": {
+            "x": 150,
+            "y": 304.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 2,
+          "point": {
+            "x": 150,
+            "y": 308
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 3,
+          "point": {
+            "x": 150,
+            "y": 311.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 4,
+          "point": {
+            "x": 150,
+            "y": 315
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 5,
+          "point": {
+            "x": 150,
+            "y": 318.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 6,
+          "point": {
+            "x": 150,
+            "y": 322
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 7,
+          "point": {
+            "x": 150,
+            "y": 325.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 8,
+          "point": {
+            "x": 150,
+            "y": 329
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 9,
+          "point": {
+            "x": 150,
+            "y": 332.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 10,
+          "point": {
+            "x": 150,
+            "y": 336
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 11,
+          "point": {
+            "x": 150,
+            "y": 339.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 12,
+          "point": {
+            "x": 150,
+            "y": 343
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 13,
+          "point": {
+            "x": 150,
+            "y": 346.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 14,
+          "point": {
+            "x": 150,
+            "y": 350
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 15,
+          "point": {
+            "x": 150,
+            "y": 353.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 16,
+          "point": {
+            "x": 150,
+            "y": 357
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 17,
+          "point": {
+            "x": 150,
+            "y": 360.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 18,
+          "point": {
+            "x": 150,
+            "y": 364
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 19,
+          "point": {
+            "x": 150,
+            "y": 367.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 20,
+          "point": {
+            "x": 150,
+            "y": 371
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 21,
+          "point": {
+            "x": 150,
+            "y": 374.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 22,
+          "point": {
+            "x": 150,
+            "y": 378
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 23,
+          "point": {
+            "x": 150,
+            "y": 381.5
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        },
+        {
+          "index": 24,
+          "point": {
+            "x": 150,
+            "y": 385
+          },
+          "topmostPid": 47395,
+          "topmostWindowNumber": 7041,
+          "ok": true
+        }
+      ],
+      "windowCountBefore": null,
+      "windowCountAfter": null,
+      "aborted": null,
+      "observedAt": "2026-11-27T22:06:07.791Z"
+    },
+    "tabTearoffProbe": {
+      "verified": false,
+      "error": "the drag destination point is covered by an owned window whose census bounds {\"x\":698,\"y\":720,\"width\":324,\"height\":708} do not match the resolved surface frame {\"x\":0,\"y\":38,\"width\":1710,\"height\":1074} (±8pt) — an aux panel or another owned window sits on top; refusing rather than dropping onto the wrong surface",
+      "code": "unproven",
+      "name": "DragDropError",
+      "windowsBefore": 3,
+      "windowsAfter": 3,
+      "newOwnedWindow": 0
+    }
+  }
+}
