@@ -87,6 +87,54 @@ export {
   INPUT_OPERATION_KINDS,
   InputError,
 } from "./input/types.js";
+/*
+ * Tier evidence records (#376, specs/ime-input/spec.md §4・§5.6):
+ * independent Tier-1a (CEP composition self-report), Tier-1b (OS IME
+ * end-to-end) and Tier-2 (real key + committed result) records, the
+ * spec §4.2 forbidden-evidence rejection, fixture JSONL ingest, and
+ * the composition-observe channel/coverage report. The tiers are never
+ * merged into one "IME works" verdict. Verification level:
+ * `automated test` — no real composition or IME event observed.
+ */
+export {
+  buildCompositionObserveReport,
+  buildInputEvidenceReport,
+  buildTier1aRecord,
+  buildTier2Record,
+  classifyInputDelivery,
+  classifyInputDeliveryForTier2,
+  compositionCoverage,
+  compositionObserveChannels,
+  evaluateTier1bEvidence,
+  INPUT_DELIVERY_MECHANISMS,
+  INPUT_EVIDENCE_REPORT_SCHEMA,
+  INPUT_FIXTURE_ID,
+  INPUT_TIER1A_SCHEMA,
+  INPUT_TIER1B_SCHEMA,
+  INPUT_TIER2_SCHEMA,
+  parseFixtureReport,
+  parseFixtureReportLine,
+} from "./input/evidence.js";
+export type {
+  CompositionObserveReport,
+  CompositionSurfaceCoverage,
+  CompositionSupport,
+  DeliveryAdmissibility,
+  DeliveryAssessment,
+  FixtureReportRecord,
+  FixtureReportRejection,
+  InputDeliveryClass,
+  InputDeliveryMechanism,
+  InputEvidenceReport,
+  InputObservationChannel,
+  InputObservationChannelReport,
+  Tier1aEvidenceRecord,
+  Tier1bEvidenceRecord,
+  Tier1bPhases,
+  Tier2CommittedResult,
+  Tier2EvidenceRecord,
+  TierVerdict,
+} from "./input/evidence.js";
 export type {
   ClipboardSnapshot,
   ExpectedFocus,
