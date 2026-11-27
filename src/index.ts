@@ -67,6 +67,65 @@ export type {
 } from "./panels/types.js";
 
 /*
+ * OS-level input surface (#374, specs/ime-input/spec.md §5–§6, parent
+ * #344 / program #337): `ae.input(locator)` plus the per-OS/session-kind
+ * capability report. Every mutation routes through `runInputPlan` —
+ * PanelTarget re-resolution, owned attribution, GUI lease, global-input
+ * authorization, `inputMutationGate()` (closed today), the three-step
+ * focus proof and the §5.5 cleanup contract. Mutations return the
+ * `InputAuditRecord`; nothing posts without the full gate chain.
+ * Verification level: `automated test` — real delivery unverified.
+ */
+export {
+  Input,
+  inputCapabilities,
+  inputForTarget,
+  inputSessionKind,
+} from "./api/input.js";
+export {
+  INPUT_OPERATION_GATES,
+  INPUT_OPERATION_KINDS,
+  InputError,
+} from "./input/types.js";
+export type {
+  ClipboardSnapshot,
+  ExpectedFocus,
+  FocusHolder,
+  GlobalInputAuthorization,
+  ImeModeSnapshot,
+  InputAuditRecord,
+  InputAuthorizationRequest,
+  InputAuthorizationVerdict,
+  InputCapability,
+  InputCapabilities,
+  InputCleanupAction,
+  InputCleanupReport,
+  InputCleanupResult,
+  InputErrorCode,
+  InputFocusEvidence,
+  InputGateState,
+  InputMouseEvent,
+  InputOperationClass,
+  InputOperationGate,
+  InputOperationKind,
+  InputOperationScope,
+  InputOps,
+  InputOpsContext,
+  InputOpsFactory,
+  InputPlan,
+  InputPlatform,
+  InputPoster,
+  InputSeams,
+  InputSessionKind,
+  InputStep,
+  InputStepKind,
+  InputStepRecord,
+  InputSurfaceOps,
+  InputVerification,
+  InputVerdict,
+} from "./api/index.js";
+
+/*
  * Menu-bar surface (#360, specs/workspace-editing/spec.md): `ae.menuBar()`
  * plus the capability report. Enumerate and checkmark readback are
  * observe-class; invoke is mutate-gui and gate-pending.
