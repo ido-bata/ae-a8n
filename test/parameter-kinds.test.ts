@@ -54,8 +54,25 @@ describe("effect.parameters()", () => {
     const tint = await effectOnSolid("ADBE Fake Tint");
     const parameters = await tint.parameters();
     expect(parameters).toEqual([
-      { name: "Amount to Tint", matchName: "ADBE Fake Tint-0001", kind: "value", valueType: "OneD", value: 0 },
-      { name: "", matchName: "ADBE Fake Tint-0002", kind: "no-value", valueType: "NO_VALUE" },
+      {
+        name: "Amount to Tint",
+        matchName: "ADBE Fake Tint-0001",
+        kind: "value",
+        valueType: "OneD",
+        value: 0,
+        selected: false,
+        isTimeVarying: false,
+        keyframes: [],
+      },
+      {
+        name: "",
+        matchName: "ADBE Fake Tint-0002",
+        kind: "no-value",
+        valueType: "NO_VALUE",
+        selected: false,
+        isTimeVarying: false,
+        keyframes: [],
+      },
       { name: "Compositing Options", matchName: "ADBE Effect Built In Params", kind: "group" },
     ]);
   });
@@ -136,6 +153,9 @@ describe("parameters with a value", () => {
       kind: "value",
       valueType: "OneD",
       value: 50,
+      selected: false,
+      isTimeVarying: false,
+      keyframes: [],
     });
   });
 

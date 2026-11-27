@@ -20,6 +20,7 @@ import { requireAuthorized, requirePositive, type Session } from "./session.js";
 import type {
   CommandExecution,
   CompInfo,
+  CompTime,
   CreateCompOptions,
   EffectInfo,
   LayerInfo,
@@ -27,6 +28,7 @@ import type {
   OperationOptions,
   ParameterValue,
   ProjectInfo,
+  ProjectState,
   PropertyInfo,
   PropertyKind,
   RenderOptions,
@@ -73,6 +75,14 @@ export class Project {
 
   async info(): Promise<ProjectInfo> {
     return this.#session.call<ProjectInfo>("project.info", "project.info");
+  }
+
+  /**
+   * The project facts the DOM exposes for readback (#359): item count,
+   * unsaved-changes flag, and the active item.
+   */
+  async state(): Promise<ProjectState> {
+    return this.#session.call<ProjectState>("project.state", "project.state");
   }
 
   async comps(): Promise<CompInfo[]> {
@@ -129,6 +139,14 @@ export class Comp {
 
   async info(): Promise<CompInfo> {
     return this.#session.call<CompInfo>("comp.info", "comp.info", { name: this.name });
+  }
+
+  /**
+   * The current-time indicator (`CompItem.time`), in seconds (#359).
+   * Read-only: scrubbing the timeline in the GUI is what this observes.
+   */
+  async time(): Promise<CompTime> {
+    return this.#session.call<CompTime>("comp.time", "comp.time", { name: this.name });
   }
 
   async layers(): Promise<LayerInfo[]> {
@@ -247,6 +265,37 @@ export class Layer {
       comp: this.compName,
       layer: this.name,
     });
+  }
+
+  /**
+   * One property of the layer by path — each segment a name or match name,
+   * e.g. `["ADBE Transform Group", "ADBE Position"]` or
+   * `["ADBE Effect Parade", "ADBE Fake Tint", "ADBE Fake Tint-0001"]`
+   * (#359). Read-only; the result carries `selected`, `isTimeVarying` and
+   * `keyframes` where the host exposes them.
+   */
+  async property(path: readonly string[]): Promise<PropertyInfo> {
+    if (!Array.isArray(path) || path.length === 0) {
+      throw new TypeError("property path must be a non-empty array of names or match names");
+    }
+    const segments = path.map((segment) => requireString(segment, "property path segment"));
+    try {
+      return await this.#session.call<PropertyInfo>("layer.property", "layer.property", {
+        comp: this.compName,
+        layer: this.name,
+        path: segments,
+      });
+    } catch (error) {
+      const cause = error instanceof AfterEffectsError ? error.cause : undefined;
+      if (cause instanceof HostError && cause.name === "NotFoundError" && cause.kind === "property") {
+        throw new EntityNotFoundError(
+          "property",
+          `${segments.join(" › ")} (on layer "${this.name}")`,
+          "layer.property",
+        );
+      }
+      throw error;
+    }
   }
 
   /** Every path of a shape layer, in layer space; rejects for any other layer. */
