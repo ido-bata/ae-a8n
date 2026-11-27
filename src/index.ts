@@ -12,7 +12,13 @@
 export {
   AfterEffects,
   Comp,
+  CompView,
+  CompViewError,
+  compViewCapabilities,
   DockedPane,
+  EffectControls,
+  EffectControlsError,
+  effectControlsCapabilities,
   Effects,
   Effect,
   Layer,
@@ -245,6 +251,49 @@ export type {
   WorkspaceXmlFile,
   WorkspaceXmlInspection,
   WorkspaceXmlRef,
+} from "./api/index.js";
+
+/*
+ * Comp-view pan/zoom + Effect Controls surface (#367, W4+ of
+ * specs/workspace-editing/spec.md; parent #345 / program #337):
+ * `ae.compView(locator)` and `ae.effectControls(locator)`. Every act is
+ * mutate-gui (GUI input + capture-diff/geometry or DOM readback
+ * oracle), gated pending A-SAFETY clearance; value entry additionally
+ * requires session-stream authorization. Real-host fidelity is
+ * unverified; see `compViewCapabilities()`/`effectControlsCapabilities()`.
+ */
+export type {
+  CompViewAxLocator,
+  CompViewCapabilities,
+  CompViewCapability,
+  CompViewCapture,
+  CompViewCaptureDelta,
+  CompViewErrorCode,
+  CompViewMouseOps,
+  CompViewOpRecord,
+  CompViewPanRequest,
+  CompViewSeams,
+  CompViewVerdict,
+  CompViewZoomRequest,
+  EffectControlsCapabilities,
+  EffectControlsCapability,
+  EffectControlsErrorCode,
+  EffectControlsMouseOps,
+  EffectControlsOpRecord,
+  EffectControlsReadback,
+  EffectControlsRowLocator,
+  EffectControlsSeams,
+  EffectControlsVerdict,
+  PanResult,
+  SetFoldedRequest,
+  SetFoldedResult,
+  SetParameterRequest,
+  SetParameterResult,
+  ZoomResult,
+} from "./api/index.js";
+export {
+  formatParameterValue,
+  parameterValueMatches,
 } from "./api/index.js";
 
 /*
