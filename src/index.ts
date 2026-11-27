@@ -33,6 +33,7 @@ export {
   TimelineError,
   timelineCapabilities,
   UNDO_COMMAND_ID,
+  WindowOps,
   Workspace,
 } from "./api/index.js";
 
@@ -441,6 +442,44 @@ export type {
   WorkspaceXmlFile,
   WorkspaceXmlInspection,
   WorkspaceXmlRef,
+} from "./api/index.js";
+
+/*
+ * Window ops surface (#366, W4+ of specs/workspace-editing/spec.md §9;
+ * parent #345 / program #337): `ae.windowOps(locator)` — observe-class
+ * `state` plus gated mutate-gui `move`/`resize`/`minimize`/`restore`/
+ * `maximize`/`focus`. Every act re-resolves the window, refuses
+ * non-"owned" attribution, never resends, and reports `indeterminate`
+ * on an unproven postcondition. Real-host AX fidelity is unverified;
+ * see `windowOpsCapabilities()`.
+ */
+export {
+  windowOpsCapabilities,
+  windowOpsForTarget,
+  WindowOpsError,
+  windowOpsFramesMatch,
+  windowOpsMutationGate,
+  DEFAULT_WINDOW_OPS_POLL,
+} from "./api/index.js";
+export type {
+  WindowOpsActRequest,
+  WindowOpsActResult,
+  WindowOpsActVerdict,
+  WindowOpsCapabilities,
+  WindowOpsCapability,
+  WindowOpsCensusView,
+  WindowOpsErrorCode,
+  WindowOpsListing,
+  WindowOpsMutationGate,
+  WindowOpsOp,
+  WindowOpsOpsContext,
+  WindowOpsOpsFactory,
+  WindowOpsPollOptions,
+  WindowOpsSeams,
+  WindowOpsState,
+  WindowOpsSurfaceOps,
+  WindowOpsWindowInfo,
+  WindowOpResult,
 } from "./api/index.js";
 
 /*

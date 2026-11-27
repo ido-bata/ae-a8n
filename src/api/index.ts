@@ -100,6 +100,12 @@ import {
   type WorkspaceCapabilities,
 } from "./workspace.js";
 import {
+  type WindowOps,
+  windowOpsCapabilities,
+  windowOpsForTarget,
+  type WindowOpsCapabilities,
+} from "./window-ops.js";
+import {
   type CompView,
   compViewCapabilities,
   compViewForTarget,
@@ -448,6 +454,33 @@ export {
   type WorkspaceXmlInspection,
   type WorkspaceXmlRef,
 } from "./workspace.js";
+export {
+  WindowOps,
+  WindowOpsError,
+  windowOpsCapabilities,
+  windowOpsForTarget,
+  windowOpsFramesMatch,
+  windowOpsMutationGate,
+  DEFAULT_WINDOW_OPS_POLL,
+  type WindowOpsActRequest,
+  type WindowOpsActResult,
+  type WindowOpsActVerdict,
+  type WindowOpsCapabilities,
+  type WindowOpsCapability,
+  type WindowOpsCensusView,
+  type WindowOpsErrorCode,
+  type WindowOpsListing,
+  type WindowOpsMutationGate,
+  type WindowOpsOp,
+  type WindowOpsOpsContext,
+  type WindowOpsOpsFactory,
+  type WindowOpsPollOptions,
+  type WindowOpsSeams,
+  type WindowOpsState,
+  type WindowOpsSurfaceOps,
+  type WindowOpsWindowInfo,
+  type WindowOpResult,
+} from "./window-ops.js";
 export {
   CompView,
   CompViewError,
@@ -1316,6 +1349,36 @@ export class AfterEffects {
    */
   workspace(): Workspace {
     return workspaceForTarget(this.recoveryTarget());
+  }
+
+  /**
+   * What this build can do with OS windows on this platform (#366,
+   * W4+ of `specs/workspace-editing/spec.md` §9): per-op support,
+   * verification level and gate status. `state` is observe-class;
+   * `move`/`resize`/`minimize`/`restore`/`maximize`/`focus` are
+   * mutate-gui and report `unavailable` while the A-SAFETY gate keeps
+   * them refused — see `windowOpsCapabilities()`.
+   */
+  windowOpsCapabilities(): WindowOpsCapabilities {
+    return windowOpsCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to one OS window of the owned After Effects instance
+   * (#366): `state` is observe-class; `move`, `resize`, `minimize`,
+   * `restore`, `maximize` and `focus` are mutate-gui — AX position/
+   * size/miniaturized sets plus a focus-proofed activate, gated and
+   * bounded (no resend, `indeterminate` on an unproven postcondition).
+   * Throws `WindowOpsError` when no owned target is attested or the
+   * platform is unsupported.
+   *
+   * `locator` names the window exactly as `ae.panel(locator)` does —
+   * title/role/subrole or OS window number, re-resolved on every call.
+   * Real-host fidelity of the AX sets (and of a miniaturized window's
+   * frame) is unverified; see `windowOpsCapabilities()`.
+   */
+  windowOps(locator: PanelLocator): WindowOps {
+    return windowOpsForTarget(this.recoveryTarget(), locator);
   }
 
   /**
