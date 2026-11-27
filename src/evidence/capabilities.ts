@@ -28,10 +28,10 @@ export type GuiEvidenceCapabilities = {
 const CONTRACT_TESTED: GuiEvidenceCapability["verification"] = "automated test";
 
 /**
- * What this build supports for GUI evidence on `platform`. Windows is
- * deliberately all-unsupported for screen channels: no capture or
- * recording vehicle exists there (spec §4.2), and the index contract is
- * platform-neutral but its screen artifacts cannot be produced.
+ * What this build supports for GUI evidence on `platform`. Windows has
+ * a recording vehicle (the WGC helper, #384) but no still-capture
+ * vehicle yet; the index contract is platform-neutral and its screen
+ * artifacts are populated only where a backend exists.
  */
 export function guiEvidenceCapabilities(
   platform: NodeJS.Platform,
@@ -58,10 +58,14 @@ export function guiEvidenceCapabilities(
         support: "partial",
         verification: CONTRACT_TESTED,
         reason:
-          "the record.start/stop lifecycle is implemented (#381) against " +
-          "a pluggable recorder seam, but no OS backend exists on this " +
-          "platform — starts refuse until a backend (SCStream #382 / WGC " +
-          "#384) registers",
+          "the WGC backend is implemented (#384): a PowerShell+C# " +
+          "Windows.Graphics.Capture → MediaFoundation helper records " +
+          "window (HWND) and display/monitor scopes to H.264 .mp4, with " +
+          "a declared ffmpeg gdigrab fallback for session scope. " +
+          "Region scope has no vehicle, every Windows row stays " +
+          "unverified (no real-host lane), and window capture can still " +
+          "be refused per-window (protected content / UIPI) as " +
+          "window-not-capturable",
       },
       renderEvidence: {
         support: "partial",

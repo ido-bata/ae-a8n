@@ -158,6 +158,15 @@ export type RecorderStartResult = {
   readonly actualScope?: CaptureScope;
   /** Exclusion requests the backend could not honor (§7.2). */
   readonly unhonoredExclusions?: readonly string[];
+  /**
+   * The tool that actually started, when a backend falls back to a
+   * different vehicle mid-`start` (e.g. WGC → declared ffmpeg on
+   * Windows, #384). Overrides `ScreenRecorder.tool`/`toolVersion` on the
+   * artifact's `provenance` so the record names what ran, not what was
+   * asked for. Absent = the recorder's own identity stands.
+   */
+  readonly tool?: string;
+  readonly toolVersion?: string;
 };
 
 export type RecorderStopResult = {
@@ -295,6 +304,9 @@ type LiveSegment = {
   readonly actualScope?: CaptureScope;
   readonly recorder: ScreenRecorder;
   readonly handle: RecorderHandle;
+  /** Tool identity `start` reported, when it overrode the recorder's. */
+  readonly tool?: string;
+  readonly toolVersion?: string;
   /** Path relative to `artifactsDir`, e.g. `recordings/seg-001.mov`. */
   readonly file: string;
   readonly absPath: string;
@@ -626,6 +638,10 @@ export class RecordingController {
         : { actualScope: started.actualScope }),
       recorder,
       handle: started.handle,
+      ...(started.tool === undefined ? {} : { tool: started.tool }),
+      ...(started.toolVersion === undefined
+        ? {}
+        : { toolVersion: started.toolVersion }),
       file,
       absPath,
       t0EpochMs,
@@ -1059,10 +1075,10 @@ export class RecordingController {
       },
       provenance: {
         producer: "os-capture",
-        tool: live.recorder.tool,
-        ...(live.recorder.toolVersion === undefined
+        tool: live.tool ?? live.recorder.tool,
+        ...((live.toolVersion ?? live.recorder.toolVersion) === undefined
           ? {}
-          : { toolVersion: live.recorder.toolVersion }),
+          : { toolVersion: live.toolVersion ?? live.recorder.toolVersion }),
       },
       operationIds: coverage.operationIds,
       ...(unavailableReason === undefined
@@ -1175,10 +1191,10 @@ export class RecordingController {
       },
       provenance: {
         producer: "os-capture",
-        tool: live.recorder.tool,
-        ...(live.recorder.toolVersion === undefined
+        tool: live.tool ?? live.recorder.tool,
+        ...((live.toolVersion ?? live.recorder.toolVersion) === undefined
           ? {}
-          : { toolVersion: live.recorder.toolVersion }),
+          : { toolVersion: live.toolVersion ?? live.recorder.toolVersion }),
       },
       operationIds: [],
       unavailable: { reason: `finalize failed: ${reason}` },

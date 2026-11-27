@@ -11,10 +11,12 @@
  *
  * Honesty rules:
  *
- *   - The OS recording backends (ScreenCaptureKit #382, WGC #384) are
- *     later tickets. With no backend registered every start refuses —
- *     the gates still run first, so an unauthorized scope is refused for
- *     the *right* reason and the refusal lands in the index gaps.
+ *   - The OS recording backends plug in per platform: win32 registers
+ *     the WGC helper (#384, with the declared ffmpeg fallback);
+ *     platforms without a backend resolve to `null` and every start
+ *     refuses — the gates still run first, so an unauthorized scope is
+ *     refused for the *right* reason and the refusal lands in the index
+ *     gaps.
  *   - `display`/`session` scopes, and every scope on a session whose
  *     kind is not proven `"isolated"`, require recording authorization
  *     (spec §5.6). No authorization mechanism exists yet, so those
@@ -26,6 +28,7 @@
 
 import { defaultLeaseController } from "../driver/gui-recovery.js";
 import { defaultGuiLeaseRoot } from "../platform/darwin/gui-lease.js";
+import { windowsScreenRecorderResolver } from "../platform/windows/recording.js";
 import { consoleSessionUid } from "../driver/mac-session.js";
 import type { Session } from "./session.js";
 import {
@@ -192,8 +195,9 @@ function defaultAcquireLease(session: Session) {
 
 /**
  * Builds the session's recording controller. `seams.recorder` is the
- * backend slot later tickets (#382/#384) fill; absent, every start
- * refuses `unsupported` after the safety gates have run.
+ * backend slot platform tickets (#382 darwin / #384 win32) fill; absent
+ * on a platform with no backend, every start refuses `unsupported`
+ * after the safety gates have run.
  */
 export function createRecordingController(
   session: Session,
@@ -201,9 +205,14 @@ export function createRecordingController(
 ): RecordingController {
   const recorder: ScreenRecorder | RecorderResolver =
     seams.recorder ??
-    // No OS recording backend exists yet — resolve to null so starts
-    // refuse honestly instead of silently doing nothing.
-    (() => null);
+    // Platform backends: win32 registers the WGC helper (#384) with the
+    // declared-ffmpeg fallback gated on AE_A8N_FFMPEG_FALLBACK=1; other
+    // platforms resolve to null so starts refuse honestly.
+    (process.platform === "win32"
+      ? windowsScreenRecorderResolver({
+          ffmpegFallback: process.env.AE_A8N_FFMPEG_FALLBACK === "1",
+        })
+      : () => null);
   return new RecordingController({
     artifactsDir: session.driver.artifactsDir,
     session: sessionIdentity(session),
