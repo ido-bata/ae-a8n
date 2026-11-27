@@ -14,6 +14,17 @@
 //           which window index holds keyboard focus. One JSON object on
 //           stdout. Missing attributes are null, never guessed.
 //
+//           Two extra read-only fields carry the AE non-vending shape
+//           (#406): `axTrusted` is AXIsProcessTrusted() for the helper's
+//           own process, and `focusedWindow` describes the app's
+//           AXFocusedWindow element — the ONLY window After Effects
+//           vends on hosts where AXWindows/AXChildren/UI-elements
+//           enumeration returns nothing (verified on real host,
+//           docs/evidence/realhost-2026-11-27/). It is evidence for
+//           observe-class focused-window resolution only; nothing in
+//           `act` addresses it, because `act` re-lists `windows` and
+//           would report not-found rather than guess.
+//
 //   act   — one mutation addressed by *identity*, never by index: the
 //           caller passes the frame (+ optional title/subrole) it
 //           resolved, the helper re-lists inside the same process run,
@@ -249,19 +260,35 @@ func cmdState(_ args: [String]) -> Int32 {
     // Which window index holds keyboard focus: AXFocused flag first,
     // then the app's AXFocusedWindow matched back to the listing.
     var focusedIndex: Int? = records.first(where: { $0.focused == true })?.index
-    if focusedIndex == nil {
-        let app = AXUIElementCreateApplication(pid)
-        if let fw = attribute(app, kAXFocusedWindowAttribute) {
-            let fwEl = unsafeBitCast(fw, to: AXUIElement.self)
-            focusedIndex = records.first(where: {
-                CFEqual($0.element, fwEl)
-            })?.index
-        }
+    // The app's AXFocusedWindow element, read once: it feeds both the
+    // focused-index match and the separate `focusedWindow` report below.
+    // On AE (#406) this attribute is the ONLY window the AX tree vends —
+    // AXWindows/AXChildren/UI-elements enumeration returns nothing while
+    // AXFocusedWindow still resolves a real window (verified on real
+    // host, docs/evidence/realhost-2026-11-27/). It is reported
+    // separately from `windows` so `act`'s identity matching is
+    // unchanged: folding it in would silently change what a mutation
+    // can address.
+    var focusedElement: AXUIElement? = nil
+    let appForFocus = AXUIElementCreateApplication(pid)
+    if let fw = attribute(appForFocus, kAXFocusedWindowAttribute) {
+        focusedElement = unsafeBitCast(fw, to: AXUIElement.self)
+    }
+    if focusedIndex == nil, let fwEl = focusedElement {
+        focusedIndex = records.first(where: {
+            CFEqual($0.element, fwEl)
+        })?.index
+    }
+    var focusedJSON: Any = NSNull()
+    if let fwEl = focusedElement {
+        focusedJSON = windowJSON(describe(fwEl, index: 0))
     }
     emit([
         "pid": Int(pid),
         "frontmostPid": frontmostPid().map { Int($0) } ?? NSNull(),
         "focusedWindowIndex": focusedIndex ?? NSNull(),
+        "focusedWindow": focusedJSON,
+        "axTrusted": AXIsProcessTrusted(),
         "windows": records.map { windowJSON($0) },
     ])
     return 0

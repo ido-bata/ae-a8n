@@ -69,6 +69,7 @@ function appState(windows: readonly GuiWindowInfo[]): GuiAppState {
       onScreenCount: windows.length,
     },
     axSuspect: false,
+    axSuspectReason: null,
     axUnaccountedWindows: [],
     axForeignWindowCount: 0,
     axUnmatchedWindowCount: 0,
