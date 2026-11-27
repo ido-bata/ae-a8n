@@ -378,6 +378,32 @@ export type {
 } from "./evidence/types.js";
 
 /*
+ * Render-evidence join + consumer handoff (#385, E4 of program #337):
+ * `ae.evidence` plus the same-run join (`joinOperationEvidence`) and
+ * the ae-test `Artifact` mapping (`consumerArtifacts`). Channel S/R
+ * stay distinct claims; unverified joins report `verified: false`.
+ */
+export {
+  consumerArtifactKind,
+  consumerArtifacts,
+  consumerRefs,
+  joinOperationEvidence,
+} from "./evidence/consumer.js";
+export type {
+  ConsumerArtifact,
+  ConsumerArtifactKind,
+  EvidenceApi,
+  OperationEvidenceCheck,
+  OperationEvidenceJoin,
+} from "./api/index.js";
+export type {
+  EvidenceConsumerRefs,
+  EvidenceCoverage,
+  EvidenceKind,
+  EvidenceOperation,
+} from "./evidence/types.js";
+
+/*
  * Timeline editing surface (#364, specs/workspace-editing/spec.md §3 W2):
  * `ae.timeline(locator)` — timeline scrub, layer/property row selection
  * and keyframe navigation. Every act is mutate-gui (GUI input + DOM

@@ -17,6 +17,10 @@ import {
   PropertyHasNoValueError,
 } from "./errors.js";
 import { requireAuthorized, requirePositive, type Session } from "./session.js";
+import {
+  noteRenderFrameFailureEvidence,
+  recordRenderedFrameEvidence,
+} from "./render-evidence.js";
 import type {
   CommandExecution,
   CompInfo,
@@ -214,17 +218,32 @@ export class Comp {
     const base = this.#session.driver.artifactsDir;
     const outputDir =
       options.subdirectory === undefined ? base : join(base, options.subdirectory);
-    return this.#session.call<RenderedFrame>(
-      "comp.renderFrame",
-      "comp.renderFrame",
-      {
-        comp: this.name,
-        frame,
-        outputDir,
-        ...(options.prefix === undefined ? {} : { prefix: options.prefix }),
-      },
-      options,
-    );
+    const call = { comp: this.name, frame, outputDir };
+    let rendered: RenderedFrame;
+    try {
+      rendered = await this.#session.call<RenderedFrame>(
+        "comp.renderFrame",
+        "comp.renderFrame",
+        {
+          comp: this.name,
+          frame,
+          outputDir,
+          ...(options.prefix === undefined ? {} : { prefix: options.prefix }),
+        },
+        options,
+      );
+    } catch (error) {
+      // Channel R gap accounting (spec §5.5): the failed render is a
+      // first-class `coverage: "none"` row, never silent — and never
+      // masks the render error being rethrown.
+      noteRenderFrameFailureEvidence(this.#session, call, error);
+      throw error;
+    }
+    // Channel R binding (#385): the PNG is referenced — never copied —
+    // into the session evidence index as a `render-frame` artifact,
+    // joined to any covering recording segment for `coverage: "both"`.
+    await recordRenderedFrameEvidence(this.#session, rendered, call);
+    return rendered;
   }
 }
 

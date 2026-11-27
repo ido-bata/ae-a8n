@@ -71,9 +71,12 @@ export function guiEvidenceCapabilities(
         support: "partial",
         verification: CONTRACT_TESTED,
         reason:
-          "render-frame/render-sequence records are contract-only until " +
-          "the E4 slice wires comp.renderFrame and render-queue outputs " +
-          "into the index; the in-AE render path itself is host-provided",
+          "comp.renderFrame binds its PNG into the index as a " +
+          "render-frame artifact with requestId/segment join and " +
+          "coverage accounting (#385); artifactsDir discovery covers " +
+          "the renderFrame naming pattern only — arbitrary render-queue " +
+          "outputs are not guessed, and real-host render verification " +
+          "is still pending",
       },
     };
   }
@@ -105,9 +108,12 @@ export function guiEvidenceCapabilities(
       support: "partial",
       verification: CONTRACT_TESTED,
       reason:
-        "render-frame/render-sequence records are contract-only until " +
-        "the E4 slice wires comp.renderFrame and render-queue outputs " +
-        "into the index; the in-AE render path itself is host-provided",
+        "comp.renderFrame binds its PNG into the index as a " +
+        "render-frame artifact with requestId/segment join and " +
+        "coverage accounting (#385); artifactsDir discovery covers " +
+        "the renderFrame naming pattern only — arbitrary render-queue " +
+        "outputs are not guessed, and real-host render verification " +
+        "is still pending",
     },
   };
 }
