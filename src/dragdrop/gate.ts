@@ -18,13 +18,14 @@
  *     apps/windows refused before anything posts, `project.items`
  *     DOM-delta oracle, no resend.
  *   - `"element-drag"` — permitted ONLY for the declared element
- *     classes proven on real host (#427, same #411 evidence):
- *     `"project-item"` and `"timeline-layer"` in-app reorder. The
- *     request's `element` field selects both this permit and the
- *     readback oracle. `"panel-tab"` (dock↔float tear-off — its
- *     oracle was never verified in #411) and `"other"` (any
- *     undeclared/arbitrary in-app drag) stay refused: same vehicle,
- *     wider unproven blast radius, no dedicated class decision.
+ *     classes proven on real host (#427, #411 + this ticket's e2e):
+ *     `"project-item"` and `"timeline-layer"` reorder (DOM-delta
+ *     oracle) and `"panel-tab"` dock→float tear-off (census
+ *     window-count oracle — verified end-to-end on owned AE 2027).
+ *     The request's `element` field selects both this permit and the
+ *     readback oracle. `"other"` (any undeclared/arbitrary in-app
+ *     drag) stays refused: same vehicle, unproven blast radius, no
+ *     dedicated class decision.
  *
  * This function is the single flip point, exactly like
  * `src/contextmenu/gate.ts`/`src/panels/gate.ts`: when the audit
@@ -38,14 +39,16 @@ import type {
 } from "./types.js";
 
 /**
- * The element classes the #427 A-SAFETY decision permits: exactly the
- * reorder drags #411 reproduced on owned AE 2027 (`projectOrderChanged`
- * twice, `layerOrderChanged` once). Everything else — panel-tab
- * tear-off, undeclared targets — stays refused.
+ * The element classes the #427 A-SAFETY decision permits: the reorder
+ * drags #411 reproduced on owned AE 2027 (`projectOrderChanged` twice,
+ * `layerOrderChanged` once) plus the panel-tab dock→float tear-off
+ * #427 verified end-to-end (census window count +1). Everything else
+ * — undeclared/arbitrary in-app drags — stays refused.
  */
 const PERMITTED_ELEMENT_TARGETS: readonly DragDropElementTarget[] = [
   "project-item",
   "timeline-layer",
+  "panel-tab",
 ];
 
 /**
@@ -76,18 +79,17 @@ export function dragDropMutationGate(): DragDropMutationGate {
           `drag-drop element-drag (${element ?? "undeclared"}) is a ` +
           "mutate-gui class the A-SAFETY audit " +
           "(docs/gui-supervision-safety-gates.md, #427) keeps refused: " +
-          "only the real-host-proven reorder targets " +
-          "(project-item, timeline-layer) are permitted — panel-tab " +
-          "tear-off's oracle was never verified and arbitrary in-app " +
-          "drags have no dedicated class decision",
+          "only the real-host-proven targets (project-item, " +
+          "timeline-layer, panel-tab dock→float) are permitted — " +
+          "arbitrary in-app drags have no dedicated class decision",
       };
     }
     return {
       allowed: false,
       reason:
-        `drag-drop ${op} is a mutate-gui class the A-SAFETY audit ` +
+        `drag-drop ${String(op)} is a mutate-gui class the A-SAFETY audit ` +
         "(docs/gui-supervision-safety-gates.md) keeps refused: " +
-        "drop-file and the proven element-drag reorder classes are " +
+        "drop-file and the proven element-drag classes are " +
         "the only permitted drag-drop ops",
     };
   };

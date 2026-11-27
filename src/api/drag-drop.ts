@@ -19,9 +19,9 @@
  *     `dragDropMutationGate()` permits `drop-file` (the #411-verified
  *     vehicle, fixture files only, census/attribution/oracle chain)
  *     and `element-drag` for the declared proven targets
- *     (`project-item`/`timeline-layer` reorder, #427); `panel-tab`
- *     tear-off and `other` stay refused — see
- *     `dragDropCapabilities()`.
+ *     (`project-item`/`timeline-layer` reorder via DOM delta,
+ *     `panel-tab` dock→float tear-off via census window count — all
+ *     #427); `other` stays refused — see `dragDropCapabilities()`.
  *   - The whole press→move→release sequence runs inside ONE GUI-lease
  *     acquisition (`dragdrop:<kind>`), audited around the act like
  *     `ae.input()`'s `#run`.
@@ -169,12 +169,14 @@ export function dragDropCapabilities(
       verification: VERIFICATION,
       reason:
         "mutate-gui class permitted by dragDropMutationGate() for the " +
-        "declared real-host-proven reorder targets only (#427 " +
-        "A-SAFETY decision citing the #411 PoC): project-item and " +
-        "timeline-layer drags run the segmented CGEvent vehicle with " +
-        "per-segment census re-checks; panel-tab tear-off and other " +
-        "undeclared in-app drags stay refused — census/attribution/" +
-        "oracle chain and never-resend are unchanged",
+        "declared real-host-proven targets only (#427 " +
+        "A-SAFETY decision citing the #411 PoC + this ticket's e2e): " +
+        "project-item and timeline-layer drags run the segmented " +
+        "CGEvent vehicle with per-segment census re-checks and a DOM " +
+        "delta oracle; panel-tab dock→float tear-off is permitted with " +
+        "the census window-count oracle; other undeclared in-app drags " +
+        "stay refused — census/attribution/oracle chain and " +
+        "never-resend are unchanged",
     },
   };
 }
@@ -217,6 +219,12 @@ export type DragDropSeams = GuiObservationSeams & {
    * active comp through `project.state` and reads `comp.layers`.
    */
   readonly timelineLayers?: () => Promise<DragDropSnapshot> | DragDropSnapshot;
+  /**
+   * Test seam: replace the owned-pid on-screen census window count —
+   * the `panel-tab` tear-off oracle (#427). Production counts the
+   * WindowServer census rows attributed to this pid.
+   */
+  readonly ownedWindowCount?: () => number | Promise<number>;
 };
 
 function guiOptions(
@@ -746,6 +754,24 @@ export function dragDropForTarget(
     // element class read project.items order.
     readback: (element?: DragDropElementTarget) =>
       element === "timeline-layer" ? timelineLayers() : projectItems(),
+    // The panel-tab oracle (#427): owned on-screen app-layer windows in
+    // the WindowServer census. A tear-off floats a panel (+1); the
+    // count is pid-scoped so foreign windows can never satisfy it.
+    // Census unavailable throws — fail-closed, never "zero".
+    ownedWindowCount:
+      seams.ownedWindowCount ??
+      ((): number => {
+        const result = census();
+        if (!result.available) {
+          throw new Error(`window census unavailable: ${result.reason}`);
+        }
+        return result.windows.filter(
+          (w) =>
+            w.pid === target.pid &&
+            w.onScreen &&
+            (w.layer ?? 0) >= 0,
+        ).length;
+      }),
   };
   // Vehicle channels: a test seam wins per channel; otherwise the
   // compiled-helper binding supplies all four. A channel left unset is

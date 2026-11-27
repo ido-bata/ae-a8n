@@ -369,11 +369,18 @@ export class DragDropController {
     return top;
   }
 
-  /** Mid-drag segment re-check: same proof, recorded per segment. */
+  /**
+   * Mid-drag segment re-check: same proof, recorded per segment.
+   * `ownedOnly` relaxes the frame-bounds match to a pid-only check —
+   * used by `panel-tab` tear-off (#427), where the drag's own floating
+   * panel legitimately becomes the topmost owned window mid-gesture.
+   * A FOREIGN pid still aborts either way.
+   */
   #checkSegment(
     index: number,
     point: DragDropPoint,
     frame: GuiFrame,
+    ownedOnly = false,
   ): DragDropSegmentCheck {
     let top: DragDropTopmost | null = null;
     try {
@@ -384,8 +391,9 @@ export class DragDropController {
     const ok =
       top !== null &&
       top.pid === this.#pid &&
-      top.bounds !== null &&
-      framesClose(top.bounds, frame, FRAME_MATCH_TOLERANCE);
+      (ownedOnly ||
+        (top.bounds !== null &&
+          framesClose(top.bounds, frame, FRAME_MATCH_TOLERANCE)));
     return {
       index,
       point,
@@ -599,6 +607,8 @@ export class DragDropController {
         sha256: probe.sha256,
       },
       segments: [],
+      windowCountBefore: null,
+      windowCountAfter: null,
       aborted: null,
       observedAt: this.#now().toISOString(),
     };
@@ -624,7 +634,20 @@ export class DragDropController {
         );
       }
     }
-    if (this.#ops.readback === undefined) {
+    // `panel-tab` tear-off changes workspace state the DOM cannot see
+    // (#427): its oracle is the owned census window count, not
+    // project.items/comp.layers. Every other element class keeps the
+    // DOM-delta oracle.
+    const windowOracle = request.element === "panel-tab";
+    if (windowOracle && this.#ops.ownedWindowCount === undefined) {
+      throw new DragDropError(
+        "unsupported",
+        "element-drag panel-tab requires the census window-count " +
+          "oracle, which this build does not provide; refusing before " +
+          "anything posts",
+      );
+    }
+    if (!windowOracle && this.#ops.readback === undefined) {
       throw new DragDropError(
         "unavailable",
         "no DOM readback oracle is wired; an element drag without a " +
@@ -662,7 +685,27 @@ export class DragDropController {
       // Best-effort.
     }
 
-    const before = await this.#requireOracleSnapshot("element drag", request.element);
+    // Pre-act oracle: DOM snapshot for reorder classes, census window
+    // count for panel-tab. Either way a drag whose before-state is
+    // unknown refuses BEFORE anything posts.
+    let before: DragDropSnapshot | null = null;
+    let windowsBefore: number | null = null;
+    if (windowOracle) {
+      try {
+        windowsBefore = await this.#ops.ownedWindowCount!();
+      } catch (error) {
+        throw asDragDropError(error, false);
+      }
+      if (!Number.isInteger(windowsBefore)) {
+        throw new DragDropError(
+          "unavailable",
+          "the census window-count oracle produced no usable count; " +
+            "a panel-tab drag without a before-state cannot be verified",
+        );
+      }
+    } else {
+      before = await this.#requireOracleSnapshot("element drag", request.element);
+    }
     const segments: DragDropSegmentCheck[] = [];
     let aborted: string | null = null;
     let postedMoves = 0;
@@ -701,7 +744,9 @@ export class DragDropController {
         x: request.from.x + (request.to.x - request.from.x) * t,
         y: request.from.y + (request.to.y - request.from.y) * t,
       };
-      const check = this.#checkSegment(i, point, surface.frame);
+      // panel-tab: the tear-off's own floating window is the expected
+      // mid-drag topmost — pid-only check (foreign still aborts).
+      const check = this.#checkSegment(i, point, surface.frame, windowOracle);
       segments.push(check);
       if (!check.ok) {
         aborted =
@@ -761,15 +806,73 @@ export class DragDropController {
       throw asDragDropError(error, true);
     }
 
+    if (windowOracle) {
+      // Postcondition: the owned census window count must change within
+      // the bounded wait — a tear-off floats a panel (+1), anything
+      // else (missed drag, re-dock attempt that cannot start here)
+      // leaves it flat. Deadline → indeterminate, never resend.
+      const deadline = this.#now().getTime() + this.#poll.timeoutMs;
+      let windowsAfter: number | null = null;
+      let answered = false;
+      for (;;) {
+        try {
+          const count = await this.#ops.ownedWindowCount!();
+          if (Number.isInteger(count)) {
+            answered = true;
+            windowsAfter = count;
+            if (count !== windowsBefore) break;
+          }
+        } catch {
+          // Census hiccup mid-wait: keep polling until the deadline.
+        }
+        if (this.#now().getTime() >= deadline) break;
+        await this.#sleep(this.#poll.intervalMs);
+      }
+      if (!answered) {
+        throw new DragDropError(
+          "unavailable",
+          "the census window-count oracle never answered during the " +
+            "postcondition wait; the tear-off's outcome cannot be verified",
+        );
+      }
+      if (windowsAfter === windowsBefore) {
+        throw new DragDropError(
+          "indeterminate",
+          `the panel-tab drag was posted (${steps} segments) but the ` +
+            `owned window count stayed ${windowsBefore} within ` +
+            `${this.#poll.timeoutMs}ms — the drag may have missed the ` +
+            "tab or AE refused the tear-off; re-observe before any " +
+            "retry, never resend",
+        );
+      }
+      return {
+        kind: "element-drag",
+        element: request.element,
+        vehicle: "performed",
+        dragOperation: null,
+        delta: dragDropDelta(null, null),
+        verified: true,
+        file: null,
+        segments,
+        windowCountBefore: windowsBefore,
+        windowCountAfter: windowsAfter,
+        aborted: null,
+        observedAt: this.#now().toISOString(),
+      };
+    }
+
     // Postcondition: ANY DOM delta proves the in-app drag landed
-    // (reorder or membership change). Deadline → indeterminate.
+    // (reorder or membership change). `countDelta !== null` alone is
+    // NOT a delta — it is non-null whenever both snapshots carry an
+    // itemCount, including a flat 0; only a NONZERO count change counts.
+    // Deadline → indeterminate.
     const wait = await this.#waitForDelta(
       before,
       (delta) =>
         delta.addedNames.length > 0 ||
         delta.removedNames.length > 0 ||
         delta.orderChanged ||
-        delta.countDelta !== null,
+        (delta.countDelta !== null && delta.countDelta !== 0),
       request.element,
     );
     if (!wait.met) {
@@ -791,6 +894,8 @@ export class DragDropController {
       verified: true,
       file: null,
       segments,
+      windowCountBefore: null,
+      windowCountAfter: null,
       aborted: null,
       observedAt: this.#now().toISOString(),
     };

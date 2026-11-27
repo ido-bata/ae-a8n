@@ -309,9 +309,9 @@ export type {
  * NSDraggingSession file drops and segmented element drags through the
  * `input-drag` helper, census-gated drop points, `project.items`
  * DOM-delta oracle, never resent. `drop-file` and the proven
- * `element-drag` reorder classes (`project-item`/`timeline-layer`,
- * #427) are permitted; `panel-tab`/`other` element drags stay
- * gate-refused — see `dragDropCapabilities()`.
+ * `element-drag` reorder classes (`project-item`/`timeline-layer`)
+ * and `panel-tab` dock→float tear-off (#427) are permitted; `other`
+ * element drags stay gate-refused — see `dragDropCapabilities()`.
  */
 export {
   DragDrop,

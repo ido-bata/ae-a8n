@@ -1,0 +1,350 @@
+{
+  "schema": "a8n.poc-element-drag-427/v1",
+  "issue": 427,
+  "recordedAt": "2026-11-27T21:55:55.170Z",
+  "install": "/Applications/Adobe After Effects 2027",
+  "steps": [
+    {
+      "name": "preflight",
+      "at": "2026-11-27T21:55:55.383Z",
+      "install": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "preexisting": []
+    },
+    {
+      "name": "launch",
+      "at": "2026-11-27T21:56:01.455Z",
+      "pid": 18380,
+      "info": {
+        "version": "27.0x78",
+        "build": "78"
+      },
+      "dialogDismissals": 0
+    },
+    {
+      "name": "recovery-target",
+      "at": "2026-11-27T21:56:01.951Z",
+      "pid": 18380,
+      "sessionKind": "Aqua"
+    },
+    {
+      "name": "window-ops-helpers",
+      "at": "2026-11-27T21:56:08.341Z",
+      "dir": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-window-ops-helpers-501602f1985d94e8"
+    },
+    {
+      "name": "surface",
+      "at": "2026-11-27T21:56:12.173Z",
+      "windowIndex": 2,
+      "title": "名称未設定プロジェクト",
+      "frame": {
+        "x": 0,
+        "y": 38,
+        "width": 1710,
+        "height": 1074
+      },
+      "windows": 2,
+      "attribution": "owned"
+    },
+    {
+      "name": "screenshot-setup",
+      "at": "2026-11-27T21:56:12.565Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-setup.png"
+    },
+    {
+      "name": "window-capture-setup",
+      "at": "2026-11-27T21:56:12.633Z",
+      "ok": false,
+      "windowNumber": -1,
+      "error": "Command failed: /usr/sbin/screencapture -x -o -l -1 /Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-window-setup.png\ncould not create image from window\n"
+    },
+    {
+      "name": "created-comps",
+      "at": "2026-11-27T21:56:25.415Z",
+      "count": 8,
+      "names": [
+        "e427-C01",
+        "e427-C02",
+        "e427-C03",
+        "e427-C04",
+        "e427-C05",
+        "e427-C06",
+        "e427-C07",
+        "e427-C08"
+      ]
+    },
+    {
+      "name": "project-comps-before",
+      "at": "2026-11-27T21:56:36.151Z",
+      "count": 8,
+      "names": [
+        "e427-C01",
+        "e427-C02",
+        "e427-C03",
+        "e427-C04",
+        "e427-C05",
+        "e427-C06",
+        "e427-C07",
+        "e427-C08"
+      ]
+    },
+    {
+      "name": "layers-before",
+      "at": "2026-11-27T21:56:36.946Z",
+      "count": 6,
+      "names": [
+        "e427-L6",
+        "e427-L5",
+        "e427-L4",
+        "e427-L3",
+        "e427-L2",
+        "e427-L1"
+      ]
+    },
+    {
+      "name": "project-state-before",
+      "at": "2026-11-27T21:56:37.587Z",
+      "itemCount": 8,
+      "dirty": true,
+      "activeItem": {
+        "name": "e427-C01",
+        "comp": true
+      }
+    },
+    {
+      "name": "project-pane-error",
+      "at": "2026-11-27T21:56:39.584Z",
+      "error": "PanelError: no framed window of pid 18380 can parent a docked pane (locator {}; 0 window(s) observed)"
+    },
+    {
+      "name": "timeline-pane-error",
+      "at": "2026-11-27T21:56:41.420Z",
+      "error": "PanelError: no framed window of pid 18380 can parent a docked pane (locator {}; 0 window(s) observed)"
+    },
+    {
+      "name": "anchors",
+      "at": "2026-11-27T21:56:41.420Z",
+      "frame": {
+        "x": 0,
+        "y": 38,
+        "width": 1710,
+        "height": 1074
+      },
+      "anchors": {
+        "projectRow1": {
+          "x": 150,
+          "y": 263
+        },
+        "projectRow2": {
+          "x": 150,
+          "y": 284
+        },
+        "timelineRow1": {
+          "x": 250,
+          "y": 847
+        },
+        "timelineRow3": {
+          "x": 250,
+          "y": 887
+        },
+        "tab": {
+          "x": 56,
+          "y": 86
+        },
+        "tabTo": {
+          "x": 700,
+          "y": 712
+        }
+      }
+    },
+    {
+      "name": "row-resolution",
+      "at": "2026-11-27T21:56:41.420Z",
+      "projectItemName": "e427-C01",
+      "projectRowFrame": null,
+      "timelineRowsFound": 0
+    },
+    {
+      "name": "timeline-drag-points",
+      "at": "2026-11-27T21:56:41.801Z",
+      "from": {
+        "x": 250,
+        "y": 885
+      },
+      "to": {
+        "x": 250,
+        "y": 945
+      },
+      "axRows": 0
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T21:56:42.418Z",
+      "dy": 0,
+      "code": "stale-locator",
+      "message": "the window at listing index 2 changed since resolution (\"名称未設定プロジェクト\" → \"名称未設定プロジェクト *\"); nothing was posted"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T21:56:42.953Z",
+      "dy": -20,
+      "code": "stale-locator",
+      "message": "the window at listing index 2 changed since resolution (\"名称未設定プロジェクト\" → \"名称未設定プロジェクト *\"); nothing was posted"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T21:56:43.527Z",
+      "dy": 20,
+      "code": "stale-locator",
+      "message": "the window at listing index 2 changed since resolution (\"名称未設定プロジェクト\" → \"名称未設定プロジェクト *\"); nothing was posted"
+    },
+    {
+      "name": "layers-after",
+      "at": "2026-11-27T21:56:45.937Z",
+      "names": [
+        "e427-L6",
+        "e427-L5",
+        "e427-L4",
+        "e427-L3",
+        "e427-L2",
+        "e427-L1"
+      ]
+    },
+    {
+      "name": "screenshot-after-timeline",
+      "at": "2026-11-27T21:56:46.265Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-after-timeline.png"
+    },
+    {
+      "name": "project-drag-points",
+      "at": "2026-11-27T21:56:46.265Z",
+      "from": {
+        "x": 150,
+        "y": 301
+      },
+      "to": {
+        "x": 150,
+        "y": 385
+      }
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T21:56:46.747Z",
+      "dy": 0,
+      "code": "stale-locator",
+      "message": "the window at listing index 2 changed since resolution (\"名称未設定プロジェクト\" → \"名称未設定プロジェクト *\"); nothing was posted"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T21:56:47.231Z",
+      "dy": -21,
+      "code": "stale-locator",
+      "message": "the window at listing index 2 changed since resolution (\"名称未設定プロジェクト\" → \"名称未設定プロジェクト *\"); nothing was posted"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T21:56:47.764Z",
+      "dy": 21,
+      "code": "stale-locator",
+      "message": "the window at listing index 2 changed since resolution (\"名称未設定プロジェクト\" → \"名称未設定プロジェクト *\"); nothing was posted"
+    },
+    {
+      "name": "project-comps-after",
+      "at": "2026-11-27T21:56:50.260Z",
+      "count": 8,
+      "names": [
+        "e427-C01",
+        "e427-C02",
+        "e427-C03",
+        "e427-C04",
+        "e427-C05",
+        "e427-C06",
+        "e427-C07",
+        "e427-C08"
+      ]
+    },
+    {
+      "name": "screenshot-after-project",
+      "at": "2026-11-27T21:56:50.582Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-after-project.png"
+    },
+    {
+      "name": "window-capture-after",
+      "at": "2026-11-27T21:56:50.685Z",
+      "ok": false,
+      "windowNumber": -1,
+      "error": "Command failed: /usr/sbin/screencapture -x -o -l -1 /Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-window-after.png\ncould not create image from window\n"
+    },
+    {
+      "name": "tearoff-gates",
+      "at": "2026-11-27T21:56:51.058Z",
+      "from": {
+        "x": 56,
+        "y": 124
+      },
+      "gateFrom": {
+        "ok": true,
+        "pid": 18380,
+        "windowNumber": 7019
+      },
+      "to": {
+        "x": 700,
+        "y": 750
+      },
+      "gateTo": {
+        "ok": true,
+        "pid": 18380,
+        "windowNumber": 7019
+      }
+    },
+    {
+      "name": "tearoff-probe",
+      "at": "2026-11-27T21:57:06.992Z",
+      "posted": true,
+      "from": {
+        "x": 56,
+        "y": 124
+      },
+      "to": {
+        "x": 700,
+        "y": 750
+      },
+      "windowsBefore": 2,
+      "windowsAfter": 3,
+      "newOwnedWindow": 1
+    },
+    {
+      "name": "screenshot-after-tearoff",
+      "at": "2026-11-27T21:57:07.308Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.427/docs/evidence/realhost-2026-11-28/element-drag-427/element-drag-427-after-tearoff.png"
+    }
+  ],
+  "outcome": "failed",
+  "results": {
+    "timelineLayer": {
+      "error": "the window at listing index 2 changed since resolution (\"名称未設定プロジェクト\" → \"名称未設定プロジェクト *\"); nothing was posted",
+      "code": "stale-locator"
+    },
+    "projectItem": {
+      "error": "the window at listing index 2 changed since resolution (\"名称未設定プロジェクト\" → \"名称未設定プロジェクト *\"); nothing was posted",
+      "code": "stale-locator"
+    },
+    "tabTearoffProbe": {
+      "posted": true,
+      "from": {
+        "x": 56,
+        "y": 124
+      },
+      "to": {
+        "x": 700,
+        "y": 750
+      },
+      "windowsBefore": 2,
+      "windowsAfter": 3,
+      "newOwnedWindow": 1
+    }
+  }
+}

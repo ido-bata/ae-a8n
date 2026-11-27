@@ -1305,9 +1305,9 @@ export class AfterEffects {
    * `specs/workspace-editing/spec.md` §9 "File/element drag-drop"):
    * `drop-file` is implemented under the A-SAFETY decision in
    * `docs/gui-supervision-safety-gates.md` (#411 vehicle evidence);
-   * `element-drag` is implemented for the declared proven reorder
-   * targets (`project-item`/`timeline-layer`, #427) while `panel-tab`
-   * tear-off and `other` stay gate-refused.
+   * `element-drag` is implemented for the declared proven targets
+   * (`project-item`/`timeline-layer` reorder, `panel-tab` dock→float —
+   * #427) while `other` stays gate-refused.
    */
   dragDropCapabilities(): DragDropCapabilities {
     return dragDropCapabilities(process.platform);
