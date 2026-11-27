@@ -44,7 +44,7 @@
 import { createHash } from "node:crypto";
 import { createReadStream, readdirSync, statSync, type Dirent } from "node:fs";
 import { stat } from "node:fs/promises";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
 import { errorMessage } from "../errors.js";
 import type { TraceRecorder } from "../trace/trace.js";
@@ -628,9 +628,9 @@ export async function discoverRenderArtifacts(
       } catch (error) {
         sha256Error = `sha256 failed: ${errorMessage(error)}`;
       }
-      const base = file.slice(file.lastIndexOf("/") + 1);
+      const base = basename(file);
       const stem = base.replace(RENDER_FRAME_NAME, "");
-      const dir = file.slice(0, file.lastIndexOf("/"));
+      const dir = dirname(file);
       const groupKey = `${dir}\u0000${stem}`;
       const members = groups.get(groupKey) ?? [];
       members.push(file);
