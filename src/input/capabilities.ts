@@ -2,11 +2,14 @@
  * Honest input capability reporting (spec §7, #371/#372).
  *
  * The macOS helpers landed in #372 (`scripts/isolated-session/input-*.swift`
- * + `src/input/darwin.ts`): they exist, compile, and pass argument
- * validation tests — `implemented`/`automated test` — but every mutation
- * path still sits behind the closed gate and real delivery is unverified.
- * Windows helpers are #373 and still report `unsupported`. Nothing here
- * may claim `verified on real host`.
+ * + `src/input/darwin.ts`) and the Windows helpers in #373
+ * (`src/platform/windows/input-*-script.ts` + `input.ts`): they exist,
+ * compile, and pass argument validation tests — `implemented`/
+ * `automated test` — but every mutation path still sits behind the
+ * closed gate and real delivery is unverified on both OSes (no real
+ * host lane for either). Nothing here may claim `verified on real
+ * host`. When a platform helper's real-host evidence lands, its
+ * ticket updates the corresponding row.
  */
 
 import type { InputPlatform } from "./types.js";
@@ -74,8 +77,9 @@ export type InputCapabilities = {
 const CLOSED_REASON =
   "the A-SAFETY input gate (docs/gui-supervision-safety-gates.md) has " +
   "cleared no input class and global-input authorization has no grant " +
-  "path; helpers and contract are implemented and tested, delivery is " +
-  "not enabled";
+  "path; platform helpers exist at implemented/automated-test level at " +
+  "best and nothing is verified on a real host; the contract and gate " +
+  "logic are implemented and fake-tested, delivery is not proven";
 
 const DARWIN_HELPER_REASON =
   "macOS helpers implemented (#372): scripts/isolated-session/input-*.swift " +
@@ -92,14 +96,118 @@ function unsupported(reason: string): InputCapability {
 
 /**
  * The capability report for `platform` in `sessionKind`. Both OSes
- * report the same honest shape today: contract implemented, delivery
- * unimplemented, gate closed. OS-specific mechanism notes from spec
+ * now report helper rows at `implemented`/`automated test` (#372
+ * darwin, #373 win32) with every gate closed and real delivery
+ * unverified. OS-specific mechanism notes from spec
  * §7 (CGEvent/SendInput/TIS/TSF) live in `reason` strings so the
  * report stays truthful about *why* nothing runs.
  */
 export function inputCapabilities(
   platform: InputPlatform,
   sessionKind: InputCapabilities["sessionKind"] = "unknown",
+): InputCapabilities {
+  const caps = inputCapabilitiesBase(platform, sessionKind);
+  if (platform !== "win32") {
+    return caps;
+  }
+  // #373 landed the Windows delivery helpers (`src/platform/windows/
+  // input-*-script.ts` + `input.ts`): SendInput key/text/mouse posting,
+  // Win32 clipboard, TSF profile query/activate, and GetGUIThreadInfo +
+  // UIA focus readback/request. They are `implemented` +
+  // `automated test` (script validation, fake-channel behavior) —
+  // delivery itself is UNVERIFIED because no Windows host lane exists,
+  // and every row keeps `gate: "closed"` because `inputMutationGate()`
+  // still refuses all classes. Rows #373 does not cover
+  // (composition-observe, os-IME end-to-end, global authorization)
+  // keep their base values.
+  return {
+    ...caps,
+    focus: {
+      support: "implemented",
+      verification: "automated test",
+      gate: "closed",
+      reason:
+        "GetGUIThreadInfo + UIA FocusedElement readback and a UIA " +
+        "SetFocus/SetForegroundWindow request exist in " +
+        "src/platform/windows/input-focus-script.ts, fake-channel " +
+        "tested; delivery and UIPI/foreground-lock behavior are " +
+        "unverified — no Windows host lane",
+    },
+    keyPosting: {
+      support: "implemented",
+      verification: "automated test",
+      gate: "closed",
+      reason:
+        "SendInput VK/scan/KEYEVENTF posting exists in " +
+        "src/platform/windows/input-send-script.ts with modifier " +
+        "readback; UIPI/integrity interaction and real delivery are " +
+        "unverified — no Windows host lane",
+    },
+    sequentialText: {
+      support: "implemented",
+      verification: "automated test",
+      gate: "closed",
+      reason:
+        "per-char VK events through the same SendInput helper are the " +
+        "Tier-1b candidate; characters without a VK mapping refuse " +
+        "honestly; pacing is unimplemented and real-IME pass-through " +
+        "is unverified",
+    },
+    directText: {
+      support: "implemented",
+      verification: "automated test",
+      gate: "closed",
+      reason:
+        "KEYEVENTF_UNICODE bulk posting exists and is explicitly the " +
+        "IME-bypassing direct-entry channel — labelled, never Tier-1b " +
+        "evidence (spec §4.2); delivery unverified",
+    },
+    selectionOps: {
+      support: "implemented",
+      verification: "automated test",
+      gate: "closed",
+      reason:
+        "select/replace/delete are modifier+key combos over the same " +
+        "SendInput poster; selection readback coverage per control is " +
+        "unverified",
+    },
+    clipboard: {
+      support: "implemented",
+      verification: "automated test",
+      gate: "closed",
+      reason:
+        "Win32 clipboard read/write exists in " +
+        "src/platform/windows/input-clipboard-script.ts with " +
+        "save/restore records; only the text flavor is restorable and " +
+        "shared-state authorization still gates it",
+    },
+    mouseExtended: {
+      support: "implemented",
+      verification: "automated test",
+      gate: "closed",
+      reason:
+        "SendInput mouse move/down/up/wheel exists for click/drag/" +
+        "scroll/hover; coordinates must come from the re-verified " +
+        "element frame and multi-monitor absolute posting is " +
+        "unimplemented — delivery unverified",
+    },
+    imeMode: {
+      support: "implemented",
+      verification: "automated test",
+      gate: "closed",
+      reason:
+        "TSF ITfInputProcessorProfileMgr query/list/activate/" +
+        "deactivate exists in src/platform/windows/input-ime-script.ts " +
+        "(COM interop, GUIDs per msctf.idl); a machine without a " +
+        "Japanese IME reports unavailable — needs-human until a real " +
+        "host answers, and activation behavior is unverified",
+    },
+  };
+}
+
+function inputCapabilitiesBase(
+  platform: InputPlatform,
+  sessionKind: InputCapabilities["sessionKind"],
 ): InputCapabilities {
   const osNote =
     platform === "darwin"
@@ -195,7 +303,7 @@ export function inputCapabilities(
 
   // #372 landed the macOS helpers: rows that were `unsupported` become
   // `implemented`/`automated test` with the gate still closed. Windows
-  // keeps the base rows until #373.
+  // rows are overridden by the caller (#373) after this base returns.
   if (platform !== "darwin") {
     return caps;
   }

@@ -7,6 +7,7 @@
  */
 
 import type { Capabilities, TargetSpec } from "../contract.js";
+import { inputCapabilities } from "../../input/capabilities.js";
 
 export function windowsCapabilities(isolation: TargetSpec["isolation"]): Capabilities {
   return {
@@ -27,5 +28,10 @@ export function windowsCapabilities(isolation: TargetSpec["isolation"]): Capabil
     // means nothing is quit. That is the owned-only invariant without a
     // pid/start-time ownership proof, which this backend still lacks.
     quitsOnlyOwned: true,
+    // B-IME (#373): the SendInput / clipboard / TSF / focus helpers in
+    // `src/platform/windows/input-*-script.ts` + `input.ts` exist and
+    // are fake-channel tested, but the mutation gate stays closed and
+    // nothing is verified on a real Windows host — the report says so.
+    input: inputCapabilities("win32", "unknown"),
   };
 }

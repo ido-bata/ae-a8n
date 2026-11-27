@@ -142,6 +142,12 @@ describe("probeWindows", () => {
       guiRecovery: false,
       sessionIdentity: "host-and-user",
       quitsOnlyOwned: true,
+      // #373: input helpers are reported at implemented/automated-test
+      // level; nothing claims verified delivery on a real host.
+      input: expect.objectContaining({
+        platform: "win32",
+        sessionKind: "unknown",
+      }),
     });
   });
 
