@@ -44,7 +44,7 @@ import type { PanelMutationGate } from "./controller.js";
  * type ever grows into, fail-closed with the audit citation.
  */
 export function panelMutationGate(): PanelMutationGate {
-  return (op) => {
+  return (op: string) => {
     if (op === "resize" || op === "restore") {
       return { allowed: true };
     }

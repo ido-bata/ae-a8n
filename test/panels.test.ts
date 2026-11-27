@@ -741,7 +741,7 @@ describe("panelForTarget / public surface", () => {
         dir,
         {
           helpersDir: "/fake-helpers",
-          runSession: runSession as never,
+          runSession,
           censusRun: () => CENSUS_LINE(size.width, size.height),
           readTargetSession: () => SESSION,
           lease: {
