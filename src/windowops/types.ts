@@ -16,7 +16,7 @@
  *     vehicle contract. Acts are addressed by *identity* (expected
  *     frame + title/subrole), re-verified inside the session
  *     immediately before the AX set — the same rule
- *     `RESIZE_PANEL_SCRIPT` follows — never by a remembered index.
+ *     `MacGuiRecovery.resizePanelWindow` follows — never by a remembered index.
  *   - `WindowOpResult` — what every mutation reports: before/after
  *     states, never a bare verdict.
  *

@@ -20,7 +20,6 @@ import {
   LIST_WINDOWS_SCRIPT,
   MacGuiRecovery,
   PRESS_BUTTON_SCRIPT,
-  RESIZE_PANEL_SCRIPT,
   isBlockingWindow,
   parseUiListing,
 } from "../src/driver/gui-recovery.js";
@@ -294,7 +293,6 @@ describe("the GUI recovery", () => {
         "list-windows": LIST_WINDOWS_SCRIPT,
         "press-button": PRESS_BUTTON_SCRIPT,
         "click-at": CLICK_AT_SCRIPT,
-        "resize-panel": RESIZE_PANEL_SCRIPT,
         "docked-pane-walk": AX_PANE_WALK_SCRIPT,
       })) {
         const source = join(dir, `${name}.applescript`);
@@ -705,6 +703,7 @@ describe("panel window operations (#343)", () => {
       census: () => ({ available: false, reason: "no census in test" }),
       lease,
       runSession,
+      windowOpsHelpersDir: "/fake/helpers",
       ...over,
     });
 
@@ -832,28 +831,46 @@ describe("panel window operations (#343)", () => {
     expect(acquisitions).toBe(0);
   });
 
-  it("resizePanelWindow passes identity and size as argv, never in the script", () => {
-    const calls: string[][] = [];
-    const gui = mk((_s, _p, args) => {
-      calls.push([...args]);
-      return { status: 0, stdout: "RESIZED", stderr: "", timedOut: false };
+  it("resizePanelWindow drives the window-ops act vehicle with identity and size as argv", () => {
+    const calls: { program: string; args: string[] }[] = [];
+    const gui = mk((_s, program, args) => {
+      calls.push({ program, args: [...args] });
+      return {
+        status: 0,
+        stdout: JSON.stringify({ verdict: "performed", window: null }),
+        stderr: "",
+        timedOut: false,
+      };
     });
     expect(
       gui.resizePanelWindow(panelWindow, { width: 800.4, height: 600 }),
     ).toBe(true);
-    // The args array is the -e script lines followed by argv:
-    // pid, title, subrole, expectedFrame, width, height.
-    const argv = calls[0]?.slice(-6);
-    expect(argv?.slice(0, 3)).toEqual(["4242", "My Plugin Panel", "AXFloatingWindow"]);
-    expect(argv?.[3]).toBe("100,200,640,504");
-    expect(argv?.slice(4)).toEqual(["800", "600"]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.program).toBe("/fake/helpers/window-ops");
+    expect(calls[0]?.args).toEqual([
+      "act",
+      "--pid",
+      "4242",
+      "--op",
+      "resize",
+      "--title",
+      "My Plugin Panel",
+      "--subrole",
+      "AXFloatingWindow",
+      "--frame",
+      "100,200,640,504",
+      "--width",
+      "800.4",
+      "--height",
+      "600",
+    ]);
   });
 
-  it("resizePanelWindow reports a refused identity check as not-resized, not an error", () => {
-    for (const verdict of ["CHANGED", "NOT_FOUND", "MISSING"]) {
+  it("resizePanelWindow reports a refused in-session identity check as not-resized, not an error", () => {
+    for (const verdict of ["not-found", "ambiguous"]) {
       const gui = mk(() => ({
         status: 0,
-        stdout: verdict,
+        stdout: JSON.stringify({ verdict, detail: "no match" }),
         stderr: "",
         timedOut: false,
       }));
@@ -861,22 +878,73 @@ describe("panel window operations (#343)", () => {
     }
   });
 
-  it("resizePanelWindow turns a mid-mutation failure into an unknown outcome", () => {
-    const audits: { kind: string; outcome?: string | undefined }[] = [];
+  it("resizePanelWindow refuses before the lease when no helpers are configured", () => {
+    let acquisitions = 0;
     const gui = mk(
-      () => ({ status: 0, stdout: "FAILED", stderr: "", timedOut: false }),
+      () => ({ status: 0, stdout: "", stderr: "", timedOut: false }),
       {
+        windowOpsHelpersDir: undefined,
         lease: {
-          acquire: () => ({ path: "/fake/lease", release: () => {} }),
-          audit: (event: { kind: string; outcome?: string }) =>
-            audits.push({ kind: event.kind, outcome: event.outcome }),
+          acquire: () => {
+            acquisitions += 1;
+            return { path: "/fake/lease", release: () => {} };
+          },
+          audit: () => {},
         },
       },
     );
     expect(() =>
       gui.resizePanelWindow(panelWindow, { width: 10, height: 10 }),
+    ).toThrow(/window-ops helpers/);
+    expect(acquisitions).toBe(0);
+  });
+
+  it("resizePanelWindow surfaces a missing target as unavailable, never a clean refusal", () => {
+    // `missing` means the helper provably never reached the process —
+    // a MacSessionError, audited not-performed, not an unknown outcome.
+    const gui = mk(() => ({
+      status: 0,
+      stdout: JSON.stringify({ verdict: "missing", detail: "no such pid" }),
+      stderr: "",
+      timedOut: false,
+    }));
+    expect(() =>
+      gui.resizePanelWindow(panelWindow, { width: 10, height: 10 }),
+    ).toThrow(/could not reach pid 4242/);
+  });
+
+  it("resizePanelWindow turns a mid-mutation failure into an unknown outcome", () => {
+    const audits: { kind: string; outcome?: string | undefined }[] = [];
+    const leaseCtl = {
+      acquire: () => ({ path: "/fake/lease", release: () => {} }),
+      audit: (event: { kind: string; outcome?: string }) =>
+        audits.push({ kind: event.kind, outcome: event.outcome }),
+    };
+    for (const stdout of [
+      JSON.stringify({ verdict: "failed", detail: "AX error 0" }),
+      "not json at all",
+      "",
+    ]) {
+      audits.length = 0;
+      const gui = mk(
+        () => ({ status: 0, stdout, stderr: "", timedOut: false }),
+        { lease: leaseCtl },
+      );
+      expect(() =>
+        gui.resizePanelWindow(panelWindow, { width: 10, height: 10 }),
+      ).toThrow(GuiMutationError);
+      expect(audits).toContainEqual({ kind: "mutate", outcome: "unknown" });
+    }
+    // A non-zero helper exit is also an unknown outcome.
+    const crashed = mk(() => ({
+      status: 134,
+      stdout: "",
+      stderr: "segfault",
+      timedOut: false,
+    }));
+    expect(() =>
+      crashed.resizePanelWindow(panelWindow, { width: 10, height: 10 }),
     ).toThrow(GuiMutationError);
-    expect(audits).toContainEqual({ kind: "mutate", outcome: "unknown" });
   });
 
   it("resizePanelWindow sends nothing when the GUI lease is held by another owner", () => {

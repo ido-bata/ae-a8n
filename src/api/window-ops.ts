@@ -254,7 +254,7 @@ function findDarwinWindowOpsSources(): string | null {
  * place helpers are built; `src/windowops/darwin.ts` itself never
  * compiles.
  */
-function ensureDarwinWindowOpsHelpers(): string | null {
+export function ensureDarwinWindowOpsHelpers(): string | null {
   const srcDir = findDarwinWindowOpsSources();
   if (srcDir === null) {
     return null;
