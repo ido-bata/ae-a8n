@@ -115,12 +115,14 @@ const VERIFICATION: WindowOpsCapability["verification"] = "automated test";
 const GATE_REASON =
   "mutate-gui class gated off by windowOpsMutationGate() per the " +
   "A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the " +
-  "workspace spec §13; the code path exists and is contract-tested " +
-  "but refuses until the audit clears it";
+  "workspace spec §13; the code path exists, is contract-tested and is " +
+  "real-host verified on owned AE (#357) but refuses until the audit " +
+  "clears the class";
 
-const DARWIN_UNVERIFIED =
-  "wired to the window-ops helper's AX sets, but their effect on a " +
-  "real After Effects window is unverified on a real host";
+const REAL_HOST_NOTE =
+  "the helper's direct AXUIElementSetAttributeValue vehicle resized, " +
+  "moved and restored a real ScriptUI palette on owned AE 2027 " +
+  "(docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json)";
 
 /**
  * What this build supports for window ops on `platform`. Windows is
@@ -153,30 +155,33 @@ export function windowOpsCapabilities(
   const gated = (op: string): WindowOpsCapability => ({
     support: "unavailable",
     verification: VERIFICATION,
-    reason: `${GATE_REASON} — window ${op} additionally ${DARWIN_UNVERIFIED}`,
+    reason: `${GATE_REASON} — window ${op}: ${REAL_HOST_NOTE}`,
   });
   return {
     platform: "darwin",
     observe: {
       support: "implemented",
-      verification: VERIFICATION,
+      verification: "verified on real host",
       reason:
         "AX window listing (frame/miniaturized/main/focused) plus the " +
-        "WindowServer census attribution is wired but unverified on a " +
-        "real After Effects window set; on AE 2026/2027 the enumeration " +
-        "returns zero windows (#406) — use focusedObserve for the only " +
-        "AX-reachable surface",
+        "WindowServer census attribution resolved a real ScriptUI " +
+        "palette on owned AE 2027 (#357) — but ONLY after the app had " +
+        "been frontmost; AE vends zero AX windows while it has never " +
+        "been active, so observe can still legitimately return an " +
+        "empty listing on a never-activated instance (use " +
+        "focusedObserve for the only AX-reachable surface there)",
     },
     focusedObserve: {
       support: "partial",
-      verification: VERIFICATION,
+      verification: "verified on real host",
       reason:
         "AXFocusedWindow resolution against the WindowServer census " +
         "(#406): only the FOCUSED window is reachable — unfocused " +
         "windows are AX-unreachable on AE by construction, and no " +
         "mutation vehicle exists for this path (observe-class only, " +
-        "mutations refuse regardless of the gate). Real-host evidence " +
-        "for the underlying AX behavior: docs/evidence/realhost-2026-11-27/",
+        "mutations refuse regardless of the gate). Verified on real " +
+        "host: resolved the focused ScriptUI palette to census " +
+        "windowNumber 2790 (docs/evidence/realhost-2026-11-27/)",
     },
     move: gated("move"),
     resize: gated("resize"),

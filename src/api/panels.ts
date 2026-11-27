@@ -101,7 +101,11 @@ export function panelCapabilities(platform: NodeJS.Platform): PanelCapabilities 
       reason:
         "mutate-gui class gated off by panelMutationGate() per the A-SAFETY " +
         "audit entry in docs/gui-supervision-safety-gates.md; the code path " +
-        "exists and is contract-tested but refuses until the audit clears it",
+        "exists and is contract-tested but refuses until the audit clears " +
+        "it. #357 real-host evidence: the System Events `set size` vehicle " +
+        "cannot reach AE panels, while the direct AXUIElement vehicle " +
+        "(window-ops) is proven — the spec's vehicle description and the " +
+        "gate decision are #358's scope",
     },
     captureRegion: {
       support: "implemented",

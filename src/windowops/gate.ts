@@ -8,9 +8,15 @@
  * window of the target pid. The audit cleared exactly one GUI mutation
  * — the macOS `ae-a8n ui.alert` press — and the workspace spec keeps
  * every `mutate-gui` op behind the lease+audit+gate chain pending
- * A-SAFETY clearance. Until a window-ops class is cleared, every op
- * refuses — fail-closed, with the refusal naming the governing
- * documents so the reason is traceable.
+ * A-SAFETY clearance. The vehicle itself is now real-host proven
+ * (#357, `docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json`):
+ * the helper's direct `AXUIElementSetAttributeValue` ops resized, moved
+ * and restored a real ScriptUI palette on owned AE 2027 — focused via
+ * `AXFocusedWindow` and unfocused via the AX window enumeration —
+ * with census and in-AE readback agreement. What remains is the
+ * A-SAFETY class decision, not vehicle doubt. Until a window-ops class
+ * is cleared, every op refuses — fail-closed, with the refusal naming
+ * the governing documents so the reason is traceable.
  *
  * This function is the single flip point, exactly like
  * `src/workspace/gate.ts`/`src/filedialog/gate.ts`: when the audit
@@ -32,8 +38,8 @@ export function windowOpsMutationGate(): WindowOpsMutationGate {
       `window ${op} is a mutate-gui class the A-SAFETY audit ` +
       "(docs/gui-supervision-safety-gates.md) has not enabled and the " +
       "workspace-editing spec (§13) keeps gated pending that clearance; " +
-      "the window-ops helper's AX set semantics on a real After Effects " +
-      "window are also unverified on a real host — observe (`state`) " +
-      "remains available",
+      "the helper's AX set vehicle is real-host verified on owned AE " +
+      "(#357) — what is missing is the audit's class decision, not " +
+      "vehicle proof — observe (`state`) remains available",
   });
 }
