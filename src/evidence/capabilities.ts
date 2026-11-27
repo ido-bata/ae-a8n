@@ -72,9 +72,10 @@ export function guiEvidenceCapabilities(
       support: "partial",
       verification: CONTRACT_TESTED,
       reason:
-        "capture/captureRegion/captureWindowById exist (#343) but binding " +
-        "their output into EvidenceArtifact records is the E1b slice; " +
-        "real-host capture verification is still pending",
+        "panel.capture binds capture/captureRegion/captureWindowById " +
+        "output into screen-still EvidenceArtifact records (#380); " +
+        "display/session scopes and direct (non-panel) capture ops are " +
+        "not exposed, and real-host capture verification is still pending",
     },
     screenRecording: {
       support: "unsupported",

@@ -383,6 +383,7 @@ export class PanelController {
     return {
       kind: "original",
       operationId,
+      vehicle: useWindowCapture ? "window" : "region",
       target,
       capturedAt: this.#now().toISOString(),
       geometry: {

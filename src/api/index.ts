@@ -19,7 +19,7 @@
 
 import { join, resolve } from "node:path";
 
-import type { MacSession } from "../driver/mac-session.js";
+import { consoleSessionUid, type MacSession } from "../driver/mac-session.js";
 import {
   readLaunchProvenance,
   type LaunchProvenance,
@@ -51,6 +51,11 @@ import {
   type DockedPaneLocator,
 } from "./docked-pane.js";
 import { supervisionReport, type SupervisionReport } from "../supervision/index.js";
+import type { StillEvidenceContext } from "../evidence/stills.js";
+import type {
+  EvidenceIndexSession,
+  EvidenceSessionKind,
+} from "../evidence/types.js";
 import {
   AfterEffectsError,
   EntityNotFoundError,
@@ -658,7 +663,62 @@ export class AfterEffects {
    * or the platform is unsupported.
    */
   panel(locator: PanelLocator): Panel {
-    return panelForTarget(this.recoveryTarget(), locator, this.artifactsDir);
+    const target = this.recoveryTarget();
+    return panelForTarget(
+      target,
+      locator,
+      this.artifactsDir,
+      {},
+      target === null ? undefined : this.#stillEvidenceContext(target),
+    );
+  }
+
+  /**
+   * The evidence-index context `panel().capture()` binds stills into
+   * (#380, spec §5.5). Every field is proven or honestly null: the host
+   * start identity comes from launch provenance when it exists, and the
+   * session kind is derived from the console-owner check — a target in
+   * the console user's session is `"console"`, a GUI session of another
+   * user is `"isolated"` (the dedicated automation lane), and anything
+   * unprovable stays `"unknown"` rather than being upgraded.
+   */
+  #stillEvidenceContext(target: {
+    pid: number;
+    session: MacSession;
+  }): StillEvidenceContext {
+    const driver = this.#session.driver;
+    let processStartIdentity: string | null = null;
+    try {
+      const provenance = readLaunchProvenance(driver.sessionRoot);
+      processStartIdentity =
+        provenance?.host.identity ??
+        (provenance?.host.startedAt != null
+          ? `startedAt=${provenance.host.startedAt}`
+          : null);
+    } catch {
+      processStartIdentity = null;
+    }
+    // `consoleSessionUid()` answers -1 when unreadable — never throws.
+    const consoleUid = consoleSessionUid();
+    let sessionKind: EvidenceSessionKind = "unknown";
+    if (consoleUid >= 0 && target.session.uid === consoleUid) {
+      sessionKind = "console";
+    } else if (target.session.kind === "Aqua") {
+      sessionKind = "isolated";
+    }
+    const session: EvidenceIndexSession = {
+      sessionRoot: driver.sessionRoot,
+      adapter: driver.transportKind,
+      pid: target.pid,
+      processStartIdentity,
+      sessionId: driver.sessionId,
+      sessionKind,
+    };
+    return {
+      artifactsDir: driver.artifactsDir,
+      session,
+      trace: this.#session.trace,
+    };
   }
 
   /**
