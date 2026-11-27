@@ -172,6 +172,7 @@ const DARWIN_HELPER_NAMES = [
   "input-source",
   "input-focus",
   "input-mouse",
+  "input-drag",
 ] as const;
 
 /**

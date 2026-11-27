@@ -306,6 +306,7 @@ const BUILTIN_CAPABILITIES: readonly BuiltinCapability[] = [
   { method: "project.close", id: "ae.operation.project.close", permissions: ["write"], verification: "automated-fake" },
   { method: "project.info", id: "ae.operation.project.info", permissions: ["read"], verification: "verified-real-host", os: BOTH },
   { method: "project.state", id: "ae.operation.project.snapshot", permissions: ["read"], verification: "automated-fake" },
+  { method: "project.items", id: "ae.operation.project.list-items", permissions: ["read"], verification: "verified-real-host", os: DARWIN },
   { method: "project.comps", id: "ae.operation.project.list-comps", permissions: ["read"], verification: "automated-fake" },
   { method: "comp.info", id: "ae.operation.comp.info", permissions: ["read"], verification: "verified-real-host", os: BOTH },
   { method: "comp.time", id: "ae.operation.comp.get-time", permissions: ["read"], verification: "automated-fake" },
