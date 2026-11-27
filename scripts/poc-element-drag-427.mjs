@@ -450,13 +450,36 @@ async function main() {
     }
 
     // --- Pane frames (best-effort; coordinates fall back to the #411 layout). ---
+    // The window-ops listing rows do not carry the CGWindowID; resolve the
+    // main window's `windowNumber` from the census by pid+frame match so
+    // `dockedPane({ parent: { windowNumber } })` can parent the pane walk.
+    // Without it the locator degenerates to `{}` and every pane call
+    // refuses "0 window(s) observed" (run2 evidence).
+    const mainWindowNumber = (() => {
+      const census = censusFn();
+      if (!census.available) return null;
+      const f = main.frame;
+      const hit = census.windows.find(
+        (w) =>
+          w.pid === target.pid &&
+          w.bounds !== null &&
+          Math.abs(w.bounds.x - f.x) <= 8 &&
+          Math.abs(w.bounds.y - f.y) <= 8 &&
+          Math.abs(w.bounds.width - f.width) <= 8 &&
+          Math.abs(w.bounds.height - f.height) <= 8,
+      );
+      return hit?.windowNumber ?? null;
+    })();
+    step("main-window-number", { windowNumber: mainWindowNumber });
+    const paneParent =
+      mainWindowNumber === null ? {} : { windowNumber: mainWindowNumber };
     let projectPaneFrame = null;
     let timelinePaneFrame = null;
     const paneRows = { project: null, timeline: null };
     try {
       const pane = ae.dockedPane({
         pane: { title: "Project", titleMatch: "contains" },
-        parent: { windowNumber: main.windowNumber },
+        parent: paneParent,
       });
       const resolution = await pane.identify();
       projectPaneFrame = resolution.pane?.frame ?? resolution.target?.surface?.frame ?? null;
@@ -472,7 +495,7 @@ async function main() {
     try {
       const pane = ae.dockedPane({
         pane: { title: "Timeline", titleMatch: "contains" },
-        parent: { windowNumber: main.windowNumber },
+        parent: paneParent,
       });
       const resolution = await pane.identify();
       timelinePaneFrame = resolution.pane?.frame ?? resolution.target?.surface?.frame ?? null;
