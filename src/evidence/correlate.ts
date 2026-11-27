@@ -130,6 +130,76 @@ export function coveredOperationIds(
   return { covered: [...ids], open };
 }
 
+/**
+ * Trace ops that are the recording lifecycle's own bookkeeping rows
+ * (`record.start`/`record.stop`, written by `RecordingController` — #381).
+ * They carry no protocol `requestId` by design; they must not count as
+ * unbound operations when `coversOperations` is computed.
+ */
+const RECORD_LIFECYCLE_OPS: ReadonlySet<string> = new Set([
+  "record.start",
+  "record.stop",
+]);
+
+export type SegmentOperationCoverage = {
+  /** Every operation id the segment window covers (requestIds + claimed ids). */
+  readonly operationIds: readonly string[];
+  /**
+   * The stored `coversOperations` answer (spec §5.3 rule 2): `null` while
+   * the segment is open; `false` when the segment cannot prove it covered
+   * what ran inside its window — an incomplete segment, a file that did
+   * not probe playable, or a covered trace row that carries no
+   * `requestId` (an operation that ran but cannot be bound to an id);
+   * `true` only when the window is closed, finalized playable, and every
+   * covered operation is identifiable.
+   */
+  readonly coversOperations: boolean | null;
+  /** `true` when `endEpochMs` is `null` — coverage is provisional/open. */
+  readonly open: boolean;
+};
+
+/**
+ * The `record.stop`-time computation for one segment (spec §5.3 rules
+ * 2–3, issue #381): intersects the trace `[ts]` rows with the segment's
+ * `[t0EpochMs, endEpochMs]` window and answers both the covered operation
+ * ids and the stored `coversOperations` verdict. `endEpochMs === null`
+ * reports `open` — never a completed answer.
+ */
+export function segmentOperationCoverage(
+  segment: Pick<EvidenceSegment, "t0EpochMs" | "endEpochMs" | "operationIds">,
+  rows: readonly EvidenceTraceRow[],
+  finalize: {
+    /** Container probe result; `null`/`false` means coverage is unproven. */
+    readonly playable: boolean | null;
+    /** Set when the segment ended early (`"deadline-exceeded"`, …). */
+    readonly incomplete?: string;
+  },
+): SegmentOperationCoverage {
+  const { covered, open } = segmentTraceCoverage(segment, rows);
+  const ids = new Set<string>(segment.operationIds);
+  let unbound = 0;
+  for (const row of covered) {
+    if (row.requestId !== undefined) {
+      ids.add(row.requestId);
+    } else if (!RECORD_LIFECYCLE_OPS.has(row.op)) {
+      unbound += 1;
+    }
+  }
+  let coversOperations: boolean | null;
+  if (open) {
+    coversOperations = null;
+  } else if (
+    finalize.playable !== true ||
+    finalize.incomplete !== undefined ||
+    unbound > 0
+  ) {
+    coversOperations = false;
+  } else {
+    coversOperations = true;
+  }
+  return { operationIds: [...ids], coversOperations, open };
+}
+
 /** A dual-clock instant: wall epoch and monotonic, both required. */
 export type DualClockPoint = {
   readonly epochMs: number;
