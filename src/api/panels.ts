@@ -12,11 +12,12 @@
  *   - macOS only in this slice. Windows reports `unsupported` — the Win32
  *     census/UIA substrate exists but no panel vehicle is implemented or
  *     verified there.
- *   - `resize`/`restore` are mutate-gui and stay gated: the production
- *     gate refuses them until the A-SAFETY review
- *     (`docs/gui-supervision-safety-gates.md`) clears a resize-class
- *     mutation. `measure`/`identify`/`capture` are observe-class and run
- *     wherever an owned target is attested.
+ *   - `resize`/`restore` are mutate-gui: permitted by the production
+ *     gate for owned, census-attributed surfaces since the #358
+ *     A-SAFETY class decision (`docs/gui-supervision-safety-gates.md`
+ *     §panel mutation) cleared the direct-AX vehicle proven in #357.
+ *     `measure`/`identify`/`capture` are observe-class and run wherever
+ *     an owned target is attested.
  *   - `capture` photographs only the resolved surface's frame or window —
  *     never the whole screen by default — and records leakage honestly.
  */
@@ -37,7 +38,21 @@ import {
 } from "../panels/types.js";
 import type { PanelMutationGate } from "../panels/controller.js";
 import type { GuiObservationTarget, GuiObservationSeams } from "./gui-state.js";
-import { MacGuiRecovery, type GuiRecoveryOptions } from "../driver/gui-recovery.js";
+import {
+  assessGuiObservation,
+  MacGuiRecovery,
+  type GuiRecoveryOptions,
+  type GuiWindowInfo,
+} from "../driver/gui-recovery.js";
+import { runInSession } from "../driver/mac-session.js";
+import type { WindowCensus } from "../platform/darwin/window-census.js";
+import {
+  darwinWindowOpsOps,
+  sessionWindowCensus,
+  type DarwinWindowOpsExec,
+} from "../windowops/darwin.js";
+import type { WindowOpsSurfaceOps } from "../windowops/types.js";
+import { ensureDarwinWindowOpsHelpers } from "./window-ops.js";
 import {
   captureWithStillEvidence,
   type StillEvidenceContext,
@@ -85,23 +100,36 @@ export function panelCapabilities(platform: NodeJS.Platform): PanelCapabilities 
     platform: "darwin",
     identify: {
       support: "implemented",
-      verification: VERIFICATION,
-      reason: null,
+      verification: "verified on real host",
+      reason:
+        "resolves through the window-ops AXUIElement enumeration " +
+        "(AXWindows/AXChildren + census attribution), the path #357 " +
+        "proved reaches real AE panels — the System Events enumeration " +
+        "this replaced returned almost nothing on AE. Requires the app " +
+        "to have been frontmost at least once for AX windows to vend " +
+        "(#406); a never-activated instance honestly reports not-found",
     },
     measure: {
       support: "implemented",
-      verification: VERIFICATION,
+      verification: "verified on real host",
       reason:
-        "OS geometry readback only; the in-AE channel (ScriptUI Window.size) " +
-        "needs a host-side extension and is not wired yet",
+        "OS geometry readback verified on real host (#358); the in-AE " +
+        "channel (ScriptUI Window.size) needs a host-side extension and " +
+        "is not wired yet — readbackSource reports that honestly",
     },
     resize: {
-      support: "unavailable",
-      verification: VERIFICATION,
+      support: "implemented",
+      verification: "verified on real host",
       reason:
-        "mutate-gui class gated off by panelMutationGate() per the A-SAFETY " +
-        "audit entry in docs/gui-supervision-safety-gates.md; the code path " +
-        "exists and is contract-tested but refuses until the audit clears it",
+        "mutate-gui class permitted by panelMutationGate() under the " +
+        "#358 A-SAFETY class decision (docs/gui-supervision-safety-gates.md " +
+        "§panel mutation): the direct-AX `AXUIElementSetAttributeValue` " +
+        "vehicle via the window-ops `act` path, behind owned attribution + " +
+        "GUI lease + in-session identity re-verify. Verified end-to-end on " +
+        "owned AE 2027 (docs/evidence/realhost-2026-11-27/): " +
+        "resize → measure → restore on a real ScriptUI palette. " +
+        "Requires the AX window enumeration, which AE only vends after the " +
+        "app has been frontmost at least once (#406/#357)",
     },
     captureRegion: {
       support: "implemented",
@@ -138,17 +166,45 @@ export function panelCapabilities(platform: NodeJS.Platform): PanelCapabilities 
 
 /** Seams the production adapter needs; mirrors `GuiObservationSeams`. */
 export type PanelSeams = GuiObservationSeams & {
-  /** Mutation gate override — production falls back to the A-SAFETY gate, which refuses. */
+  /** Mutation gate override — production falls back to the A-SAFETY gate. */
   readonly authorizeMutation?: PanelMutationGate;
+  /**
+   * Directory containing the compiled `window-ops` helper (and
+   * `input-focus`, which the same build produces). Production
+   * auto-builds from `scripts/isolated-session/*.swift` when absent —
+   * a repo checkout or packaged helpers; `null`-equivalent absence
+   * (no swiftc / no sources) degrades every panel op to `unavailable`,
+   * never to the disproved System Events path.
+   */
+  readonly helpersDir?: string | undefined;
   readonly settleMs?: number;
   readonly newOperationId?: () => string;
 };
 
 /**
- * Bind the platform-neutral controller to the macOS GUI recovery. Two
- * `MacGuiRecovery` views share the same target: observation (console
- * session allowed, like `ae.guiState()`) and mutation (default console
- * refusal, like recovery presses).
+ * Bind the platform-neutral controller to the proven macOS channels
+ * (#358):
+ *
+ *   - Observation is the window-ops `state` listing — the compiled
+ *     helper's `AXUIElement` walk of `AXWindows`/`AXChildren` plus
+ *     `AXFocusedWindow`/`AXIsProcessTrusted` — converted into the
+ *     `GuiAppState` `resolvePanelTarget` arbitrates, with the REAL
+ *     WindowServer census so `censusAttribution` is computed exactly
+ *     like the supervision path. The System Events `UI elements`
+ *     enumeration this replaced returns almost nothing on After
+ *     Effects (#357), which is why `ae.panel().identify()` could never
+ *     resolve a real panel.
+ *   - Mutation is `MacGuiRecovery.resizePanelWindow` — the same
+ *     lease + audit + identity re-checks every GUI mutation gets,
+ *     driving the window-ops helper's `act --op resize`
+ *     (`AXUIElementSetAttributeValue`), the vehicle #357 proved on a
+ *     real ScriptUI palette.
+ *   - Capture stays on `screencapture` inside the target session.
+ *
+ * Two `MacGuiRecovery` views share the same target options: the
+ * observer audits reads; the mutator holds the lease path. Both allow
+ * the console session — the target is an explicitly requested,
+ * census-attributed window of the caller's own After Effects.
  */
 function macPanelOps(
   target: GuiObservationTarget,
@@ -156,10 +212,12 @@ function macPanelOps(
 ): PanelSurfaceOps {
   const {
     authorizeMutation: _gate,
+    helpersDir: seamHelpersDir,
     settleMs: _settle,
     newOperationId: _opId,
     ...guiSeams
   } = seams;
+  const helpersDir = seamHelpersDir ?? ensureDarwinWindowOpsHelpers();
   const base: GuiRecoveryOptions = {
     session: target.session,
     pid: target.pid,
@@ -169,19 +227,100 @@ function macPanelOps(
     // requested, window-scoped resize of the caller's own After Effects.
     // The lease, audit and attribution re-checks are unchanged.
     allowConsoleSession: true,
+    ...(helpersDir === null
+      ? {}
+      : { windowOpsHelpersDir: helpersDir }),
     ...guiSeams,
   };
   const observer = new MacGuiRecovery(base);
   const mutator = new MacGuiRecovery(base);
-  return {
-    observe: () => observer.listWindows(),
-    censusWindows: () => {
-      const view = observer.windowServerWindows();
+
+  // The window-ops observation/vehicle binding. `null` when the helpers
+  // cannot be built — every op then reports `unavailable` honestly
+  // rather than falling back to a disproved enumeration.
+  const windowOps: WindowOpsSurfaceOps | null =
+    helpersDir === null
+      ? null
+      : (() => {
+          const runSession = guiSeams.runSession ?? runInSession;
+          const exec: DarwinWindowOpsExec = (helper, args) =>
+            runSession(target.session, join(helpersDir, helper), [...args], {
+              timeoutMs: 30_000,
+            });
+          return darwinWindowOpsOps({
+            pid: target.pid,
+            exec,
+            census: sessionWindowCensus({
+              session: target.session,
+              ...(guiSeams.censusRun !== undefined
+                ? { censusRun: guiSeams.censusRun }
+                : {}),
+              ...(guiSeams.runSession !== undefined
+                ? { runSession: guiSeams.runSession }
+                : {}),
+            }),
+          });
+        })();
+
+  const censusView = (): WindowCensus => {
+    if (windowOps === null) {
       return {
-        available: view.available,
-        reason: view.reason,
-        windows: view.windows,
+        available: false,
+        reason:
+          "the window-ops helpers are not available on this host, so " +
+          "neither the AX window listing nor the full WindowServer " +
+          "census can be produced",
       };
+    }
+    const view = windowOps.censusWindows();
+    return view.available
+      ? { available: true, windows: view.windows }
+      : {
+          available: false,
+          reason: view.reason ?? "the WindowServer census did not run",
+        };
+  };
+
+  return {
+    observe: () => {
+      if (windowOps === null) {
+        throw new PanelError(
+          "unavailable",
+          "the window-ops observation helpers could not be built " +
+            "(scripts/isolated-session/window-ops + swiftc); panel " +
+            "identification has no proven AX enumeration path without them",
+        );
+      }
+      const listing = windowOps.observeWindows();
+      const windows: GuiWindowInfo[] = listing.windows.map((w) => ({
+        title: w.title,
+        role: w.role,
+        subrole: w.subrole,
+        buttons: [],
+        texts: [],
+        ...(w.frame === null
+          ? {}
+          : {
+              frame: {
+                x: w.frame.x,
+                y: w.frame.y,
+                width: w.frame.width,
+                height: w.frame.height,
+              },
+            }),
+      }));
+      return assessGuiObservation(
+        target.pid,
+        listing.frontmostPid === target.pid,
+        windows,
+        censusView(),
+      );
+    },
+    censusWindows: () => {
+      const census = censusView();
+      return census.available
+        ? { available: true, reason: null, windows: census.windows }
+        : { available: false, reason: census.reason, windows: [] };
     },
     resizePanel: (expected, size) =>
       mutator.resizePanelWindow(expected, size),
@@ -222,8 +361,9 @@ export class Panel {
   }
 
   /**
-   * Resize the panel. Mutate-gui: gated — currently refused in
-   * production until the A-SAFETY review clears resize-class mutation.
+   * Resize the panel. Mutate-gui: permitted by the production gate for
+   * owned, census-attributed surfaces on macOS (#358 class decision);
+   * still refuses `unproven`/`refused`/`indeterminate` per the contract.
    */
   resize(size: { width: number; height: number }): Promise<PanelMeasurement> {
     return this.#controller.resize(size);
@@ -287,7 +427,8 @@ export function panelForTarget(
     artifactDir: join(artifactDir, "panels"),
     // The A-SAFETY gate is wired explicitly, not left to the controller's
     // fail-closed default: `docs/gui-supervision-safety-gates.md` is the
-    // policy source and `src/panels/gate.ts` its single code flip point.
+    // policy source and `src/panels/gate.ts` its single code flip point —
+    // flipped for the #358-cleared resize/restore class.
     // A seam override exists for tests only.
     authorizeMutation: seams.authorizeMutation ?? panelMutationGate(),
     ...(seams.settleMs === undefined ? {} : { settleMs: seams.settleMs }),

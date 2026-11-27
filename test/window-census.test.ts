@@ -120,6 +120,10 @@ describe("assessGuiObservation — the AX-empty regression", () => {
     const state = assessGuiObservation(63300, false, [], census);
     expect(state.windows).toHaveLength(0);
     expect(state.axSuspect).toBe(true);
+    // The reason names the empty-listing shape and the AE non-vending
+    // possibility (#406) — never a bare boolean callers must interpret.
+    expect(state.axSuspectReason).toContain("AX window listing is empty");
+    expect(state.axSuspectReason).toContain("#406");
     expect(state.windowServer.windowCount).toBe(3);
     expect(state.windowServer.onScreenCount).toBe(1);
   });
@@ -128,6 +132,7 @@ describe("assessGuiObservation — the AX-empty regression", () => {
     const census = { available: true as const, windows: [win({ pid: 1 })] };
     const state = assessGuiObservation(63300, false, [], census);
     expect(state.axSuspect).toBe(false);
+    expect(state.axSuspectReason).toBeNull();
     expect(state.windowServer.windowCount).toBe(0);
   });
 

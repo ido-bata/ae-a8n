@@ -1,0 +1,133 @@
+{
+  "schema": "a8n.poc-panel-mutation/v1",
+  "issue": 357,
+  "recordedAt": "2026-11-27T06:37:37.495Z",
+  "install": "/Applications/Adobe After Effects 2027",
+  "steps": [
+    {
+      "name": "preflight",
+      "at": "2026-11-27T06:37:37.669Z",
+      "install": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "preexisting": []
+    },
+    {
+      "name": "extension-build",
+      "at": "2026-11-27T06:37:38.022Z",
+      "hostScript": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-panel-poc-LJLBer/a8n-panel-poc-host.jsx"
+    },
+    {
+      "name": "launch",
+      "at": "2026-11-27T06:37:45.453Z",
+      "pid": 99973,
+      "info": {
+        "version": "27.0x78",
+        "build": "78"
+      }
+    },
+    {
+      "name": "recovery-target",
+      "at": "2026-11-27T06:37:45.730Z",
+      "pid": 99973
+    },
+    {
+      "name": "panel-show",
+      "at": "2026-11-27T06:37:46.977Z",
+      "inAe": {
+        "size": {
+          "width": 400,
+          "height": 300,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 400,
+          "height": 300,
+          "left": 120,
+          "right": 520,
+          "top": 120,
+          "bottom": 420,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "ax-baseline",
+      "at": "2026-11-27T06:37:48.201Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=1 windowRoles=0 frontmost=false visible=true roles=AXMenuBar, | focusedWindow role= sub= title= pos= size= kids="
+    },
+    {
+      "name": "ax-set-AXManualAccessibility",
+      "at": "2026-11-27T06:37:48.660Z",
+      "ok": true,
+      "output": "SET-FAIL System Eventsでエラーが起きました: attribute \"AXManualAccessibility\" of application process \"After Effects\"をtrueに設定できません。"
+    },
+    {
+      "name": "ax-set-AXEnhancedUserInterface",
+      "at": "2026-11-27T06:37:49.293Z",
+      "ok": true,
+      "output": "SET-OK"
+    },
+    {
+      "name": "ax-after-attr",
+      "at": "2026-11-27T06:37:51.606Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=1 windowRoles=0 frontmost=false visible=true roles=AXMenuBar, | focusedWindow role= sub= title= pos= size= kids="
+    },
+    {
+      "name": "ax-activate",
+      "at": "2026-11-27T06:37:51.898Z",
+      "ok": true,
+      "output": "FRONTMOST-SET"
+    },
+    {
+      "name": "ax-after-activate",
+      "at": "2026-11-27T06:37:54.693Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=1 windowRoles=0 frontmost=false visible=true roles=AXMenuBar, | focusedWindow role= sub= title= pos= size= kids="
+    },
+    {
+      "name": "ax-open-activate",
+      "at": "2026-11-27T06:37:54.784Z",
+      "ok": true,
+      "bundlePath": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app"
+    },
+    {
+      "name": "ax-after-open",
+      "at": "2026-11-27T06:37:58.914Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=1 windowRoles=0 frontmost=false visible=true roles=AXMenuBar, | focusedWindow role= sub= title= pos= size= kids="
+    },
+    {
+      "name": "ax-after-open-settled",
+      "at": "2026-11-27T06:38:02.548Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=1 windowRoles=0 frontmost=false visible=true roles=AXMenuBar, | focusedWindow role= sub= title= pos= size= kids="
+    },
+    {
+      "name": "close",
+      "at": "2026-11-27T06:38:05.689Z",
+      "closed": {
+        "quit": true,
+        "ownership": {
+          "kind": "owned",
+          "evidence": "pid 99973 is still the only instance"
+        }
+      }
+    },
+    {
+      "name": "postflight-census",
+      "at": "2026-11-27T06:38:05.833Z",
+      "remainingInScope": []
+    }
+  ],
+  "outcome": "failed",
+  "error": "no attributed window of pid 99973 matched the locator {\"title\":\"ae-a8n PoC Panel\",\"titleMatch\":\"contains\"} (0 window(s) observed)",
+  "errorStack": "PanelError: no attributed window of pid 99973 matched the locator {\"title\":\"ae-a8n PoC Panel\",\"titleMatch\":\"contains\"} (0 window(s) observed)\n    at resolvePanelTarget (file:///Users/rebui/work/ae-a8n-realhost/dist/panels/resolve.js:111:15)\n    at #resolve (file:///Users/rebui/work/ae-a8n-realhost/dist/panels/controller.js:118:28)\n    at PanelController.identify (file:///Users/rebui/work/ae-a8n-realhost/dist/panels/controller.js:132:29)\n    at file:///Users/rebui/work/ae-a8n-realhost/dist/api/panels.js:163:62\n    at async main (file:///Users/rebui/work/ae-a8n-realhost/scripts/poc-panel-mutation.mjs:342:26)\n    at async file:///Users/rebui/work/ae-a8n-realhost/scripts/poc-panel-mutation.mjs:484:1"
+}

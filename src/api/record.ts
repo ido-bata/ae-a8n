@@ -11,16 +11,19 @@
  *
  * Honesty rules:
  *
- *   - On darwin the recorder backend is the #382 implementation:
- *     `screen-record.swift` (ScreenCaptureKit `SCStream` → `.mov`) with
- *     the `screencapture -V` fallback tier. It runs inside the
- *     driver-attested target session and reports `actualScope`/
- *     `unhonoredExclusions` honestly when delivery is narrower than
- *     requested. Whether SCStream actually delivers frames under
- *     `runInSession`, TCC behavior in isolated sessions, and achievable
- *     fps are UNVERIFIED — the backend reports `automated test` level
- *     only. On other platforms no backend exists and every start
- *     refuses.
+ *   - The OS recording backends plug in per platform: darwin registers
+ *     the #382 implementation — `screen-record.swift` (ScreenCaptureKit
+ *     `SCStream` → `.mov`) with the `screencapture -V` fallback tier,
+ *     always inside the driver-attested target session, reporting
+ *     `actualScope`/`unhonoredExclusions` honestly when delivery is
+ *     narrower than requested (whether SCStream actually delivers
+ *     under `runInSession`, TCC behavior in isolated sessions, and
+ *     achievable fps are UNVERIFIED — `automated test` level only);
+ *     win32 registers the WGC helper (#384, with the declared ffmpeg
+ *     fallback). Platforms without a backend resolve to `null` and
+ *     every start refuses — the gates still run first, so an
+ *     unauthorized scope is refused for the *right* reason and the
+ *     refusal lands in the index gaps.
  *   - `display`/`session` scopes, and every scope on a session whose
  *     kind is not proven `"isolated"`, require recording authorization
  *     (spec §5.6). No authorization mechanism exists yet, so those
@@ -32,6 +35,7 @@
 
 import { defaultLeaseController } from "../driver/gui-recovery.js";
 import { defaultGuiLeaseRoot } from "../platform/darwin/gui-lease.js";
+import { windowsScreenRecorderResolver } from "../platform/windows/recording.js";
 import { consoleSessionUid } from "../driver/mac-session.js";
 import { darwinRecorderResolver } from "../evidence/recording-darwin.js";
 import type { Session } from "./session.js";
@@ -199,11 +203,13 @@ function defaultAcquireLease(session: Session) {
 
 /**
  * Builds the session's recording controller. `seams.recorder` overrides
- * the backend; otherwise the production resolver installs the #382
- * darwin backend (SCStream helper + `screencapture -V` fallback, always
- * inside the driver-attested target session) and resolves `null`
- * elsewhere — starts then refuse `unsupported` after the safety gates
- * have run.
+ * the backend; otherwise the production resolver installs the platform
+ * backend — the #382 darwin recorder (SCStream helper +
+ * `screencapture -V` fallback, always inside the driver-attested
+ * target session) or the #384 win32 WGC helper (declared ffmpeg
+ * fallback gated on `AE_A8N_FFMPEG_FALLBACK=1`). Platforms without a
+ * backend resolve to `null` and every start refuses `unsupported`
+ * after the safety gates have run.
  */
 export function createRecordingController(
   session: Session,
@@ -211,16 +217,24 @@ export function createRecordingController(
 ): RecordingController {
   const recorder: ScreenRecorder | RecorderResolver =
     seams.recorder ??
-    darwinRecorderResolver({
-      // The recorder only ever runs inside the session the transport
-      // attests for the AE target — never "whatever session is handy".
-      // `null` (no attested target) makes every start refuse.
-      session: () => session.driver.recoveryTarget()?.session ?? null,
-      artifactsDir: session.driver.artifactsDir,
-    }) ??
-    // No OS recording backend on this platform — resolve to null so
-    // starts refuse honestly instead of silently doing nothing.
-    (() => null);
+    // Platform backends: darwin gets the #382 SCStream helper +
+    // screencapture fallback, win32 the #384 WGC helper with the
+    // declared-ffmpeg fallback gated on AE_A8N_FFMPEG_FALLBACK=1;
+    // other platforms resolve to null so starts refuse honestly.
+    (process.platform === "darwin"
+      ? darwinRecorderResolver({
+          // The recorder only ever runs inside the session the
+          // transport attests for the AE target — never "whatever
+          // session is handy". `null` (no attested target) makes
+          // every start refuse.
+          session: () => session.driver.recoveryTarget()?.session ?? null,
+          artifactsDir: session.driver.artifactsDir,
+        }) ?? (() => null)
+      : process.platform === "win32"
+        ? windowsScreenRecorderResolver({
+            ffmpegFallback: process.env.AE_A8N_FFMPEG_FALLBACK === "1",
+          })
+        : () => null);
   return new RecordingController({
     artifactsDir: session.driver.artifactsDir,
     session: sessionIdentity(session),

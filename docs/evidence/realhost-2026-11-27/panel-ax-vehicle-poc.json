@@ -1,0 +1,1046 @@
+{
+  "schema": "a8n.poc-panel-ax-vehicle/v1",
+  "issue": 357,
+  "recordedAt": "2026-11-27T11:11:45.224Z",
+  "install": "/Applications/Adobe After Effects 2027",
+  "verificationLevel": "verified on real host",
+  "steps": [
+    {
+      "name": "preflight",
+      "at": "2026-11-27T11:11:45.368Z",
+      "install": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "preexisting": []
+    },
+    {
+      "name": "extension-build",
+      "at": "2026-11-27T11:11:45.863Z",
+      "hostScript": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-panel-ax-UnewyX/a8n-panel-ax-host.jsx"
+    },
+    {
+      "name": "helper-compile",
+      "at": "2026-11-27T11:11:55.613Z",
+      "helper": "window-ops",
+      "ok": true
+    },
+    {
+      "name": "helper-compile",
+      "at": "2026-11-27T11:12:00.065Z",
+      "helper": "input-focus",
+      "ok": true
+    },
+    {
+      "name": "helper-compile",
+      "at": "2026-11-27T11:12:07.114Z",
+      "helper": "input-mouse",
+      "ok": true
+    },
+    {
+      "name": "helper-compile",
+      "at": "2026-11-27T11:12:13.429Z",
+      "helper": "ax-focused-set",
+      "ok": true
+    },
+    {
+      "name": "launch",
+      "at": "2026-11-27T11:12:19.736Z",
+      "pid": 58115,
+      "info": {
+        "version": "27.0x78",
+        "build": "78"
+      }
+    },
+    {
+      "name": "recovery-target",
+      "at": "2026-11-27T11:12:20.014Z",
+      "pid": 58115
+    },
+    {
+      "name": "panel-show",
+      "at": "2026-11-27T11:12:20.557Z",
+      "inAe": {
+        "size": {
+          "width": 400,
+          "height": 300,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 400,
+          "height": 300,
+          "left": 120,
+          "right": 520,
+          "top": 120,
+          "bottom": 420,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "vehicleB-census-initial",
+      "at": "2026-11-27T11:12:21.285Z",
+      "available": true,
+      "panel": {
+        "windowNumber": 2790,
+        "bounds": {
+          "x": 120,
+          "y": 96,
+          "width": 400,
+          "height": 324
+        },
+        "onScreen": true,
+        "name": "ae-a8n PoC Panel"
+      }
+    },
+    {
+      "name": "vehicleB-focused-state-initial",
+      "at": "2026-11-27T11:12:21.756Z",
+      "ok": true,
+      "json": {
+        "pid": 58115,
+        "verdict": "ok",
+        "window": {
+          "frame": {
+            "height": 324,
+            "width": 400,
+            "x": 120,
+            "y": 96
+          },
+          "role": "AXLayoutArea",
+          "subrole": "AXFloatingWindow",
+          "title": "ae-a8n PoC Panel"
+        }
+      }
+    },
+    {
+      "name": "vehicleB-identity-check",
+      "at": "2026-11-27T11:12:21.757Z",
+      "focusedElement": {
+        "frame": {
+          "height": 324,
+          "width": 400,
+          "x": 120,
+          "y": 96
+        },
+        "role": "AXLayoutArea",
+        "subrole": "AXFloatingWindow",
+        "title": "ae-a8n PoC Panel"
+      },
+      "censusWindowNumber": 2790,
+      "censusFrame": {
+        "x": 120,
+        "y": 96,
+        "width": 400,
+        "height": 324
+      },
+      "focusedIsPalette": true,
+      "match": true,
+      "censusProven": true
+    },
+    {
+      "name": "vehicleB-in-ae-before",
+      "at": "2026-11-27T11:12:24.092Z",
+      "inAe": {
+        "open": true,
+        "size": {
+          "width": 400,
+          "height": 300,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 400,
+          "height": 300,
+          "left": 120,
+          "right": 520,
+          "top": 120,
+          "bottom": 420,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "vehicleB-focused-resize",
+      "at": "2026-11-27T11:12:24.595Z",
+      "ok": true,
+      "json": {
+        "after": {
+          "frame": {
+            "height": 440,
+            "width": 560,
+            "x": 120,
+            "y": 96
+          },
+          "role": "AXLayoutArea",
+          "subrole": "AXFloatingWindow",
+          "title": "ae-a8n PoC Panel"
+        },
+        "axError": 0,
+        "before": {
+          "frame": {
+            "height": 324,
+            "width": 400,
+            "x": 120,
+            "y": 96
+          },
+          "role": "AXLayoutArea",
+          "subrole": "AXFloatingWindow",
+          "title": "ae-a8n PoC Panel"
+        },
+        "verdict": "performed"
+      }
+    },
+    {
+      "name": "vehicleB-in-ae-resized",
+      "at": "2026-11-27T11:12:27.756Z",
+      "inAe": {
+        "open": true,
+        "size": {
+          "width": 560,
+          "height": 416,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 560,
+          "height": 416,
+          "left": 120,
+          "right": 680,
+          "top": 120,
+          "bottom": 536,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "vehicleB-census-resized",
+      "at": "2026-11-27T11:12:27.896Z",
+      "windowNumber": 2790,
+      "bounds": {
+        "x": 120,
+        "y": 96,
+        "width": 560,
+        "height": 440
+      }
+    },
+    {
+      "name": "vehicleB-focused-restore",
+      "at": "2026-11-27T11:12:28.444Z",
+      "ok": true,
+      "json": {
+        "after": {
+          "frame": {
+            "height": 300,
+            "width": 400,
+            "x": 120,
+            "y": 96
+          },
+          "role": "AXLayoutArea",
+          "subrole": "AXFloatingWindow",
+          "title": "ae-a8n PoC Panel"
+        },
+        "axError": 0,
+        "before": {
+          "frame": {
+            "height": 440,
+            "width": 560,
+            "x": 120,
+            "y": 96
+          },
+          "role": "AXLayoutArea",
+          "subrole": "AXFloatingWindow",
+          "title": "ae-a8n PoC Panel"
+        },
+        "verdict": "performed"
+      }
+    },
+    {
+      "name": "vehicleB-in-ae-restored",
+      "at": "2026-11-27T11:12:31.120Z",
+      "inAe": {
+        "open": true,
+        "size": {
+          "width": 400,
+          "height": 276,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 400,
+          "height": 276,
+          "left": 120,
+          "right": 520,
+          "top": 120,
+          "bottom": 396,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "vehicleB-focused-move",
+      "at": "2026-11-27T11:12:31.695Z",
+      "ok": true,
+      "json": {
+        "after": {
+          "frame": {
+            "height": 300,
+            "width": 400,
+            "x": 210,
+            "y": 156
+          },
+          "role": "AXLayoutArea",
+          "subrole": "AXFloatingWindow",
+          "title": "ae-a8n PoC Panel"
+        },
+        "axError": 0,
+        "before": {
+          "frame": {
+            "height": 300,
+            "width": 400,
+            "x": 120,
+            "y": 96
+          },
+          "role": "AXLayoutArea",
+          "subrole": "AXFloatingWindow",
+          "title": "ae-a8n PoC Panel"
+        },
+        "verdict": "performed"
+      }
+    },
+    {
+      "name": "vehicleB-in-ae-moved",
+      "at": "2026-11-27T11:12:33.026Z",
+      "inAe": {
+        "open": true,
+        "size": {
+          "width": 400,
+          "height": 276,
+          "length": 2
+        },
+        "bounds": {
+          "x": 210,
+          "y": 180,
+          "width": 400,
+          "height": 276,
+          "left": 210,
+          "right": 610,
+          "top": 180,
+          "bottom": 456,
+          "length": 4
+        },
+        "location": {
+          "x": 210,
+          "y": 180,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "vehicleB-census-moved",
+      "at": "2026-11-27T11:12:33.165Z",
+      "windowNumber": 2790,
+      "bounds": {
+        "x": 210,
+        "y": 156,
+        "width": 400,
+        "height": 300
+      }
+    },
+    {
+      "name": "vehicleB-focused-move-back",
+      "at": "2026-11-27T11:12:33.738Z",
+      "ok": true,
+      "json": {
+        "after": {
+          "frame": {
+            "height": 300,
+            "width": 400,
+            "x": 120,
+            "y": 96
+          },
+          "role": "AXLayoutArea",
+          "subrole": "AXFloatingWindow",
+          "title": "ae-a8n PoC Panel"
+        },
+        "axError": 0,
+        "before": {
+          "frame": {
+            "height": 300,
+            "width": 400,
+            "x": 210,
+            "y": 156
+          },
+          "role": "AXLayoutArea",
+          "subrole": "AXFloatingWindow",
+          "title": "ae-a8n PoC Panel"
+        },
+        "verdict": "performed"
+      }
+    },
+    {
+      "name": "vehicleB-in-ae-moved-back",
+      "at": "2026-11-27T11:12:35.758Z",
+      "inAe": {
+        "open": true,
+        "size": {
+          "width": 400,
+          "height": 276,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 400,
+          "height": 276,
+          "left": 120,
+          "right": 520,
+          "top": 120,
+          "bottom": 396,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "vehicleB-census-final",
+      "at": "2026-11-27T11:12:35.899Z",
+      "windowNumber": 2790,
+      "bounds": {
+        "x": 120,
+        "y": 96,
+        "width": 400,
+        "height": 300
+      },
+      "expectedApprox": {
+        "x": 120,
+        "y": 96,
+        "width": 400,
+        "height": 300
+      }
+    },
+    {
+      "name": "enumeration-poll",
+      "at": "2026-11-27T11:12:43.283Z",
+      "startedAt": "2026-11-27T11:12:35.899Z",
+      "deadlineMs": 120000,
+      "intervalMs": 5000,
+      "samples": [
+        {
+          "tMs": 335,
+          "windowCount": 2,
+          "focusedTitle": "ae-a8n PoC Panel",
+          "panelListed": true,
+          "panelFocused": true,
+          "frontmostPid": 58115
+        }
+      ],
+      "found": {
+        "viaEnumeration": true,
+        "viaFocusedWindow": true,
+        "window": {
+          "index": 1,
+          "title": "ae-a8n PoC Panel",
+          "role": "AXLayoutArea",
+          "subrole": "AXFloatingWindow",
+          "frame": {
+            "height": 300,
+            "width": 400,
+            "x": 120,
+            "y": 96
+          },
+          "miniaturized": null,
+          "main": false,
+          "focused": false
+        },
+        "afterMs": 335
+      },
+      "finishedAt": "2026-11-27T11:12:43.283Z",
+      "finalState": {
+        "frontmostPid": 58115,
+        "focusedWindowIndex": 1,
+        "axTrusted": true,
+        "focusedWindow": {
+          "focused": false,
+          "frame": {
+            "height": 300,
+            "width": 400,
+            "x": 120,
+            "y": 96
+          },
+          "index": 0,
+          "main": false,
+          "miniaturized": null,
+          "role": "AXLayoutArea",
+          "subrole": "AXFloatingWindow",
+          "title": "ae-a8n PoC Panel"
+        },
+        "windows": [
+          {
+            "index": 1,
+            "title": "ae-a8n PoC Panel",
+            "role": "AXLayoutArea",
+            "subrole": "AXFloatingWindow",
+            "frame": {
+              "height": 300,
+              "width": 400,
+              "x": 120,
+              "y": 96
+            },
+            "miniaturized": null,
+            "main": false,
+            "focused": false
+          },
+          {
+            "index": 2,
+            "title": "名称未設定プロジェクト",
+            "role": "AXLayoutArea",
+            "subrole": "AXDialog",
+            "frame": {
+              "height": 1074,
+              "width": 1710,
+              "x": 0,
+              "y": 38
+            },
+            "miniaturized": null,
+            "main": false,
+            "focused": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "ax-open-activate",
+      "at": "2026-11-27T11:12:43.368Z",
+      "ok": true,
+      "bundlePath": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app"
+    },
+    {
+      "name": "enumeration-after-activate",
+      "at": "2026-11-27T11:12:46.977Z",
+      "windowCount": 4,
+      "focusedTitle": "名称未設定プロジェクト",
+      "panelListed": true,
+      "windows": [
+        {
+          "index": 1,
+          "title": "",
+          "role": "AXWindow",
+          "subrole": "AXUnknown",
+          "frame": {
+            "height": 34,
+            "width": 1694,
+            "x": 8,
+            "y": 1070
+          },
+          "miniaturized": null,
+          "main": false,
+          "focused": false
+        },
+        {
+          "index": 2,
+          "title": "ae-a8n PoC Panel",
+          "role": "AXLayoutArea",
+          "subrole": "AXFloatingWindow",
+          "frame": {
+            "height": 300,
+            "width": 400,
+            "x": 120,
+            "y": 96
+          },
+          "miniaturized": null,
+          "main": false,
+          "focused": false
+        },
+        {
+          "index": 3,
+          "title": "名称未設定プロジェクト",
+          "role": "AXLayoutArea",
+          "subrole": "AXDialog",
+          "frame": {
+            "height": 1074,
+            "width": 1710,
+            "x": 0,
+            "y": 38
+          },
+          "miniaturized": null,
+          "main": false,
+          "focused": false
+        },
+        {
+          "index": 4,
+          "title": "",
+          "role": "AXWindow",
+          "subrole": "AXUnknown",
+          "frame": {
+            "height": 34,
+            "width": 1694,
+            "x": 8,
+            "y": 1070
+          },
+          "miniaturized": null,
+          "main": false,
+          "focused": false
+        }
+      ]
+    },
+    {
+      "name": "production-identify",
+      "at": "2026-11-27T11:12:48.564Z",
+      "error": "no attributed window of pid 58115 matched the locator {\"title\":\"ae-a8n PoC Panel\",\"titleMatch\":\"contains\"} (2 window(s) observed) — note: this pid's AX tree is suspect (all 2 AX-listed window(s) are attributed to other pids or to nothing while the census lists 9 window(s) for pid 58115 — the pid's real windows are AX-invisible (#330)); the AX window enumeration may be empty or untrusted (After Effects vends no AXWindows at all, #406) — ae.windowOps(locator, { focusedOnly: true }) can still observe the focused window through AXFocusedWindow",
+      "code": "not-found"
+    },
+    {
+      "name": "census",
+      "at": "2026-11-27T11:12:48.770Z",
+      "available": true,
+      "pidWindows": [
+        {
+          "windowNumber": 2793,
+          "bounds": {
+            "x": 22,
+            "y": 934,
+            "width": 60,
+            "height": 140
+          },
+          "onScreen": true,
+          "owner": "After Effects",
+          "name": ""
+        },
+        {
+          "windowNumber": 2791,
+          "bounds": {
+            "x": 8,
+            "y": 1070,
+            "width": 1694,
+            "height": 34
+          },
+          "onScreen": true,
+          "owner": "After Effects",
+          "name": ""
+        },
+        {
+          "windowNumber": 2790,
+          "bounds": {
+            "x": 120,
+            "y": 96,
+            "width": 400,
+            "height": 300
+          },
+          "onScreen": true,
+          "owner": "After Effects",
+          "name": "ae-a8n PoC Panel"
+        },
+        {
+          "windowNumber": 2788,
+          "bounds": {
+            "x": 0,
+            "y": 38,
+            "width": 1710,
+            "height": 1074
+          },
+          "onScreen": true,
+          "owner": "After Effects",
+          "name": "名称未設定プロジェクト"
+        },
+        {
+          "windowNumber": 2787,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          },
+          "onScreen": false,
+          "owner": "After Effects",
+          "name": ""
+        },
+        {
+          "windowNumber": 2786,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          },
+          "onScreen": false,
+          "owner": "After Effects",
+          "name": ""
+        },
+        {
+          "windowNumber": 2780,
+          "bounds": {
+            "x": 0,
+            "y": 612,
+            "width": 500,
+            "height": 500
+          },
+          "onScreen": false,
+          "owner": "After Effects",
+          "name": ""
+        },
+        {
+          "windowNumber": 2785,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          },
+          "onScreen": false,
+          "owner": "After Effects",
+          "name": ""
+        },
+        {
+          "windowNumber": 2784,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          },
+          "onScreen": false,
+          "owner": "After Effects",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "name": "panel-census-match",
+      "at": "2026-11-27T11:12:48.770Z",
+      "axFrame": {
+        "height": 300,
+        "width": 400,
+        "x": 120,
+        "y": 96
+      },
+      "censusWindow": {
+        "windowNumber": 2790,
+        "bounds": {
+          "x": 120,
+          "y": 96,
+          "width": 400,
+          "height": 300
+        },
+        "onScreen": true,
+        "name": "ae-a8n PoC Panel"
+      }
+    },
+    {
+      "name": "vehicleA-state-before",
+      "at": "2026-11-27T11:12:49.425Z",
+      "resolution": "ax-windows",
+      "window": {
+        "index": 3,
+        "title": "ae-a8n PoC Panel",
+        "role": "AXLayoutArea",
+        "subrole": "AXFloatingWindow",
+        "frame": {
+          "x": 120,
+          "y": 96,
+          "width": 400,
+          "height": 300
+        },
+        "miniaturized": null,
+        "main": false,
+        "focused": false
+      },
+      "windowNumber": 2790,
+      "attribution": "owned",
+      "app": {
+        "frontmost": true,
+        "frontmostPid": 58115
+      }
+    },
+    {
+      "name": "vehicleA-in-ae-before",
+      "at": "2026-11-27T11:12:51.124Z",
+      "inAe": {
+        "open": true,
+        "size": {
+          "width": 400,
+          "height": 276,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 400,
+          "height": 276,
+          "left": 120,
+          "right": 520,
+          "top": 120,
+          "bottom": 396,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "vehicleA-resize",
+      "at": "2026-11-27T11:12:52.809Z",
+      "verdict": "performed",
+      "afterFrame": {
+        "x": 120,
+        "y": 96,
+        "width": 560,
+        "height": 440
+      },
+      "observedAt": "2026-11-27T11:12:52.809Z"
+    },
+    {
+      "name": "vehicleA-in-ae-resized",
+      "at": "2026-11-27T11:12:54.551Z",
+      "inAe": {
+        "open": true,
+        "size": {
+          "width": 560,
+          "height": 416,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 560,
+          "height": 416,
+          "left": 120,
+          "right": 680,
+          "top": 120,
+          "bottom": 536,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "vehicleA-census-resized",
+      "at": "2026-11-27T11:12:54.707Z",
+      "windowNumber": 2790,
+      "bounds": {
+        "x": 120,
+        "y": 96,
+        "width": 560,
+        "height": 440
+      }
+    },
+    {
+      "name": "vehicleA-move",
+      "at": "2026-11-27T11:12:56.139Z",
+      "verdict": "performed",
+      "afterFrame": {
+        "x": 260,
+        "y": 186,
+        "width": 560,
+        "height": 440
+      }
+    },
+    {
+      "name": "vehicleA-in-ae-moved",
+      "at": "2026-11-27T11:12:57.959Z",
+      "inAe": {
+        "open": true,
+        "size": {
+          "width": 560,
+          "height": 416,
+          "length": 2
+        },
+        "bounds": {
+          "x": 260,
+          "y": 210,
+          "width": 560,
+          "height": 416,
+          "left": 260,
+          "right": 820,
+          "top": 210,
+          "bottom": 626,
+          "length": 4
+        },
+        "location": {
+          "x": 260,
+          "y": 210,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "vehicleA-restore-size",
+      "at": "2026-11-27T11:12:59.256Z",
+      "verdict": "performed",
+      "afterFrame": {
+        "x": 260,
+        "y": 186,
+        "width": 400,
+        "height": 300
+      }
+    },
+    {
+      "name": "vehicleA-restore-position",
+      "at": "2026-11-27T11:13:00.659Z",
+      "verdict": "performed",
+      "afterFrame": {
+        "x": 120,
+        "y": 96,
+        "width": 400,
+        "height": 300
+      },
+      "expected": {
+        "x": 120,
+        "y": 96
+      }
+    },
+    {
+      "name": "vehicleA-in-ae-restored",
+      "at": "2026-11-27T11:13:02.519Z",
+      "inAe": {
+        "open": true,
+        "size": {
+          "width": 400,
+          "height": 276,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 400,
+          "height": 276,
+          "left": 120,
+          "right": 520,
+          "top": 120,
+          "bottom": 396,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "focusedOnly-state-unfocused",
+      "at": "2026-11-27T11:13:02.811Z",
+      "error": "the focused window of pid 58115 does not match the locator {\"title\":\"ae-a8n PoC Panel\",\"titleMatch\":\"contains\"} (focused window: \"名称未設定プロジェクト\" role=AXLayoutArea subrole=AXDialog); only the focused window is AX-reachable — an unfocused window cannot be resolved through this path",
+      "code": "not-found"
+    },
+    {
+      "name": "focusedOnly-resize",
+      "at": "2026-11-27T11:13:02.811Z",
+      "refused": "window resize cannot run under focusedOnly resolution: the AXFocusedWindow path is observe-class only (#406) — the act vehicle addresses enumerated windows and no focused-element mutation vehicle exists yet (A-SAFETY review required). Nothing was mutated."
+    },
+    {
+      "name": "system-events-probe",
+      "at": "2026-11-27T11:13:03.244Z",
+      "ok": true,
+      "output": "uiElements=3 roles=AXLayoutArea,AXLayoutArea,AXMenuBar,"
+    },
+    {
+      "name": "vehicleB-focused-state-unfocused",
+      "at": "2026-11-27T11:13:03.310Z",
+      "ok": true,
+      "json": {
+        "pid": 58115,
+        "verdict": "ok",
+        "window": {
+          "frame": {
+            "height": 1074,
+            "width": 1710,
+            "x": 0,
+            "y": 38
+          },
+          "role": "AXLayoutArea",
+          "subrole": "AXDialog",
+          "title": "名称未設定プロジェクト"
+        }
+      }
+    },
+    {
+      "name": "vehicleB-unfocused-check",
+      "at": "2026-11-27T11:13:03.310Z",
+      "paletteIsFocusedWindow": false,
+      "focusedElement": {
+        "frame": {
+          "height": 1074,
+          "width": 1710,
+          "x": 0,
+          "y": 38
+        },
+        "role": "AXLayoutArea",
+        "subrole": "AXDialog",
+        "title": "名称未設定プロジェクト"
+      },
+      "paletteCensusFrame": {
+        "x": 120,
+        "y": 96,
+        "width": 400,
+        "height": 300
+      },
+      "focusedElementIsPaletteByFrame": false,
+      "note": "with another window holding focus, AXFocusedWindow no longer addresses the palette — the focused-element vehicle is focus-dependent by construction; the driver-side identity guard (frame match vs census) is what prevents a wrong-target mutation here"
+    },
+    {
+      "name": "focusedOnly-state-after-refocus",
+      "at": "2026-11-27T11:13:03.712Z",
+      "error": "the focused window of pid 58115 does not match the locator {\"title\":\"ae-a8n PoC Panel\",\"titleMatch\":\"contains\"} (focused window: \"名称未設定プロジェクト\" role=AXLayoutArea subrole=AXDialog); only the focused window is AX-reachable — an unfocused window cannot be resolved through this path"
+    },
+    {
+      "name": "negative-foreign",
+      "at": "2026-11-27T11:13:04.836Z",
+      "windowNumber": 2316,
+      "ownerPid": 72456,
+      "owner": "After Effects",
+      "refused": "not-found",
+      "message": "no WindowServer window numbered 2316 is visible to the census (the census lists 9 window(s) for pid 58115)"
+    },
+    {
+      "name": "close",
+      "at": "2026-11-27T11:13:08.187Z",
+      "closed": {
+        "quit": true,
+        "ownership": {
+          "kind": "owned",
+          "evidence": "pid 58115 is still the only instance"
+        }
+      }
+    },
+    {
+      "name": "postflight-census",
+      "at": "2026-11-27T11:13:08.304Z",
+      "remainingInScope": []
+    }
+  ],
+  "outcome": "completed"
+}

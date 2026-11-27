@@ -176,6 +176,7 @@ export function guiStateObservation(
     windows: state.windows.map((window, index) => toWindowReport(window, index + 1)),
     windowServer: state.windowServer,
     axSuspect: state.axSuspect,
+    axSuspectReason: state.axSuspectReason,
     axUnaccountedWindows: state.axUnaccountedWindows.map((ws) => ({
       layer: ws.layer,
       onScreen: ws.onScreen,

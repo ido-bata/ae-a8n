@@ -137,6 +137,10 @@ function stepChannelMissing(step: InputStep, poster: InputPoster): string | null
       return poster.clipboardWrite === undefined ? "clipboardWrite" : null;
     case "ime-mode-select":
       return poster.imeSelect === undefined ? "imeSelect" : null;
+    case "custom":
+      return step.channel === "mouse" && poster.mouse === undefined
+        ? "mouse"
+        : null;
     default:
       return null;
   }
