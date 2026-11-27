@@ -57,13 +57,15 @@ export type DarwinInputHelper =
   | "input-post"
   | "input-clipboard"
   | "input-source"
-  | "input-focus";
+  | "input-focus"
+  | "input-mouse";
 
 export const DARWIN_INPUT_HELPERS: readonly DarwinInputHelper[] = [
   "input-post",
   "input-clipboard",
   "input-source",
   "input-focus",
+  "input-mouse",
 ];
 
 /** The exec seam: run one helper with args inside the target session. */
@@ -379,6 +381,43 @@ export function darwinFocusOps(exec: DarwinInputExec): InputFocusOps {
           "focus-unproven — fail-closed by design",
       );
     },
+  };
+}
+
+// MARK: - Mouse click (#368)
+
+/**
+ * One CGEvent mouse click through `input-mouse` — the context-menu
+ * right-click vehicle (#368, `specs/workspace-editing/spec.md` §9).
+ * Deliberately NOT part of `InputPoster`: the input contract's mouse
+ * taxonomy (drag/scroll/hover) is B-IME's and stays absent here; this
+ * is the single click channel the workspace context-menu slice needs.
+ *
+ * Coordinates are global display points in the target session — the
+ * caller must derive them from a re-verified frame. Returns nothing on
+ * success; a non-zero helper exit throws `DarwinInputError`, which the
+ * caller maps to `indeterminate` (the click may have partially landed).
+ */
+export function darwinMouseClick(
+  exec: DarwinInputExec,
+  options: { readonly tap?: "hid" | "session" | undefined } = {},
+): (request: {
+  readonly x: number;
+  readonly y: number;
+  readonly button?: "left" | "right" | "middle" | undefined;
+}) => void {
+  const tap = options.tap ?? "session";
+  return ({ x, y, button = "left" }) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw new DarwinInputError("input-mouse", 2, "click coordinates must be finite numbers");
+    }
+    run(exec, "input-mouse", [
+      "click",
+      "--x", String(Math.round(x)),
+      "--y", String(Math.round(y)),
+      "--button", button,
+      "--tap", tap,
+    ]);
   };
 }
 
