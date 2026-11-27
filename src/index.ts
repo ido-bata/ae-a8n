@@ -104,6 +104,49 @@ export type {
 } from "./api/index.js";
 
 /*
+ * Render Queue + native file-dialog surface (#365,
+ * specs/workspace-editing/spec.md §3 W3): `ae.renderQueue(locator)` —
+ * observe-class AX rows (`oracle: "limited"`, no DOM readback exists)
+ * plus gated menu-driven add; `ae.fileDialog()` — bounded wait for the
+ * declared picker class, gated confirm/cancel, and filename entry that
+ * stays `unsupported` until the B-IME OS input posters land (#372/#373).
+ */
+export {
+  FileDialog,
+  FileDialogError,
+  fileDialogCapabilities,
+  fileDialogForTarget,
+  matchFileDialog,
+  RenderQueue,
+  RenderQueueError,
+  renderQueueCapabilities,
+  renderQueueForTarget,
+  RENDER_QUEUE_ORACLE,
+} from "./api/index.js";
+export type {
+  AddToRenderQueueOptions,
+  AwaitFileDialogOptions,
+  FileDialogActResult,
+  FileDialogCapabilities,
+  FileDialogCapability,
+  FileDialogErrorCode,
+  FileDialogMatch,
+  FileDialogMutationGate,
+  FileDialogOps,
+  FileDialogResolution,
+  FileDialogTitles,
+  FilenameEntryVerdict,
+  RenderQueueAddResult,
+  RenderQueueCapabilities,
+  RenderQueueCapability,
+  RenderQueueErrorCode,
+  RenderQueueItem,
+  RenderQueueOracle,
+  RenderQueueSnapshot,
+  RenderQueueWalkInfo,
+} from "./api/index.js";
+
+/*
  * Capability handshake surface (#102): `ae.capabilities()` plus the
  * negotiation and dispatch-authorization helpers, structurally conforming
  * to ae-devtools `ae-devtools.capability-handshake/v1`.
