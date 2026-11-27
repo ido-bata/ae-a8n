@@ -33,6 +33,8 @@
 | #336 | diagnostics: CEPHtmlEngine crash report / CSXS ログ未収集 | **未修正**。`darwinDiagnosticSources`（session-diagnostics.ts:148-170）の `AE_PATH_PATTERN` は `after effects|afterfx|aerender` のみで `CEPHtmlEngine`・`~/Library/Logs/CSXS` を含まない | 実機観測（ty-plus E2E の wedge 事例） | 診断 gap（対象誤認に非直結） | #336 |
 | #406 | AE が起動 phase で AXChildren/AXWindows/UI elements を vend しないことがある（AXFocusedWindow のみ到達可能） | 本 PR。`window-ops` helper の `state` が `focusedWindow`（AXFocusedWindow の属性一式）と `axTrusted`（AXIsProcessTrusted）を報告。`ae.windowOps(locator, { focusedOnly: true })` で AXFocusedWindow + CGWindowList census 照合による observe-only resolve を追加。mutation は focusedOnly 下で gate の如何に関わらず refuse。`axSuspectReason`（gui-recovery.ts）と panel/window-ops の not-found hint で「列挙が空」を正直に報告 | **verified on real host**（非 vend は起動途中・readiness timeout の instance で観測。証跡 `docs/evidence/realhost-2026-11-27/`。起動完了後の instance は通常どおり vend することも同日確認）。`window-ops state` の `focusedWindow`/`axTrusted` 出力は実機 AE 2026/2027 双方で確認済み（`window-ops-state-ae2026.json`/`window-ops-state-ae2027.json`）。focusedOnly resolve・`axSuspectReason`・not-found hint は automated test（fake host）— 実機 AE への end-to-end 適用は未検証 | 修正実装済み（observe のみ）・mutation vehicle は未許可 | #406 |
 
+| #357 | panel mutation gate unblock PoC（B-PANEL） | `scripts/poc-panel-ax-vehicle.mjs` + `panel-ax-vehicle-poc.json`。owned AE 2027 で direct `AXUIElementSetAttributeValue` vehicle が ScriptUI palette の resize/move/restore を 3 系統 readback で完走（focused=`AXFocusedWindow`、unfocused=AX 列挙経由）。System Events `set size` は -1712 timeout で否定。AX vend は frontmost 経験に相関（因果未証明）。gate は不変・refuse 継続 | **verified on real host**（mutation vehicle の実測。A-SAFETY class 判定は未了） | 証跡完備・class 判定待ち（#358） | #357 → #358 |
+
 ## 不変条件の現行評価
 
 | 不変条件 | 現状 | 根拠 |
@@ -97,13 +99,43 @@
 - **新規の mutation-disabling 実装 ticket は起票しない。** 未修正 defect（#329）は誤報告方向、残 gap（#294/#295 の未配線側）は監視不存在方向であり、いずれも「誤対象を操作する」経路を新たに開かない。
 - 既存 ticket への受入条件追記: #294（残 gap の明確化）、#329（分類精度の受入条件）、#336（診断 gap である旨の分類確認）。
 
-### panel mutation（#343 / B-PLATFORM）— 未許可（fail-closed）
+### panel mutation（#343 / B-PLATFORM）— 未許可（fail-closed）、#357 で vehicle 実機証明済み・class 判定待ち
 
-- 対象: `ae.panel()` の `resize`/`restore`（`mutate-gui` class。実装は `src/panels/` + `RESIZE_PANEL_SCRIPT`、契約は `specs/panel-interaction/spec.md`）。
-- 現状: **無効**。auto-safe class に panel mutation は存在せず、実機で AE panel が `set size`（System Events 経由の AX size set）に応答することも未検証（owned AE launch が #339 と同じく blocked）。`panelMutationGate()`（`src/panels/gate.ts`）が唯一の flip point で、現時点では常に refuse し、理由に本書を明記する。
+- 対象: `ae.panel()` の `resize`/`restore`（`mutate-gui` class。実装は `src/panels/` + `RESIZE_PANEL_SCRIPT`、契約は `specs/panel-interaction/spec.md`）。window-ops 系（`ae.windowOps()` の move/resize/minimize/restore/maximize/focus、#366）の gate も同じ判定を共有する。
+- 現状: **無効のまま**。`panelMutationGate()`（`src/panels/gate.ts`）と `windowOpsMutationGate()`（`src/windowops/gate.ts`）はともに refuse を継続（#357 の実機 run 内でも refuse を再確認）。auto-safe class に panel/window mutation は存在しない。
 - 多層防御（gate とは独立に常時有効）: census 帰属 `"owned"` 必須（`foreign`/`unmatched`/`unproven` は mutation・capture とも拒否）、GUI lease + audit、lease 内の frame/title/subrole 再検証、process identity 再証明、mutation outcome 不明時は `indeterminate` で再観測要求。
-- 解除条件: (a) 本監査で panel resize class を auto-safe 相当と判定、(b) owned AE で `set size` の実機検証（resize → census/AX frame の readback 一致）、(c) 座標系の一意性確認（points 空間で DPI 換算を伴わないことの実測）。
-- 最小実機 PoC: owned AE の ScriptUI resizeable window に対し `panel.resize()` → `measure()` で要求サイズと観測 frame の一致を確認し、`restore()` で元 frame に戻ること。証跡は PanelCapture artifact（sha256/backingScale/leakage）とともに #343 に記録。
+
+#### #357 real-host PoC 結果（2026-11-27、owned AE 2027、証跡 `docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json` ほか）
+
+旧来の解除条件に対する実測:
+
+- **(b)「panel が resize vehicle に応答するか」— 条件付きで回答済み。** spec が想定した System Events `set size` vehicle は **否**: AppleEvent timeout（-1712）に加え、System Events の `UI elements`/`windows` 列挙は AE に対しほぼ空（`AXMenuBar` のみ〜2 window）を返し、そもそも対象 element に到達できない。**代替 vehicle は肯定的に実証**: 直接 `AXUIElementSetAttributeValue(kAXSizeAttribute/kAXPositionAttribute)` が、(i) `AXFocusedWindow` element 経由（focused window のみ到達可能）と (ii) `AXWindows`/`AXChildren` 列挙経由（`window-ops act`、**unfocused window にも有効**）の両方で、実 ScriptUI resizeable palette に対し resize/move/restore を完走させた。検証は AX readback・CGWindowList census bounds・ScriptUI 自己申告（`Window.size`/`bounds`）の 3 系統一致。
+- **(c) 座標系の一意性 — 確認済み。** AX frame・census bounds・ScriptUI geometry は全て global display points（top-left origin）で一致。DPI/pixel 換算は介在しない（ScriptUI `size` は 24px の window chrome を除く content size を返す差分のみ）。
+- **(a) A-SAFETY class 判定 — 未了（人間/A-SAFETY 権限）。** 本証跡は判定の入力であり、gate 反転の根拠としては #358 での明示的な裁定が必要。
+
+PoC が新たに明らかにした事実（contract 設計に影響）:
+
+- **AX window 列挙は「app が一度 frontmost/active になった後」にのみ populate される観測**（owned launch で 5 分超・`open` activation 後も 0 の例と、frontmost 化直後に 2→4 window が vend された例の両方を記録）。起動完了のみでは不十分。厳密な trigger（frontmost 因果か初回 AX write か経過時間か）は未分離 — **unknown として記録**。
+- **列挙経路は 2 系統あり等価でない**: System Events `UI elements`（`LIST_WINDOWS_SCRIPT` が使う経路）は AE でほぼ空、AXUIElement `AXWindows`/`AXChildren`（window-ops helper 経路）は frontmost 後に正常列挙。`ae.panel().identify()` は前者 + census 帰属のため現状 `not-found` を返し続ける — **panel resolve を window-ops 型の census-first/AXUIElement 解決へ移すか、window-ops を panel vehicle として使うかは #358 の設計判断**。
+- **`AXFocusedWindow` vehicle は focus 依存**: 他 window が focus を持つと palette は原理的に到達不能（実測: activation で focus が main window へ移り、focusedOnly resolve は `not-found`、guard なしの直接 set は誤対象を打ち得る）。契約上は「census-first resolve → AX element → set → identity 再検証 → bounded postcondition」が必須で、focused 経路には「focused element の frame が期待 census frame と一致する時のみ mutate」の guard が要る。
+- **負例確認**: foreign AE 2026 の census windowNumber を locator にした resolve は `not-found`/`unproven` で拒否。owned-attribution の fail-closed は実機でも維持。
+
+#### 提案 vehicle contract（#358 への入力、A-SAFETY 裁定待ち）
+
+1. **resolve**: census-first（windowNumber → pid 帰属 → frame）。AX 列挙が空でも census row は存在するため、`AXFocusedWindow` または AX 列挙の frame と census bounds を照合して `AXUIElement` を得る。title は locator hint のみ。
+2. **identity re-verify**: mutate 直前に focused element / 列挙 element の frame・title・subrole を期待値と 4pt tolerance で再照合。不一致・ambiguous は refuse。
+3. **bounded postcondition**: set 後に同 element の readback + CGWindowList census bounds の再読で要求 frame を確認。timeout は `indeterminate`、blind resend 禁止（ADR execution-model の UNKNOWN non-resend を継承）。
+4. **vehicle**: `AXUIElementSetAttributeValue` 直接呼出（window-ops helper 系）。System Events `set size` は AE では使用不可（-1712 timeout 実測）。
+5. **no-resend / owned-attribution**: 既存の lease + audit + `attribution==="owned"` + process identity 再証明をそのまま適用。focused 経路は「focused のみ」という構造的制約を contract に明記し、unfocused window は列挙経路か `not-found`。
+
+#### 判定への推奨（recommendation for A-SAFETY authority — 自己承認ではない）
+
+- **部分解除を推奨**: window-ops vehicle（列挙経路）による `resize`/`move`/`restore`/`minimize`/`maximize` 相当の mutate-gui class は、上記 contract を `specs/workspace-editing/spec.md` §9 と `specs/panel-interaction/spec.md` に反映した上で auto-safe 相当と判定する材料が整った。`AXFocusedWindow` 経路は observe のみのままが安全（mutation vehicle としては focus 依存が強すぎ、guard を production helper に実装するまでは不許可を維持推奨）。
+- **`ae.panel()` の resize/restore**: spec の vehicle 記述（System Events `set size`）は実機で否定済み。#358 で spec を direct-AX vehicle に改訂し、panel resolve を window-ops 型に揃えた上で、window-ops と同じ class 判定を適用するのが筋。**現時点での推奨は keep-closed**（gate は #358 の spec 改訂 + class 判定まで refuse 継続）。
+- **残る unknown（#358 が引き継ぐ）**: AX vend の正確な trigger（frontmost 因果は未証明）/ System Events vs AXUIElement 列挙の乖離原因 / `ae.panel()` identify の解決経路変更 / docked-region・minimize/zoom variant・Windows lane。
+
+- 解除条件（再掲・改訂）: (a) 本監査で panel/window resize class を auto-safe 相当と判定（**#357 証跡を根拠に人間/A-SAFETY が判定**）、(b) ~~owned AE での resize vehicle 実機検証~~ → **達成（direct-AX vehicle、System Events vehicle は否定）**、(c) ~~座標系一意性~~ → **達成（points 一致を実測）**。残る実質条件は (a) の class 判定と spec/contract 改訂（#358）。
+- 最小実機 PoC: `docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json` が ScriptUI palette への resize→move→restore 往復を 3 系統 readback で記録済み。
 
 ### AX 非 vend の AE への window 到達（#406）— observe のみ許可、mutation は不許可
 
@@ -111,9 +143,10 @@
 - 現行の fail-closed は維持される: 列挙が空なら `ae.panel()`/`ae.windowOps()`/`ae.dockedPane()` の target resolve は `not-found` で拒否し、supervision の window 判定は `axSuspect`（+ 新設の `axSuspectReason`）で「AX tree が信用できない」ことを明示する。誤って「window 無し = clean」と読む経路はない。
 - 追加した observe-only 経路: `ae.windowOps(locator, { focusedOnly: true })`。`window-ops state` が報告する `AXFocusedWindow` の属性（title/role/subrole/frame/miniaturized/main/focused）を locator および CGWindowList census の frame 照合（AX point == census point、実機計測済み）で `PanelTarget` に解決する。`resolution: "focused-window"`、`windowIndex: null`（列挙 index は存在しない）を報告し、unfocused window を名指す locator（例: 別の `windowNumber`）は `not-found` を返す — 推測で別 window に retarget しない。
 - **mutation は許可しない**: focusedOnly 下では `move`/`resize`/`minimize`/`restore`/`maximize`/`focus` が gate の如何に関わらず `refused` で失敗する（`WindowOpsController.#mutate` が構造的に拒否）。理由: `act` vehicle は AX window 列挙を再 list して identity を照合する設計であり、列挙が空のホストでは vehicle 自体が機能しない。実機 PoC が証明した「AXFocusedWindow element への直接 `AXUIElementSetAttributeValue(kAXSizeAttribute)`」は有望だが、**別 vehicle・別 identity 規則・別 postcondition を要し、A-SAFETY review なしに配線してはならない**。
-- 検証レベル: AX 非 vend 挙動と AXFocusedWindow の frame 一致は **verified on real host**（2026-11-27 証跡）。focusedOnly resolve・`axSuspectReason`・not-found hint は **automated test**（fake host）のみで、実機 AE への適用は未検証。
+- 検証レベル: AX 非 vend 挙動と AXFocusedWindow の frame 一致は **verified on real host**（2026-11-27 証跡）。focusedOnly resolve は #357 第二セッションで実機 AE に対し `resolution: "focused-window"` + census `windowNumber` 解決を確認（**verified on real host**）。`axSuspectReason`・not-found hint は **automated test**（fake host）のみ。
 - 解除条件（mutation を将来許可する場合）: (a) AXFocusedWindow element を直接 address する vehicle の設計（identity = census windowNumber + frame、postcondition = CGWindowList readback）、(b) focused 依存の制約（unfocused window は原理的に到達不能）の contract 明記、(c) 実機での resize/restore 往復証跡、(d) 本書への追記と gate flip の明示的 commit。
 - 最小実機 PoC: `docs/evidence/realhost-2026-11-27/ax-focused-window-resize.json` が既に resize→restore の frame 一致を記録済み。focusedOnly `state()` を実機 AE に向けて実行し `resolution: "focused-window"` と census `windowNumber` が返ることを確認するのが最初の確認項目。
+- **#357 第二セッション追記**: 「起動完了後は vend する」の読みは不十分だった。起動完了・transport 応答済みの owned launch でも、app が一度も frontmost になっていない間は 5 分超 `windows: []` が続いた一方、frontmost 化の観測と同時に列挙が populate された（`panel-ax-vehicle-poc.json`）。vend の trigger は「起動 phase」ではなく「activation/frontmost 経験」に相関する可能性が高い（因果は未証明）。この局面でも `AXFocusedWindow` は常に機能し、census-first + frame 照合で windowNumber まで resolve できる（実測）。詳細と vehicle contract 案は直上の panel mutation 節を参照。
 
 ## 未確認事項（unverified として明記）
 
