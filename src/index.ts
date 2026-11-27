@@ -25,6 +25,7 @@ export {
   TimelineError,
   timelineCapabilities,
   UNDO_COMMAND_ID,
+  Workspace,
 } from "./api/index.js";
 
 export {
@@ -135,6 +136,74 @@ export type {
   TimelineRowVerify,
   TimelineSeams,
   TimelineVerdict,
+} from "./api/index.js";
+
+/*
+ * Workspace editing surface (#363, W1 of specs/workspace-editing/spec.md;
+ * parent #345 / program #337): `ae.workspace()` plus the capability
+ * report and the read-only workspace-XML reader (#362). Observe-class
+ * operations run on owned targets; switch/arrange are mutate-gui and
+ * gate-pending, and arrange additionally awaits the B-IME drag vehicle.
+ */
+export {
+  workspaceCapabilities,
+  workspaceForTarget,
+  WorkspaceError,
+} from "./api/index.js";
+export type {
+  WorkspaceArrangeDestination,
+  WorkspaceArrangeExpectation,
+  WorkspaceArrangeRequest,
+  WorkspaceArrangeResult,
+  WorkspaceCapability,
+  WorkspaceCapabilities,
+  WorkspaceDragRequest,
+  WorkspaceDragVerdict,
+  WorkspaceErrorCode,
+  WorkspaceIdentity,
+  WorkspaceMenuEntry,
+  WorkspaceMenuPath,
+  WorkspaceObservation,
+  WorkspaceObservationFailure,
+  WorkspacePanelFrame,
+  WorkspacePollOptions,
+  WorkspaceRestoreReport,
+  WorkspaceSeams,
+  WorkspaceSurfaceOps,
+  WorkspaceSwitchResult,
+  WorkspaceTarget,
+  WorkspaceXmlComparison,
+  WorkspaceXmlEvidence,
+} from "./api/index.js";
+export {
+  DEFAULT_WORKSPACE_MENU_PATH,
+  compareWorkspaceFrames,
+  workspaceFramesMatch,
+} from "./api/index.js";
+export {
+  WorkspaceXmlError,
+  discoverWorkspaceXml,
+  inspectWorkspaceXml,
+  resolveWorkspacePreferencesDir,
+  snapshotWorkspaceStore,
+  workspaceXmlRef,
+  extractWorkspaceNames,
+  compareVersionDirNames,
+  WORKSPACE_STORE_NAMES,
+} from "./api/index.js";
+export type {
+  DiscoverOptions,
+  InspectedWorkspaceXml,
+  MissingWorkspaceStore,
+  ResolvePreferencesOptions,
+  WorkspaceDiscovery,
+  WorkspaceLayout,
+  WorkspaceStoreKind,
+  WorkspaceStoreSnapshot,
+  WorkspaceXmlErrorCode,
+  WorkspaceXmlFile,
+  WorkspaceXmlInspection,
+  WorkspaceXmlRef,
 } from "./api/index.js";
 
 /*
