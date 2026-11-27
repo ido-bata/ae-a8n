@@ -86,6 +86,10 @@ import {
   recordingApiForController,
   type RecordingApi,
 } from "./record.js";
+import {
+  evidenceApiFor,
+  type EvidenceApi,
+} from "./render-evidence.js";
 import type { RecordingController } from "../evidence/recording.js";
 import {
   type Timeline,
@@ -177,6 +181,19 @@ export type {
 } from "../driver/expected-modals.js";
 export { grantedScopes } from "./session.js";
 export { TERMINATE_PERMIT } from "./types.js";
+export type { EvidenceApi } from "./render-evidence.js";
+export {
+  consumerArtifactKind,
+  consumerArtifacts,
+  consumerRefs,
+  joinOperationEvidence,
+} from "../evidence/consumer.js";
+export type {
+  ConsumerArtifact,
+  ConsumerArtifactKind,
+  OperationEvidenceCheck,
+  OperationEvidenceJoin,
+} from "../evidence/consumer.js";
 import {
   Comp,
   Effect,
@@ -1300,6 +1317,26 @@ export class AfterEffects {
   get record(): RecordingApi {
     this.#recordingController ??= createRecordingController(this.#session);
     return recordingApiForController(this.#recordingController);
+  }
+
+  /**
+   * The session's GUI-evidence index surface (#385,
+   * `specs/gui-evidence/spec.md` §5.5; E4 of program #337): read the
+   * `ae-a8n.gui-evidence/v1` document at
+   * `<sessionRoot>/artifacts/evidence-index.json`, echo
+   * `consumerRefs` (`testId`/`runId`/`suite` — caller-supplied, never
+   * invented), project artifacts into the ae-test `Artifact` shape,
+   * run the same-run join for one `requestId`, and discover render
+   * outputs under `session.artifactsDir`.
+   *
+   * `comp.renderFrame` binds its PNG into the index automatically
+   * (Channel R); `panel().capture()` binds stills (Channel S) and
+   * `record.start/stop` binds screen segments. This surface is the
+   * consumer handoff — ae-test#145 / ae-devtools#426 read the same
+   * file; nothing here copies evidence into a new tree.
+   */
+  get evidence(): EvidenceApi {
+    return evidenceApiFor(this.#session);
   }
 
   /**
