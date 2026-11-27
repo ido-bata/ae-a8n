@@ -62,6 +62,12 @@ import {
   timelineForTarget,
   type TimelineCapabilities,
 } from "./timeline.js";
+import {
+  type Workspace,
+  workspaceCapabilities,
+  workspaceForTarget,
+  type WorkspaceCapabilities,
+} from "./workspace.js";
 import { supervisionReport, type SupervisionReport } from "../supervision/index.js";
 import type { StillEvidenceContext } from "../evidence/stills.js";
 import type {
@@ -197,6 +203,59 @@ export {
   type TimelineSeams,
   type TimelineVerdict,
 } from "./timeline.js";
+export {
+  Workspace,
+  WorkspaceError,
+  workspaceCapabilities,
+  workspaceForTarget,
+  DEFAULT_WORKSPACE_MENU_PATH,
+  compareWorkspaceFrames,
+  workspaceFramesMatch,
+  WorkspaceXmlError,
+  discoverWorkspaceXml,
+  inspectWorkspaceXml,
+  resolveWorkspacePreferencesDir,
+  snapshotWorkspaceStore,
+  workspaceXmlRef,
+  extractWorkspaceNames,
+  compareVersionDirNames,
+  WORKSPACE_STORE_NAMES,
+  type WorkspaceArrangeDestination,
+  type WorkspaceArrangeExpectation,
+  type WorkspaceArrangeRequest,
+  type WorkspaceArrangeResult,
+  type WorkspaceCapability,
+  type WorkspaceCapabilities,
+  type WorkspaceDragRequest,
+  type WorkspaceDragVerdict,
+  type WorkspaceErrorCode,
+  type WorkspaceIdentity,
+  type WorkspaceMenuEntry,
+  type WorkspaceMenuPath,
+  type WorkspaceObservation,
+  type WorkspaceObservationFailure,
+  type WorkspacePanelFrame,
+  type WorkspacePollOptions,
+  type WorkspaceRestoreReport,
+  type WorkspaceSeams,
+  type WorkspaceSurfaceOps,
+  type WorkspaceSwitchResult,
+  type WorkspaceTarget,
+  type WorkspaceXmlComparison,
+  type WorkspaceXmlEvidence,
+  type DiscoverOptions,
+  type InspectedWorkspaceXml,
+  type MissingWorkspaceStore,
+  type ResolvePreferencesOptions,
+  type WorkspaceDiscovery,
+  type WorkspaceLayout,
+  type WorkspaceStoreKind,
+  type WorkspaceStoreSnapshot,
+  type WorkspaceXmlErrorCode,
+  type WorkspaceXmlFile,
+  type WorkspaceXmlInspection,
+  type WorkspaceXmlRef,
+} from "./workspace.js";
 // The capability-handshake surface is exported once, from the package
 // entry point (src/index.ts → ./api/capabilities.js); re-exporting it here
 // too would duplicate the list and leak test-only symbols twice.
@@ -863,6 +922,36 @@ export class AfterEffects {
    */
   timeline(locator: DockedPaneLocator): Timeline {
     return timelineForTarget(this.recoveryTarget(), this.#session, locator);
+  }
+
+  /**
+   * What this build can do with After Effects workspaces on this
+   * platform (#363, W1 of `specs/workspace-editing/spec.md`):
+   * per-capability support, verification level and gate status.
+   * `observe`/`verifyRestore` are observe-class; `switchWorkspace` is
+   * mutate-gui and `arrange` additionally needs the unimplemented
+   * drag vehicle — see `workspaceCapabilities()` for the current
+   * answers.
+   */
+  workspaceCapabilities(): WorkspaceCapabilities {
+    return workspaceCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's workspace (#363):
+   * `observe`/`listWorkspaces`/`verifyRestore` are observe-class —
+   * active-workspace identity re-read from the Window > Workspace menu
+   * checkmark, panel frames, and the read-only workspace-XML store.
+   * `switchTo`/`arrange` are mutate-gui and gated — see
+   * `workspaceCapabilities()` for what is currently allowed.
+   *
+   * Every method re-observes: a workspace is a layout predicate
+   * verified per observation, never a cached handle (spec §5). Throws
+   * `WorkspaceError` when no owned target is attested or the platform
+   * is unsupported.
+   */
+  workspace(): Workspace {
+    return workspaceForTarget(this.recoveryTarget());
   }
 
   /**
