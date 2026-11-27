@@ -166,6 +166,7 @@ const DARWIN_HELPER_NAMES = [
   "input-clipboard",
   "input-source",
   "input-focus",
+  "input-mouse",
 ] as const;
 
 /**
@@ -202,7 +203,7 @@ function findDarwinHelperSources(): string | null {
  * target session via `runInSession`. This is the *only* place helpers are
  * built; `src/input/darwin.ts` itself never compiles.
  */
-function ensureDarwinInputHelpers(): string | null {
+export function ensureDarwinInputHelpers(): string | null {
   const srcDir = findDarwinHelperSources();
   if (srcDir === null) {
     return null;

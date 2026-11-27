@@ -12,6 +12,7 @@
 export {
   AfterEffects,
   Comp,
+  ContextMenu,
   DockedPane,
   Effects,
   Effect,
@@ -20,6 +21,7 @@ export {
   Panel,
   Parameter,
   Project,
+  ProjectDialog,
   REDO_COMMAND_ID,
   Timeline,
   TimelineError,
@@ -207,6 +209,76 @@ export type {
   RenderQueueOracle,
   RenderQueueSnapshot,
   RenderQueueWalkInfo,
+} from "./api/index.js";
+
+/*
+ * Context-menu surface (#368, specs/workspace-editing/spec.md §3 W4+):
+ * `ae.contextMenu()` — gated right-click inside a re-verified frame
+ * (CGEvent right-button via `input-mouse` on macOS), bounded new-window
+ * classification like a dialog, gated item invoke. Whether the
+ * right-button post and the context-menu AX surface work on a real AE
+ * is unverified; see `contextMenuCapabilities()`.
+ */
+export {
+  ContextMenuError,
+  contextMenuCapabilities,
+  contextMenuForTarget,
+  contextMenuItems,
+  contextMenuMutationGate,
+  contextMenuWindowKey,
+  contextMenuExposedTitles,
+  matchContextMenu,
+} from "./api/index.js";
+export type {
+  ContextMenuActResult,
+  ContextMenuCapabilities,
+  ContextMenuCapability,
+  ContextMenuControllerOptions,
+  ContextMenuErrorCode,
+  ContextMenuItem,
+  ContextMenuMatch,
+  ContextMenuMutationGate,
+  ContextMenuMutationOp,
+  ContextMenuOps,
+  ContextMenuPostVerdict,
+  ContextMenuResolution,
+  ContextMenuSurface,
+  ContextMenuTargetLocator,
+  ContextMenuTitles,
+  OpenContextMenuOptions,
+} from "./api/index.js";
+
+/*
+ * Project Open/Save dialog round-trip (#368, specs/workspace-editing/
+ * spec.md §3 W4+): `ae.projectDialog()` — File > Open / Save through
+ * the real menu and native picker with bounded waits and recorded
+ * oracles (`project.info` for open, read-only file stat for save).
+ * Every leg is mutate-gui and gate-pending; filename entry additionally
+ * awaits the B-IME OS text-input posters (#372/#373).
+ */
+export {
+  ProjectDialogError,
+  projectDialogCapabilities,
+  projectDialogForTarget,
+  projectDialogMutationGate,
+} from "./api/index.js";
+export type {
+  CancelProjectDialogRequest,
+  OpenProjectDialogRequest,
+  ProjectDialogCapabilities,
+  ProjectDialogCapability,
+  ProjectDialogChannel,
+  ProjectDialogControllerOptions,
+  ProjectDialogErrorCode,
+  ProjectDialogEvidence,
+  ProjectDialogFileStat,
+  ProjectDialogLegResult,
+  ProjectDialogMutationGate,
+  ProjectDialogMutationOp,
+  ProjectDialogOps,
+  ProjectDialogProjectInfo,
+  ProjectDialogRoundTripResult,
+  SaveProjectDialogRequest,
 } from "./api/index.js";
 
 /*

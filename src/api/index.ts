@@ -64,6 +64,18 @@ import {
   type FileDialogCapabilities,
 } from "./file-dialog.js";
 import {
+  type ContextMenu,
+  contextMenuCapabilities,
+  contextMenuForTarget,
+  type ContextMenuCapabilities,
+} from "./context-menu.js";
+import {
+  type ProjectDialog,
+  projectDialogCapabilities,
+  projectDialogForTarget,
+  type ProjectDialogCapabilities,
+} from "./project-dialog.js";
+import {
   type RenderQueue,
   renderQueueCapabilities,
   renderQueueForTarget,
@@ -263,6 +275,56 @@ export {
   type FileDialogTitles,
   type FilenameEntryVerdict,
 } from "./file-dialog.js";
+export {
+  ContextMenu,
+  ContextMenuError,
+  contextMenuCapabilities,
+  contextMenuForTarget,
+  contextMenuExposedTitles,
+  contextMenuItems,
+  contextMenuMutationGate,
+  contextMenuWindowKey,
+  matchContextMenu,
+  type ContextMenuActResult,
+  type ContextMenuCapabilities,
+  type ContextMenuCapability,
+  type ContextMenuControllerOptions,
+  type ContextMenuErrorCode,
+  type ContextMenuItem,
+  type ContextMenuMatch,
+  type ContextMenuMutationGate,
+  type ContextMenuMutationOp,
+  type ContextMenuOps,
+  type ContextMenuPostVerdict,
+  type ContextMenuResolution,
+  type ContextMenuSurface,
+  type ContextMenuTargetLocator,
+  type ContextMenuTitles,
+  type OpenContextMenuOptions,
+} from "./context-menu.js";
+export {
+  ProjectDialog,
+  ProjectDialogError,
+  projectDialogCapabilities,
+  projectDialogForTarget,
+  projectDialogMutationGate,
+  type CancelProjectDialogRequest,
+  type OpenProjectDialogRequest,
+  type ProjectDialogCapabilities,
+  type ProjectDialogCapability,
+  type ProjectDialogChannel,
+  type ProjectDialogControllerOptions,
+  type ProjectDialogErrorCode,
+  type ProjectDialogEvidence,
+  type ProjectDialogFileStat,
+  type ProjectDialogLegResult,
+  type ProjectDialogMutationGate,
+  type ProjectDialogMutationOp,
+  type ProjectDialogOps,
+  type ProjectDialogProjectInfo,
+  type ProjectDialogRoundTripResult,
+  type SaveProjectDialogRequest,
+} from "./project-dialog.js";
 export {
   RenderQueue,
   RenderQueueError,
@@ -1070,6 +1132,55 @@ export class AfterEffects {
    */
   fileDialog(): FileDialog {
     return fileDialogForTarget(this.recoveryTarget());
+  }
+
+  /**
+   * What this build can do with context menus on this platform
+   * (#368, `specs/workspace-editing/spec.md` §3 W4+): `items` is
+   * observe-class; `open`/`invokeItem` are mutate-gui and report
+   * `unavailable` while the A-SAFETY gate keeps them refused — and the
+   * CGEvent right-button post + context-menu AX surface are unverified
+   * on a real host.
+   */
+  contextMenuCapabilities(): ContextMenuCapabilities {
+    return contextMenuCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's context menus
+   * (#368): `open` posts ONE gated right-click inside a re-verified
+   * frame and bounded-waits for the new menu surface; `items`
+   * enumerates the observed candidates; `invokeItem` presses a declared
+   * title — mutate-gui, gated, never resent. Throws `ContextMenuError`
+   * when no owned target is attested or the platform is unsupported.
+   */
+  contextMenu(): ContextMenu {
+    return contextMenuForTarget(this.recoveryTarget());
+  }
+
+  /**
+   * What this build can do with project Open/Save dialogs on this
+   * platform (#368): every leg is mutate-gui and reports `unavailable`
+   * while the gates keep them refused — the composed menu invoke, the
+   * dialog acts, and the shared-state filename entry each keep their
+   * own gate.
+   */
+  projectDialogCapabilities(): ProjectDialogCapabilities {
+    return projectDialogCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's project Open/Save
+   * dialogs (#368): `openProject`/`saveProjectAs`/`cancelDialog`/
+   * `roundTrip` drive the real menu → native picker → filename entry →
+   * confirm path with bounded waits and recorded oracles
+   * (`project.info` for open, read-only file stat for save). The GUI
+   * path is the asserted path; scripting mutations are never used as
+   * evidence. Throws `ProjectDialogError` when no owned target is
+   * attested or the platform is unsupported.
+   */
+  projectDialog(): ProjectDialog {
+    return projectDialogForTarget(this.recoveryTarget(), this.#session);
   }
 
   /**
