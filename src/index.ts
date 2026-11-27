@@ -292,6 +292,14 @@ export {
   workspaceCapabilities,
   workspaceForTarget,
   WorkspaceError,
+  assessFrameMonitors,
+  classifyTopology,
+  displaysForFrame,
+  monitorEvidence,
+  toMonitorDisplay,
+  DISPLAY_CENSUS_SCRIPT,
+  displayCensus,
+  parseDisplayCensus,
 } from "./api/index.js";
 export type {
   WorkspaceArrangeDestination,
@@ -306,6 +314,7 @@ export type {
   WorkspaceIdentity,
   WorkspaceMenuEntry,
   WorkspaceMenuPath,
+  WorkspaceMonitorReport,
   WorkspaceObservation,
   WorkspaceObservationFailure,
   WorkspacePanelFrame,
@@ -317,6 +326,13 @@ export type {
   WorkspaceTarget,
   WorkspaceXmlComparison,
   WorkspaceXmlEvidence,
+  FrameMonitorInfo,
+  MonitorCensus,
+  MonitorDisplay,
+  MonitorEvidence,
+  MonitorTopology,
+  DisplayCensus,
+  DisplayInfo,
 } from "./api/index.js";
 export {
   DEFAULT_WORKSPACE_MENU_PATH,
