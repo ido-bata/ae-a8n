@@ -149,6 +149,15 @@ PoC が新たに明らかにした事実（contract 設計に影響）:
 - 最小実機 PoC: `docs/evidence/realhost-2026-11-27/ax-focused-window-resize.json` が既に resize→restore の frame 一致を記録済み。focusedOnly `state()` を実機 AE に向けて実行し `resolution: "focused-window"` と census `windowNumber` が返ることを確認するのが最初の確認項目。
 - **#357 第二セッション追記**: 「起動完了後は vend する」の読みは不十分だった。起動完了・transport 応答済みの owned launch でも、app が一度も frontmost になっていない間は 5 分超 `windows: []` が続いた一方、frontmost 化の観測と同時に列挙が populate された（`panel-ax-vehicle-poc.json`）。vend の trigger は「起動 phase」ではなく「activation/frontmost 経験」に相関する可能性が高い（因果は未証明）。この局面でも `AXFocusedWindow` は常に機能し、census-first + frame 照合で windowNumber まで resolve できる（実測）。詳細と vehicle contract 案は直上の panel mutation 節を参照。
 
+### drag-drop（#422 / B-WORKSPACE）— `drop-file` のみ解除、`element-drag` は refused 継続
+
+- 対象: `ae.dragDrop()` の 2 kind（`src/dragdrop/` + `src/api/drag-drop.ts`、契約は `specs/workspace-editing/spec.md` §5/§9/§10）。vehicle は compiled `scripts/isolated-session/input-drag` helper（CGEvent press/move/release + `vend=fileurl` NSDraggingSession file drop）。
+- class 判定: `drop-file` = mutate-gui target-scoped **許可**。`drag-element` = 同じ mutate-gui class だが **refuse 継続** — element drag は segment 間の focus/attribution 再検証が必須で、#422 実装は abort 経路を持つが、A-SAFETY class 判定（独自の drag-sequence integrity 条件）は未了のため gate は refuse のまま。実機 e2e 対象は `drop-file` のみ。
+- 根拠: #411 real-host PoC（証跡 `docs/evidence/realhost-2026-11-27/drag-alt-411/`）が owned AE 2027 で (a) Project panel 内 item reorder、(b) Timeline layer reorder の CGEvent drag 着地、(c) `vend=fileurl` NSDraggingSession file drop の Project panel import（`operation:"copy"`、fixture PNG → project item 追加）を実測。#369 の `operation:"none"`×39 は drop 地点 UI 状態差と推定され、機構否定ではなかったと再評価する。#422 e2e 証跡は `docs/evidence/realhost-2026-11-27/drag-drop-422/`。
+- 防御層（gate とは独立に常時有効）: fail-closed `dragDropMutationGate()`、GUI lease が drag sequence 全体を atomic に保持、drop point は locator 再解決 frame 内 + census topmost-owned 検証（aux panel・foreign window は refuse）、payload は既存 regular file のみ（fixture files only）、drop 後は `project.items` DOM-delta oracle + bounded wait、`indeterminate` で never resend。
+- file-drop vehicle の正直な限界: NSDraggingSession の内部 segment は外部から再検証できない atomic vehicle であり、「drag 中の focus 変化で途中 abort」は file-drop には適用されない。pre-flight census gate と post-drop oracle で挟む設計であり、この差分を contract・証跡の両方に明記する（`src/dragdrop/types.ts` の safety doc 参照）。
+- 検証レベル: contract は automated test（fake ops、`test/dragdrop.test.ts`）、vehicle + oracle は #411 + #422 の real-host e2e で verified on real host。
+
 ## 未確認事項（unverified として明記）
 
 - #321/#322/#323/#324/#330 の各修正は実機で**発見**された defect への修正であり、修正後の実機再検証は #288（Windows 11 + macOS AE 2026/2027 matrix、freeze 後受入）に委譲されている。現時点の検証レベルは `automated test`（fake host）+ 実機発見時の観測証跡。
