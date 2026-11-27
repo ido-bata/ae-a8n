@@ -15,6 +15,7 @@ export {
   CompView,
   CompViewError,
   compViewCapabilities,
+  ContextMenu,
   DockedPane,
   EffectControls,
   EffectControlsError,
@@ -26,6 +27,7 @@ export {
   Panel,
   Parameter,
   Project,
+  ProjectDialog,
   REDO_COMMAND_ID,
   Timeline,
   TimelineError,
@@ -73,6 +75,65 @@ export type {
 } from "./panels/types.js";
 
 /*
+ * OS-level input surface (#374, specs/ime-input/spec.md §5–§6, parent
+ * #344 / program #337): `ae.input(locator)` plus the per-OS/session-kind
+ * capability report. Every mutation routes through `runInputPlan` —
+ * PanelTarget re-resolution, owned attribution, GUI lease, global-input
+ * authorization, `inputMutationGate()` (closed today), the three-step
+ * focus proof and the §5.5 cleanup contract. Mutations return the
+ * `InputAuditRecord`; nothing posts without the full gate chain.
+ * Verification level: `automated test` — real delivery unverified.
+ */
+export {
+  Input,
+  inputCapabilities,
+  inputForTarget,
+  inputSessionKind,
+} from "./api/input.js";
+export {
+  INPUT_OPERATION_GATES,
+  INPUT_OPERATION_KINDS,
+  InputError,
+} from "./input/types.js";
+export type {
+  ClipboardSnapshot,
+  ExpectedFocus,
+  FocusHolder,
+  GlobalInputAuthorization,
+  ImeModeSnapshot,
+  InputAuditRecord,
+  InputAuthorizationRequest,
+  InputAuthorizationVerdict,
+  InputCapability,
+  InputCapabilities,
+  InputCleanupAction,
+  InputCleanupReport,
+  InputCleanupResult,
+  InputErrorCode,
+  InputFocusEvidence,
+  InputGateState,
+  InputMouseEvent,
+  InputOperationClass,
+  InputOperationGate,
+  InputOperationKind,
+  InputOperationScope,
+  InputOps,
+  InputOpsContext,
+  InputOpsFactory,
+  InputPlan,
+  InputPlatform,
+  InputPoster,
+  InputSeams,
+  InputSessionKind,
+  InputStep,
+  InputStepKind,
+  InputStepRecord,
+  InputSurfaceOps,
+  InputVerification,
+  InputVerdict,
+} from "./api/index.js";
+
+/*
  * Menu-bar surface (#360, specs/workspace-editing/spec.md): `ae.menuBar()`
  * plus the capability report. Enumerate and checkmark readback are
  * observe-class; invoke is mutate-gui and gate-pending.
@@ -111,6 +172,119 @@ export type {
   DockedPaneRow,
   DockedPaneSeams,
   DockedPaneTree,
+} from "./api/index.js";
+
+/*
+ * Render Queue + native file-dialog surface (#365,
+ * specs/workspace-editing/spec.md §3 W3): `ae.renderQueue(locator)` —
+ * observe-class AX rows (`oracle: "limited"`, no DOM readback exists)
+ * plus gated menu-driven add; `ae.fileDialog()` — bounded wait for the
+ * declared picker class, gated confirm/cancel, and filename entry that
+ * stays `unsupported` until the B-IME OS input posters land (#372/#373).
+ */
+export {
+  FileDialog,
+  FileDialogError,
+  fileDialogCapabilities,
+  fileDialogForTarget,
+  matchFileDialog,
+  RenderQueue,
+  RenderQueueError,
+  renderQueueCapabilities,
+  renderQueueForTarget,
+  RENDER_QUEUE_ORACLE,
+} from "./api/index.js";
+export type {
+  AddToRenderQueueOptions,
+  AwaitFileDialogOptions,
+  FileDialogActResult,
+  FileDialogCapabilities,
+  FileDialogCapability,
+  FileDialogErrorCode,
+  FileDialogMatch,
+  FileDialogMutationGate,
+  FileDialogOps,
+  FileDialogResolution,
+  FileDialogTitles,
+  FilenameEntryVerdict,
+  RenderQueueAddResult,
+  RenderQueueCapabilities,
+  RenderQueueCapability,
+  RenderQueueErrorCode,
+  RenderQueueItem,
+  RenderQueueOracle,
+  RenderQueueSnapshot,
+  RenderQueueWalkInfo,
+} from "./api/index.js";
+
+/*
+ * Context-menu surface (#368, specs/workspace-editing/spec.md §3 W4+):
+ * `ae.contextMenu()` — gated right-click inside a re-verified frame
+ * (CGEvent right-button via `input-mouse` on macOS), bounded new-window
+ * classification like a dialog, gated item invoke. Whether the
+ * right-button post and the context-menu AX surface work on a real AE
+ * is unverified; see `contextMenuCapabilities()`.
+ */
+export {
+  ContextMenuError,
+  contextMenuCapabilities,
+  contextMenuForTarget,
+  contextMenuItems,
+  contextMenuMutationGate,
+  contextMenuWindowKey,
+  contextMenuExposedTitles,
+  matchContextMenu,
+} from "./api/index.js";
+export type {
+  ContextMenuActResult,
+  ContextMenuCapabilities,
+  ContextMenuCapability,
+  ContextMenuControllerOptions,
+  ContextMenuErrorCode,
+  ContextMenuItem,
+  ContextMenuMatch,
+  ContextMenuMutationGate,
+  ContextMenuMutationOp,
+  ContextMenuOps,
+  ContextMenuPostVerdict,
+  ContextMenuResolution,
+  ContextMenuSurface,
+  ContextMenuTargetLocator,
+  ContextMenuTitles,
+  OpenContextMenuOptions,
+} from "./api/index.js";
+
+/*
+ * Project Open/Save dialog round-trip (#368, specs/workspace-editing/
+ * spec.md §3 W4+): `ae.projectDialog()` — File > Open / Save through
+ * the real menu and native picker with bounded waits and recorded
+ * oracles (`project.info` for open, read-only file stat for save).
+ * Every leg is mutate-gui and gate-pending; filename entry additionally
+ * awaits the B-IME OS text-input posters (#372/#373).
+ */
+export {
+  ProjectDialogError,
+  projectDialogCapabilities,
+  projectDialogForTarget,
+  projectDialogMutationGate,
+} from "./api/index.js";
+export type {
+  CancelProjectDialogRequest,
+  OpenProjectDialogRequest,
+  ProjectDialogCapabilities,
+  ProjectDialogCapability,
+  ProjectDialogChannel,
+  ProjectDialogControllerOptions,
+  ProjectDialogErrorCode,
+  ProjectDialogEvidence,
+  ProjectDialogFileStat,
+  ProjectDialogLegResult,
+  ProjectDialogMutationGate,
+  ProjectDialogMutationOp,
+  ProjectDialogOps,
+  ProjectDialogProjectInfo,
+  ProjectDialogRoundTripResult,
+  SaveProjectDialogRequest,
 } from "./api/index.js";
 
 /*
@@ -196,6 +370,14 @@ export {
   workspaceCapabilities,
   workspaceForTarget,
   WorkspaceError,
+  assessFrameMonitors,
+  classifyTopology,
+  displaysForFrame,
+  monitorEvidence,
+  toMonitorDisplay,
+  DISPLAY_CENSUS_SCRIPT,
+  displayCensus,
+  parseDisplayCensus,
 } from "./api/index.js";
 export type {
   WorkspaceArrangeDestination,
@@ -210,6 +392,7 @@ export type {
   WorkspaceIdentity,
   WorkspaceMenuEntry,
   WorkspaceMenuPath,
+  WorkspaceMonitorReport,
   WorkspaceObservation,
   WorkspaceObservationFailure,
   WorkspacePanelFrame,
@@ -221,6 +404,13 @@ export type {
   WorkspaceTarget,
   WorkspaceXmlComparison,
   WorkspaceXmlEvidence,
+  FrameMonitorInfo,
+  MonitorCensus,
+  MonitorDisplay,
+  MonitorEvidence,
+  MonitorTopology,
+  DisplayCensus,
+  DisplayInfo,
 } from "./api/index.js";
 export {
   DEFAULT_WORKSPACE_MENU_PATH,

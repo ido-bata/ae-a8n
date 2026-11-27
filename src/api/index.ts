@@ -51,6 +51,37 @@ import {
   type DockedPaneLocator,
 } from "./docked-pane.js";
 import {
+  type Input,
+  inputCapabilities,
+  inputForTarget,
+  inputSessionKind,
+} from "./input.js";
+import type { InputCapabilities } from "../input/capabilities.js";
+import {
+  type FileDialog,
+  fileDialogCapabilities,
+  fileDialogForTarget,
+  type FileDialogCapabilities,
+} from "./file-dialog.js";
+import {
+  type ContextMenu,
+  contextMenuCapabilities,
+  contextMenuForTarget,
+  type ContextMenuCapabilities,
+} from "./context-menu.js";
+import {
+  type ProjectDialog,
+  projectDialogCapabilities,
+  projectDialogForTarget,
+  type ProjectDialogCapabilities,
+} from "./project-dialog.js";
+import {
+  type RenderQueue,
+  renderQueueCapabilities,
+  renderQueueForTarget,
+  type RenderQueueCapabilities,
+} from "./render-queue.js";
+import {
   createRecordingController,
   recordingApiForController,
   type RecordingApi,
@@ -190,6 +221,139 @@ export {
   type DockedPaneTree,
 } from "./docked-pane.js";
 export {
+  Input,
+  inputCapabilities,
+  inputForTarget,
+  inputSessionKind,
+  type InputOps,
+  type InputOpsContext,
+  type InputOpsFactory,
+  type InputSeams,
+  type InputSessionKind,
+  type InputSurfaceOps,
+} from "./input.js";
+export {
+  INPUT_OPERATION_GATES,
+  INPUT_OPERATION_KINDS,
+  InputError,
+  type ClipboardSnapshot,
+  type ExpectedFocus,
+  type FocusHolder,
+  type GlobalInputAuthorization,
+  type ImeModeSnapshot,
+  type InputAuditRecord,
+  type InputAuthorizationRequest,
+  type InputAuthorizationVerdict,
+  type InputCleanupAction,
+  type InputCleanupReport,
+  type InputCleanupResult,
+  type InputErrorCode,
+  type InputFocusEvidence,
+  type InputMouseEvent,
+  type InputOperationClass,
+  type InputOperationGate,
+  type InputOperationKind,
+  type InputOperationScope,
+  type InputPlan,
+  type InputPlatform,
+  type InputPoster,
+  type InputStep,
+  type InputStepKind,
+  type InputStepRecord,
+  type InputVerdict,
+} from "../input/types.js";
+export {
+  inputCapabilities as inputCapabilityReport,
+  type InputCapabilities,
+  type InputCapability,
+  type InputGateState,
+  type InputVerification,
+} from "../input/capabilities.js";
+export {
+  FileDialog,
+  FileDialogError,
+  fileDialogCapabilities,
+  fileDialogForTarget,
+  matchFileDialog,
+  type AwaitFileDialogOptions,
+  type FileDialogActResult,
+  type FileDialogCapabilities,
+  type FileDialogCapability,
+  type FileDialogErrorCode,
+  type FileDialogMatch,
+  type FileDialogMutationGate,
+  type FileDialogOps,
+  type FileDialogResolution,
+  type FileDialogTitles,
+  type FilenameEntryVerdict,
+} from "./file-dialog.js";
+export {
+  ContextMenu,
+  ContextMenuError,
+  contextMenuCapabilities,
+  contextMenuForTarget,
+  contextMenuExposedTitles,
+  contextMenuItems,
+  contextMenuMutationGate,
+  contextMenuWindowKey,
+  matchContextMenu,
+  type ContextMenuActResult,
+  type ContextMenuCapabilities,
+  type ContextMenuCapability,
+  type ContextMenuControllerOptions,
+  type ContextMenuErrorCode,
+  type ContextMenuItem,
+  type ContextMenuMatch,
+  type ContextMenuMutationGate,
+  type ContextMenuMutationOp,
+  type ContextMenuOps,
+  type ContextMenuPostVerdict,
+  type ContextMenuResolution,
+  type ContextMenuSurface,
+  type ContextMenuTargetLocator,
+  type ContextMenuTitles,
+  type OpenContextMenuOptions,
+} from "./context-menu.js";
+export {
+  ProjectDialog,
+  ProjectDialogError,
+  projectDialogCapabilities,
+  projectDialogForTarget,
+  projectDialogMutationGate,
+  type CancelProjectDialogRequest,
+  type OpenProjectDialogRequest,
+  type ProjectDialogCapabilities,
+  type ProjectDialogCapability,
+  type ProjectDialogChannel,
+  type ProjectDialogControllerOptions,
+  type ProjectDialogErrorCode,
+  type ProjectDialogEvidence,
+  type ProjectDialogFileStat,
+  type ProjectDialogLegResult,
+  type ProjectDialogMutationGate,
+  type ProjectDialogMutationOp,
+  type ProjectDialogOps,
+  type ProjectDialogProjectInfo,
+  type ProjectDialogRoundTripResult,
+  type SaveProjectDialogRequest,
+} from "./project-dialog.js";
+export {
+  RenderQueue,
+  RenderQueueError,
+  renderQueueCapabilities,
+  renderQueueForTarget,
+  RENDER_QUEUE_ORACLE,
+  type AddToRenderQueueOptions,
+  type RenderQueueAddResult,
+  type RenderQueueCapabilities,
+  type RenderQueueCapability,
+  type RenderQueueErrorCode,
+  type RenderQueueItem,
+  type RenderQueueOracle,
+  type RenderQueueSnapshot,
+  type RenderQueueWalkInfo,
+} from "./render-queue.js";
+export {
   Timeline,
   TimelineError,
   timelineCapabilities,
@@ -232,6 +396,14 @@ export {
   extractWorkspaceNames,
   compareVersionDirNames,
   WORKSPACE_STORE_NAMES,
+  assessFrameMonitors,
+  classifyTopology,
+  displaysForFrame,
+  monitorEvidence,
+  toMonitorDisplay,
+  DISPLAY_CENSUS_SCRIPT,
+  displayCensus,
+  parseDisplayCensus,
   type WorkspaceArrangeDestination,
   type WorkspaceArrangeExpectation,
   type WorkspaceArrangeRequest,
@@ -244,6 +416,7 @@ export {
   type WorkspaceIdentity,
   type WorkspaceMenuEntry,
   type WorkspaceMenuPath,
+  type WorkspaceMonitorReport,
   type WorkspaceObservation,
   type WorkspaceObservationFailure,
   type WorkspacePanelFrame,
@@ -255,6 +428,13 @@ export {
   type WorkspaceTarget,
   type WorkspaceXmlComparison,
   type WorkspaceXmlEvidence,
+  type FrameMonitorInfo,
+  type MonitorCensus,
+  type MonitorDisplay,
+  type MonitorEvidence,
+  type MonitorTopology,
+  type DisplayCensus,
+  type DisplayInfo,
   type DiscoverOptions,
   type InspectedWorkspaceXml,
   type MissingWorkspaceStore,
@@ -830,6 +1010,42 @@ export class AfterEffects {
   }
 
   /**
+   * What this build can do with OS-level input on this platform and
+   * session kind (#374, `specs/ime-input/spec.md` §7): per-capability
+   * support, verification level and gate status. Session-stream and
+   * shared-state input additionally report `unavailable` until an
+   * explicit `GlobalInputAuthorization` exists — see `input()`.
+   */
+  inputCapabilities(): InputCapabilities {
+    const target = this.recoveryTarget();
+    const sessionKind =
+      target === null ? "unknown" : inputSessionKind(target.session);
+    return inputCapabilities(process.platform, sessionKind);
+  }
+
+  /**
+   * A handle to one input surface of the owned After Effects instance
+   * (#374): `identify`/`imeModeQuery`/`clipboardRead` are observe-class;
+   * every other operation is a mutation routed through `runInputPlan` —
+   * PanelTarget re-resolution, owned-attribution check, GUI lease,
+   * global-input authorization, `inputMutationGate()`, the three-step
+   * focus proof for session-stream ops, and the §5.5 cleanup contract.
+   *
+   * Mutations return the `InputAuditRecord` (spec §5.6) whose `verdict`
+   * is `performed`/`refused`/`indeterminate`/`failed` — a refusal is
+   * evidence, not an exception. Today every mutation class is gated
+   * closed, so the honest production answer is a `refused` (or
+   * `unavailable` for session-stream/shared-state without an
+   * authorization grant) audit record. Throws `InputError` when no
+   * owned target is attested or the platform cannot resolve targets.
+   *
+   * `locator` names the surface exactly as `ae.panel(locator)` does.
+   */
+  input(locator: PanelLocator): Input {
+    return inputForTarget(this.recoveryTarget(), locator, {});
+  }
+
+  /**
    * The evidence-index context `panel().capture()` binds stills into
    * (#380, spec §5.5). Every field is proven or honestly null: the host
    * start identity comes from launch provenance when it exists, and the
@@ -923,6 +1139,101 @@ export class AfterEffects {
    */
   dockedPane(locator: DockedPaneLocator): DockedPane {
     return dockedPaneForTarget(this.recoveryTarget(), locator);
+  }
+
+  /**
+   * What this build can do with the Render Queue surface on this
+   * platform (#365, `specs/workspace-editing/spec.md` §3 W3):
+   * `observe` is observe-class AX rows (`oracle: "limited"` — no DOM
+   * readback exists); `addViaMenu` is mutate-gui and reports
+   * `unavailable` while the A-SAFETY gate keeps menu invoke refused.
+   */
+  renderQueueCapabilities(): RenderQueueCapabilities {
+    return renderQueueCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's Render Queue pane
+   * (#365): `items` re-walks the pane's bounded AX subtree on every
+   * call — the only honest channel, since the DOM exposes no render
+   * queue. `addViaMenu` drives the real Composition menu and waits,
+   * bounded, for new rows; it never resends and never substitutes
+   * `menu.execute` for the GUI path. Throws `RenderQueueError` when no
+   * owned target is attested or the platform is unsupported.
+   */
+  renderQueue(locator: DockedPaneLocator): RenderQueue {
+    return renderQueueForTarget(this.recoveryTarget(), locator);
+  }
+
+  /**
+   * What this build can do with native file dialogs on this platform
+   * (#365): `awaitDialog` is observe-class; `confirm`/`cancel` are
+   * mutate-gui and gated; `enterFilename` is additionally unsupported
+   * until the B-IME OS text-input posters land (#372/#373).
+   */
+  fileDialogCapabilities(): FileDialogCapabilities {
+    return fileDialogCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's native file
+   * dialogs (#365): `awaitDialog` bounded-waits for the declared
+   * picker class; `confirm`/`cancel`/`enterFilename` are mutate-gui
+   * and gated — see `fileDialogCapabilities()` for what is currently
+   * allowed. Throws `FileDialogError` when no owned target is attested
+   * or the platform is unsupported.
+   */
+  fileDialog(): FileDialog {
+    return fileDialogForTarget(this.recoveryTarget());
+  }
+
+  /**
+   * What this build can do with context menus on this platform
+   * (#368, `specs/workspace-editing/spec.md` §3 W4+): `items` is
+   * observe-class; `open`/`invokeItem` are mutate-gui and report
+   * `unavailable` while the A-SAFETY gate keeps them refused — and the
+   * CGEvent right-button post + context-menu AX surface are unverified
+   * on a real host.
+   */
+  contextMenuCapabilities(): ContextMenuCapabilities {
+    return contextMenuCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's context menus
+   * (#368): `open` posts ONE gated right-click inside a re-verified
+   * frame and bounded-waits for the new menu surface; `items`
+   * enumerates the observed candidates; `invokeItem` presses a declared
+   * title — mutate-gui, gated, never resent. Throws `ContextMenuError`
+   * when no owned target is attested or the platform is unsupported.
+   */
+  contextMenu(): ContextMenu {
+    return contextMenuForTarget(this.recoveryTarget());
+  }
+
+  /**
+   * What this build can do with project Open/Save dialogs on this
+   * platform (#368): every leg is mutate-gui and reports `unavailable`
+   * while the gates keep them refused — the composed menu invoke, the
+   * dialog acts, and the shared-state filename entry each keep their
+   * own gate.
+   */
+  projectDialogCapabilities(): ProjectDialogCapabilities {
+    return projectDialogCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's project Open/Save
+   * dialogs (#368): `openProject`/`saveProjectAs`/`cancelDialog`/
+   * `roundTrip` drive the real menu → native picker → filename entry →
+   * confirm path with bounded waits and recorded oracles
+   * (`project.info` for open, read-only file stat for save). The GUI
+   * path is the asserted path; scripting mutations are never used as
+   * evidence. Throws `ProjectDialogError` when no owned target is
+   * attested or the platform is unsupported.
+   */
+  projectDialog(): ProjectDialog {
+    return projectDialogForTarget(this.recoveryTarget(), this.#session);
   }
 
   /**

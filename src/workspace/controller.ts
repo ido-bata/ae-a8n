@@ -49,6 +49,7 @@ import {
   type WorkspaceMenuEntry,
   type WorkspaceMenuPath,
   type WorkspaceMutationGate,
+  type WorkspaceMonitorReport,
   type WorkspaceObservation,
   type WorkspaceObservationFailure,
   type WorkspacePanelFrame,
@@ -58,6 +59,8 @@ import {
   type WorkspaceSwitchResult,
   type WorkspaceXmlComparison,
 } from "./types.js";
+import { monitorEvidence } from "./monitors/index.js";
+import type { MonitorCensus, MonitorEvidence } from "./monitors/types.js";
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -845,6 +848,59 @@ export class WorkspaceController {
   }
 
   // ------------------------------------------------------------------
+  // Monitor/DPI evidence (#370 — observe-class)
+  // ------------------------------------------------------------------
+
+  /**
+   * One display census, degraded honestly: a missing seam or a throwing
+   * probe is `available: false` with the reason — never an empty display
+   * list that could pass for "single monitor".
+   */
+  #displayCensus(): MonitorCensus {
+    if (this.#ops.enumerateDisplays === undefined) {
+      return {
+        available: false,
+        reason: "this workspace surface has no display census",
+      };
+    }
+    try {
+      return this.#ops.enumerateDisplays();
+    } catch (error) {
+      return {
+        available: false,
+        reason: `display census failed: ${errorText(error)}`,
+      };
+    }
+  }
+
+  /** Monitor/DPI assessment of one observation's panel frames. */
+  #monitorsFor(observation: WorkspaceObservation): MonitorEvidence {
+    return monitorEvidence(
+      this.#displayCensus(),
+      observation.panels.map((p) => ({ frame: p.frame, title: p.title })),
+    );
+  }
+
+  /**
+   * A fresh observe pass plus its monitor/DPI assessment (#370): display
+   * topology (single/multi/unknown), which displays each panel frame
+   * intersects, and mixed-DPI flags for frames straddling displays with
+   * different backing scales. Observe-class — the pre-flight read for
+   * deciding whether a restore's point-space frame comparison needs a
+   * wider, reviewer-declared tolerance on a mixed-resolution desktop.
+   */
+  monitorReport(options?: {
+    readonly dockedPanes?: readonly DockedPaneLocator[];
+  }): WorkspaceMonitorReport {
+    const observation = this.observe(options);
+    return {
+      observation,
+      monitors: this.#monitorsFor(observation),
+      observedAt: this.#now().toISOString(),
+    };
+  }
+
+  // ------------------------------------------------------------------
   // Verify (observe-class)
   // ------------------------------------------------------------------
 
@@ -909,6 +965,13 @@ export class WorkspaceController {
       frames,
       framesRestored,
       xml,
+      // #370: record the monitor/DPI context the frame comparison ran
+      // under — display topology plus per-frame display membership and
+      // mixed-DPI flags — so a `restored` verdict on a mixed-resolution
+      // desktop carries its caveat as evidence, not prose.
+      monitors: this.#ops.enumerateDisplays === undefined
+        ? null
+        : this.#monitorsFor(current),
       verdict,
       observedAt: this.#now().toISOString(),
     };

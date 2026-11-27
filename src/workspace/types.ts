@@ -28,6 +28,7 @@ import type {
   WorkspaceStoreSnapshot,
   WorkspaceXmlRef,
 } from "../workspace-xml/types.js";
+import type { MonitorCensus, MonitorEvidence } from "./monitors/types.js";
 
 /**
  * The spec §5 `WorkspaceTarget` descriptor, extended with the pid the
@@ -262,7 +263,27 @@ export type WorkspaceRestoreReport = {
   /** True when every expected panel frame re-observed within tolerance. */
   readonly framesRestored: boolean;
   readonly xml: WorkspaceXmlComparison;
+  /**
+   * Monitor/DPI evidence for the `current` observation (#370): display
+   * topology, per-frame display membership and mixed-DPI flags. `null`
+   * when the surface has no display census (`ops.enumerateDisplays`
+   * absent or the census unavailable is still recorded — only a missing
+   * seam yields `null`). Never silently absent on platforms that can
+   * enumerate.
+   */
+  readonly monitors?: MonitorEvidence | null;
   readonly verdict: "restored" | "mismatch" | "unknown";
+  readonly observedAt: string;
+};
+
+/**
+ * The result of `WorkspaceController.monitorReport` / `Workspace.
+ * monitorReport` (#370): a fresh workspace observation plus the
+ * monitor/DPI assessment of its panel frames. Observe-class.
+ */
+export type WorkspaceMonitorReport = {
+  readonly observation: WorkspaceObservation;
+  readonly monitors: MonitorEvidence;
   readonly observedAt: string;
 };
 
@@ -344,6 +365,14 @@ export type WorkspaceSurfaceOps = {
   drag?(request: WorkspaceDragRequest): Promise<WorkspaceDragVerdict> | WorkspaceDragVerdict;
   /** Read-only workspace-XML store snapshot (#362 reader). */
   snapshotXml(): WorkspaceStoreSnapshot;
+  /**
+   * Enumerate the session's displays with bounds (points), pixel size
+   * and backing scale (#370, spec §9 multi-monitor/DPI row). Optional:
+   * absent means the platform has no display census in this slice —
+   * monitor evidence then reports `unknown`, never a guessed topology.
+   * Observe-class and synchronous, like `snapshotXml`.
+   */
+  enumerateDisplays?(): MonitorCensus;
 };
 
 /** The mutate-gui gate row; fail-closed like every sibling gate. */

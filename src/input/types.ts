@@ -243,6 +243,32 @@ export type InputAuthorizationVerdict =
       readonly reason: string;
     };
 
+/**
+ * The public input error (#374). Thrown for failures *outside* a plan —
+ * target resolution, lease refusal, missing delivery channels — where no
+ * `InputAuditRecord` exists yet. Once `runInputPlan` has run, expected
+ * refusals come back as the record's `verdict`/`refusal`, never as a throw.
+ */
+export class InputError extends Error {
+  readonly code: InputErrorCode;
+  /** Candidate summaries for `ambiguous-target`; empty otherwise. */
+  readonly candidates: readonly string[];
+
+  constructor(
+    code: InputErrorCode,
+    message: string,
+    options: { candidates?: readonly string[]; cause?: unknown } = {},
+  ) {
+    super(message);
+    this.name = "InputError";
+    this.code = code;
+    this.candidates = options.candidates ?? [];
+    if (options.cause !== undefined) {
+      this.cause = options.cause;
+    }
+  }
+}
+
 /** Who currently holds keyboard focus, as read back by the OS. */
 export type FocusHolder = {
   readonly pid: number;
@@ -336,9 +362,14 @@ export type InputStep =
        * Escape hatch for ops whose delivery vehicle lands later
        * (mouse drag/scroll, verified-click focus). `run` receives the
        * poster; `summary` is the audit evidence.
+       *
+       * `channel` names the `InputPoster` member the step needs; when
+       * set, preflight refuses `unsupported` up front if the poster
+       * lacks it — the same fail-closed check the typed step kinds get.
        */
       readonly kind: "custom";
       readonly summary: string;
+      readonly channel?: "mouse";
       readonly run: (poster: InputPoster) => void;
     };
 

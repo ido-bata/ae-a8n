@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<!--
+  ae-a8n IME input fixture — CEP panel host (specs/ime-input/spec.md §4.1, §8).
+
+  One panel, two fixture surfaces:
+    - cep-composition   (Tier-1a): DOM <input> with composition/IME listeners
+    - cep-custom-drawn  (Tier-2):  <canvas> that draws committed text itself
+
+  Fixture code only — `implemented`, unverified on a real host. See
+  fixtures/input/README.md for the result record format.
+-->
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>ae-a8n IME Input Fixture</title>
+  <style>
+    body { font: 12px/1.4 sans-serif; margin: 8px; }
+    h2 { font-size: 12px; margin: 12px 0 4px; }
+    #composition-field { width: 100%; box-sizing: border-box; }
+    #draw-surface {
+      border: 1px solid #888;
+      background: #fff;
+      cursor: text;
+      display: block;
+    }
+    #report-path { color: #666; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h2>cep-composition (Tier-1a)</h2>
+  <input id="composition-field" type="text" autocomplete="off"
+         placeholder="type here — Japanese IME composition is observed"/>
+
+  <h2>cep-custom-drawn (Tier-2)</h2>
+  <canvas id="draw-surface" tabindex="0" width="340" height="120"></canvas>
+
+  <p id="report-path"></p>
+
+  <script src="lib/report.js"></script>
+  <script src="lib/panel.js"></script>
+</body>
+</html>
