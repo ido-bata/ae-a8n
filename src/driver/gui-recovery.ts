@@ -24,7 +24,7 @@
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
   censusForPid,
@@ -803,92 +803,6 @@ export const CLICK_AT_SCRIPT = [
 ];
 
 /**
- * Resizes the window a panel operation resolved, by identity rather than
- * by index (#343).
- *
- * After Effects does not vend its real windows through `windows of p` —
- * they are `UI elements` of role AXLayoutArea (#304) — so an index into
- * one container says nothing about the other, and a panel can move
- * between containers when it docks. Identity is therefore the frame the
- * WindowServer census attributed to this pid (the same evidence
- * `pressButton` requires), re-checked inside the session immediately
- * before `set size`, plus title/subrole as consistency checks. A frame
- * match whose title or subrole changed is `CHANGED` — a refusal, not a
- * resize of whatever now sits there.
- *
- *   argv: pid, expectedTitle, expectedSubrole, expectedFrame "x,y,w,h",
- *         newWidth, newHeight
- *
- * Prints RESIZED / CHANGED / NOT_FOUND / MISSING / FAILED.
- */
-export const RESIZE_PANEL_SCRIPT = [
-  "on run argv",
-  "  set targetPid to (item 1 of argv) as integer",
-  "  set expectedTitle to item 2 of argv",
-  "  set expectedSubrole to item 3 of argv",
-  "  set expectedFrame to item 4 of argv",
-  "  set newW to (item 5 of argv) as integer",
-  "  set newH to (item 6 of argv) as integer",
-  "  tell application \"System Events\"",
-  "    set procs to (every application process whose unix id is targetPid)",
-  "    if (count of procs) is 0 then return \"MISSING\"",
-  "    set p to item 1 of procs",
-  "    set AppleScript's text item delimiters to \",\"",
-  "    set ef to text items of expectedFrame",
-  "    set AppleScript's text item delimiters to \" \"",
-  "    if (count of ef) is not 4 then return \"CHANGED\"",
-  "    set want to {(item 1 of ef) as integer, (item 2 of ef) as integer, (item 3 of ef) as integer, (item 4 of ef) as integer}",
-  "    repeat with w in windows of p",
-  "      set r to my a8nTryResize(w, want, expectedTitle, expectedSubrole, newW, newH)",
-  "      if r is not \"\" then return r",
-  "    end repeat",
-  "    repeat with e in UI elements of p",
-  "      set r to my a8nTryResize(e, want, expectedTitle, expectedSubrole, newW, newH)",
-  "      if r is not \"\" then return r",
-  "    end repeat",
-  "  end tell",
-  "  return \"NOT_FOUND\"",
-  "end run",
-  "on a8nTryResize(el, want, expectedTitle, expectedSubrole, newW, newH)",
-  "  set got to {}",
-  "  try",
-  "    set epos to get position of el",
-  "    set esize to get size of el",
-  "    set got to {(item 1 of epos) as integer, (item 2 of epos) as integer, (item 1 of esize) as integer, (item 2 of esize) as integer}",
-  "  on error",
-  "    return \"\"",
-  "  end try",
-  "  set frameOk to true",
-  "  repeat with i from 1 to 4",
-  "    set d to (item i of got) - (item i of want)",
-  "    if d < 0 then set d to -d",
-  "    if d > 4 then set frameOk to false",
-  "  end repeat",
-  "  if not frameOk then return \"\"",
-  "  if expectedTitle is not \"\" then",
-  "    set etitle to \"\"",
-  "    try",
-  "      set etitle to (name of el) as string",
-  "    end try",
-  "    if etitle is not expectedTitle then return \"CHANGED\"",
-  "  end if",
-  "  if expectedSubrole is not \"\" then",
-  "    set esub to \"\"",
-  "    try",
-  "      set esub to (subrole of el) as string",
-  "    end try",
-  "    if esub is not expectedSubrole then return \"CHANGED\"",
-  "  end if",
-  "  try",
-  "    set size of el to {newW, newH}",
-  "    return \"RESIZED\"",
-  "  on error",
-  "    return \"FAILED\"",
-  "  end try",
-  "end a8nTryResize",
-];
-
-/**
  * The lease + audit surface `MacGuiRecovery` uses. The default is the
  * file-based lease under the ae-a8n state root; tests inject a fake so no
  * real lease file or audit line is needed.
@@ -941,6 +855,15 @@ export type GuiRecoveryOptions = {
   readonly ownerId?: string;
   /** Lease/audit seam — mainly a test seam. */
   readonly lease?: GuiLeaseController;
+  /**
+   * Directory containing the compiled `scripts/isolated-session/`
+   * helpers — specifically `window-ops`, the direct-AX mutation vehicle
+   * `resizePanelWindow` uses since #358 (the System Events `set size`
+   * vehicle was disproved on real After Effects, #357: AppleEvent
+   * -1712 timeout, and System Events enumeration sees almost nothing on
+   * AE). Absent means panel resize refuses before the lease is taken.
+   */
+  readonly windowOpsHelpersDir?: string;
   /**
    * Session-command seam — mainly a test seam. Production runs
    * `runInSession`; tests inject a stub so mutation error paths can be
@@ -1040,6 +963,7 @@ export class MacGuiRecovery {
   readonly #census: (() => WindowCensus) | undefined;
   readonly #lease: GuiLeaseController;
   readonly #runSession: typeof runInSession;
+  readonly #windowOpsHelpersDir: string | undefined;
   readonly #verifyProcess: ((pid: number) => boolean) | undefined;
   readonly #readTargetSession: () => MacSession | null;
   readonly #consoleUid: () => number;
@@ -1084,6 +1008,7 @@ export class MacGuiRecovery {
         ownerId: options.ownerId ?? "ae-a8n",
       });
     this.#runSession = options.runSession ?? runInSession;
+    this.#windowOpsHelpersDir = options.windowOpsHelpersDir;
     this.#verifyProcess = options.verifyProcess;
     this.#readTargetSession =
       options.readTargetSession ?? (() => readGuiSession(options.session.uid));
@@ -1414,58 +1339,141 @@ export class MacGuiRecovery {
   }
 
   /**
-   * Resizes the panel window `expected` resolved to (#343), under the
-   * same lease + audit + pid-attribution proof a press requires.
+   * Resizes the panel window `expected` resolved to (#343/#358), under
+   * the same lease + audit + pid-attribution proof a press requires.
    *
    * `expected` must carry `"owned"` census attribution and a frame —
-   * the same fail-closed gate `pressButton` applies (#330). The script
-   * re-verifies the frame (and title/subrole when present) inside the
-   * session immediately before `set size`, so a window that moved or was
-   * replaced between resolution and mutation is refused, not resized.
+   * the same fail-closed gate `pressButton` applies (#330). The vehicle
+   * is the compiled `scripts/isolated-session/window-ops` helper's
+   * `act --op resize`: it re-lists the pid's AX windows inside the
+   * session (`AXUIElementCreateApplication(pid)` — it can never see
+   * another process's windows), re-verifies the expected
+   * frame+title+subrole identity within 4pt immediately before
+   * `AXUIElementSetAttributeValue(kAXSizeAttribute)`, and reads the same
+   * element back afterwards. This replaced the System Events `set size`
+   * vehicle (`RESIZE_PANEL_SCRIPT`), which real After Effects disproved
+   * (#357: AppleEvent -1712 timeout; System Events enumeration returns
+   * almost nothing for AE, so the element was unreachable). The helper
+   * requires `windowOpsHelpersDir`; without it the call refuses before
+   * the lease is taken.
    *
-   * Returns true only when the script reports RESIZED. `CHANGED`,
-   * `NOT_FOUND` and `MISSING` are provable non-mutations and audit as
-   * `not-performed`; `FAILED` means `set size` itself errored after the
-   * identity checks passed, which is an unknown outcome and surfaces as
-   * `GuiMutationError` — re-observe before retrying.
+   * Verdict mapping (helper JSON → this contract):
+   *
+   *   - `performed` → true.
+   *   - `not-found` / `ambiguous` → false: the in-session identity
+   *     re-check refused, provably nothing was resized.
+   *   - `missing` → `MacSessionError`: the target process/session was
+   *     never entered — a pre-mutation refusal (`unavailable`), not an
+   *     unknown outcome.
+   *   - `failed`, a non-zero exit, or an unusable receipt → error
+   *     inside `#mutate`, audited `unknown` and surfaced as
+   *     `GuiMutationError`: the outcome is unknown — re-observe before
+   *     any retry, never resend.
    */
   resizePanelWindow(
     expected: GuiWindowInfo & { frame: GuiFrame },
     size: { readonly width: number; readonly height: number },
   ): boolean {
     this.#assertPressAttribution(expected);
+    const helpersDir = this.#windowOpsHelpersDir;
+    if (helpersDir === undefined) {
+      throw new GuiRecoveryError(
+        "panel resize needs the compiled window-ops helpers " +
+          "(scripts/isolated-session/window-ops); none are configured " +
+          "for this recovery — nothing was resized",
+      );
+    }
     return this.#mutate("resizePanelWindow", () => {
+      // Same identity/session re-checks every session command gets —
+      // the pid in the argv is only meaningful while it still names the
+      // process this run started.
+      this.#assertSameProcess();
+      this.#assertSessionProof();
       const frameArg = [
         expected.frame.x,
         expected.frame.y,
         expected.frame.width,
         expected.frame.height,
       ]
-        .map((value) => String(Math.round(value)))
+        .map((value) => String(value))
         .join(",");
-      const result = this.#osascript(RESIZE_PANEL_SCRIPT, [
-        String(this.#pid),
-        expected.title,
-        expected.subrole ?? "",
-        frameArg,
-        String(Math.round(size.width)),
-        String(Math.round(size.height)),
-      ]);
-      const verdict = result.stdout.trim().toUpperCase();
-      if (verdict === "RESIZED") {
-        return true;
-      }
-      if (verdict === "FAILED") {
-        // `set size` was reached and errored: the mutation may have
-        // partially applied. Unknown outcome — never "not-performed".
+      const result = this.#runSession(
+        this.#session,
+        join(helpersDir, "window-ops"),
+        [
+          "act",
+          "--pid",
+          String(this.#pid),
+          "--op",
+          "resize",
+          "--title",
+          expected.title,
+          "--subrole",
+          expected.subrole ?? "-",
+          "--frame",
+          frameArg,
+          "--width",
+          String(size.width),
+          "--height",
+          String(size.height),
+        ],
+        { timeoutMs: 30_000 },
+      );
+      if (result.status !== 0) {
+        // The helper may have applied the AX set before dying — the
+        // outcome is unknown, which `#mutate` audits as `unknown`.
         throw new GuiRecoveryError(
-          "the panel resize was attempted but System Events reported failure; " +
-            "the window state must be re-observed before any retry",
+          `the window-ops resize vehicle failed (exit ${result.status}): ` +
+            `${result.stderr.trim() || result.stdout.trim() || "no diagnostic"}`,
         );
       }
-      // CHANGED / NOT_FOUND / MISSING: the script refused before `set
-      // size`, so provably nothing was resized.
-      return false;
+      let verdict: string | null = null;
+      let detail: string | null = null;
+      try {
+        const parsed = JSON.parse(result.stdout) as {
+          verdict?: unknown;
+          detail?: unknown;
+        };
+        verdict = typeof parsed.verdict === "string" ? parsed.verdict : null;
+        detail = typeof parsed.detail === "string" ? parsed.detail : null;
+      } catch {
+        verdict = null;
+      }
+      switch (verdict) {
+        case "performed":
+          return true;
+        case "not-found":
+        case "ambiguous":
+          // The helper re-verified identity inside the session and
+          // refused: provably nothing was resized.
+          return false;
+        case "missing":
+          // The target process/session was never entered — provable
+          // non-mutation, surfaced as unavailable rather than a clean
+          // refusal so the caller re-observes instead of retrying blind.
+          throw new MacSessionError(
+            `the window-ops resize vehicle could not reach pid ${this.#pid}'s ` +
+              "process or session" +
+              (detail === null ? "" : ` (${detail})`) +
+              "; nothing was resized",
+          );
+        case "failed":
+          // The AX set was attempted and errored: the mutation may have
+          // partially applied. Unknown outcome — never "not-performed".
+          throw new Error(
+            "the panel resize was attempted but the window-ops vehicle " +
+              `reported failure${detail === null ? "" : ` (${detail})`}; ` +
+              "the window state must be re-observed before any retry",
+          );
+        default:
+          throw new Error(
+            "the window-ops vehicle returned an unusable receipt" +
+              (result.stdout.trim() === ""
+                ? " (empty stdout)"
+                : `: ${result.stdout.trim().slice(0, 200)}`) +
+              "; the resize outcome is unknown — re-observe before any retry",
+          );
+      }
     });
   }
 

@@ -386,19 +386,45 @@ describe("PanelController slice", () => {
   });
 
   it("refuses resize and capture on non-owned attribution", async () => {
-    const foreign = axWindow({ censusAttribution: "foreign" });
-    const { ops, state } = fakeOps({
-      observe: () => appState([foreign]),
-    });
-    const ctl = controller(ops);
-    await expect(ctl.resize({ width: 10, height: 10 })).rejects.toMatchObject({
-      code: "unproven",
-    });
-    expect(() => ctl.capture()).toThrowError(
-      expect.objectContaining({ code: "unproven" }) as Error,
-    );
-    expect(state.resizes).toHaveLength(0);
-    expect(state.captures).toHaveLength(0);
+    // foreign / unmatched / unproven are all non-mutation evidence: the
+    // post-flip contract must keep refusing every one of them (#358).
+    // "unproven" is the absent-attribution + unavailable-census shape.
+    const cases: { name: string; window: GuiWindowInfo; census: WindowServerWindow[] }[] = [
+      {
+        name: "foreign",
+        window: axWindow({ censusAttribution: "foreign" }),
+        census: [censusWindow()],
+      },
+      {
+        name: "unmatched",
+        window: axWindow({ censusAttribution: "unmatched" }),
+        census: [censusWindow()],
+      },
+      {
+        name: "unproven",
+        window: (() => {
+          const { censusAttribution: _drop, ...rest } = axWindow();
+          return rest;
+        })(),
+        census: [],
+      },
+    ];
+    for (const { window, census } of cases) {
+      const { ops, state } = fakeOps({
+        observe: () => appState([window]),
+        censusWindows: () => ({ available: true, reason: null, windows: census }),
+      });
+      const ctl = controller(ops);
+      await expect(ctl.resize({ width: 10, height: 10 })).rejects.toMatchObject({
+        code: "unproven",
+      });
+      await expect(ctl.restore()).rejects.toMatchObject({ code: "unproven" });
+      expect(() => ctl.capture()).toThrowError(
+        expect.objectContaining({ code: "unproven" }) as Error,
+      );
+      expect(state.resizes).toHaveLength(0);
+      expect(state.captures).toHaveLength(0);
+    }
   });
 
   it("reports a stale handle as refused, not resized", async () => {
@@ -588,7 +614,9 @@ describe("panelForTarget / public surface", () => {
   it("panelCapabilities reports the honest per-OS matrix", () => {
     const darwin = panelCapabilities("darwin");
     expect(darwin.platform).toBe("darwin");
-    expect(darwin.resize.support).toBe("unavailable");
+    // #358: the A-SAFETY class decision cleared panel resize/restore on
+    // the direct-AX vehicle; the capability reports it honestly.
+    expect(darwin.resize.support).toBe("implemented");
     // #361: the docked-region observe walk exists on macOS; mutation of a
     // docked region stays unsupported because it is not a window.
     expect(darwin.dockedRegion.support).toBe("partial");
@@ -620,48 +648,146 @@ describe("panelForTarget / public surface", () => {
     }
   });
 
-  it("panelMutationGate refuses every panel mutation and cites the audit", () => {
-    // Platform-neutral: the gate is policy, not platform code. Both
-    // mutation classes refuse, and the reason names the document a
-    // caller must consult before expecting this to change.
+  it("panelMutationGate permits the #358-cleared resize/restore class", () => {
+    // Platform-neutral: the gate is policy, not platform code. The #358
+    // A-SAFETY decision cleared exactly resize/restore on the
+    // direct-AX vehicle; anything outside that class still refuses.
     const gate = panelMutationGate();
     for (const op of ["resize", "restore"] as const) {
-      const verdict = gate(op);
-      expect(verdict.allowed).toBe(false);
-      if (!verdict.allowed) {
-        expect(verdict.reason).toContain("gui-supervision-safety-gates");
-        expect(verdict.reason).toContain("auto-safe");
-      }
+      expect(gate(op).allowed).toBe(true);
+    }
+    const unknown = gate("move" as never);
+    expect(unknown.allowed).toBe(false);
+    if (!unknown.allowed) {
+      expect(unknown.reason).toContain("gui-supervision-safety-gates");
     }
   });
 
   // `panelForTarget` is macOS-only by contract: on any other platform it
-  // reports `unsupported` before a controller exists, so the wiring test
+  // reports `unsupported` before a controller exists, so the wiring tests
   // below can only run where the path exists.
+  const PANEL_STATE = (width: number, height: number) =>
+    JSON.stringify({
+      pid: PID,
+      frontmostPid: PID,
+      focusedWindowIndex: 1,
+      windows: [
+        {
+          index: 1,
+          title: "My Plugin Panel",
+          role: "AXLayoutArea",
+          subrole: "AXFloatingWindow",
+          frame: { x: 100, y: 200, width, height },
+          miniaturized: false,
+          main: false,
+          focused: true,
+        },
+      ],
+      focusedWindow: null,
+      axTrusted: true,
+    });
+  const CENSUS_LINE = (width: number, height: number) =>
+    `4242|After Effects|0|1|My Plugin Panel|100|200|${width}|${height}|777\n`;
+
   it.runIf(process.platform === "darwin")(
-    "wires the A-SAFETY gate: resize/restore refuse in production before any observation",
+    "wires the production path: identify → resize → measure → restore through the window-ops vehicle",
     async () => {
-      // `panelForTarget` with no seam override gets `panelMutationGate()` —
-      // the audit has enabled no panel mutation class, so the refusal must
-      // name the gate document and precede even the first AX listing.
-      let observed = 0;
+      // The production gate now permits the #358-cleared class, so this
+      // exercises the REAL wiring: window-ops `state` observation →
+      // census attribution → lease/audit → `act --op resize` →
+      // post-resolve measure. Only the session exec and census are
+      // stubbed; every gate, resolver and verdict mapping is production.
+      let size = { width: 640, height: 504 };
+      const acts: string[][] = [];
+      const runSession = (_s: unknown, program: unknown, args: readonly string[]) => {
+        const p = String(program);
+        if (p.endsWith("/window-ops") && args[0] === "state") {
+          return {
+            status: 0,
+            stdout: PANEL_STATE(size.width, size.height),
+            stderr: "",
+            timedOut: false,
+          };
+        }
+        if (p.endsWith("/window-ops") && args[0] === "act") {
+          acts.push([...args]);
+          const w = Number(args[args.indexOf("--width") + 1]);
+          const h = Number(args[args.indexOf("--height") + 1]);
+          size = { width: w, height: h };
+          return {
+            status: 0,
+            stdout: JSON.stringify({
+              verdict: "performed",
+              window: {
+                index: 1,
+                title: "My Plugin Panel",
+                role: "AXLayoutArea",
+                subrole: "AXFloatingWindow",
+                frame: { x: 100, y: 200, width: w, height: h },
+                miniaturized: false,
+                main: false,
+                focused: true,
+              },
+            }),
+            stderr: "",
+            timedOut: false,
+          };
+        }
+        return { status: 0, stdout: "", stderr: "", timedOut: false };
+      };
       const panel = panelForTarget(
         { pid: PID, session: SESSION },
         { title: "My Plugin Panel" },
         dir,
         {
-          runSession: () => {
-            observed += 1;
-            return { status: 0, stdout: "", stderr: "", timedOut: false };
+          helpersDir: "/fake-helpers",
+          runSession,
+          censusRun: () => CENSUS_LINE(size.width, size.height),
+          readTargetSession: () => SESSION,
+          lease: {
+            acquire: () => ({ path: "/fake/lease", release: () => {} }),
+            audit: () => {},
           },
         },
       );
-      await expect(panel.resize({ width: 800, height: 600 })).rejects.toMatchObject({
-        code: "refused",
-        message: expect.stringContaining("gui-supervision-safety-gates") as unknown as string,
+
+      const identified = await panel.identify();
+      expect(identified.surface.attribution).toBe("owned");
+      expect(identified.surface.windowNumber).toBe(777);
+      expect(identified.surface.frame).toMatchObject({ width: 640, height: 504 });
+
+      const resized = await panel.resize({ width: 800, height: 600 });
+      expect(acts).toHaveLength(1);
+      expect(acts[0]).toContain("act");
+      expect(acts[0]).toContain("resize");
+      expect(resized.frame).toMatchObject({ width: 800, height: 600 });
+      expect(resized.matchesRequested).toBe(true);
+
+      const restored = await panel.restore();
+      expect(acts).toHaveLength(2);
+      expect(restored.frame).toMatchObject({ width: 640, height: 504 });
+    },
+  );
+
+  it.runIf(process.platform === "darwin")(
+    "reports unavailable honestly when the window-ops helpers cannot run",
+    async () => {
+      // helpersDir points nowhere and the session stub answers empty:
+      // observation fails as `unavailable`, never as a guessed window.
+      const panel = panelForTarget(
+        { pid: PID, session: SESSION },
+        { title: "My Plugin Panel" },
+        dir,
+        {
+          helpersDir: "/definitely/not/here",
+          runSession: () => ({ status: 0, stdout: "", stderr: "", timedOut: false }),
+          readTargetSession: () => SESSION,
+        },
+      );
+      await expect(panel.identify()).rejects.toMatchObject({ code: "unavailable" });
+      await expect(panel.resize({ width: 1, height: 1 })).rejects.toMatchObject({
+        code: "unavailable",
       });
-      await expect(panel.restore()).rejects.toMatchObject({ code: "refused" });
-      expect(observed).toBe(0);
     },
   );
 

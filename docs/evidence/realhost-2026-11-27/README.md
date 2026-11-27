@@ -242,3 +242,54 @@ startup timer.
   the census-first/AXUIElement resolution (window-ops style) rather
   than LIST_WINDOWS_SCRIPT; docked-region panels untested; minimize/
   zoom variants untested; Windows lane out of scope.
+
+## Follow-up 3 — #358 production-path e2e (~22:13 JST, issue #358)
+
+`scripts/poc-panel-mutation-e2e.mjs` (new, this branch) drives the
+**production** `ae.panel()` path end-to-end on an owned AE 2027
+(pid 53806): identify → measure → resize → measure → restore, with the
+production `panelMutationGate()` deciding (no `authorizeMutation`
+seam). Record: `panel-mutation-e2e.json`. Two earlier attempts on the
+same branch (pids 34568, 56829/93803) failed honestly at `identify`
+with `not-found` — the AX window enumeration had not vendored — and
+are summarized here rather than kept as separate files; the decisive
+run is the JSON above.
+
+- **Activation**: unlike the #357 decisive run, `open`-activate and
+  System Events `set frontmost` did not make this launch frontmost
+  across two attempts; on the successful run the app reported
+  `frontmost=true` already at the first probe (timing variance — the
+  vend trigger stays an open unknown, see below). The JXA
+  `NSRunningApplication.activateWithOptions` attempt failed
+  (`NSRunningApplication` is not bridged into osascript JXA) and was
+  not needed.
+- **identify**: resolved the real ScriptUI palette on the first
+  attempt — `windowNumber 4104`, census-attributed frame
+  `120,96 400x324`, `attribution:"owned"`, `onScreen:true`, through
+  the new window-ops `state` observation path (System Events
+  enumeration still reports `windowsClass=0`). This is the first
+  real-host `ae.panel().identify()` success — #357 predicted the old
+  `LIST_WINDOWS_SCRIPT` path could never resolve an AE panel.
+- **resize** (production gate `{allowed:true}`): requested
+  `560x440`; measured frame `120,96 560x440`, `matchesRequested:true`.
+  In-AE ScriptUI readback `size 560x416` — the 24 px delta is window
+  chrome, consistent with #357.
+- **restore** (production gate `{allowed:true}`): measured frame back
+  to `120,96 400x324`; ScriptUI `size` back to `400x300`.
+- **Three-channel agreement**: post-restore census row for
+  windowNumber 4104 = `120,96 400x324` == measured frame
+  (`framesAgree4pt:true`); ScriptUI `bounds` `120,120 400x300` differs
+  only by the 24 px title bar, as before.
+- **Gate negatives (in-run)**: `panelMutationGate()("move")` and
+  `("capture")` both return `{allowed:false}` with the audit-citing
+  reason; `resize`/`restore` return `{allowed:true}`.
+- **Negative target**: a census window owned by a foreign process
+  (UserNotificationCenter, windowNumber 4092) through
+  `ae.panel({windowNumber})` → `unproven` refusal ("belongs to pid
+  1961 … not the target pid"). No wrong-target resolution.
+- **Cleanup**: `ae.close()` → `quit:true`, `ownership:"owned"`;
+  postflight in-scope census empty. The foreign AE 2026 was never
+  mutated or activated (census reads only).
+
+Verification level for the #358 claims: **verified on real host**
+(owned AE 2027, production code path, real ScriptUI palette).

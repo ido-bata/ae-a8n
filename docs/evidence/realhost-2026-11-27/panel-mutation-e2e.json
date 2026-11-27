@@ -1,0 +1,515 @@
+{
+  "schema": "a8n.poc-panel-mutation-e2e/v1",
+  "issue": 358,
+  "recordedAt": "2026-11-27T13:11:52.088Z",
+  "install": "/Applications/Adobe After Effects 2027",
+  "steps": [
+    {
+      "name": "preflight",
+      "at": "2026-11-27T13:11:52.457Z",
+      "install": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "preexisting": []
+    },
+    {
+      "name": "extension-build",
+      "at": "2026-11-27T13:11:53.300Z",
+      "hostScript": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-panel-e2e-qibk6S/a8n-panel-e2e-host.jsx"
+    },
+    {
+      "name": "launch",
+      "at": "2026-11-27T13:12:01.381Z",
+      "pid": 53806,
+      "info": {
+        "version": "27.0x78",
+        "build": "78"
+      }
+    },
+    {
+      "name": "recovery-target",
+      "at": "2026-11-27T13:12:03.439Z",
+      "pid": 53806
+    },
+    {
+      "name": "panel-show",
+      "at": "2026-11-27T13:12:13.258Z",
+      "inAe": {
+        "size": {
+          "width": 400,
+          "height": 300,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 400,
+          "height": 300,
+          "left": 120,
+          "right": 520,
+          "top": 120,
+          "bottom": 420,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "ax-baseline",
+      "at": "2026-11-27T13:12:14.581Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-activate-0",
+      "at": "2026-11-27T13:12:15.159Z",
+      "ok": true,
+      "output": "FRONTMOST-SET"
+    },
+    {
+      "name": "ax-jxa-activate-0",
+      "at": "2026-11-27T13:12:15.518Z",
+      "ok": false,
+      "output": "Command failed: /usr/bin/osascript -l JavaScript -e ObjC.import('stdlib');\nvar app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(53806);\nif (app == null) { 'NO-APP'; } else {\n  // NSApplicationActivateAllWindows | NSApplicationActivateIgnoringOtherApps\n  app.activateWithOptions(3);\n  'ACTIVATED ' + app.processIdentifier;\n}\nexecution error: Error: TypeError: undefined is not an object (evaluating '$.NSRunningApplication.runningApplicationWithProcessIdentifier') (-2700)\n"
+    },
+    {
+      "name": "ax-open-0",
+      "at": "2026-11-27T13:12:15.652Z",
+      "ok": true,
+      "bundlePath": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app"
+    },
+    {
+      "name": "ax-probe-0",
+      "at": "2026-11-27T13:12:25.277Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-activated",
+      "at": "2026-11-27T13:12:25.277Z",
+      "activated": true
+    },
+    {
+      "name": "ax-settle-0",
+      "at": "2026-11-27T13:12:27.397Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-1",
+      "at": "2026-11-27T13:12:35.501Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-2",
+      "at": "2026-11-27T13:12:37.049Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-3",
+      "at": "2026-11-27T13:12:44.923Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-4",
+      "at": "2026-11-27T13:12:46.402Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-5",
+      "at": "2026-11-27T13:12:53.986Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-6",
+      "at": "2026-11-27T13:12:55.517Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-7",
+      "at": "2026-11-27T13:13:03.166Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-8",
+      "at": "2026-11-27T13:13:04.685Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-9",
+      "at": "2026-11-27T13:13:12.456Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-10",
+      "at": "2026-11-27T13:13:13.951Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-11",
+      "at": "2026-11-27T13:13:22.001Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-12",
+      "at": "2026-11-27T13:13:23.815Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-13",
+      "at": "2026-11-27T13:13:32.968Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "ax-settle-14",
+      "at": "2026-11-27T13:13:34.915Z",
+      "ok": true,
+      "output": "windowsClass=0 uiElements=3 frontmost=true"
+    },
+    {
+      "name": "gate-verdicts",
+      "at": "2026-11-27T13:13:34.915Z",
+      "resize": {
+        "allowed": true
+      },
+      "restore": {
+        "allowed": true
+      },
+      "move": {
+        "allowed": false,
+        "reason": "panel move is outside the mutate-gui class the #358 A-SAFETY decision cleared (docs/gui-supervision-safety-gates.md §panel mutation): only resize/restore through the direct-AX window-ops vehicle are permitted; observe the audit document before expecting this to change"
+      },
+      "capture": {
+        "allowed": false,
+        "reason": "panel capture is outside the mutate-gui class the #358 A-SAFETY decision cleared (docs/gui-supervision-safety-gates.md §panel mutation): only resize/restore through the direct-AX window-ops vehicle are permitted; observe the audit document before expecting this to change"
+      }
+    },
+    {
+      "name": "identify-attempt-0",
+      "at": "2026-11-27T13:13:36.970Z",
+      "target": {
+        "pid": 53806,
+        "surface": {
+          "kind": "window",
+          "windowIndex": 1,
+          "windowNumber": 4104,
+          "locator": {
+            "title": "ae-a8n PoC Panel",
+            "titleMatch": "contains"
+          },
+          "frame": {
+            "x": 120,
+            "y": 96,
+            "width": 400,
+            "height": 324
+          },
+          "state": {
+            "onScreen": true,
+            "occluded": "unknown"
+          },
+          "attribution": "owned"
+        },
+        "resolvedAt": "2026-11-27T13:13:36.969Z"
+      }
+    },
+    {
+      "name": "measure-before",
+      "at": "2026-11-27T13:13:38.080Z",
+      "measurement": {
+        "target": {
+          "pid": 53806,
+          "surface": {
+            "kind": "window",
+            "windowIndex": 1,
+            "windowNumber": 4104,
+            "locator": {
+              "title": "ae-a8n PoC Panel",
+              "titleMatch": "contains"
+            },
+            "frame": {
+              "x": 120,
+              "y": 96,
+              "width": 400,
+              "height": 324
+            },
+            "state": {
+              "onScreen": true,
+              "occluded": "unknown"
+            },
+            "attribution": "owned"
+          },
+          "resolvedAt": "2026-11-27T13:13:38.080Z"
+        },
+        "frame": {
+          "x": 120,
+          "y": 96,
+          "width": 400,
+          "height": 324
+        },
+        "readback": null,
+        "readbackSource": "os-only",
+        "matchesRequested": null,
+        "observedAt": "2026-11-27T13:13:38.080Z"
+      }
+    },
+    {
+      "name": "in-ae-readback-before",
+      "at": "2026-11-27T13:13:47.415Z",
+      "inAe": {
+        "open": true,
+        "size": {
+          "width": 400,
+          "height": 300,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 400,
+          "height": 300,
+          "left": 120,
+          "right": 520,
+          "top": 120,
+          "bottom": 420,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "resize",
+      "at": "2026-11-27T13:13:49.768Z",
+      "requested": {
+        "width": 560,
+        "height": 440
+      },
+      "measurement": {
+        "target": {
+          "pid": 53806,
+          "surface": {
+            "kind": "window",
+            "windowIndex": 1,
+            "windowNumber": 4104,
+            "locator": {
+              "title": "ae-a8n PoC Panel",
+              "titleMatch": "contains"
+            },
+            "frame": {
+              "x": 120,
+              "y": 96,
+              "width": 560,
+              "height": 440
+            },
+            "state": {
+              "onScreen": true,
+              "occluded": "unknown"
+            },
+            "attribution": "owned"
+          },
+          "resolvedAt": "2026-11-27T13:13:49.767Z"
+        },
+        "frame": {
+          "x": 120,
+          "y": 96,
+          "width": 560,
+          "height": 440
+        },
+        "readback": null,
+        "readbackSource": "os-only",
+        "matchesRequested": true,
+        "observedAt": "2026-11-27T13:13:49.768Z"
+      }
+    },
+    {
+      "name": "in-ae-readback-resized",
+      "at": "2026-11-27T13:13:59.201Z",
+      "inAe": {
+        "open": true,
+        "size": {
+          "width": 560,
+          "height": 416,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 560,
+          "height": 416,
+          "left": 120,
+          "right": 680,
+          "top": 120,
+          "bottom": 536,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "restore",
+      "at": "2026-11-27T13:14:09.356Z",
+      "measurement": {
+        "target": {
+          "pid": 53806,
+          "surface": {
+            "kind": "window",
+            "windowIndex": 1,
+            "windowNumber": 4104,
+            "locator": {
+              "title": "ae-a8n PoC Panel",
+              "titleMatch": "contains"
+            },
+            "frame": {
+              "x": 120,
+              "y": 96,
+              "width": 400,
+              "height": 324
+            },
+            "state": {
+              "onScreen": true,
+              "occluded": "unknown"
+            },
+            "attribution": "owned"
+          },
+          "resolvedAt": "2026-11-27T13:14:09.356Z"
+        },
+        "frame": {
+          "x": 120,
+          "y": 96,
+          "width": 400,
+          "height": 324
+        },
+        "readback": null,
+        "readbackSource": "os-only",
+        "matchesRequested": null,
+        "observedAt": "2026-11-27T13:14:09.356Z"
+      }
+    },
+    {
+      "name": "in-ae-readback-restored",
+      "at": "2026-11-27T13:14:19.622Z",
+      "inAe": {
+        "open": true,
+        "size": {
+          "width": 400,
+          "height": 300,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 400,
+          "height": 300,
+          "left": 120,
+          "right": 520,
+          "top": 120,
+          "bottom": 420,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      }
+    },
+    {
+      "name": "postflight-frame-check",
+      "at": "2026-11-27T13:14:19.856Z",
+      "identifiedWindowNumber": 4104,
+      "censusRow": {
+        "pid": 53806,
+        "owner": "After Effects",
+        "layer": 3,
+        "onScreen": true,
+        "name": "ae-a8n PoC Panel",
+        "windowNumber": 4104,
+        "bounds": {
+          "x": 120,
+          "y": 96,
+          "width": 400,
+          "height": 324
+        }
+      },
+      "measureRestoredFrame": {
+        "x": 120,
+        "y": 96,
+        "width": 400,
+        "height": 324
+      },
+      "inAeRestored": {
+        "open": true,
+        "size": {
+          "width": 400,
+          "height": 300,
+          "length": 2
+        },
+        "bounds": {
+          "x": 120,
+          "y": 120,
+          "width": 400,
+          "height": 300,
+          "left": 120,
+          "right": 520,
+          "top": 120,
+          "bottom": 420,
+          "length": 4
+        },
+        "location": {
+          "x": 120,
+          "y": 120,
+          "length": 2
+        }
+      },
+      "framesAgree4pt": true
+    },
+    {
+      "name": "negative-foreign",
+      "at": "2026-11-27T13:14:21.931Z",
+      "windowNumber": 4092,
+      "ownerPid": 1961,
+      "owner": "UserNotificationCenter",
+      "refused": "unproven",
+      "message": "window 4092 belongs to pid 1961 (UserNotificationCenter), not the target pid 53806; refusing to treat it as this After Effects instance's panel"
+    },
+    {
+      "name": "close",
+      "at": "2026-11-27T13:14:34.357Z",
+      "closed": {
+        "quit": true,
+        "ownership": {
+          "kind": "owned",
+          "evidence": "pid 53806 is still the only instance"
+        }
+      }
+    },
+    {
+      "name": "postflight-census",
+      "at": "2026-11-27T13:14:34.662Z",
+      "remainingInScope": []
+    }
+  ],
+  "outcome": "completed"
+}

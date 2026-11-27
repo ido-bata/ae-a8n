@@ -99,11 +99,12 @@
 - **新規の mutation-disabling 実装 ticket は起票しない。** 未修正 defect（#329）は誤報告方向、残 gap（#294/#295 の未配線側）は監視不存在方向であり、いずれも「誤対象を操作する」経路を新たに開かない。
 - 既存 ticket への受入条件追記: #294（残 gap の明確化）、#329（分類精度の受入条件）、#336（診断 gap である旨の分類確認）。
 
-### panel mutation（#343 / B-PLATFORM）— 未許可（fail-closed）、#357 で vehicle 実機証明済み・class 判定待ち
+### panel mutation（#343 / B-PLATFORM）— **#358 で resize/restore のみ解除**（mutate-gui、window-ops vehicle）
 
-- 対象: `ae.panel()` の `resize`/`restore`（`mutate-gui` class。実装は `src/panels/` + `RESIZE_PANEL_SCRIPT`、契約は `specs/panel-interaction/spec.md`）。window-ops 系（`ae.windowOps()` の move/resize/minimize/restore/maximize/focus、#366）の gate も同じ判定を共有する。
-- 現状: **無効のまま**。`panelMutationGate()`（`src/panels/gate.ts`）と `windowOpsMutationGate()`（`src/windowops/gate.ts`）はともに refuse を継続（#357 の実機 run 内でも refuse を再確認）。auto-safe class に panel/window mutation は存在しない。
-- 多層防御（gate とは独立に常時有効）: census 帰属 `"owned"` 必須（`foreign`/`unmatched`/`unproven` は mutation・capture とも拒否）、GUI lease + audit、lease 内の frame/title/subrole 再検証、process identity 再証明、mutation outcome 不明時は `indeterminate` で再観測要求。
+- 対象: `ae.panel()` の `resize`/`restore`（`mutate-gui` class。実装は `src/panels/` + `src/driver/gui-recovery.ts` の `resizePanelWindow`、契約は `specs/panel-interaction/spec.md`）。window-ops 系（`ae.windowOps()` の move/resize/minimize/restore/maximize/focus、#366）の gate は**別判定のまま fail-closed** — #358 の解除は `ae.panel()` の resize/restore のみを対象とし、window-ops ops は `src/windowops/gate.ts` の既存 refuse を継続する。panel `move`/dock 系は contract に存在せず引き続き対象外。
+- 現状: **`resize`/`restore` のみ許可**。`panelMutationGate()`（`src/panels/gate.ts`）はこの 2 op に `{allowed:true}` を返し、それ以外（型が将来増やす op を含む）は audit citation 付きで refuse する。vehicle は compiled `scripts/isolated-session/window-ops` helper の `act --op resize`（`AXUIElementSetAttributeValue(kAXSizeAttribute)`）一本 — System Events `set size` vehicle（`RESIZE_PANEL_SCRIPT`）は実機否定済みのため削除済み。
+- 多層防御（gate とは独立に常時有効・#358 で不変）: census 帰属 `"owned"` 必須（`foreign`/`unmatched`/`unproven` は mutation・capture とも拒否）、GUI lease + audit、lease 内の frame/title/subrole 再検証（4pt tolerance、`ambiguous` は refuse）、process identity 再証明、mutation outcome 不明時は `indeterminate` で再観測要求・blind resend 禁止。
+- #358 class 判定の根拠: #357 PoC 証跡（`docs/evidence/realhost-2026-11-27/`）+ #358 end-to-end run（同ディレクトリの `panel-mutation-e2e*.json`）— owned AE 2027 の実 ScriptUI palette に対し window-ops `act` vehicle で resize → measure → restore が AX readback・CGWindowList census bounds・ScriptUI 自己申告の 3 系統一致で完走。AX 列挙は app が一度 frontmost になった後にのみ vend される観測（#406）を踏まえ、`ae.panel()` の observe は window-ops `state`（AXUIElement 列挙 + `AXFocusedWindow`/`AXIsProcessTrusted`）+ 実 census 帰属へ realign 済み — System Events `UI elements` 列挙は AE でほぼ空のため廃止。`AXFocusedWindow` 経路は observe-only のまま（mutation vehicle なし）。
 
 #### #357 real-host PoC 結果（2026-11-27、owned AE 2027、証跡 `docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json` ほか）
 
@@ -131,11 +132,11 @@ PoC が新たに明らかにした事実（contract 設計に影響）:
 #### 判定への推奨（recommendation for A-SAFETY authority — 自己承認ではない）
 
 - **部分解除を推奨**: window-ops vehicle（列挙経路）による `resize`/`move`/`restore`/`minimize`/`maximize` 相当の mutate-gui class は、上記 contract を `specs/workspace-editing/spec.md` §9 と `specs/panel-interaction/spec.md` に反映した上で auto-safe 相当と判定する材料が整った。`AXFocusedWindow` 経路は observe のみのままが安全（mutation vehicle としては focus 依存が強すぎ、guard を production helper に実装するまでは不許可を維持推奨）。
-- **`ae.panel()` の resize/restore**: spec の vehicle 記述（System Events `set size`）は実機で否定済み。#358 で spec を direct-AX vehicle に改訂し、panel resolve を window-ops 型に揃えた上で、window-ops と同じ class 判定を適用するのが筋。**現時点での推奨は keep-closed**（gate は #358 の spec 改訂 + class 判定まで refuse 継続）。
-- **残る unknown（#358 が引き継ぐ）**: AX vend の正確な trigger（frontmost 因果は未証明）/ System Events vs AXUIElement 列挙の乖離原因 / `ae.panel()` identify の解決経路変更 / docked-region・minimize/zoom variant・Windows lane。
+- **`ae.panel()` の resize/restore**: spec の vehicle 記述（System Events `set size`）は実機で否定済み。#358 で spec を direct-AX vehicle に改訂し、panel resolve を window-ops 型に揃えた上で、window-ops と同じ class 判定を適用するのが筋。~~現時点での推奨は keep-closed~~ → **#358 で裁定済み: resize/restore のみ許可**（上記「現状」参照。window-ops ops 自体の gate は別判定で fail-closed 継続）。
+- **残る unknown**: AX vend の正確な trigger（frontmost 因果は未証明）/ System Events vs AXUIElement 列挙の乖離原因 / docked-region・minimize/zoom variant・Windows lane（#358 で `ae.panel()` identify の解決経路変更は完了）。
 
-- 解除条件（再掲・改訂）: (a) 本監査で panel/window resize class を auto-safe 相当と判定（**#357 証跡を根拠に人間/A-SAFETY が判定**）、(b) ~~owned AE での resize vehicle 実機検証~~ → **達成（direct-AX vehicle、System Events vehicle は否定）**、(c) ~~座標系一意性~~ → **達成（points 一致を実測）**。残る実質条件は (a) の class 判定と spec/contract 改訂（#358）。
-- 最小実機 PoC: `docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json` が ScriptUI palette への resize→move→restore 往復を 3 系統 readback で記録済み。
+- 解除条件（再掲・改訂・#358 で充足）: (a) 本監査で panel/window resize class を auto-safe 相当と判定 → **#358 で `ae.panel()` resize/restore に限り充足**（window-ops ops は別判定）、(b) ~~owned AE での resize vehicle 実機検証~~ → **達成（direct-AX vehicle、System Events vehicle は否定）**、(c) ~~座標系一意性~~ → **達成（points 一致を実測）**、(d) ~~spec/contract 改訂~~ → **#358 で `specs/panel-interaction/spec.md` 改訂済み**。残る実質条件は window-ops ops 自身の unblock（別 ticket）と docked/Windows lane。
+- 最小実機 PoC: `docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json` が ScriptUI palette への resize→move→restore 往復を 3 系統 readback で記録済み。#358 の production-path e2e 証跡は同ディレクトリの `panel-mutation-e2e*.json`。
 
 ### AX 非 vend の AE への window 到達（#406）— observe のみ許可、mutation は不許可
 
