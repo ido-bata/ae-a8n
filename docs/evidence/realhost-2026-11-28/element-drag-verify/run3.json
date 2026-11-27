@@ -1,0 +1,822 @@
+{
+  "schema": "a8n.poc-element-drag-427/v1",
+  "issue": 427,
+  "recordedAt": "2026-11-27T23:06:25.421Z",
+  "install": "/Applications/Adobe After Effects 2027",
+  "steps": [
+    {
+      "name": "preflight",
+      "at": "2026-11-27T23:06:25.636Z",
+      "install": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "preexisting": []
+    },
+    {
+      "name": "launch",
+      "at": "2026-11-27T23:06:30.306Z",
+      "pid": 80114,
+      "info": {
+        "version": "27.0x78",
+        "build": "78"
+      },
+      "dialogDismissals": 0
+    },
+    {
+      "name": "recovery-target",
+      "at": "2026-11-27T23:06:30.591Z",
+      "pid": 80114,
+      "sessionKind": "Aqua"
+    },
+    {
+      "name": "window-ops-helpers",
+      "at": "2026-11-27T23:06:37.807Z",
+      "dir": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-window-ops-helpers-501602f1985d94e8"
+    },
+    {
+      "name": "surface",
+      "at": "2026-11-27T23:06:41.853Z",
+      "windowIndex": 3,
+      "title": "名称未設定プロジェクト",
+      "frame": {
+        "x": 0,
+        "y": 38,
+        "width": 1710,
+        "height": 1074
+      },
+      "windows": 3,
+      "attribution": "owned"
+    },
+    {
+      "name": "screenshot-setup",
+      "at": "2026-11-27T23:06:42.587Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.element-drag-verify/docs/evidence/realhost-2026-11-28/element-drag-verify/element-drag-427-setup.png"
+    },
+    {
+      "name": "window-capture-setup",
+      "at": "2026-11-27T23:06:42.651Z",
+      "ok": false,
+      "windowNumber": -1,
+      "error": "Command failed: /usr/sbin/screencapture -x -o -l -1 /Users/rebui/work/ae-a8n.element-drag-verify/docs/evidence/realhost-2026-11-28/element-drag-verify/element-drag-427-window-setup.png\ncould not create image from window\n"
+    },
+    {
+      "name": "created-comps",
+      "at": "2026-11-27T23:06:55.676Z",
+      "count": 8,
+      "names": [
+        "e427-C01",
+        "e427-C02",
+        "e427-C03",
+        "e427-C04",
+        "e427-C05",
+        "e427-C06",
+        "e427-C07",
+        "e427-C08"
+      ]
+    },
+    {
+      "name": "project-comps-before",
+      "at": "2026-11-27T23:07:06.767Z",
+      "count": 8,
+      "names": [
+        "e427-C01",
+        "e427-C02",
+        "e427-C03",
+        "e427-C04",
+        "e427-C05",
+        "e427-C06",
+        "e427-C07",
+        "e427-C08"
+      ]
+    },
+    {
+      "name": "layers-before",
+      "at": "2026-11-27T23:07:07.560Z",
+      "count": 6,
+      "names": [
+        "e427-L6",
+        "e427-L5",
+        "e427-L4",
+        "e427-L3",
+        "e427-L2",
+        "e427-L1"
+      ]
+    },
+    {
+      "name": "project-state-before",
+      "at": "2026-11-27T23:07:09.986Z",
+      "itemCount": 8,
+      "dirty": true,
+      "activeItem": {
+        "name": "e427-C01",
+        "comp": true
+      }
+    },
+    {
+      "name": "surface-after-setup",
+      "at": "2026-11-27T23:07:10.364Z",
+      "windowIndex": 3,
+      "title": "名称未設定プロジェクト *",
+      "frame": {
+        "x": 0,
+        "y": 38,
+        "width": 1710,
+        "height": 1074
+      },
+      "previousTitle": "名称未設定プロジェクト",
+      "windows": [
+        {
+          "title": "",
+          "subrole": "AXFloatingWindow",
+          "frame": {
+            "x": 100,
+            "y": 76,
+            "width": 640,
+            "height": 504
+          },
+          "attribution": "owned"
+        },
+        {
+          "title": "",
+          "subrole": "AXFloatingWindow",
+          "frame": {
+            "x": 698,
+            "y": 720,
+            "width": 324,
+            "height": 708
+          },
+          "attribution": "owned"
+        },
+        {
+          "title": "名称未設定プロジェクト *",
+          "subrole": "AXDialog",
+          "frame": {
+            "x": 0,
+            "y": 38,
+            "width": 1710,
+            "height": 1074
+          },
+          "attribution": "owned"
+        }
+      ]
+    },
+    {
+      "name": "main-window-number",
+      "at": "2026-11-27T23:07:10.532Z",
+      "windowNumber": 7151
+    },
+    {
+      "name": "project-pane-error",
+      "at": "2026-11-27T23:07:12.506Z",
+      "error": "PanelError: window 7151 exists in the census but no framed Accessibility window both matches its frame and the locator — it cannot parent a docked pane"
+    },
+    {
+      "name": "timeline-pane-error",
+      "at": "2026-11-27T23:07:14.268Z",
+      "error": "PanelError: window 7151 exists in the census but no framed Accessibility window both matches its frame and the locator — it cannot parent a docked pane"
+    },
+    {
+      "name": "anchors",
+      "at": "2026-11-27T23:07:14.268Z",
+      "frame": {
+        "x": 0,
+        "y": 38,
+        "width": 1710,
+        "height": 1074
+      },
+      "anchors": {
+        "projectRow1": {
+          "x": 150,
+          "y": 263
+        },
+        "projectRow2": {
+          "x": 150,
+          "y": 284
+        },
+        "timelineRow1": {
+          "x": 250,
+          "y": 847
+        },
+        "timelineRow3": {
+          "x": 250,
+          "y": 887
+        },
+        "tab": {
+          "x": 56,
+          "y": 86
+        },
+        "tabTo": {
+          "x": 700,
+          "y": 712
+        }
+      }
+    },
+    {
+      "name": "row-resolution",
+      "at": "2026-11-27T23:07:14.268Z",
+      "projectItemName": "e427-C01",
+      "projectRowFrame": null,
+      "timelineRowsFound": 0
+    },
+    {
+      "name": "timeline-drag-points",
+      "at": "2026-11-27T23:07:14.624Z",
+      "from": {
+        "x": 250,
+        "y": 885
+      },
+      "to": {
+        "x": 250,
+        "y": 945
+      },
+      "axRows": 0
+    },
+    {
+      "name": "timeline-candidates",
+      "at": "2026-11-27T23:07:26.382Z",
+      "count": 28,
+      "pairs": [
+        {
+          "from": {
+            "x": 500,
+            "y": 885
+          },
+          "to": {
+            "x": 500,
+            "y": 925
+          }
+        },
+        {
+          "from": {
+            "x": 800,
+            "y": 885
+          },
+          "to": {
+            "x": 800,
+            "y": 925
+          }
+        },
+        {
+          "from": {
+            "x": 1100,
+            "y": 885
+          },
+          "to": {
+            "x": 1100,
+            "y": 925
+          }
+        },
+        {
+          "from": {
+            "x": 1400,
+            "y": 885
+          },
+          "to": {
+            "x": 1400,
+            "y": 925
+          }
+        },
+        {
+          "from": {
+            "x": 500,
+            "y": 865
+          },
+          "to": {
+            "x": 500,
+            "y": 905
+          }
+        },
+        {
+          "from": {
+            "x": 800,
+            "y": 865
+          },
+          "to": {
+            "x": 800,
+            "y": 905
+          }
+        },
+        {
+          "from": {
+            "x": 1100,
+            "y": 865
+          },
+          "to": {
+            "x": 1100,
+            "y": 905
+          }
+        },
+        {
+          "from": {
+            "x": 1400,
+            "y": 865
+          },
+          "to": {
+            "x": 1400,
+            "y": 905
+          }
+        },
+        {
+          "from": {
+            "x": 500,
+            "y": 905
+          },
+          "to": {
+            "x": 500,
+            "y": 945
+          }
+        },
+        {
+          "from": {
+            "x": 800,
+            "y": 905
+          },
+          "to": {
+            "x": 800,
+            "y": 945
+          }
+        },
+        {
+          "from": {
+            "x": 1100,
+            "y": 905
+          },
+          "to": {
+            "x": 1100,
+            "y": 945
+          }
+        },
+        {
+          "from": {
+            "x": 1400,
+            "y": 905
+          },
+          "to": {
+            "x": 1400,
+            "y": 945
+          }
+        }
+      ]
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:08:09.117Z",
+      "attempt": 0,
+      "from": {
+        "x": 500,
+        "y": 885
+      },
+      "code": "indeterminate",
+      "message": "the drag was posted (24 segments) but no project delta appeared within 10000ms; delta {\"addedNames\":[],\"removedNames\":[],\"orderChanged\":false,\"countDelta\":0} — the drag may have missed its target row; re-observe before any retry, never resend"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:08:52.858Z",
+      "attempt": 1,
+      "from": {
+        "x": 800,
+        "y": 885
+      },
+      "code": "indeterminate",
+      "message": "the drag was posted (24 segments) but no project delta appeared within 10000ms; delta {\"addedNames\":[],\"removedNames\":[],\"orderChanged\":false,\"countDelta\":null} — the drag may have missed its target row; re-observe before any retry, never resend"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:08:57.362Z",
+      "attempt": 2,
+      "from": {
+        "x": 1100,
+        "y": 885
+      },
+      "code": "unavailable",
+      "message": "the DOM readback oracle produced no usable snapshot for the element drag; a drag without a before-state cannot be verified — refusing before anything posts"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:09:01.819Z",
+      "attempt": 3,
+      "from": {
+        "x": 1400,
+        "y": 885
+      },
+      "code": "unavailable",
+      "message": "the DOM readback oracle produced no usable snapshot for the element drag; a drag without a before-state cannot be verified — refusing before anything posts"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:09:06.532Z",
+      "attempt": 4,
+      "from": {
+        "x": 500,
+        "y": 865
+      },
+      "code": "unavailable",
+      "message": "the DOM readback oracle produced no usable snapshot for the element drag; a drag without a before-state cannot be verified — refusing before anything posts"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:09:11.112Z",
+      "attempt": 5,
+      "from": {
+        "x": 800,
+        "y": 865
+      },
+      "code": "unavailable",
+      "message": "the DOM readback oracle produced no usable snapshot for the element drag; a drag without a before-state cannot be verified — refusing before anything posts"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:09:15.917Z",
+      "attempt": 6,
+      "from": {
+        "x": 1100,
+        "y": 865
+      },
+      "code": "unavailable",
+      "message": "the DOM readback oracle produced no usable snapshot for the element drag; a drag without a before-state cannot be verified — refusing before anything posts"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:09:20.476Z",
+      "attempt": 7,
+      "from": {
+        "x": 1400,
+        "y": 865
+      },
+      "code": "unavailable",
+      "message": "the DOM readback oracle produced no usable snapshot for the element drag; a drag without a before-state cannot be verified — refusing before anything posts"
+    },
+    {
+      "name": "layers-after",
+      "at": "2026-11-27T23:09:22.278Z",
+      "names": [
+        "e427-L6",
+        "e427-L5",
+        "e427-L4",
+        "e427-L3",
+        "e427-L2",
+        "e427-L1"
+      ]
+    },
+    {
+      "name": "screenshot-after-timeline",
+      "at": "2026-11-27T23:09:22.920Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.element-drag-verify/docs/evidence/realhost-2026-11-28/element-drag-verify/element-drag-427-after-timeline.png"
+    },
+    {
+      "name": "project-drag-points",
+      "at": "2026-11-27T23:09:22.920Z",
+      "from": {
+        "x": 150,
+        "y": 301
+      }
+    },
+    {
+      "name": "project-candidates",
+      "at": "2026-11-27T23:09:35.322Z",
+      "count": 21,
+      "pairs": [
+        {
+          "from": {
+            "x": 150,
+            "y": 301
+          },
+          "to": {
+            "x": 150,
+            "y": 322
+          }
+        },
+        {
+          "from": {
+            "x": 400,
+            "y": 301
+          },
+          "to": {
+            "x": 400,
+            "y": 322
+          }
+        },
+        {
+          "from": {
+            "x": 1300,
+            "y": 301
+          },
+          "to": {
+            "x": 1300,
+            "y": 322
+          }
+        },
+        {
+          "from": {
+            "x": 150,
+            "y": 280
+          },
+          "to": {
+            "x": 150,
+            "y": 301
+          }
+        },
+        {
+          "from": {
+            "x": 400,
+            "y": 280
+          },
+          "to": {
+            "x": 400,
+            "y": 301
+          }
+        },
+        {
+          "from": {
+            "x": 1300,
+            "y": 280
+          },
+          "to": {
+            "x": 1300,
+            "y": 301
+          }
+        },
+        {
+          "from": {
+            "x": 150,
+            "y": 322
+          },
+          "to": {
+            "x": 150,
+            "y": 343
+          }
+        },
+        {
+          "from": {
+            "x": 400,
+            "y": 322
+          },
+          "to": {
+            "x": 400,
+            "y": 343
+          }
+        },
+        {
+          "from": {
+            "x": 1300,
+            "y": 322
+          },
+          "to": {
+            "x": 1300,
+            "y": 343
+          }
+        },
+        {
+          "from": {
+            "x": 150,
+            "y": 259
+          },
+          "to": {
+            "x": 150,
+            "y": 280
+          }
+        },
+        {
+          "from": {
+            "x": 400,
+            "y": 259
+          },
+          "to": {
+            "x": 400,
+            "y": 280
+          }
+        },
+        {
+          "from": {
+            "x": 1300,
+            "y": 259
+          },
+          "to": {
+            "x": 1300,
+            "y": 280
+          }
+        }
+      ]
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:10:18.618Z",
+      "attempt": 0,
+      "from": {
+        "x": 150,
+        "y": 301
+      },
+      "code": "indeterminate",
+      "message": "the drag was posted (24 segments) but no project delta appeared within 10000ms; delta {\"addedNames\":[],\"removedNames\":[],\"orderChanged\":false,\"countDelta\":0} — the drag may have missed its target row; re-observe before any retry, never resend"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:11:02.072Z",
+      "attempt": 1,
+      "from": {
+        "x": 400,
+        "y": 301
+      },
+      "code": "indeterminate",
+      "message": "the drag was posted (24 segments) but no project delta appeared within 10000ms; delta {\"addedNames\":[],\"removedNames\":[],\"orderChanged\":false,\"countDelta\":0} — the drag may have missed its target row; re-observe before any retry, never resend"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:11:37.482Z",
+      "attempt": 2,
+      "from": {
+        "x": 1300,
+        "y": 301
+      },
+      "code": "indeterminate",
+      "message": "the drag was posted (24 segments) but no project delta appeared within 10000ms; delta {\"addedNames\":[],\"removedNames\":[],\"orderChanged\":false,\"countDelta\":0} — the drag may have missed its target row; re-observe before any retry, never resend"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:12:14.117Z",
+      "attempt": 3,
+      "from": {
+        "x": 150,
+        "y": 280
+      },
+      "code": "indeterminate",
+      "message": "the drag was posted (24 segments) but no project delta appeared within 10000ms; delta {\"addedNames\":[],\"removedNames\":[],\"orderChanged\":false,\"countDelta\":0} — the drag may have missed its target row; re-observe before any retry, never resend"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:12:48.551Z",
+      "attempt": 4,
+      "from": {
+        "x": 400,
+        "y": 280
+      },
+      "code": "indeterminate",
+      "message": "the drag was posted (24 segments) but no project delta appeared within 10000ms; delta {\"addedNames\":[],\"removedNames\":[],\"orderChanged\":false,\"countDelta\":0} — the drag may have missed its target row; re-observe before any retry, never resend"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:13:20.423Z",
+      "attempt": 5,
+      "from": {
+        "x": 1300,
+        "y": 280
+      },
+      "code": "indeterminate",
+      "message": "the drag was posted (24 segments) but no project delta appeared within 10000ms; delta {\"addedNames\":[],\"removedNames\":[],\"orderChanged\":false,\"countDelta\":0} — the drag may have missed its target row; re-observe before any retry, never resend"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:13:55.906Z",
+      "attempt": 6,
+      "from": {
+        "x": 150,
+        "y": 322
+      },
+      "code": "indeterminate",
+      "message": "the drag was posted (24 segments) but no project delta appeared within 10000ms; delta {\"addedNames\":[],\"removedNames\":[],\"orderChanged\":false,\"countDelta\":0} — the drag may have missed its target row; re-observe before any retry, never resend"
+    },
+    {
+      "name": "DragDropError",
+      "at": "2026-11-27T23:14:31.896Z",
+      "attempt": 7,
+      "from": {
+        "x": 400,
+        "y": 322
+      },
+      "code": "indeterminate",
+      "message": "the drag was posted (24 segments) but no project delta appeared within 10000ms; delta {\"addedNames\":[],\"removedNames\":[],\"orderChanged\":false,\"countDelta\":0} — the drag may have missed its target row; re-observe before any retry, never resend"
+    },
+    {
+      "name": "project-comps-after",
+      "at": "2026-11-27T23:14:33.476Z",
+      "count": 8,
+      "names": [
+        "e427-C01",
+        "e427-C02",
+        "e427-C03",
+        "e427-C04",
+        "e427-C05",
+        "e427-C06",
+        "e427-C07",
+        "e427-C08"
+      ]
+    },
+    {
+      "name": "screenshot-after-project",
+      "at": "2026-11-27T23:14:34.078Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.element-drag-verify/docs/evidence/realhost-2026-11-28/element-drag-verify/element-drag-427-after-project.png"
+    },
+    {
+      "name": "window-capture-after",
+      "at": "2026-11-27T23:14:34.149Z",
+      "ok": false,
+      "windowNumber": -1,
+      "error": "Command failed: /usr/sbin/screencapture -x -o -l -1 /Users/rebui/work/ae-a8n.element-drag-verify/docs/evidence/realhost-2026-11-28/element-drag-verify/element-drag-427-window-after.png\ncould not create image from window\n"
+    },
+    {
+      "name": "panel-tab-attempt",
+      "at": "2026-11-27T23:14:50.741Z",
+      "to": {
+        "x": 1200,
+        "y": 400
+      },
+      "note": "right-of-viewer upper",
+      "gateFromOk": true,
+      "gateTo": {
+        "ok": true,
+        "pid": 80114,
+        "windowNumber": 7151,
+        "bounds": {
+          "x": 0,
+          "y": 38,
+          "width": 1710,
+          "height": 1074
+        }
+      },
+      "error": "the drag aborted mid-sequence after 12 move(s): segment 13 at 675.6666666666666,273.5: topmost window is pid 1961 (window 7103), not the owned surface — aborting the drag instead of finishing it; a partial drag may have landed — re-observe before any retry, never resend",
+      "code": "indeterminate"
+    },
+    {
+      "name": "tearoff-probe",
+      "at": "2026-11-27T23:14:53.419Z",
+      "verified": false,
+      "posted": false,
+      "reason": "no candidate destination passed the census gate",
+      "attempts": [
+        {
+          "to": {
+            "x": 1200,
+            "y": 400
+          },
+          "note": "right-of-viewer upper",
+          "gateFromOk": true,
+          "gateTo": {
+            "ok": true,
+            "pid": 80114,
+            "windowNumber": 7151,
+            "bounds": {
+              "x": 0,
+              "y": 38,
+              "width": 1710,
+              "height": 1074
+            }
+          },
+          "error": "the drag aborted mid-sequence after 12 move(s): segment 13 at 675.6666666666666,273.5: topmost window is pid 1961 (window 7103), not the owned surface — aborting the drag instead of finishing it; a partial drag may have landed — re-observe before any retry, never resend",
+          "code": "indeterminate"
+        }
+      ],
+      "windowsBefore": 3,
+      "windowsAfter": 3,
+      "newOwnedWindow": 0
+    },
+    {
+      "name": "screenshot-after-tearoff",
+      "at": "2026-11-27T23:14:54.028Z",
+      "ok": true,
+      "path": "/Users/rebui/work/ae-a8n.element-drag-verify/docs/evidence/realhost-2026-11-28/element-drag-verify/element-drag-427-after-tearoff.png"
+    }
+  ],
+  "outcome": "failed",
+  "results": {
+    "timelineLayer": {
+      "error": "the DOM readback oracle produced no usable snapshot for the element drag; a drag without a before-state cannot be verified — refusing before anything posts",
+      "code": "unavailable"
+    },
+    "projectItem": {
+      "error": "the drag was posted (24 segments) but no project delta appeared within 10000ms; delta {\"addedNames\":[],\"removedNames\":[],\"orderChanged\":false,\"countDelta\":0} — the drag may have missed its target row; re-observe before any retry, never resend",
+      "code": "indeterminate"
+    },
+    "tabTearoffProbe": {
+      "verified": false,
+      "posted": false,
+      "reason": "no candidate destination passed the census gate",
+      "attempts": [
+        {
+          "to": {
+            "x": 1200,
+            "y": 400
+          },
+          "note": "right-of-viewer upper",
+          "gateFromOk": true,
+          "gateTo": {
+            "ok": true,
+            "pid": 80114,
+            "windowNumber": 7151,
+            "bounds": {
+              "x": 0,
+              "y": 38,
+              "width": 1710,
+              "height": 1074
+            }
+          },
+          "error": "the drag aborted mid-sequence after 12 move(s): segment 13 at 675.6666666666666,273.5: topmost window is pid 1961 (window 7103), not the owned surface — aborting the drag instead of finishing it; a partial drag may have landed — re-observe before any retry, never resend",
+          "code": "indeterminate"
+        }
+      ],
+      "windowsBefore": 3,
+      "windowsAfter": 3,
+      "newOwnedWindow": 0
+    }
+  }
+}
