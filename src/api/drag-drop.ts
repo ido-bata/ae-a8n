@@ -18,8 +18,10 @@
  *   - Both kinds are `mutate-gui` and stay gated:
  *     `dragDropMutationGate()` permits `drop-file` (the #411-verified
  *     vehicle, fixture files only, census/attribution/oracle chain)
- *     and refuses `element-drag` pending its own A-SAFETY class
- *     decision — see `dragDropCapabilities()`.
+ *     and `element-drag` for the declared proven targets
+ *     (`project-item`/`timeline-layer` reorder, #427); `panel-tab`
+ *     tear-off and `other` stay refused — see
+ *     `dragDropCapabilities()`.
  *   - The whole press→move→release sequence runs inside ONE GUI-lease
  *     acquisition (`dragdrop:<kind>`), audited around the act like
  *     `ae.input()`'s `#run`.
@@ -53,6 +55,7 @@ import { dragDropMutationGate } from "../dragdrop/gate.js";
 import {
   DragDropError,
   type DragDropElementRequest,
+  type DragDropElementTarget,
   type DragDropFileProbe,
   type DragDropFileRequest,
   type DragDropMutationGate,
@@ -93,6 +96,7 @@ export { DragDropError, dragDropMutationGate } from "../dragdrop/index.js";
 export type {
   DragDropDelta,
   DragDropElementRequest,
+  DragDropElementTarget,
   DragDropErrorCode,
   DragDropFilePayload,
   DragDropFileProbe,
@@ -126,7 +130,8 @@ export type DragDropCapability = {
 /**
  * What this build supports for drag-drop on `platform`. Windows is
  * deliberately all-unsupported in this slice; on darwin `drop-file`
- * is the permitted class and `element-drag` stays gate-refused.
+ * and the proven `element-drag` reorder classes are permitted while
+ * `panel-tab`/`other` element drags stay gate-refused.
  */
 export type DragDropCapabilities = {
   readonly platform: "darwin" | "win32";
@@ -160,12 +165,16 @@ export function dragDropCapabilities(
         "gated drop point, project.items delta oracle, never resent",
     },
     elementDrag: {
-      support: "unavailable",
+      support: "implemented",
       verification: VERIFICATION,
       reason:
-        "mutate-gui class kept refused by dragDropMutationGate(): the " +
-        "press→move→release vehicle is real-host proven (#411) but its " +
-        "in-app blast radius has no dedicated A-SAFETY class decision yet",
+        "mutate-gui class permitted by dragDropMutationGate() for the " +
+        "declared real-host-proven reorder targets only (#427 " +
+        "A-SAFETY decision citing the #411 PoC): project-item and " +
+        "timeline-layer drags run the segmented CGEvent vehicle with " +
+        "per-segment census re-checks; panel-tab tear-off and other " +
+        "undeclared in-app drags stay refused — census/attribution/" +
+        "oracle chain and never-resend are unchanged",
     },
   };
 }
@@ -202,6 +211,12 @@ export type DragDropSeams = GuiObservationSeams & {
    * (production goes through `session.call`).
    */
   readonly projectItems?: () => Promise<DragDropSnapshot> | DragDropSnapshot;
+  /**
+   * Test seam: replace the `comp.layers`-order readback used for
+   * `element: "timeline-layer"` drags (#427). Production resolves the
+   * active comp through `project.state` and reads `comp.layers`.
+   */
+  readonly timelineLayers?: () => Promise<DragDropSnapshot> | DragDropSnapshot;
 };
 
 function guiOptions(
@@ -635,6 +650,11 @@ export function dragDropForTarget(
   }
 
   const runSession = seams.runSession ?? runInSession;
+  const emptySnapshot = (): DragDropSnapshot => ({
+    items: null,
+    itemCount: null,
+    observedAt: new Date().toISOString(),
+  });
   const projectItems =
     seams.projectItems ??
     ((): Promise<DragDropSnapshot> =>
@@ -652,6 +672,36 @@ export function dragDropForTarget(
           itemCount: result.itemCount,
           observedAt: new Date().toISOString(),
         })));
+  // The timeline-layer oracle (#427): `comp.layers` returns layers in
+  // panel order for the named comp, and `project.state.activeItem`
+  // names the comp the Timeline panel is showing. No active comp (or a
+  // non-comp active item) yields an unusable snapshot — the controller
+  // then refuses `unavailable` rather than posting unverifiable.
+  const timelineLayers =
+    seams.timelineLayers ??
+    (async (): Promise<DragDropSnapshot> => {
+      const state = await session.call<{
+        activeItem: { name: string; comp: boolean } | null;
+      }>("project.state", "project.state");
+      const active = state.activeItem;
+      if (active === null || active.comp !== true) {
+        return emptySnapshot();
+      }
+      const layers = await session.call<readonly { name: string }[]>(
+        "comp.layers",
+        "comp.layers",
+        { name: active.name },
+      );
+      return {
+        items: layers.map((layer) => ({
+          id: null,
+          name: layer.name,
+          type: "layer",
+        })),
+        itemCount: layers.length,
+        observedAt: new Date().toISOString(),
+      };
+    });
 
   // The window listing: prefer the compiled `window-ops state` helper —
   // the AXUIElement channel that sees AE's windows where System Events
@@ -691,7 +741,11 @@ export function dragDropForTarget(
       seams.activate ??
       (() => darwinActivatePid(target.session, target.pid, runSession)),
     probeFile: seams.probeFile ?? probeDropFile,
-    readback: () => projectItems(),
+    // The declared element class selects the oracle (#427): only
+    // "timeline-layer" reads layer order; file-drop and every other
+    // element class read project.items order.
+    readback: (element?: DragDropElementTarget) =>
+      element === "timeline-layer" ? timelineLayers() : projectItems(),
   };
   // Vehicle channels: a test seam wins per channel; otherwise the
   // compiled-helper binding supplies all four. A channel left unset is

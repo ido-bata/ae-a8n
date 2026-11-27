@@ -224,6 +224,7 @@ function elementRequest(over: Record<string, unknown> = {}): DragDropRequest {
   return {
     kind: "element-drag",
     surface: locator(),
+    element: "project-item",
     from: { ...FROM },
     to: { ...TO },
     steps: 4,
@@ -233,14 +234,31 @@ function elementRequest(over: Record<string, unknown> = {}): DragDropRequest {
 }
 
 describe("dragDropMutationGate", () => {
-  it("permits drop-file and refuses element-drag with the audit citation", () => {
+  it("permits drop-file and the proven element-drag targets (#427)", () => {
     const gate = dragDropMutationGate();
     expect(gate("drop-file")).toEqual({ allowed: true });
-    const refused = gate("element-drag");
-    expect(refused.allowed).toBe(false);
-    if (!refused.allowed) {
-      expect(refused.reason).toContain("docs/gui-supervision-safety-gates.md");
+    const projectItem = gate("element-drag", elementRequest());
+    expect(projectItem).toEqual({ allowed: true });
+    const timelineLayer = gate(
+      "element-drag",
+      elementRequest({ element: "timeline-layer" }),
+    );
+    expect(timelineLayer).toEqual({ allowed: true });
+  });
+
+  it("refuses unproven element classes with the audit citation", () => {
+    const gate = dragDropMutationGate();
+    for (const element of ["panel-tab", "other"] as const) {
+      const refused = gate("element-drag", elementRequest({ element }));
+      expect(refused.allowed).toBe(false);
+      if (!refused.allowed) {
+        expect(refused.reason).toContain("docs/gui-supervision-safety-gates.md");
+        expect(refused.reason).toContain(element);
+      }
     }
+    // No request at all is undeclared — fail-closed.
+    const undeclared = gate("element-drag");
+    expect(undeclared.allowed).toBe(false);
   });
 });
 
@@ -308,14 +326,47 @@ describe("DragDropController file-drop", () => {
     expect(posted).toBe(0);
   });
 
-  it("refuses element-drag under the production gate", async () => {
+  it("refuses an unproven element class under the production gate", async () => {
     const { controller, calls } = makeController({}, {
       authorizeMutation: dragDropMutationGate(),
     });
-    await expect(controller.run(elementRequest())).rejects.toMatchObject({
+    await expect(
+      controller.run(elementRequest({ element: "panel-tab" })),
+    ).rejects.toMatchObject({
       code: "refused",
     });
     expect(calls.press).toBe(0);
+  });
+
+  it("permits a proven element class under the production gate", async () => {
+    let reads = 0;
+    const { controller } = makeController(
+      {
+        readback: () => {
+          reads += 1;
+          return reads === 1 ? snapshot(["a", "b"]) : snapshot(["b", "a"]);
+        },
+      },
+      { authorizeMutation: dragDropMutationGate() },
+    );
+    const result = await controller.run(elementRequest());
+    expect(result.verified).toBe(true);
+    expect(result.element).toBe("project-item");
+  });
+
+  it("passes the declared element to the readback oracle", async () => {
+    const seen: (string | undefined)[] = [];
+    let reads = 0;
+    const { controller } = makeController({
+      readback: (element) => {
+        seen.push(element);
+        reads += 1;
+        return reads === 1 ? snapshot(["a", "b"]) : snapshot(["b", "a"]);
+      },
+    });
+    await controller.run(elementRequest({ element: "timeline-layer" }));
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((e) => e === "timeline-layer")).toBe(true);
   });
 
   it("drop-file is permitted under the production gate", async () => {
@@ -567,14 +618,18 @@ describe("dragDropForTarget / capabilities / gate", () => {
     const caps = dragDropCapabilities("darwin");
     expect(caps.dropFile.support).toBe("implemented");
     expect(caps.dropFile.reason).toContain("#411");
-    expect(caps.elementDrag.support).toBe("unavailable");
-    expect(caps.elementDrag.reason).toContain("A-SAFETY");
+    expect(caps.elementDrag.support).toBe("implemented");
+    expect(caps.elementDrag.reason).toContain("#427");
   });
 
-  it("the production gate permits drop-file and refuses element-drag", () => {
+  it("the production gate permits drop-file and proven element classes only", () => {
     const gate = dragDropMutationGate();
     expect(gate("drop-file").allowed).toBe(true);
-    const refused = gate("element-drag");
+    expect(gate("element-drag", elementRequest()).allowed).toBe(true);
+    const refused = gate(
+      "element-drag",
+      elementRequest({ element: "panel-tab" }),
+    );
     expect(refused.allowed).toBe(false);
   });
 

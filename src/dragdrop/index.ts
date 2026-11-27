@@ -9,6 +9,7 @@ export {
   DragDropError,
   type DragDropDelta,
   type DragDropElementRequest,
+  type DragDropElementTarget,
   type DragDropErrorCode,
   type DragDropFilePayload,
   type DragDropFileProbe,

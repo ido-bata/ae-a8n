@@ -355,6 +355,7 @@ export {
   type DragDropControllerOptions,
   type DragDropDelta,
   type DragDropElementRequest,
+  type DragDropElementTarget,
   type DragDropErrorCode,
   type DragDropFilePayload,
   type DragDropFileProbe,
@@ -1304,8 +1305,9 @@ export class AfterEffects {
    * `specs/workspace-editing/spec.md` §9 "File/element drag-drop"):
    * `drop-file` is implemented under the A-SAFETY decision in
    * `docs/gui-supervision-safety-gates.md` (#411 vehicle evidence);
-   * `element-drag` reports `unavailable` — gate-refused pending its own
-   * class decision.
+   * `element-drag` is implemented for the declared proven reorder
+   * targets (`project-item`/`timeline-layer`, #427) while `panel-tab`
+   * tear-off and `other` stay gate-refused.
    */
   dragDropCapabilities(): DragDropCapabilities {
     return dragDropCapabilities(process.platform);
@@ -1316,8 +1318,10 @@ export class AfterEffects {
    * (#422): `dropFile` vends a fixture file in an NSDraggingSession and
    * drops it on a re-verified, census-proven owned surface;
    * `dragElement` runs the segmented press→move→release with per-segment
-   * census re-checks. Both are mutate-gui, lease-held for the whole
-   * sequence, oracle-verified via `project.items`, never resent.
+   * census re-checks for the declared proven element classes. Both are
+   * mutate-gui, lease-held for the whole sequence, oracle-verified via
+   * `project.items` (or `comp.layers` order for `timeline-layer`),
+   * never resent.
    * Throws `DragDropError` when no owned target is attested or the
    * platform is unsupported.
    */

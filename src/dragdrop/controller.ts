@@ -48,6 +48,7 @@ import {
   DragDropError,
   type DragDropDelta,
   type DragDropElementRequest,
+  type DragDropElementTarget,
   type DragDropFileRequest,
   type DragDropMutationGate,
   type DragDropMutationOp,
@@ -253,8 +254,11 @@ export class DragDropController {
     }
   }
 
-  #requireMutationAllowed(op: DragDropMutationOp): void {
-    const gate = this.#authorizeMutation?.(op) ?? {
+  #requireMutationAllowed(
+    op: DragDropMutationOp,
+    request?: DragDropRequest,
+  ): void {
+    const gate = this.#authorizeMutation?.(op, request) ?? {
       allowed: false as const,
       reason:
         "no mutation gate is configured for drag-drop operations; every drag is a " +
@@ -391,12 +395,14 @@ export class DragDropController {
     };
   }
 
-  async #snapshot(): Promise<DragDropSnapshot | null> {
+  async #snapshot(
+    element?: DragDropElementTarget,
+  ): Promise<DragDropSnapshot | null> {
     if (this.#ops.readback === undefined) {
       return null;
     }
     try {
-      return await this.#ops.readback();
+      return await this.#ops.readback(element);
     } catch {
       return null;
     }
@@ -407,8 +413,11 @@ export class DragDropController {
    * whose before-state is unknown can never be verified, so the op
    * refuses `unavailable` BEFORE anything posts (fail-closed, spec §10).
    */
-  async #requireOracleSnapshot(what: string): Promise<DragDropSnapshot> {
-    const snapshot = await this.#snapshot();
+  async #requireOracleSnapshot(
+    what: string,
+    element?: DragDropElementTarget,
+  ): Promise<DragDropSnapshot> {
+    const snapshot = await this.#snapshot(element);
     if (
       snapshot === null ||
       (snapshot.items === null && snapshot.itemCount === null)
@@ -432,6 +441,7 @@ export class DragDropController {
   async #waitForDelta(
     before: DragDropSnapshot | null,
     accept: (delta: DragDropDelta) => boolean,
+    element?: DragDropElementTarget,
   ): Promise<{ met: boolean; after: DragDropSnapshot | null; delta: DragDropDelta }> {
     const deadline = this.#now().getTime() + this.#poll.timeoutMs;
     let after: DragDropSnapshot | null = before;
@@ -441,7 +451,7 @@ export class DragDropController {
     // an empty delta.
     let answered = before !== null;
     for (;;) {
-      after = await this.#snapshot();
+      after = await this.#snapshot(element);
       if (after !== null) {
         answered = true;
         delta = dragDropDelta(before, after);
@@ -472,7 +482,7 @@ export class DragDropController {
    */
   async dropFile(request: DragDropFileRequest): Promise<DragDropResult> {
     const op: DragDropMutationOp = "drop-file";
-    this.#requireMutationAllowed(op);
+    this.#requireMutationAllowed(op, request);
     if (this.#ops.fileDrag === undefined) {
       throw new DragDropError(
         "unsupported",
@@ -577,6 +587,7 @@ export class DragDropController {
 
     return {
       kind: "file-drop",
+      element: null,
       vehicle: posted.verdict,
       dragOperation: posted.operation,
       delta: wait.delta,
@@ -603,7 +614,7 @@ export class DragDropController {
    */
   async drag(request: DragDropElementRequest): Promise<DragDropResult> {
     const op: DragDropMutationOp = "element-drag";
-    this.#requireMutationAllowed(op);
+    this.#requireMutationAllowed(op, request);
     for (const channel of ["press", "move", "release"] as const) {
       if (this.#ops[channel] === undefined) {
         throw new DragDropError(
@@ -651,7 +662,7 @@ export class DragDropController {
       // Best-effort.
     }
 
-    const before = await this.#requireOracleSnapshot("element drag");
+    const before = await this.#requireOracleSnapshot("element drag", request.element);
     const segments: DragDropSegmentCheck[] = [];
     let aborted: string | null = null;
     let postedMoves = 0;
@@ -759,6 +770,7 @@ export class DragDropController {
         delta.removedNames.length > 0 ||
         delta.orderChanged ||
         delta.countDelta !== null,
+      request.element,
     );
     if (!wait.met) {
       throw new DragDropError(
@@ -772,6 +784,7 @@ export class DragDropController {
 
     return {
       kind: "element-drag",
+      element: request.element,
       vehicle: "performed",
       dragOperation: null,
       delta: wait.delta,
