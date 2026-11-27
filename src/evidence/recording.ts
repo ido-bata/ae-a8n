@@ -32,19 +32,24 @@
  *     creation belong to a dead session — they are marked `orphaned`
  *     (gap list + `incomplete`) instead of being discovered as growing
  *     files later.
- *   - Gates (spec §5.6): `window`/`region` scopes require an `"owned"`
- *     `PanelTarget` attribution and are serialized on the GUI lease for
- *     the segment's duration (lease-per-segment is the safe default).
- *     `display`/`session` scopes — and *any* scope when the session kind
- *     is not proven `"isolated"` — require recording authorization. The
- *     authorization mechanism itself is a later ticket; this module only
- *     owns the gate and records the refusal.
+ *   - Gates (spec §5.6/§5.7): `window`/`region` scopes require an
+ *     `"owned"` `PanelTarget` attribution and are serialized on the GUI
+ *     lease for the segment's duration (lease-per-segment is the safe
+ *     default). `display`/`session` scopes — and *any* scope when the
+ *     session kind is not proven `"isolated"` — require an explicit
+ *     `RecordingAuthorization` grant naming both the scope kind and the
+ *     session kind; the grant is recorded verbatim on the segment as
+ *     consent evidence (#383). A configured `authorizeRecording` seam
+ *     replaces the default grant check for controllers that need a
+ *     different policy.
  *   - Trace: `record.start`/`record.stop` emit trace rows whose
  *     `result.evidenceId` is the segment id, so a consumer can walk
  *     trace → artifact without guessing (spec §5.3 rule 1).
  *
  * Level: `automated test` — file I/O and injected seams only; no OS
  * calls, no After Effects, nothing here has run against a real host.
+ * The authorization grant is caller-side consent (spec §5.7, ADR-0007):
+ * it is recorded and enforced, never authenticated.
  */
 
 import { createHash } from "node:crypto";
@@ -64,11 +69,13 @@ import { GuiEvidenceIndex } from "./index.js";
 import {
   type CaptureLeakage,
   type CaptureScope,
+  type CaptureScopeKind,
   type EvidenceArtifact,
   type EvidenceExclusion,
   type EvidenceIndexSession,
   type EvidenceSegment,
   type EvidenceSessionKind,
+  type RecordingAuthorization,
 } from "./types.js";
 
 /* ------------------------------------------------------------------ */
@@ -114,6 +121,16 @@ export type RecordStartOptions = {
   readonly audio?: false;
   /** Declarative exclusions, recorded verbatim on the segment (§7.2). */
   readonly exclude?: readonly EvidenceExclusion[];
+  /**
+   * The §5.7 authorization grant — the caller's explicit consent
+   * declaration for scopes that `recordingRequiresAuthorization` gates
+   * (`display`/`session`, or any scope on a non-`"isolated"` session
+   * kind). It must name BOTH the requested scope kind and the session
+   * kind; an absent, malformed or non-covering grant refuses the start
+   * and the refusal lands in the index gaps. The grant is recorded
+   * verbatim on the segment — it is consent evidence, not a credential.
+   */
+  readonly authorization?: RecordingAuthorization;
 };
 
 /**
@@ -229,14 +246,24 @@ export type RecorderResolver = (scope: CaptureScope) => ScreenRecorder | null;
 export type RecordingAuthorizationRequest = {
   readonly scope: CaptureScope;
   readonly sessionKind: EvidenceSessionKind;
+  /**
+   * The caller-supplied grant from `RecordStartOptions.authorization`,
+   * when one was given. Unvalidated — the authorizer decides whether it
+   * is well-formed and covering (the default `recordingScopeAuthorizer`
+   * does both).
+   */
+  readonly grant?: RecordingAuthorization;
 };
 
 /**
  * The §5.6 authorization gate seam. Return `null` when the scope is
- * authorized, or a human-readable refusal reason. When the seam is absent
- * the controller fails closed: anything requiring authorization is
- * refused. The authorization *mechanism* (token issuance/validation) is
- * a later ticket — this seam is only the gate.
+ * authorized, or a human-readable refusal reason. When the seam is
+ * absent the controller applies `recordingScopeAuthorizer` — the §5.7
+ * grant check — so an ungated wide/shared scope still refuses without
+ * an explicit grant. A configured seam is the *whole* policy for that
+ * controller (it may be stricter or more permissive than the grant
+ * check, e.g. a future token issuer); it is an injection point, not a
+ * bypass a caller can reach.
  */
 export type RecordingAuthorizer = (
   request: RecordingAuthorizationRequest,
@@ -315,6 +342,10 @@ type LiveSegment = {
   readonly maxDurationMs: number;
   readonly fps?: number;
   readonly exclude?: readonly EvidenceExclusion[];
+  /** Backend-reported exclusions it could not honor (spec §7.2). */
+  readonly unhonoredExclusions?: readonly string[];
+  /** The §5.7 grant that authorized this segment, when one was used. */
+  readonly authorization?: RecordingAuthorization;
   readonly lease?: RecordingLease;
   readonly timer: NodeJS.Timeout;
   /** Set by the deadline path before it calls `stop`. */
@@ -363,6 +394,122 @@ export function recordingRequiresAuthorization(
     sessionKind !== "isolated"
   );
 }
+
+const CAPTURE_SCOPE_KINDS = new Set<CaptureScopeKind>([
+  "window",
+  "region",
+  "display",
+  "session",
+]);
+const SESSION_KINDS = new Set<EvidenceSessionKind>([
+  "isolated",
+  "attached",
+  "console",
+  "unknown",
+]);
+
+/**
+ * Structural validation of a caller-supplied `RecordingAuthorization`
+ * (spec §5.7). Returns a normalized copy — arrays snapshotted so a
+ * later mutation of the caller's object cannot widen the grant — or
+ * `null` when the value is not a well-formed grant. A grant that cannot
+ * be read is not a grant.
+ */
+export function parseRecordingAuthorization(
+  value: unknown,
+): RecordingAuthorization | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const raw = value as Record<string, unknown>;
+  if (
+    !Array.isArray(raw.scopes) ||
+    !raw.scopes.every(
+      (kind): kind is CaptureScopeKind =>
+        typeof kind === "string" &&
+        CAPTURE_SCOPE_KINDS.has(kind as CaptureScopeKind),
+    )
+  ) {
+    return null;
+  }
+  if (
+    !Array.isArray(raw.sessionKinds) ||
+    !raw.sessionKinds.every(
+      (kind): kind is EvidenceSessionKind =>
+        typeof kind === "string" &&
+        SESSION_KINDS.has(kind as EvidenceSessionKind),
+    )
+  ) {
+    return null;
+  }
+  if (
+    raw.grantedBy !== undefined &&
+    typeof raw.grantedBy !== "string"
+  ) {
+    return null;
+  }
+  return {
+    scopes: [...raw.scopes],
+    sessionKinds: [...raw.sessionKinds],
+    ...(raw.grantedBy === undefined ? {} : { grantedBy: raw.grantedBy }),
+  };
+}
+
+/**
+ * Whether `grant` covers a `{scopeKind, sessionKind}` pair (spec §5.7):
+ * BOTH dimensions must be named — a grant for `display` on `"isolated"`
+ * sessions does not authorize `display` on a `"console"` session, and a
+ * session-kind grant alone never widens the scope list. `"unknown"`
+ * session kinds must be granted explicitly; nothing upgrades them.
+ */
+export function recordingAuthorizationCovers(
+  grant: RecordingAuthorization,
+  scopeKind: CaptureScopeKind,
+  sessionKind: EvidenceSessionKind,
+): boolean {
+  return (
+    grant.scopes.includes(scopeKind) &&
+    grant.sessionKinds.includes(sessionKind)
+  );
+}
+
+/**
+ * The default §5.6/§5.7 authorizer: the explicit grant mechanism. It
+ * refuses — with a reason that names what was missing — when no grant
+ * was supplied, when the grant is malformed, or when it does not cover
+ * the requested `{scope.kind, sessionKind}` pair. Consent is recorded
+ * on the segment by the controller; this function only decides.
+ */
+export const recordingScopeAuthorizer: RecordingAuthorizer = ({
+  scope,
+  sessionKind,
+  grant,
+}) => {
+  if (grant === undefined) {
+    return (
+      `recording ${scope.kind} scope on a "${sessionKind}" session ` +
+      "requires an explicit authorization grant (spec §5.7); pass " +
+      "options.authorization naming the scope kind and session kind"
+    );
+  }
+  const parsed = parseRecordingAuthorization(grant);
+  if (parsed === null) {
+    return (
+      "the supplied recording authorization is malformed: expected " +
+      '{ scopes: ("window"|"region"|"display"|"session")[], ' +
+      'sessionKinds: ("isolated"|"attached"|"console"|"unknown")[] }'
+    );
+  }
+  if (!recordingAuthorizationCovers(parsed, scope.kind, sessionKind)) {
+    return (
+      `the recording authorization grant does not cover ` +
+      `${scope.kind} scope on a "${sessionKind}" session ` +
+      `(grant scopes: [${parsed.scopes.join(", ")}], sessionKinds: ` +
+      `[${parsed.sessionKinds.join(", ")}])`
+    );
+  }
+  return null;
+};
 
 /**
  * The owned-attribution gate for `window`/`region` scopes (spec §5.2):
@@ -515,26 +662,27 @@ export class RecordingController {
       throw this.#refuse("unavailable", "unrecorded", attributionRefusal);
     }
 
-    // Gate 2 — recording authorization (§5.6). Absent seam = refuse.
-    // The authorizer returns `null` when authorized and a refusal reason
-    // otherwise — `??` would conflate the two, so branch explicitly.
+    // Gate 2 — recording authorization (§5.6/§5.7). The mechanism is
+    // the explicit grant: `options.authorization` must name BOTH the
+    // scope kind and the session kind. A configured `authorizeRecording`
+    // seam replaces the default grant check entirely (it sees the raw
+    // grant and may apply a different policy); with no seam the default
+    // `recordingScopeAuthorizer` fails closed — absent, malformed or
+    // non-covering grants all refuse. The authorizer returns `null`
+    // when authorized and a refusal reason otherwise — `??` would
+    // conflate the two, so branch explicitly.
+    let authorization: RecordingAuthorization | undefined;
     if (
       recordingRequiresAuthorization(scope, this.#options.session.sessionKind)
     ) {
-      const authorizer = this.#options.authorizeRecording;
-      if (authorizer === undefined) {
-        throw this.#refuse(
-          "unauthorized",
-          "unrecorded",
-          "record.start refused: recording authorization is required for " +
-            "this scope/session kind but no authorization mechanism is " +
-            "configured (authorization issuance is a later ticket); the " +
-            "start is refused",
-        );
-      }
+      const authorizer =
+        this.#options.authorizeRecording ?? recordingScopeAuthorizer;
       const refusal = authorizer({
         scope,
         sessionKind: this.#options.session.sessionKind,
+        ...(options.authorization === undefined
+          ? {}
+          : { grant: options.authorization }),
       });
       if (refusal !== null) {
         throw this.#refuse(
@@ -543,6 +691,10 @@ export class RecordingController {
           `record.start refused: ${refusal}`,
         );
       }
+      // Persist the *normalized* grant — the authorizer accepted it, so
+      // the parse cannot fail; snapshotting keeps the segment record
+      // immune to later caller-side mutation.
+      authorization = parseRecordingAuthorization(options.authorization) ?? undefined;
     }
 
     // Gate 3 — window/region segments serialize on the GUI lease
@@ -622,7 +774,8 @@ export class RecordingController {
       );
     }
 
-    for (const reason of started.unhonoredExclusions ?? []) {
+    const unhonoredExclusions = started.unhonoredExclusions;
+    for (const reason of unhonoredExclusions ?? []) {
       this.#index.noteUncapturable(
         `recording ${segmentId}: exclusion not honored: ${reason}`,
       );
@@ -649,6 +802,10 @@ export class RecordingController {
       maxDurationMs,
       ...(fps === undefined ? {} : { fps }),
       ...(exclude === undefined ? {} : { exclude }),
+      ...(unhonoredExclusions === undefined || unhonoredExclusions.length === 0
+        ? {}
+        : { unhonoredExclusions: [...unhonoredExclusions] }),
+      ...(authorization === undefined ? {} : { authorization }),
       ...(lease === undefined ? {} : { lease }),
       timer: setTimeout(() => {
         this.#onDeadline(live);
@@ -676,6 +833,10 @@ export class RecordingController {
       coversOperations: null,
       operationIds: [],
       ...(exclude === undefined ? {} : { exclude }),
+      ...(unhonoredExclusions === undefined || unhonoredExclusions.length === 0
+        ? {}
+        : { unhonoredExclusions: [...unhonoredExclusions] }),
+      ...(authorization === undefined ? {} : { authorization }),
     });
     this.#saveIndex();
 
@@ -1101,6 +1262,13 @@ export class RecordingController {
       operationIds: coverage.operationIds,
       recorderResidue: residue,
       ...(live.exclude === undefined ? {} : { exclude: live.exclude }),
+      ...(live.unhonoredExclusions === undefined ||
+      live.unhonoredExclusions.length === 0
+        ? {}
+        : { unhonoredExclusions: [...live.unhonoredExclusions] }),
+      ...(live.authorization === undefined
+        ? {}
+        : { authorization: live.authorization }),
     };
 
     if (probe.stats !== undefined) {
@@ -1168,6 +1336,13 @@ export class RecordingController {
       operationIds: [],
       recorderResidue: "unknown",
       ...(live.exclude === undefined ? {} : { exclude: live.exclude }),
+      ...(live.unhonoredExclusions === undefined ||
+      live.unhonoredExclusions.length === 0
+        ? {}
+        : { unhonoredExclusions: [...live.unhonoredExclusions] }),
+      ...(live.authorization === undefined
+        ? {}
+        : { authorization: live.authorization }),
     };
     this.#index.addSegment(segment);
     this.#index.addArtifact({

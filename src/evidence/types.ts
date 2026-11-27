@@ -97,6 +97,38 @@ export type CaptureScope =
       readonly sessionKind: "isolated" | "attached" | "console";
     };
 
+/** The `kind` discriminant of a `CaptureScope` (spec §5.2). */
+export type CaptureScopeKind = CaptureScope["kind"];
+
+/**
+ * The §5.6/§5.7 recording-authorization grant — the caller's explicit
+ * consent declaration for scopes that need `requiresRecordingAuthorization`
+ * (`display`/`session`, or any scope on a non-`"isolated"` session kind).
+ *
+ * This is a caller-side consent record, not authentication: like the
+ * #145 launch grant and the ADR-0004 native-channel grant, it states
+ * what the caller agreed to and is persisted verbatim on the segment so
+ * the evidence index carries the authorization that made a wide/shared
+ * capture permissible. It never widens by itself — a grant only counts
+ * when it names BOTH the requested scope kind and the session kind the
+ * recording actually runs in, and an absent/malformed/non-covering grant
+ * is a refusal, never a default.
+ */
+export type RecordingAuthorization = {
+  /** Capture scope kinds this grant covers (e.g. `["display"]`). */
+  readonly scopes: readonly CaptureScopeKind[];
+  /**
+   * Session kinds this grant covers. `"unknown"` must be named
+   * explicitly — a grant never silently covers an unproven session.
+   */
+  readonly sessionKinds: readonly EvidenceSessionKind[];
+  /**
+   * Audit label for who/what issued the consent (e.g. a policy name or
+   * ticket id). Recorded verbatim; `undefined` is honest "unattributed".
+   */
+  readonly grantedBy?: string;
+};
+
 /**
  * What an artifact may contain beyond its declared scope (spec §5.2,
  * §7). Wide scopes are a privacy declaration: `full-display` and
@@ -222,6 +254,20 @@ export type EvidenceSegment = {
   readonly recorderResidue?: "none" | "terminated" | "unknown";
   /** Exclusion requests the caller made, recorded verbatim (spec §7.2). */
   readonly exclude?: readonly EvidenceExclusion[];
+  /**
+   * Exclusion requests the backend reported it could not honor
+   * (spec §7.2): recorded per-segment so the gap travels with the
+   * segment, never only in the index-level gap lists.
+   */
+  readonly unhonoredExclusions?: readonly string[];
+  /**
+   * The §5.7 authorization grant that permitted this segment, recorded
+   * verbatim. Present only when `requiresRecordingAuthorization` was
+   * satisfied by an explicit grant — its absence on a wide/shared scope
+   * means the segment predates the grant contract or ran under a
+   * custom authorizer seam.
+   */
+  readonly authorization?: RecordingAuthorization;
 };
 
 /**

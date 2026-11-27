@@ -1273,22 +1273,24 @@ export class AfterEffects {
 
   /**
    * Screen recording lifecycle (#381, `specs/gui-evidence/spec.md` §5.4):
-   * `record.start(scope, { maxDurationMs?, fps?, audio? })` opens a
-   * bounded segment (`seg-001`, …) and `record.stop(id)` finalizes it —
-   * container probe, `coversOperations`, recorder residue — into the
-   * session's `ae-a8n.gui-evidence/v1` index under `artifacts/`.
+   * `record.start(scope, { maxDurationMs?, fps?, audio?, authorization? })`
+   * opens a bounded segment (`seg-001`, …) and `record.stop(id)`
+   * finalizes it — container probe, `coversOperations`, recorder
+   * residue — into the session's `ae-a8n.gui-evidence/v1` index under
+   * `artifacts/`.
    *
    * `window`/`region` scopes need the `PanelTarget` from
    * `panel(locator).identify()` (attribution must be `"owned"`) and
    * serialize on the GUI lease for the segment's duration.
    * `display`/`session` scopes — and every scope on a session whose kind
-   * is not proven `"isolated"` — require recording authorization, which
-   * is not implemented yet: those starts refuse and the refusal is
-   * recorded in the index gaps. On darwin the #382 backend
-   * (ScreenCaptureKit helper + `screencapture -V` fallback) can serve
-   * `window`/`region`/`display` scopes inside the attested target
-   * session, but `display`/`session` still refuse at the authorization
-   * gate until #383 lands; other platforms have no backend and refuse
+   * is not proven `"isolated"` — require an explicit
+   * `RecordingAuthorization` grant (spec §5.7, #383) naming both the
+   * scope kind and the session kind; without it the start refuses
+   * `unauthorized` and the refusal is recorded in the index gaps, with
+   * it the grant is recorded verbatim on the segment. On darwin the
+   * #382 backend (ScreenCaptureKit helper + `screencapture -V`
+   * fallback) can serve `window`/`region`/`display` scopes inside the
+   * attested target session; other platforms have no backend and refuse
    * `unsupported`.
    * SCStream delivery is unverified on a real host — see
    * `guiEvidenceCapabilities().screenRecording`.
