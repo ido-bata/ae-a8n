@@ -24,10 +24,12 @@ import {
   type DarwinWindowOpsExec,
 } from "../src/windowops/darwin.js";
 import { windowOpsMutationGate } from "../src/windowops/gate.js";
+import { resolveWindowTarget } from "../src/windowops/resolve.js";
 import {
   type WindowOpsActRequest,
   type WindowOpsActResult,
   type WindowOpsCensusView,
+  type WindowOpsFocusedWindow,
   type WindowOpsListing,
   type WindowOpsMutationGate,
   type WindowOpsSurfaceOps,
@@ -79,12 +81,32 @@ function fakeScreen(over: {
   census?: WindowServerWindow[];
   censusAvailable?: boolean;
   holder?: FocusHolder | null;
+  focusedWindow?: WindowOpsFocusedWindow | null;
 } = {}) {
   const state = {
     windows: [...(over.windows ?? [win()])] as MutableWindowInfo[],
     census: over.census ?? [censusRow()],
     censusAvailable: over.censusAvailable ?? true,
     holder: over.holder === undefined ? null : over.holder,
+    // The focused window mirrors the first listing row by default —
+    // the shape a healthy app produces. Tests override it to model
+    // the AE non-vending shape (#406): empty `windows`, real
+    // `focusedWindow`.
+    focusedWindow:
+      over.focusedWindow === undefined
+        ? (() => {
+            const w = over.windows?.[0] ?? win();
+            return {
+              title: w.title,
+              role: w.role,
+              subrole: w.subrole,
+              frame: w.frame,
+              miniaturized: w.miniaturized,
+              main: w.main,
+              focused: w.focused,
+            };
+          })()
+        : over.focusedWindow,
     acts: [] as WindowOpsActRequest[],
     actResult: null as WindowOpsActResult | null,
     actCalls: 0,
@@ -103,6 +125,8 @@ function fakeScreen(over: {
         frontmostPid: PID,
         focusedWindowIndex: 1,
         windows: state.windows.map((w, i) => ({ ...w, index: i + 1 })),
+        focusedWindow: state.focusedWindow,
+        axTrusted: true,
         observedAt: new Date().toISOString(),
       };
     },
@@ -208,17 +232,20 @@ function fakeScreen(over: {
 function build(over: {
   ops?: WindowOpsSurfaceOps;
   authorizeMutation?: WindowOpsMutationGate;
+  focusedOnly?: boolean;
+  locator?: Parameters<typeof resolveWindowTarget>[0]["locator"];
   poll?: { timeoutMs?: number; intervalMs?: number; frameTolerance?: number };
 } = {}) {
   const sleep = () => Promise.resolve();
   const controller = new WindowOpsController({
     pid: PID,
-    locator: { title: "After Effects" },
+    locator: over.locator ?? { title: "After Effects" },
     ops: over.ops ?? fakeScreen().ops,
     authorizeMutation:
       over.authorizeMutation === undefined
         ? () => ({ allowed: true })
         : over.authorizeMutation,
+    ...(over.focusedOnly === undefined ? {} : { focusedOnly: over.focusedOnly }),
     poll: { timeoutMs: 60, intervalMs: 1, ...over.poll },
     sleep,
   });
@@ -232,6 +259,7 @@ describe("windowOpsCapabilities", () => {
     expect(caps.move.support).toBe("unavailable");
     expect(caps.focus.support).toBe("unavailable");
     expect(caps.move.verification).toBe("automated test");
+    expect(caps.focusedObserve.support).toBe("partial");
   });
 
   it("reports everything unsupported off macOS", () => {
@@ -689,6 +717,32 @@ describe("darwinWindowOpsOps", () => {
     expect(listing.frontmostPid).toBe(PID);
   });
 
+  it("parses focusedWindow and axTrusted from the state receipt (#406)", () => {
+    const { exec } = fakeExec(() => ({
+      status: 0,
+      stdout: JSON.stringify({
+        ...JSON.parse(STATE_JSON),
+        focusedWindow: {
+          title: "After Effects",
+          role: "AXWindow",
+          subrole: "AXStandardWindow",
+          frame: { x: 100, y: 50, width: 800, height: 600 },
+          miniaturized: false,
+          main: true,
+          focused: true,
+        },
+        axTrusted: true,
+      }),
+      stderr: "",
+      timedOut: false,
+    }));
+    const ops = darwinWindowOpsOps({ pid: PID, exec });
+    const listing = ops.observeWindows();
+    expect(listing.focusedWindow?.title).toBe("After Effects");
+    expect(listing.focusedWindow?.frame).toEqual(FRAME);
+    expect(listing.axTrusted).toBe(true);
+  });
+
   it("reads the focus holder through input-focus", () => {
     const { exec, calls } = fakeExec(() => ({
       status: 0,
@@ -717,5 +771,153 @@ describe("darwinWindowOpsOps", () => {
     }));
     const ops = darwinWindowOpsOps({ pid: PID, exec });
     expect(ops.readFocusHolder()).toBeNull();
+  });
+});
+
+describe("focusedOnly resolution (#406)", () => {
+  // The AE shape: zero AX windows enumerated, a real AXFocusedWindow,
+  // and the WindowServer census still knows the on-screen windows.
+  function aeScreen() {
+    const focused: WindowOpsFocusedWindow = {
+      title: "After Effects",
+      role: "AXWindow",
+      subrole: "AXStandardWindow",
+      frame: { ...FRAME },
+      miniaturized: false,
+      main: true,
+      focused: true,
+    };
+    return fakeScreen({
+      windows: [],
+      focusedWindow: focused,
+      census: [
+        censusRow(),
+        censusRow({
+          windowNumber: 9002,
+          bounds: { x: 500, y: 100, width: 800, height: 600 },
+          name: "Second Project",
+        }),
+      ],
+    });
+  }
+
+  it("resolves the focused window when the AX enumeration is empty", () => {
+    const { ops } = aeScreen();
+    const { controller } = build({ ops, focusedOnly: true });
+    const state = controller.state();
+    expect(state.resolution).toBe("focused-window");
+    expect(state.window.title).toBe("After Effects");
+    expect(state.window.frame).toEqual(FRAME);
+    expect(state.attribution).toBe("owned");
+    expect(state.windowNumber).toBe(9001);
+    expect(state.app.frontmost).toBe(true);
+  });
+
+  it("reports not-found on the normal path for the same empty listing", () => {
+    const { ops } = aeScreen();
+    const { controller } = build({ ops });
+    // The refusal must degrade honestly: empty AX listing + census
+    // windows for the pid is the AE non-vending shape (#406), and the
+    // message must say so and point at the focusedOnly path.
+    expect(() => controller.state()).toThrowError(
+      expect.objectContaining({
+        code: "not-found",
+        message: expect.stringContaining("focusedOnly"),
+      }),
+    );
+  });
+
+  it("reports not-found when the locator names an unfocused windowNumber", () => {
+    // Census row 9002 exists but its frame is not the focused window's —
+    // on AE that window is AX-unreachable, so the honest answer is
+    // not-found, never a guess.
+    const { ops } = aeScreen();
+    const controller = new WindowOpsController({
+      pid: PID,
+      locator: { windowNumber: 9002 },
+      ops,
+      focusedOnly: true,
+      sleep: () => Promise.resolve(),
+    });
+    expect(() => controller.state()).toThrowError(
+      expect.objectContaining({ code: "not-found" }),
+    );
+  });
+
+  it("resolves when windowNumber names the focused window's census row", () => {
+    const { ops } = aeScreen();
+    const controller = new WindowOpsController({
+      pid: PID,
+      locator: { windowNumber: 9001 },
+      ops,
+      focusedOnly: true,
+      sleep: () => Promise.resolve(),
+    });
+    const state = controller.state();
+    expect(state.resolution).toBe("focused-window");
+    expect(state.windowNumber).toBe(9001);
+  });
+
+  it("refuses mutations under focusedOnly before any act, gate or not", async () => {
+    const { state, ops } = aeScreen();
+    const { controller } = build({
+      ops,
+      focusedOnly: true,
+      authorizeMutation: () => ({ allowed: true }),
+    });
+    await expect(controller.move({ x: 1, y: 1 })).rejects.toMatchObject({
+      code: "refused",
+    });
+    expect(state.acts).toHaveLength(0);
+    await expect(controller.minimize()).rejects.toMatchObject({
+      code: "refused",
+    });
+    expect(state.acts).toHaveLength(0);
+  });
+
+  it("reports not-found when no focused window is readable", () => {
+    const { ops } = fakeScreen({ windows: [], focusedWindow: null });
+    const { controller } = build({ ops, focusedOnly: true });
+    expect(() => controller.state()).toThrowError(
+      expect.objectContaining({ code: "not-found" }),
+    );
+  });
+
+  it("reports not-found when the focused window does not match the locator", () => {
+    const { ops } = aeScreen();
+    const controller = new WindowOpsController({
+      pid: PID,
+      locator: { title: "Some Other App" },
+      ops,
+      focusedOnly: true,
+      sleep: () => Promise.resolve(),
+    });
+    expect(() => controller.state()).toThrowError(
+      expect.objectContaining({ code: "not-found" }),
+    );
+  });
+
+  it("resolveWindowTarget marks the resolution kind for both paths", () => {
+    const { ops } = aeScreen();
+    const listing = ops.observeWindows();
+    const census = ops.censusWindows();
+    const focused = resolveWindowTarget({
+      pid: PID,
+      listing,
+      census,
+      locator: { title: "After Effects" },
+      focusedOnly: true,
+    });
+    expect(focused.resolution).toBe("focused-window");
+    expect(focused.target.surface.windowIndex).toBeNull();
+    expect(focused.info?.index).toBe(0);
+    const normal = fakeScreen();
+    const ax = resolveWindowTarget({
+      pid: PID,
+      listing: normal.ops.observeWindows(),
+      census: normal.ops.censusWindows(),
+      locator: { title: "After Effects" },
+    });
+    expect(ax.resolution).toBe("ax-windows");
   });
 });

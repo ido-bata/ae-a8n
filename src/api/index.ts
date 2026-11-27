@@ -104,6 +104,7 @@ import {
   windowOpsCapabilities,
   windowOpsForTarget,
   type WindowOpsCapabilities,
+  type WindowOpsOptions,
 } from "./window-ops.js";
 import {
   type CompView,
@@ -474,6 +475,7 @@ export {
   type WindowOpsOp,
   type WindowOpsOpsContext,
   type WindowOpsOpsFactory,
+  type WindowOpsOptions,
   type WindowOpsPollOptions,
   type WindowOpsSeams,
   type WindowOpsState,
@@ -1376,9 +1378,14 @@ export class AfterEffects {
    * title/role/subrole or OS window number, re-resolved on every call.
    * Real-host fidelity of the AX sets (and of a miniaturized window's
    * frame) is unverified; see `windowOpsCapabilities()`.
+   *
+   * `options.focusedOnly` (#406) resolves through the app's
+   * AXFocusedWindow instead of the window enumeration — the only
+   * AX-reachable surface on hosts where AE vends no AX windows.
+   * Observe-class only: `state()` works, every mutation refuses.
    */
-  windowOps(locator: PanelLocator): WindowOps {
-    return windowOpsForTarget(this.recoveryTarget(), locator);
+  windowOps(locator: PanelLocator, options?: WindowOpsOptions): WindowOps {
+    return windowOpsForTarget(this.recoveryTarget(), locator, {}, options);
   }
 
   /**

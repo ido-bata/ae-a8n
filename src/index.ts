@@ -474,6 +474,7 @@ export type {
   WindowOpsOp,
   WindowOpsOpsContext,
   WindowOpsOpsFactory,
+  WindowOpsOptions,
   WindowOpsPollOptions,
   WindowOpsSeams,
   WindowOpsState,

@@ -265,6 +265,7 @@ function appState(): GuiAppState {
       onScreenCount: 1,
     },
     axSuspect: false,
+    axSuspectReason: null,
     axUnaccountedWindows: [],
     axForeignWindowCount: 0,
     axUnmatchedWindowCount: 0,

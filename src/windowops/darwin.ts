@@ -179,9 +179,27 @@ function parseListing(
     pid?: unknown;
     frontmostPid?: unknown;
     focusedWindowIndex?: unknown;
+    focusedWindow?: unknown;
+    axTrusted?: unknown;
     windows?: unknown;
   }>("window-ops", stdout);
   const windows = Array.isArray(parsed.windows) ? parsed.windows : [];
+  // `focusedWindow` shares the windowJSON shape minus a meaningful
+  // index; a malformed or absent value degrades to null — "no focused
+  // window evidence", never a guessed row.
+  const focusedInfo = parseWindowInfo(parsed.focusedWindow, 0);
+  const focusedWindow =
+    focusedInfo === null
+      ? null
+      : {
+          title: focusedInfo.title,
+          role: focusedInfo.role,
+          subrole: focusedInfo.subrole,
+          frame: focusedInfo.frame,
+          miniaturized: focusedInfo.miniaturized,
+          main: focusedInfo.main,
+          focused: focusedInfo.focused,
+        };
   return {
     pid,
     frontmostPid: asFinite(parsed.frontmostPid),
@@ -189,6 +207,8 @@ function parseListing(
     windows: windows.map((w, i) => parseWindowInfo(w, i + 1)).filter(
       (w): w is WindowOpsWindowInfo => w !== null,
     ),
+    focusedWindow,
+    axTrusted: typeof parsed.axTrusted === "boolean" ? parsed.axTrusted : null,
     observedAt,
   };
 }

@@ -1,0 +1,756 @@
+{
+  "schema": "a8n.poc-boot-attribution/v1",
+  "mode": "launch",
+  "recordedAt": "2026-11-27T06:01:05.597Z",
+  "install": {
+    "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+    "versionName": "Adobe After Effects 2027.app"
+  },
+  "sessionRoot": "/var/folders/1l/fmlzfnk57zndv1pxwwkw6xrc0000gn/T/ae-a8n-poc-339-aenqU0",
+  "outcome": {
+    "ok": true,
+    "probe": {
+      "info": {
+        "version": "27.0x78",
+        "build": "78"
+      },
+      "version": "27.0x78"
+    }
+  },
+  "samples": [
+    {
+      "t": 365,
+      "scopedPids": [
+        92467
+      ],
+      "pendingLaunch": null,
+      "hostState": "unknown",
+      "hostPid": null,
+      "windows": [
+        {
+          "pid": 92467,
+          "census": {
+            "available": true,
+            "windows": []
+          }
+        }
+      ],
+      "censusAvailable": true
+    },
+    {
+      "t": 18052,
+      "scopedPids": [
+        92467
+      ],
+      "pendingLaunch": {
+        "pid": 92467,
+        "startedAt": "2026-11-27T06:01:06.000Z",
+        "presentAtLastLookup": true,
+        "session": {
+          "uid": 501,
+          "user": "rebui",
+          "asid": 100021
+        }
+      },
+      "hostState": "alive",
+      "hostPid": null,
+      "windows": [
+        {
+          "pid": 92467,
+          "census": {
+            "available": true,
+            "windows": [
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 612,
+                  "width": 500,
+                  "height": 500
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 260,
+                  "y": 236,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 487,
+                  "y": 241,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 447,
+                  "y": 201,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 407,
+                  "y": 161,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 19,
+                  "y": 556,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 346,
+                  "y": 326,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 306,
+                  "y": 286,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 301,
+                  "y": 190,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 452,
+                  "y": 378,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 412,
+                  "y": 338,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 59,
+                  "y": 596,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "名称未設定プロジェクト",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 38,
+                  "width": 1710,
+                  "height": 1074
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "censusAvailable": true
+    },
+    {
+      "t": 20135,
+      "settled": true,
+      "scopedPids": [
+        92467
+      ],
+      "hostState": "alive",
+      "hostPid": 92467,
+      "windows": [
+        {
+          "pid": 92467,
+          "census": {
+            "available": true,
+            "windows": [
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 612,
+                  "width": 500,
+                  "height": 500
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 260,
+                  "y": 236,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 487,
+                  "y": 241,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 447,
+                  "y": 201,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 407,
+                  "y": 161,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 19,
+                  "y": 556,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 346,
+                  "y": 326,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 306,
+                  "y": 286,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 301,
+                  "y": 190,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 452,
+                  "y": 378,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 412,
+                  "y": 338,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 59,
+                  "y": 596,
+                  "width": 640,
+                  "height": 504
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "名称未設定プロジェクト",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 38,
+                  "width": 1710,
+                  "height": 1074
+                }
+              },
+              {
+                "layer": 0,
+                "onScreen": false,
+                "name": "",
+                "owner": "After Effects",
+                "bounds": {
+                  "x": 0,
+                  "y": 0,
+                  "width": 1710,
+                  "height": 38
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "censusAvailable": true
+    }
+  ],
+  "finalInstances": [
+    {
+      "pid": 92467,
+      "startedAt": "2026-11-27T06:01:06.000Z",
+      "startedAtMs": 1795759266000,
+      "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "uid": 501,
+      "installExecutable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "lsappinfo": {
+        "name": "After Effects",
+        "bundleId": "com.adobe.AfterEffects.application",
+        "asid": 100021,
+        "uid": 501
+      },
+      "session": {
+        "uid": 501,
+        "username": "rebui",
+        "asid": 100021,
+        "kind": "Aqua"
+      },
+      "windowServer": {
+        "available": true,
+        "windows": [
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 0,
+              "y": 612,
+              "width": 500,
+              "height": 500
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 0,
+              "y": 0,
+              "width": 1710,
+              "height": 38
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 0,
+              "y": 0,
+              "width": 1710,
+              "height": 38
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 0,
+              "y": 0,
+              "width": 1710,
+              "height": 38
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 260,
+              "y": 236,
+              "width": 640,
+              "height": 504
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 487,
+              "y": 241,
+              "width": 640,
+              "height": 504
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 447,
+              "y": 201,
+              "width": 640,
+              "height": 504
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 407,
+              "y": 161,
+              "width": 640,
+              "height": 504
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 19,
+              "y": 556,
+              "width": 640,
+              "height": 504
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 346,
+              "y": 326,
+              "width": 640,
+              "height": 504
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 306,
+              "y": 286,
+              "width": 640,
+              "height": 504
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 301,
+              "y": 190,
+              "width": 640,
+              "height": 504
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 452,
+              "y": 378,
+              "width": 640,
+              "height": 504
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 412,
+              "y": 338,
+              "width": 640,
+              "height": 504
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 59,
+              "y": 596,
+              "width": 640,
+              "height": 504
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "名称未設定プロジェクト",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 0,
+              "y": 38,
+              "width": 1710,
+              "height": 1074
+            }
+          },
+          {
+            "layer": 0,
+            "onScreen": false,
+            "name": "",
+            "owner": "After Effects",
+            "bounds": {
+              "x": 0,
+              "y": 0,
+              "width": 1710,
+              "height": 38
+            }
+          }
+        ]
+      },
+      "ax": {
+        "ok": true,
+        "frontmost": false,
+        "axWindowCount": 0,
+        "axWindows": [],
+        "windowServer": {
+          "available": true,
+          "reason": null,
+          "windowCount": 17,
+          "onScreenCount": 0
+        },
+        "axSuspect": true,
+        "axUnaccountedWindowCount": 0,
+        "axForeignWindowCount": 0,
+        "axUnmatchedWindowCount": 0
+      }
+    }
+  ],
+  "closeResult": {
+    "quit": true,
+    "ownership": {
+      "kind": "owned",
+      "evidence": "pid 92467 is still the only instance"
+    }
+  },
+  "notes": [
+    "launch mode only runs when the install census is empty; it never attaches to a foreign instance.",
+    "A failed launch is reported and left running — this script never kills or quits an unproven process."
+  ]
+}

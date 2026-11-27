@@ -76,6 +76,7 @@ describe("MacGuiProbe", () => {
     windows: [],
     windowServer: { available: true, reason: null, windowCount: 0, onScreenCount: 0 },
     axSuspect: false,
+    axSuspectReason: null,
     axUnaccountedWindows: [],
     axForeignWindowCount: 0,
     axUnmatchedWindowCount: 0,
@@ -111,6 +112,7 @@ describe("MacGuiProbe", () => {
       listWindows: () =>
         appState({
           axSuspect: true,
+          axSuspectReason: "fixture: the AX listing is untrusted",
           windowServer: { available: true, reason: null, windowCount: 2, onScreenCount: 1 },
         }),
       pidAlive: () => true,
@@ -255,6 +257,7 @@ describe("MacGuiProbe", () => {
       listWindows: () =>
         appState({
           axSuspect: true,
+          axSuspectReason: "fixture: the AX listing is untrusted",
           windowServer: { available: true, reason: null, windowCount: 3, onScreenCount: 2 },
           axUnaccountedWindows: [
             {
@@ -289,6 +292,7 @@ describe("MacGuiProbe", () => {
       listWindows: () =>
         appState({
           axSuspect: true,
+          axSuspectReason: "fixture: the AX listing is untrusted",
           windowServer: { available: true, reason: null, windowCount: 7, onScreenCount: 3 },
         }),
       pidAlive: () => true,
@@ -323,6 +327,7 @@ describe("MacGuiProbe", () => {
         axEmpty
           ? appState({
               axSuspect: true,
+              axSuspectReason: "fixture: the AX listing is untrusted",
               windowServer: { available: true, reason: null, windowCount: 6, onScreenCount: 4 },
             })
           : appState({
@@ -427,6 +432,7 @@ describe("SupervisionMonitor", () => {
         windows: [],
         windowServer: { available: true, reason: null, windowCount: 7, onScreenCount: 3 },
         axSuspect: true,
+        axSuspectReason: "fixture: the AX listing is untrusted",
         axUnaccountedWindows: [],
         axForeignWindowCount: 0,
         axUnmatchedWindowCount: 0,
@@ -446,6 +452,7 @@ describe("SupervisionMonitor", () => {
         ],
         windowServer: { available: true, reason: null, windowCount: 1, onScreenCount: 1 },
         axSuspect: false,
+        axSuspectReason: null,
         axUnaccountedWindows: [],
         axForeignWindowCount: 0,
         axUnmatchedWindowCount: 0,
