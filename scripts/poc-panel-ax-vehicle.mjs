@@ -238,8 +238,6 @@ async function main() {
 
   const windowOpsState = () =>
     runJson(join(helpersDir, "window-ops"), ["state", "--pid", String(targetPid)]);
-  const focusedSet = (args) =>
-    runJson(focusedSetBin, ["--pid", String(targetPid), ...args]);
 
   let targetPid = 0;
   let ae;
