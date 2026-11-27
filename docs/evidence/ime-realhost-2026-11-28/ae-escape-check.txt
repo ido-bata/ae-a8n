@@ -1,0 +1,1 @@
+windows: [('AXFloatingWindow', 'ae-a8n input fixture'), ('AXDialog', '名称未設定プロジェクト')]
