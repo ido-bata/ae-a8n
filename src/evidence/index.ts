@@ -64,6 +64,7 @@ export { GUI_EVIDENCE_INDEX_KIND } from "./types.js";
 export type {
   CaptureLeakage,
   CaptureScope,
+  CaptureScopeKind,
   EvidenceArtifact,
   EvidenceCaptureStats,
   EvidenceClock,
@@ -77,6 +78,7 @@ export type {
   EvidenceSegment,
   EvidenceSessionKind,
   GuiEvidenceIndexDocument,
+  RecordingAuthorization,
 } from "./types.js";
 
 /** The index file name inside the session artifacts directory. */

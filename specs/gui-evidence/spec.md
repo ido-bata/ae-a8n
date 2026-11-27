@@ -151,7 +151,7 @@ CaptureScope =
 Rules:
 
 - Scope resolution reuses `PanelTarget` identity (pid + start identity + handle + re-check); `window`/`region` scopes require `attribution==="owned"` before recording starts — recording a `foreign`/`unproven` window is refused exactly like a mutation would be.
-- `display`/`session` scope is a **privacy declaration**, not a default: it records `leakage: "full-display"|"full-session"` on every artifact and requires the recording authorization of §7.2. Window/region scope is the preferred default wherever the OS API can honor it (macOS ScreenCaptureKit `SCContentFilter` window capture; Windows WGC HWND capture).
+- `display`/`session` scope is a **privacy declaration**, not a default: it records `leakage: "full-display"|"full-session"` on every artifact and requires the recording authorization grant of §5.7. Window/region scope is the preferred default wherever the OS API can honor it (macOS ScreenCaptureKit `SCContentFilter` window capture; Windows WGC HWND capture).
 - A scope that cannot be isolated on the OS is recorded honestly: e.g., macOS `screencapture -V` fallback records whole-display even when `window` was requested — the artifact's `scope.kind` stays `"window"` (what was asked) and `actualScope`/`leakage` records what was delivered. Requested ≠ delivered is always explicit.
 
 ### 5.3 Operation-id correlation scheme
@@ -221,10 +221,32 @@ Rules:
 | Enumerate capture capability, resolve `CaptureScope`, probe recorder availability, read index | `observe` | existing read-only path; no lease |
 | Still capture (`capture`, `captureRegion`, `captureWindowById`) | `observe` (capture, not mutation) — subject to B-PANEL's `attribution==="owned"` rule for non-full-screen scopes | same as panel spec §6.2 `observe` row |
 | `record.start`/`record.stop` on `window`/`region` scope of an owned target | `observe`-class capture, **but** serialized on the GUI lease anyway (a recorder reading the same WindowServer/capture pipeline must not race a mutation's pre/post captures) | lease held for the segment duration **or** per-frame lease — T001 PoC decides; lease-per-segment is the safe default |
-| `record.start` on `display`/`session` scope, or any scope while `sessionKind==="console"`/`"attached"` shared session | `observe`-class capture + **`requiresRecordingAuthorization`** | explicit authorization token/scope per session kind (§7.2); dedicated/isolated sessions relax to the isolation check |
+| `record.start` on `display`/`session` scope, or any scope while `sessionKind==="console"`/`"attached"` shared session | `observe`-class capture + **`requiresRecordingAuthorization`** | explicit authorization grant per scope kind × session kind (§5.7); dedicated/isolated sessions relax to the isolation check |
 | Anything that *acts* on the GUI | unchanged | B-PANEL/B-IME/B-WORKSPACE classes — recording never grants mutation authority |
 
 Recording is deliberately **not** a `mutate-*` class: it does not change target state. Its hazard is privacy/scope, handled by §7, not by the mutation gates. It also never satisfies a mutation precondition — a running recorder is not a reason to skip identity re-checks.
+
+### 5.7 Recording authorization grant
+
+`requiresRecordingAuthorization` (§5.6) is satisfied by an explicit **grant declaration** the caller passes per `record.start` — there is no ambient or cached authorization:
+
+```
+RecordingAuthorization = {
+  scopes:        ("window" | "region" | "display" | "session")[]
+  sessionKinds:  ("isolated" | "attached" | "console" | "unknown")[]
+  grantedBy?:    string            // audit label, recorded verbatim
+}
+```
+
+Rules:
+
+- **Coverage is conjunctive**: the grant must name BOTH the requested `scope.kind` AND the session's proven `sessionKind`. A `display`-on-`isolated` grant does not authorize `display` on a `console` session; `"unknown"` must be granted explicitly and is never upgraded.
+- **Absent, malformed or non-covering ⇒ refuse** `unauthorized` before any recorder spawn; the refusal is an `unrecorded` index gap. There is no default grant and no "send anyway" path.
+- **Recorded, not trusted**: an accepted grant is persisted verbatim on the segment (`authorization`) so the index carries the consent that permitted the capture. It is caller-side consent in the same trust posture as the #145 launch grant and ADR-0004 — it is enforced and audited, never authenticated; a same-user process can declare anything.
+- **Fail-closed seam**: `RecordingController`'s default authorizer is the grant check (`recordingScopeAuthorizer`). A `authorizeRecording` seam, when injected, replaces it wholesale — it is a policy injection point for tests/future token issuers, not a caller-reachable bypass.
+- **Isolation relaxation**: `window`/`region` scopes on a proven `"isolated"` session need no grant (the isolation check is the authorization); every other combination does.
+
+The same contract is platform-neutral: the Windows backend (#384) consumes the identical grant shape.
 
 ## 6. Per-OS recording mechanism — decision
 
@@ -261,7 +283,7 @@ Decision: **WGC is the contract target, ffmpeg the declared-external fallback, e
 
 ## 7. Privacy, retention, publication
 
-1. **Scope minimization is the default**: `window`/`region` scope preferred; `display`/`session` scope requires the §5.6 authorization and is recorded with `leakage` on every contained artifact.
+1. **Scope minimization is the default**: `window`/`region` scope preferred; `display`/`session` scope requires the §5.7 authorization grant and is recorded with `leakage` on every contained artifact.
 2. **Exclusions are declarative**: `record.start` accepts `exclude: [{kind:"window", predicate}]` recorded on the segment; on macOS SCStream this maps to excluding other `SCWindow`s from a display filter where the API allows — where it does not, `actualScope` records the gap. Exclusion *requests* that cannot be honored are `unavailable` reasons, never silent.
 3. **No audio, ever** in v1; microphone/system audio is out of contract.
 4. **Retention**: artifacts live under `<sessionRoot>/artifacts/` and die with `disposeSession`/runner cleanup unless the caller copies them out — same lifecycle as every existing artifact; the index states `retention: "session-artifacts"`.

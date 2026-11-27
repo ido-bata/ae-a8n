@@ -25,9 +25,14 @@
  *     unauthorized scope is refused for the *right* reason and the
  *     refusal lands in the index gaps.
  *   - `display`/`session` scopes, and every scope on a session whose
- *     kind is not proven `"isolated"`, require recording authorization
- *     (spec §5.6). No authorization mechanism exists yet, so those
- *     starts refuse; the gate itself is what this slice ships.
+ *     kind is not proven `"isolated"`, require a recording-authorization
+ *     grant (spec §5.6/§5.7, #383): `record.start(scope, { authorization })`
+ *     must carry a `RecordingAuthorization` naming BOTH the scope kind
+ *     and the session kind. Without it the start refuses `unauthorized`
+ *     and the refusal lands in the index gaps; with it the grant is
+ *     recorded verbatim on the segment and every artifact carries its
+ *     `leakage` declaration. The grant is caller-side consent, not
+ *     authentication (ADR-0007) — same posture as the #145 launch grant.
  *   - `window`/`region` scopes need an `"owned"` `PanelTarget`
  *     (from `panel.identify()`) and serialize on the session's GUI
  *     lease for the segment's duration.
@@ -41,6 +46,7 @@ import { darwinRecorderResolver } from "../evidence/recording-darwin.js";
 import type { Session } from "./session.js";
 import {
   RecordingController,
+  recordingScopeAuthorizer,
   type RecorderResolver,
   type RecordingAuthorizer,
   type RecordingControllerOptions,
@@ -77,9 +83,16 @@ export { RecordingController, RecordingError } from "../evidence/recording.js";
 export {
   RECORDING_DEFAULT_MAX_DURATION_MS,
   RECORDING_MAX_DURATION_MS_CAP,
+  parseRecordingAuthorization,
   recordingAttributionRefusal,
+  recordingAuthorizationCovers,
   recordingRequiresAuthorization,
+  recordingScopeAuthorizer,
 } from "../evidence/recording.js";
+export type {
+  CaptureScopeKind,
+  RecordingAuthorization,
+} from "../evidence/types.js";
 
 /** Seams tests (and future backend tickets) can inject. */
 export type RecordingApiSeams = {
@@ -242,13 +255,12 @@ export function createRecordingController(
     trace: session.trace,
     listTraceRows: seams.listTraceRows ?? (() => defaultTraceRows(session)),
     acquireLease: seams.acquireLease ?? defaultAcquireLease(session),
-    // No recording-authorization mechanism exists yet (later ticket):
-    // the gate refuses with the reason recorded, never silently allows.
+    // §5.7 grant check is the default authorizer (#383): display/session
+    // scopes and every scope on a non-isolated session need an explicit
+    // `options.authorization` grant covering scope kind + session kind.
+    // A seam override replaces it wholesale for tests/future policy.
     authorizeRecording:
-      seams.authorizeRecording ??
-      (({ scope, sessionKind }) =>
-        `recording authorization for ${scope.kind} scope on a ` +
-        `"${sessionKind}" session is not implemented yet; the start is refused`),
+      seams.authorizeRecording ?? recordingScopeAuthorizer,
     ...(seams.hashFile === undefined ? {} : { hashFile: seams.hashFile }),
   });
 }
