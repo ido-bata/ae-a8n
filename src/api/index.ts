@@ -51,7 +51,7 @@ import {
   type DockedPaneLocator,
 } from "./docked-pane.js";
 import {
-  Input,
+  type Input,
   inputCapabilities,
   inputForTarget,
   inputSessionKind,

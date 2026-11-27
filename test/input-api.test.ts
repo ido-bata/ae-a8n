@@ -14,7 +14,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  Input,
+  type Input,
   inputCapabilities,
   inputForTarget,
   inputSessionKind,

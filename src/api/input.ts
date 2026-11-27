@@ -751,7 +751,7 @@ export class Input {
               const result = deps.focus.requestFocus(expected);
               if (
                 result !== undefined &&
-                typeof (result as Promise<void>).then === "function"
+                typeof result.then === "function"
               ) {
                 throw new Error(
                   "the focus request channel is asynchronous; this slice " +
