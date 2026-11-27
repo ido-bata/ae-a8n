@@ -1284,9 +1284,14 @@ export class AfterEffects {
    * `display`/`session` scopes — and every scope on a session whose kind
    * is not proven `"isolated"` — require recording authorization, which
    * is not implemented yet: those starts refuse and the refusal is
-   * recorded in the index gaps. With no OS recorder backend registered
-   * (ScreenCaptureKit #382, WGC #384 are later tickets) every start
-   * refuses `unsupported` — after the gates have run.
+   * recorded in the index gaps. On darwin the #382 backend
+   * (ScreenCaptureKit helper + `screencapture -V` fallback) can serve
+   * `window`/`region`/`display` scopes inside the attested target
+   * session, but `display`/`session` still refuse at the authorization
+   * gate until #383 lands; other platforms have no backend and refuse
+   * `unsupported`.
+   * SCStream delivery is unverified on a real host — see
+   * `guiEvidenceCapabilities().screenRecording`.
    *
    * `close()` finalizes every open segment before the host is stopped.
    */
