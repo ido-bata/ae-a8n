@@ -246,6 +246,18 @@ describe("the Windows adapter", () => {
       guiRecovery: false,
       sessionIdentity: "host-and-user",
       quitsOnlyOwned: true,
+      // #373: OS-level input helpers exist at implemented/automated-test
+      // level; nothing claims verified delivery on a real host.
+      input: expect.objectContaining({
+        platform: "win32",
+        sessionKind: "unknown",
+        keyPosting: expect.objectContaining({
+          support: "implemented",
+          verification: "automated test",
+          gate: "closed",
+        }),
+        osImeEndToEnd: expect.objectContaining({ gate: "needs-human" }),
+      }),
     });
     // The script-invocation prerequisites Windows cannot prove are reported
     // as unproven warnings/info, not blockers and not a guessed pass.
