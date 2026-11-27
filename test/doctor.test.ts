@@ -18,6 +18,7 @@ import {
   type DarwinExec,
   type DarwinFacts,
 } from "../src/platform/darwin/adapter.js";
+import { inputCapabilities } from "../src/input/capabilities.js";
 import {
   UnprovenTargetError,
   type CommandOutcome,
@@ -129,6 +130,10 @@ describe("the macOS probe is honest about what it read", () => {
       guiRecovery: false,
       sessionIdentity: "uid-asid",
       quitsOnlyOwned: true,
+      // B-IME input capabilities (#371/#372): the probe reports exactly the
+      // honest contract — helpers implemented and gate closed, never
+      // "verified on real host".
+      input: inputCapabilities("darwin", "unknown"),
     });
   });
 
