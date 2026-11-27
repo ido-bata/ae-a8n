@@ -105,6 +105,18 @@ import {
   windowOpsForTarget,
   type WindowOpsCapabilities,
 } from "./window-ops.js";
+import {
+  type CompView,
+  compViewCapabilities,
+  compViewForTarget,
+  type CompViewCapabilities,
+} from "./comp-view.js";
+import {
+  type EffectControls,
+  effectControlsCapabilities,
+  effectControlsForTarget,
+  type EffectControlsCapabilities,
+} from "./effect-controls.js";
 import { supervisionReport, type SupervisionReport } from "../supervision/index.js";
 import type { StillEvidenceContext } from "../evidence/stills.js";
 import type {
@@ -469,6 +481,47 @@ export {
   type WindowOpsWindowInfo,
   type WindowOpResult,
 } from "./window-ops.js";
+export {
+  CompView,
+  CompViewError,
+  compViewCapabilities,
+  compViewForTarget,
+  type CompViewAxLocator,
+  type CompViewCapabilities,
+  type CompViewCapability,
+  type CompViewCapture,
+  type CompViewCaptureDelta,
+  type CompViewErrorCode,
+  type CompViewMouseOps,
+  type CompViewOpRecord,
+  type CompViewPanRequest,
+  type CompViewSeams,
+  type CompViewVerdict,
+  type CompViewZoomRequest,
+  type PanResult,
+  type ZoomResult,
+} from "./comp-view.js";
+export {
+  EffectControls,
+  EffectControlsError,
+  effectControlsCapabilities,
+  effectControlsForTarget,
+  formatParameterValue,
+  parameterValueMatches,
+  type EffectControlsCapabilities,
+  type EffectControlsCapability,
+  type EffectControlsErrorCode,
+  type EffectControlsMouseOps,
+  type EffectControlsOpRecord,
+  type EffectControlsReadback,
+  type EffectControlsRowLocator,
+  type EffectControlsSeams,
+  type EffectControlsVerdict,
+  type SetFoldedRequest,
+  type SetFoldedResult,
+  type SetParameterRequest,
+  type SetParameterResult,
+} from "./effect-controls.js";
 // The capability-handshake surface is exported once, from the package
 // entry point (src/index.ts → ./api/capabilities.js); re-exporting it here
 // too would duplicate the list and leak test-only symbols twice.
@@ -1326,6 +1379,69 @@ export class AfterEffects {
    */
   windowOps(locator: PanelLocator): WindowOps {
     return windowOpsForTarget(this.recoveryTarget(), locator);
+  }
+
+  /**
+   * What this build can do with the comp viewer on this platform
+   * (#367, `specs/workspace-editing/spec.md` §12 W4+): per-op support,
+   * verification level and gate status. `pan`/`zoom` are mutate-gui and
+   * report `unavailable` while the A-SAFETY gate keeps them refused —
+   * see `compViewCapabilities()`.
+   */
+  compViewCapabilities(): CompViewCapabilities {
+    return compViewCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the Comp viewer docked pane of the owned After Effects
+   * instance (#367): `pan` and `zoom` are mutate-gui — GUI act +
+   * capture-diff/geometry oracle, gated and bounded (no resend).
+   * Throws `CompViewError` when no owned target is attested or the
+   * platform is unsupported.
+   *
+   * `locator` names the pane inside the main window's AX tree — the
+   * same `DockedPaneLocator` `ae.dockedPane()` takes. Real-host fidelity
+   * of the comp viewer's AX surface and its pan/zoom semantics is
+   * unverified (spec §11); see `compViewCapabilities()`.
+   */
+  compView(locator: DockedPaneLocator): CompView {
+    return compViewForTarget(
+      this.recoveryTarget(),
+      locator,
+      this.artifactsDir,
+    );
+  }
+
+  /**
+   * What this build can do with the Effect Controls pane on this
+   * platform (#367, `specs/workspace-editing/spec.md` §12 W4+): per-op
+   * support, verification level and gate status. `setFolded`/
+   * `setParameter` are mutate-gui and report `unavailable` while the
+   * A-SAFETY gate keeps them refused — see `effectControlsCapabilities()`.
+   */
+  effectControlsCapabilities(): EffectControlsCapabilities {
+    return effectControlsCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the Effect Controls docked pane of the owned After
+   * Effects instance (#367): `setFolded` is mutate-gui verified by the
+   * pane's row delta; `setParameter` is mutate-gui verified by the DOM
+   * `effect.getParameter` readback — both gated and bounded (no resend).
+   * Throws `EffectControlsError` when no owned target is attested or
+   * the platform is unsupported.
+   *
+   * `locator` names the pane inside the main window's AX tree — the
+   * same `DockedPaneLocator` `ae.dockedPane()` takes. Real-host AX
+   * fidelity of the Effect Controls panel is unverified (spec §11);
+   * see `effectControlsCapabilities()`.
+   */
+  effectControls(locator: DockedPaneLocator): EffectControls {
+    return effectControlsForTarget(
+      this.recoveryTarget(),
+      this.#session,
+      locator,
+    );
   }
 
   /**
