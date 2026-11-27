@@ -32,6 +32,7 @@ import {
 import type { WindowServerWindow } from "../src/platform/darwin/window-census.js";
 import { encodePng } from "../src/testing/index.js";
 import { GuiEvidenceIndex } from "../src/evidence/index.js";
+import { artifactRelativePath } from "../src/evidence/stills.js";
 import { TraceRecorder, type TraceEvent } from "../src/trace/trace.js";
 
 const PID = 4242;
@@ -353,6 +354,20 @@ describe("panel.capture stills binding (#380)", () => {
       "still-op-1",
       "still-op-1",
     ]);
+  });
+
+  it("normalizes artifact paths to POSIX separators for the portable index", () => {
+    // The index is a cross-OS document: `path.relative` on Windows yields
+    // `panels\x.png`, which must be recorded as `panels/x.png`.
+    const dir = join(root, "artifacts");
+    expect(artifactRelativePath(dir, join(dir, "panels", "op-1.png"))).toBe(
+      "panels/op-1.png",
+    );
+    // Outside the artifacts tree the absolute path is kept (never a
+    // fabricated relative one) but still separator-normalized.
+    expect(artifactRelativePath(dir, "Z:\\elsewhere\\y.png")).toBe(
+      "Z:/elsewhere/y.png",
+    );
   });
 
   it("keeps working when no evidence context is installed (panel without session)", async () => {

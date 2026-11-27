@@ -119,10 +119,18 @@ function stillLeakage(capture: PanelCapture): CaptureLeakage {
   }
 }
 
-/** Artifact path relative to the artifacts dir; absolute fallback, never a lie. */
-function artifactRelativePath(artifactsDir: string, absolutePath: string): string {
+/**
+ * Artifact path relative to the artifacts dir, in POSIX `/` separators —
+ * the index is a portable document consumed across OSes (spec §5.1/§5.5),
+ * so a Windows `relative()` result is normalized rather than recorded
+ * host-native. An absolute path is the fallback when the file sits
+ * outside the artifacts tree — still separator-normalized, and still a
+ * truthful path, never a fabricated relative one.
+ */
+export function artifactRelativePath(artifactsDir: string, absolutePath: string): string {
   const rel = relative(artifactsDir, absolutePath);
-  return rel.startsWith("..") || rel === "" ? absolutePath : rel;
+  const path = rel.startsWith("..") || rel === "" ? absolutePath : rel;
+  return path.replaceAll("\\", "/");
 }
 
 /**
