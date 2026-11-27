@@ -120,6 +120,15 @@ export type PanelCapture = {
   readonly kind: "original" | "derived";
   /** Correlates the artifact with the operation that produced it. */
   readonly operationId: string;
+  /**
+   * Which capture vehicle produced `original`: `"window"` is the
+   * window-number capture (`screencapture -l`), `"region"` the frame
+   * rectangle (`screencapture -R`). Evidence binding (#380) records this
+   * as the artifact's `CaptureScope` — the controller is the authority
+   * on which branch ran, so it reports it rather than letting a consumer
+   * re-derive the choice.
+   */
+  readonly vehicle: "window" | "region";
   readonly target: PanelTarget;
   readonly capturedAt: string;
   /** Geometry the capture was taken for, in points. */

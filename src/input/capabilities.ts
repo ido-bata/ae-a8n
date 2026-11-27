@@ -1,15 +1,15 @@
 /**
- * Honest input capability reporting (spec §7, #371).
+ * Honest input capability reporting (spec §7, #371/#372).
  *
- * Every value here is a contract-level claim and nothing more. The
- * Windows delivery helpers landed in #373 (`src/platform/windows/
- * input-*-script.ts` + `input.ts`) at `implemented` + `automated test`
- * level — delivery itself is unverified (no Windows host lane) — while
- * macOS helpers are still pending (#372). The mutation gate is closed
- * for every class. The report therefore says
- * `unsupported`/`unavailable`/`needs-human`/`implemented` with reasons
- * — never `verified on real host`. When a platform helper's real-host
- * evidence lands, its ticket updates the corresponding row.
+ * The macOS helpers landed in #372 (`scripts/isolated-session/input-*.swift`
+ * + `src/input/darwin.ts`) and the Windows helpers in #373
+ * (`src/platform/windows/input-*-script.ts` + `input.ts`): they exist,
+ * compile, and pass argument validation tests — `implemented`/
+ * `automated test` — but every mutation path still sits behind the
+ * closed gate and real delivery is unverified on both OSes (no real
+ * host lane for either). Nothing here may claim `verified on real
+ * host`. When a platform helper's real-host evidence lands, its
+ * ticket updates the corresponding row.
  */
 
 import type { InputPlatform } from "./types.js";
@@ -76,10 +76,15 @@ export type InputCapabilities = {
 
 const CLOSED_REASON =
   "the A-SAFETY input gate (docs/gui-supervision-safety-gates.md) has " +
-  "cleared no input class; platform helpers exist at implemented/" +
-  "automated-test level at best and nothing is verified on a real " +
-  "host; the contract and gate logic are implemented and fake-tested, " +
-  "delivery is not proven";
+  "cleared no input class and global-input authorization has no grant " +
+  "path; platform helpers exist at implemented/automated-test level at " +
+  "best and nothing is verified on a real host; the contract and gate " +
+  "logic are implemented and fake-tested, delivery is not proven";
+
+const DARWIN_HELPER_REASON =
+  "macOS helpers implemented (#372): scripts/isolated-session/input-*.swift " +
+  "+ src/input/darwin.ts over runInSession — compile/validation tested, " +
+  "real delivery unverified, gate closed";
 
 function gated(verification: InputVerification, reason: string): InputCapability {
   return { support: "unavailable", verification, gate: "closed", reason };
@@ -212,7 +217,7 @@ function inputCapabilitiesBase(
         "ITfInputProcessorProfileMgr; UIPI/integrity interaction unstudied; " +
         "no CGEventPostToPid analog exists";
 
-  return {
+  const caps: InputCapabilities = {
     platform,
     sessionKind,
     focus: {
@@ -292,6 +297,80 @@ function inputCapabilitiesBase(
             "inputAuthorizationVerdict (token/scope required, " +
             "unavailable-not-silent-noop) and inputMutationGate() " +
             "refuses all classes today — " + CLOSED_REASON,
+    },
+  };
+
+  // #372 landed the macOS helpers: rows that were `unsupported` become
+  // `implemented`/`automated test` with the gate still closed. Windows
+  // keeps the base rows until #373.
+  if (platform !== "darwin") {
+    return caps;
+  }
+  return {
+    ...caps,
+    focus: {
+      ...caps.focus,
+      reason:
+        "focus readback helper implemented (input-focus.swift: " +
+        "AXFocusedUIElement/AXFocusedWindow/kAXFocused path) plus the " +
+        "fake-tested three-step proof; focus *request* is not " +
+        "implemented, so session-stream ops still refuse focus-unproven — " +
+        DARWIN_HELPER_REASON,
+    },
+    keyPosting: {
+      support: "implemented",
+      verification: "automated test",
+      gate: "closed",
+      reason:
+        "CGEventCreateKeyboardEvent/CGEventPost helpers implemented " +
+        "(input-post.swift, kCGHIDEventTap/kCGSessionEventTap) with " +
+        "modifier-flag tracking; whether posting traverses the " +
+        "input-method stack is the unverified Tier-1b question — " +
+        DARWIN_HELPER_REASON,
+    },
+    sequentialText: {
+      support: "implemented",
+      verification: "automated test",
+      gate: "closed",
+      reason:
+        "per-character unicode posting implemented (input-post type); " +
+        "IME-path delivery unverified — " + DARWIN_HELPER_REASON,
+    },
+    directText: {
+      support: "implemented",
+      verification: "automated test",
+      gate: "closed",
+      reason:
+        "NSPasteboard write + bulk unicode post implemented; labelled " +
+        "direct-entry and never IME evidence (spec §4.2) — " +
+        DARWIN_HELPER_REASON,
+    },
+    selectionOps: {
+      support: "partial",
+      verification: "automated test",
+      gate: "closed",
+      reason:
+        "modifier+key combos ride the key poster; selection readback " +
+        "(AXSelectedTextRange) is not implemented — " + DARWIN_HELPER_REASON,
+    },
+    clipboard: {
+      support: "implemented",
+      verification: "automated test",
+      gate: "closed",
+      reason:
+        "NSPasteboard snapshot/write/restore implemented with " +
+        "promised-flavor capture and private stash restore; " +
+        "shared-state gate applies — " + DARWIN_HELPER_REASON,
+    },
+    imeMode: {
+      support: "needs-human",
+      verification: "implemented",
+      gate: "closed",
+      reason:
+        "TIS input-source helpers implemented (input-source.swift: " +
+        "current/list/select); selecting needs an installed Japanese " +
+        "input source — a machine without one reports unavailable, a " +
+        "valid answer — " + DARWIN_HELPER_REASON,
     },
   };
 }

@@ -19,7 +19,7 @@
 
 import { join, resolve } from "node:path";
 
-import type { MacSession } from "../driver/mac-session.js";
+import { consoleSessionUid, type MacSession } from "../driver/mac-session.js";
 import {
   readLaunchProvenance,
   type LaunchProvenance,
@@ -40,11 +40,22 @@ import {
   type PanelLocator,
 } from "./panels.js";
 import {
+  type MenuBar,
+  menuBarForTarget,
+  menuCapabilities,
+  type MenuCapabilities,
+} from "./menus.js";
+import {
   type DockedPane,
   dockedPaneForTarget,
   type DockedPaneLocator,
 } from "./docked-pane.js";
 import { supervisionReport, type SupervisionReport } from "../supervision/index.js";
+import type { StillEvidenceContext } from "../evidence/stills.js";
+import type {
+  EvidenceIndexSession,
+  EvidenceSessionKind,
+} from "../evidence/types.js";
 import {
   AfterEffectsError,
   EntityNotFoundError,
@@ -119,6 +130,23 @@ export {
   type PanelMeasurement,
   type PanelTarget,
 } from "./panels.js";
+export {
+  MenuBar,
+  MenuError,
+  menuBarForTarget,
+  menuCapabilities,
+  type MenuBarItemInfo,
+  type MenuBarSnapshot,
+  type MenuCapabilities,
+  type MenuCapability,
+  type MenuCheckReading,
+  type MenuCheckState,
+  type MenuErrorCode,
+  type MenuInvokeResult,
+  type MenuItemLocator,
+  type MenuItemNode,
+  type ResolvedMenuItem,
+} from "./menus.js";
 export {
   DockedPane,
   DockedPaneObserver,
@@ -635,7 +663,89 @@ export class AfterEffects {
    * or the platform is unsupported.
    */
   panel(locator: PanelLocator): Panel {
-    return panelForTarget(this.recoveryTarget(), locator, this.artifactsDir);
+    const target = this.recoveryTarget();
+    return panelForTarget(
+      target,
+      locator,
+      this.artifactsDir,
+      {},
+      target === null ? undefined : this.#stillEvidenceContext(target),
+    );
+  }
+
+  /**
+   * The evidence-index context `panel().capture()` binds stills into
+   * (#380, spec §5.5). Every field is proven or honestly null: the host
+   * start identity comes from launch provenance when it exists, and the
+   * session kind is derived from the console-owner check — a target in
+   * the console user's session is `"console"`, a GUI session of another
+   * user is `"isolated"` (the dedicated automation lane), and anything
+   * unprovable stays `"unknown"` rather than being upgraded.
+   */
+  #stillEvidenceContext(target: {
+    pid: number;
+    session: MacSession;
+  }): StillEvidenceContext {
+    const driver = this.#session.driver;
+    let processStartIdentity: string | null = null;
+    try {
+      const provenance = readLaunchProvenance(driver.sessionRoot);
+      processStartIdentity =
+        provenance?.host.identity ??
+        (provenance?.host.startedAt != null
+          ? `startedAt=${provenance.host.startedAt}`
+          : null);
+    } catch {
+      processStartIdentity = null;
+    }
+    // `consoleSessionUid()` answers -1 when unreadable — never throws.
+    const consoleUid = consoleSessionUid();
+    let sessionKind: EvidenceSessionKind = "unknown";
+    if (consoleUid >= 0 && target.session.uid === consoleUid) {
+      sessionKind = "console";
+    } else if (target.session.kind === "Aqua") {
+      sessionKind = "isolated";
+    }
+    const session: EvidenceIndexSession = {
+      sessionRoot: driver.sessionRoot,
+      adapter: driver.transportKind,
+      pid: target.pid,
+      processStartIdentity,
+      sessionId: driver.sessionId,
+      sessionKind,
+    };
+    return {
+      artifactsDir: driver.artifactsDir,
+      session,
+      trace: this.#session.trace,
+    };
+  }
+
+  /**
+   * What this build can do with the macOS menu-bar surface on this
+   * platform (#360, `specs/workspace-editing/spec.md`): per-capability
+   * support, verification level and gate status. `enumerate` and
+   * `checkState` are observe-class; `invoke` is mutate-gui and reports
+   * `unavailable` while the A-SAFETY gate keeps it refused.
+   */
+  menuBarCapabilities(): MenuCapabilities {
+    return menuCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's menu bar (#360):
+   * `list`/`find`/`checkState` are observe-class; `invoke` is
+   * mutate-gui and gated — see `menuBarCapabilities()` for what is
+   * currently allowed.
+   *
+   * Items are addressed by `(menuPath, itemTitle)` — the localized
+   * titles AE shows, resolved against a fresh Accessibility observation
+   * on every call. An absent expected path refuses `unsupported-locale`;
+   * there is no coordinate fallback. Throws `MenuError` when no owned
+   * target is attested or the platform is unsupported.
+   */
+  menuBar(): MenuBar {
+    return menuBarForTarget(this.recoveryTarget());
   }
 
   /**
