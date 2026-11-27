@@ -2,8 +2,8 @@
 // specs/workspace-editing/spec.md §9 highest-risk cell).
 //
 //   swiftc -O poc-drag.swift -o poc-drag
-//   ./poc-drag drag --from 100,100 --to 400,300 [--steps 24] [--step-delay-ms 16]
-//   ./poc-drag filedrag --file /tmp/fixture.png --from 100,100 --to 400,300
+//   ./poc-drag drag --from 100,100 --to 400,300 [--steps 24] [--step-delay-ms 16] [--dwell-ms N]
+//   ./poc-drag filedrag --file /tmp/fixture.png --from 100,100 --to 400,300 [--vend fileurl|legacy]
 //   ./poc-drag click --at X,Y [--tap hid|session]
 //   ./poc-drag key --code N [--flags cmd,shift,opt,ctrl]
 //
@@ -69,6 +69,8 @@ struct Parsed {
     var flags = ""
     var steps = 24
     var stepDelayMs = 16
+    var dwellMs = 0
+    var vend = "fileurl"
     var tap = TapKind.session
 }
 
@@ -118,6 +120,16 @@ func parse(_ args: [String]) -> Parsed {
             let v = takeValue()
             guard let n = Int(v), n >= 0 else { failUsage("--step-delay-ms expects a non-negative integer") }
             p.stepDelayMs = n
+        case "--dwell-ms":
+            let v = takeValue()
+            guard let n = Int(v), n >= 0 else { failUsage("--dwell-ms expects a non-negative integer") }
+            p.dwellMs = n
+        case "--vend":
+            let v = takeValue()
+            guard ["fileurl", "legacy"].contains(v) else {
+                failUsage("--vend expects fileurl or legacy")
+            }
+            p.vend = v
         case "--tap":
             let v = takeValue()
             guard let tap = ["hid": TapKind.hid, "session": TapKind.session][v] else {
@@ -181,11 +193,16 @@ func runPlainDrag(_ p: Parsed, from: Point, to: Point) {
         event.post(tap: tap)
         usleep(UInt32(p.stepDelayMs) * 1000)
     }
+    // --dwell-ms: hover at the drop point before releasing. Tests whether
+    // the target needs settle time to arm its drop handling (#411).
+    if p.dwellMs > 0 {
+        usleep(UInt32(p.dwellMs) * 1000)
+    }
     guard postMouse(.leftMouseUp, to, tap: tap) else {
         FileHandle.standardError.write(Data("poc-drag: failed to create leftMouseUp\n".utf8))
         exit(1)
     }
-    print("{\"ok\":true,\"mode\":\"drag\",\"from\":[\(from.x),\(from.y)],\"to\":[\(to.x),\(to.y)],\"steps\":\(p.steps),\"channel\":\"\(p.tap.name)\"}")
+    print("{\"ok\":true,\"mode\":\"drag\",\"from\":[\(from.x),\(from.y)],\"to\":[\(to.x),\(to.y)],\"steps\":\(p.steps),\"dwellMs\":\(p.dwellMs),\"channel\":\"\(p.tap.name)\"}")
 }
 
 // MARK: - click (plain press-release, e.g. a window close button)
@@ -245,17 +262,35 @@ func runKey(_ p: Parsed, code: Int) {
 
 /// NSPasteboard does not conform to NSPasteboardWriting in the Swift
 /// overlay; this adapter vends the types/data we wrote onto the board.
+/// `vend` selects which flavors the dragging item advertises:
+///   - "fileurl"  (default, #369): only public.file-url
+///   - "legacy"   (#411): also advertises the legacy NSFilenamesPboardType
+///                string. That type is not a UTI, so whether the drag
+///                machinery accepts it here is itself part of the PoC —
+///                if it throws/crashes the receipt records it.
 final class BoardWriter: NSObject, NSPasteboardWriting {
     let board: NSPasteboard
-    init(_ board: NSPasteboard) { self.board = board }
+    let vend: String
+    init(_ board: NSPasteboard, vend: String) {
+        self.board = board
+        self.vend = vend
+    }
     func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
-        // Only valid UTIs may be advertised; the legacy NSFilenamesPboardType
-        // flavor cannot cross this API (measured: CorePasteboard rejects it).
-        // public.file-url is the modern standard every current drop target
-        // reads; if AE needs the legacy flavor this PoC records that.
+        if vend == "legacy" {
+            return [
+                .fileURL,
+                NSPasteboard.PasteboardType("NSFilenamesPboardType"),
+                NSPasteboard.PasteboardType("public.utf8-plain-text"),
+            ]
+        }
         return [.fileURL]
     }
     func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
+        if vend == "legacy" && type == NSPasteboard.PasteboardType("public.utf8-plain-text") {
+            // Finder also vends the bare filename as plain text.
+            return (board.propertyList(forType: .fileURL) as? String)?
+                .split(separator: "/").last.map(String.init)
+        }
         return board.propertyList(forType: type)
     }
 }
@@ -264,6 +299,7 @@ final class DragSource: NSObject, NSDraggingSource {
     var window: NSWindow?
     var didBegin = false
     var beganAt = Date()
+    var vend = "fileurl"
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         return [.copy, .generic]
@@ -282,7 +318,7 @@ final class DragSource: NSObject, NSDraggingSource {
         default: opName = "other(\(operation.rawValue))"
         }
         let ms = Int(Date().timeIntervalSince(beganAt) * 1000)
-        print("{\"ok\":true,\"mode\":\"filedrag\",\"endedAt\":[\(screenPoint.x),\(screenPoint.y)],\"operation\":\"\(opName)\",\"durationMs\":\(ms)}")
+        print("{\"ok\":true,\"mode\":\"filedrag\",\"endedAt\":[\(screenPoint.x),\(screenPoint.y)],\"operation\":\"\(opName)\",\"durationMs\":\(ms),\"vend\":\"\(vend)\"}")
         exit(0)
     }
 
@@ -309,6 +345,7 @@ func runFileDrag(_ p: Parsed, file: String, from: Point, to: Point) {
 
     let source = DragSource()
     source.beganAt = Date()
+    source.vend = p.vend
 
     // Small borderless window centered on --from. It is ordered front at
     // floating level so the posted mouse-down lands on OUR view, not on
@@ -350,11 +387,14 @@ func runFileDrag(_ p: Parsed, file: String, from: Point, to: Point) {
         pboard.declareTypes([
             .fileURL,
             NSPasteboard.PasteboardType("NSFilenamesPboardType"),
+            NSPasteboard.PasteboardType("public.utf8-plain-text"),
         ], owner: nil)
         pboard.setString(fileURL.absoluteString, forType: .fileURL)
         pboard.setPropertyList([fileURL.path],
                                forType: NSPasteboard.PasteboardType("NSFilenamesPboardType"))
-        let draggingItem = NSDraggingItem(pasteboardWriter: BoardWriter(pboard))
+        pboard.setString(fileURL.lastPathComponent,
+                         forType: NSPasteboard.PasteboardType("public.utf8-plain-text"))
+        let draggingItem = NSDraggingItem(pasteboardWriter: BoardWriter(pboard, vend: p.vend))
         draggingItem.setDraggingFrame(
             NSRect(x: 0, y: 0, width: 48, height: 48), contents: icon)
         let session = view.beginDraggingSession(with: [draggingItem], event: event, source: source)
@@ -399,9 +439,13 @@ func runFileDrag(_ p: Parsed, file: String, from: Point, to: Point) {
         let pt = pathPoints[index]
         index += 1
         if index == pathPoints.count {
-            _ = postMouse(.leftMouseUp,
-                          Point(x: Double(pt.x), y: Double(pt.y)), tap: .cgSessionEventTap)
-            FileHandle.standardError.write(Data("poc-drag: posted leftMouseUp at \(pt.x),\(pt.y)\n".utf8))
+            // --dwell-ms: keep hovering at the drop point before release.
+            let upDelay = p.dwellMs > 0 ? p.dwellMs : 0
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(upDelay)) {
+                _ = postMouse(.leftMouseUp,
+                              Point(x: Double(pt.x), y: Double(pt.y)), tap: .cgSessionEventTap)
+                FileHandle.standardError.write(Data("poc-drag: posted leftMouseUp at \(pt.x),\(pt.y) dwellMs=\(p.dwellMs)\n".utf8))
+            }
         } else {
             _ = postMouse(.leftMouseDragged,
                           Point(x: Double(pt.x), y: Double(pt.y)), tap: .cgSessionEventTap)
@@ -423,7 +467,7 @@ func runFileDrag(_ p: Parsed, file: String, from: Point, to: Point) {
         window.orderOut(nil)
         exit(1)
     }
-    let expectedMs = 120 + p.steps * p.stepDelayMs + 5_000
+    let expectedMs = 120 + p.steps * p.stepDelayMs + p.dwellMs + 5_000
     DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(expectedMs)) {
         FileHandle.standardError.write(Data("poc-drag: timed out waiting for drag session to end\n".utf8))
         window.orderOut(nil)

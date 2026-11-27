@@ -101,8 +101,9 @@ export function guiEvidenceCapabilities(
         "SCStream → .mov) with a screencapture -V fallback tier, always " +
         "inside the attested target session. SCStream delivery under " +
         "runInSession, TCC prompts, fps and finalize-on-signal are " +
-        "unverified on a real host; display/session scopes still refuse " +
-        "until recording authorization exists (#383)",
+        "unverified on a real host; display/session scopes and every " +
+        "scope on a non-isolated session start only with an explicit " +
+        "recording-authorization grant (spec §5.7, #383)",
     },
     renderEvidence: {
       support: "partial",
