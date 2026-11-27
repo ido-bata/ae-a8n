@@ -243,7 +243,7 @@ describe("input capability reporting (spec §7)", () => {
     expect(caps.globalInputAuthorization.reason).toContain("foreign app");
   });
 
-  it("reports delivery capabilities honestly per platform (#373 updated win32)", () => {
+  it("reports delivery capabilities honestly per platform (#372 darwin, #373 win32)", () => {
     const caps = inputCapabilities("win32", "unknown");
     // #373 landed the Windows helpers: implemented + automated test,
     // gate still closed, delivery unverified — never silent, never
@@ -254,10 +254,14 @@ describe("input capability reporting (spec §7)", () => {
     expect(caps.keyPosting.reason).toContain("SendInput");
     expect(caps.keyPosting.reason).toContain("unverified");
     expect(caps.osImeEndToEnd.gate).toBe("needs-human");
-    // darwin is unchanged until #372 lands.
+    // #372 landed the macOS helpers the same way: implemented +
+    // automated test over the swift helpers, gate still closed.
     const mac = inputCapabilities("darwin", "unknown");
-    expect(mac.keyPosting.support).toBe("unsupported");
-    expect(mac.keyPosting.verification).toBe("unverified");
+    expect(mac.keyPosting.support).toBe("implemented");
+    expect(mac.keyPosting.verification).toBe("automated test");
+    expect(mac.keyPosting.gate).toBe("closed");
+    expect(mac.keyPosting.reason).toContain("CGEvent");
+    expect(mac.osImeEndToEnd.gate).toBe("needs-human");
   });
 
   it("keeps the contract-level pieces honest about what IS implemented", () => {

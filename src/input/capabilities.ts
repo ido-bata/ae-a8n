@@ -96,8 +96,9 @@ function unsupported(reason: string): InputCapability {
 
 /**
  * The capability report for `platform` in `sessionKind`. Both OSes
- * report the same honest shape today: contract implemented, delivery
- * unimplemented, gate closed. OS-specific mechanism notes from spec
+ * now report helper rows at `implemented`/`automated test` (#372
+ * darwin, #373 win32) with every gate closed and real delivery
+ * unverified. OS-specific mechanism notes from spec
  * §7 (CGEvent/SendInput/TIS/TSF) live in `reason` strings so the
  * report stays truthful about *why* nothing runs.
  */
@@ -302,7 +303,7 @@ function inputCapabilitiesBase(
 
   // #372 landed the macOS helpers: rows that were `unsupported` become
   // `implemented`/`automated test` with the gate still closed. Windows
-  // keeps the base rows until #373.
+  // rows are overridden by the caller (#373) after this base returns.
   if (platform !== "darwin") {
     return caps;
   }
