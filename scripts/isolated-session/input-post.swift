@@ -24,6 +24,13 @@
 //
 // Output is one JSON receipt on stdout; diagnostics on stderr. Usage
 // errors exit 2 BEFORE anything is posted; runtime failures exit 1.
+//
+// Keyboard events are built on a real `.combinedSessionState` CGEventSource:
+// the #379 PoC (docs/evidence/ime-poc-2026-11-27) showed nil-source
+// keyDown/keyUp CGEvents are not reliably delivered to the focused
+// control, while the combined-session source is. flagsChanged events keep
+// a nil source — they reach unfocused apps regardless and showed no
+// flakiness in the same PoC.
 import CoreGraphics
 import Foundation
 
@@ -341,7 +348,7 @@ func makeEvent(for plan: Plan, index: Int) -> CGEvent? {
             event.flags = flags
             return event
         }
-        guard let event = CGEvent(keyboardEventSource: nil, virtualKey: key.code, keyDown: isDown) else { return nil }
+        guard let event = CGEvent(keyboardEventSource: CGEventSource(stateID: .combinedSessionState), virtualKey: key.code, keyDown: isDown) else { return nil }
         event.flags = plan.mods
         return event
     case .typeSequential:
@@ -349,7 +356,7 @@ func makeEvent(for plan: Plan, index: Int) -> CGEvent? {
         guard index / 2 < chars.count else { return nil }
         let charIndex = index / 2
         let isDown = index % 2 == 0
-        guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: isDown) else { return nil }
+        guard let event = CGEvent(keyboardEventSource: CGEventSource(stateID: .combinedSessionState), virtualKey: 0, keyDown: isDown) else { return nil }
         if isDown {
             let units = Array(String(chars[charIndex]).utf16)
             units.withUnsafeBufferPointer { buffer in
@@ -365,7 +372,7 @@ func makeEvent(for plan: Plan, index: Int) -> CGEvent? {
         let start = index * 20
         guard start < units.count else { return nil }
         let chunk = Array(units[start..<min(start + 20, units.count)])
-        guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true) else { return nil }
+        guard let event = CGEvent(keyboardEventSource: CGEventSource(stateID: .combinedSessionState), virtualKey: 0, keyDown: true) else { return nil }
         chunk.withUnsafeBufferPointer { buffer in
             event.keyboardSetUnicodeString(
                 stringLength: chunk.count, unicodeString: buffer.baseAddress)

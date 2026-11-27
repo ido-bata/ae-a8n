@@ -374,6 +374,11 @@ describe("isolated-session input helpers", () => {
     const post = readFileSync(join(SCRIPT_DIR, "input-post.swift"), "utf-8");
     expect(post).toContain("postToPid");
     expect(post).toContain("imePassThrough\\\":\\\"unverified");
+    // #413: keyboard events must carry a real .combinedSessionState source —
+    // nil-source keyDown/keyUp CGEvents proved unreliable on the real host
+    // (issue #379 PoC, docs/evidence/ime-poc-2026-11-27).
+    expect(post).toContain("combinedSessionState");
+    expect(post).not.toContain("keyboardEventSource: nil");
     const clipboard = readFileSync(join(SCRIPT_DIR, "input-clipboard.swift"), "utf-8");
     expect(clipboard).toContain("NSPasteboard");
     const source = readFileSync(join(SCRIPT_DIR, "input-source.swift"), "utf-8");
