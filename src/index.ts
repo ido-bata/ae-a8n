@@ -63,6 +63,31 @@ export type {
 } from "./panels/types.js";
 
 /*
+ * Menu-bar surface (#360, specs/workspace-editing/spec.md): `ae.menuBar()`
+ * plus the capability report. Enumerate and checkmark readback are
+ * observe-class; invoke is mutate-gui and gate-pending.
+ */
+export {
+  MenuBar,
+  MenuError,
+  menuBarForTarget,
+  menuCapabilities,
+} from "./api/menus.js";
+export type {
+  MenuBarItemInfo,
+  MenuBarSnapshot,
+  MenuCapabilities,
+  MenuCapability,
+  MenuCheckReading,
+  MenuCheckState,
+  MenuErrorCode,
+  MenuInvokeResult,
+  MenuItemLocator,
+  MenuItemNode,
+  ResolvedMenuItem,
+} from "./menus/types.js";
+
+/*
  * Docked-region pane surface (#361, specs/workspace-editing/spec.md §6/§7):
  * `ae.dockedPane(locator)` — observe-class bounded AX walk of a pane inside
  * the main window. Real-host AX fidelity is unverified; see

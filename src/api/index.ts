@@ -40,6 +40,12 @@ import {
   type PanelLocator,
 } from "./panels.js";
 import {
+  type MenuBar,
+  menuBarForTarget,
+  menuCapabilities,
+  type MenuCapabilities,
+} from "./menus.js";
+import {
   type DockedPane,
   dockedPaneForTarget,
   type DockedPaneLocator,
@@ -119,6 +125,23 @@ export {
   type PanelMeasurement,
   type PanelTarget,
 } from "./panels.js";
+export {
+  MenuBar,
+  MenuError,
+  menuBarForTarget,
+  menuCapabilities,
+  type MenuBarItemInfo,
+  type MenuBarSnapshot,
+  type MenuCapabilities,
+  type MenuCapability,
+  type MenuCheckReading,
+  type MenuCheckState,
+  type MenuErrorCode,
+  type MenuInvokeResult,
+  type MenuItemLocator,
+  type MenuItemNode,
+  type ResolvedMenuItem,
+} from "./menus.js";
 export {
   DockedPane,
   DockedPaneObserver,
@@ -636,6 +659,33 @@ export class AfterEffects {
    */
   panel(locator: PanelLocator): Panel {
     return panelForTarget(this.recoveryTarget(), locator, this.artifactsDir);
+  }
+
+  /**
+   * What this build can do with the macOS menu-bar surface on this
+   * platform (#360, `specs/workspace-editing/spec.md`): per-capability
+   * support, verification level and gate status. `enumerate` and
+   * `checkState` are observe-class; `invoke` is mutate-gui and reports
+   * `unavailable` while the A-SAFETY gate keeps it refused.
+   */
+  menuBarCapabilities(): MenuCapabilities {
+    return menuCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's menu bar (#360):
+   * `list`/`find`/`checkState` are observe-class; `invoke` is
+   * mutate-gui and gated — see `menuBarCapabilities()` for what is
+   * currently allowed.
+   *
+   * Items are addressed by `(menuPath, itemTitle)` — the localized
+   * titles AE shows, resolved against a fresh Accessibility observation
+   * on every call. An absent expected path refuses `unsupported-locale`;
+   * there is no coordinate fallback. Throws `MenuError` when no owned
+   * target is attested or the platform is unsupported.
+   */
+  menuBar(): MenuBar {
+    return menuBarForTarget(this.recoveryTarget());
   }
 
   /**
