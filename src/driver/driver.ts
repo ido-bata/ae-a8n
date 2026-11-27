@@ -387,6 +387,15 @@ export class AeDriver {
   }
 
   /**
+   * The session marker id this driver stamps on bridge envelopes (#380:
+   * the evidence index's `session.sessionId`). Internal correlation id —
+   * not a host identity.
+   */
+  get sessionId(): string {
+    return this.#sessionId;
+  }
+
+  /**
    * The owned After Effects process and GUI session this driver's transport
    * attests, for recovery authorization (ae-devtools #55). Only the script
    * transport can name its target; every other transport — and any state

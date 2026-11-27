@@ -38,6 +38,10 @@ import {
 import type { PanelMutationGate } from "../panels/controller.js";
 import type { GuiObservationTarget, GuiObservationSeams } from "./gui-state.js";
 import { MacGuiRecovery, type GuiRecoveryOptions } from "../driver/gui-recovery.js";
+import {
+  captureWithStillEvidence,
+  type StillEvidenceContext,
+} from "../evidence/stills.js";
 
 export type {
   PanelCapabilities,
@@ -200,9 +204,11 @@ function macPanelOps(
  */
 export class Panel {
   readonly #controller: PanelController;
+  readonly #evidence: StillEvidenceContext | undefined;
 
-  constructor(controller: PanelController) {
+  constructor(controller: PanelController, evidence?: StillEvidenceContext) {
     this.#controller = controller;
+    this.#evidence = evidence;
   }
 
   /** Resolve the locator against the live screen. Observe-class. */
@@ -228,9 +234,20 @@ export class Panel {
     return this.#controller.restore();
   }
 
-  /** Capture the resolved surface as an original artifact. Observe-class. */
+  /**
+   * Capture the resolved surface as an original artifact. Observe-class.
+   * When the session supplied an evidence context (#380), the capture is
+   * bound into the `ae-a8n.gui-evidence/v1` index as a `screen-still`
+   * artifact and the `panel.capture` trace row carries
+   * `result.evidenceId`; a refused or failed capture lands in the index
+   * gaps instead of being silently lost.
+   */
   capture(): Promise<PanelCapture> {
-    return Promise.resolve().then(() => this.#controller.capture());
+    return Promise.resolve().then(() =>
+      this.#evidence === undefined
+        ? this.#controller.capture()
+        : captureWithStillEvidence(() => this.#controller.capture(), this.#evidence),
+    );
   }
 }
 
@@ -244,6 +261,7 @@ export function panelForTarget(
   locator: PanelLocator,
   artifactDir: string,
   seams: PanelSeams = {},
+  evidence?: StillEvidenceContext,
 ): Panel {
   if (target === null) {
     throw new PanelError(
@@ -277,5 +295,5 @@ export function panelForTarget(
       ? {}
       : { newOperationId: seams.newOperationId }),
   });
-  return new Panel(controller);
+  return new Panel(controller, evidence);
 }
