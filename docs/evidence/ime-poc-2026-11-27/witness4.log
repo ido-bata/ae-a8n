@@ -1,0 +1,3 @@
+{"t":1795776473167.663,"kind":"start","pid":2906,"duration":1200.0}
+{"t":1795776493372.485,"seq":0,"kind":"keyDown","chars":"k","charsNoMods":"k","keyCode":0,"flags":0,"ts":19299.149709958,"repeat":false,"firstResponder":"WitnessTextView","keyWindow":true,"mainWindow":true,"appActive":true,"hasMarkedText":false,"markedText":null}
+{"t":1795776493698.1357,"seq":1,"kind":"keyDown","chars":"a","charsNoMods":"a","keyCode":0,"flags":0,"ts":19299.469256333,"repeat":false,"firstResponder":"WitnessTextView","keyWindow":true,"mainWindow":true,"appActive":true,"hasMarkedText":false,"markedText":null}
