@@ -23,6 +23,9 @@
  */
 
 import { MacGuiRecovery, type GuiRecoveryOptions } from "../driver/gui-recovery.js";
+import { censusRunnerInSession } from "../driver/gui-recovery.js";
+import { displayCensus } from "../platform/darwin/display-census.js";
+import type { CensusRunner } from "../platform/darwin/window-census.js";
 import { MacMenuSurface, type MacMenuSurfaceOptions } from "../menus/darwin.js";
 import { DockedPaneObserver } from "../panels/docked/index.js";
 import { resolvePanelTarget } from "../panels/resolve.js";
@@ -36,6 +39,7 @@ import {
   type WorkspaceArrangeResult,
   type WorkspaceMenuEntry,
   type WorkspaceMenuPath,
+  type WorkspaceMonitorReport,
   type WorkspaceMutationGate,
   type WorkspaceObservation,
   type WorkspacePollOptions,
@@ -62,6 +66,7 @@ export type {
   WorkspaceIdentity,
   WorkspaceMenuEntry,
   WorkspaceMenuPath,
+  WorkspaceMonitorReport,
   WorkspaceObservation,
   WorkspaceObservationFailure,
   WorkspacePanelFrame,
@@ -102,6 +107,33 @@ export type {
 } from "../workspace-xml/index.js";
 export { WorkspaceXmlError } from "../workspace-xml/types.js";
 
+/*
+ * Multi-monitor / DPI surface (#370, spec §9 "Multi-monitor / DPI"; W4+
+ * of specs/workspace-editing/spec.md). The contract types live in
+ * src/workspace/monitors/; the macOS census probe is
+ * src/platform/darwin/display-census.ts. All observe-class.
+ */
+export {
+  assessFrameMonitors,
+  classifyTopology,
+  displaysForFrame,
+  monitorEvidence,
+  toMonitorDisplay,
+} from "../workspace/monitors/index.js";
+export type {
+  FrameMonitorInfo,
+  MonitorCensus,
+  MonitorDisplay,
+  MonitorEvidence,
+  MonitorTopology,
+} from "../workspace/monitors/types.js";
+export {
+  DISPLAY_CENSUS_SCRIPT,
+  displayCensus,
+  parseDisplayCensus,
+} from "../platform/darwin/display-census.js";
+export type { DisplayCensus, DisplayInfo } from "../platform/darwin/display-census.js";
+
 /** Per-capability honesty record, same shape as `PanelCapability`. */
 export type WorkspaceCapability = {
   readonly support: "implemented" | "partial" | "unsupported" | "unavailable";
@@ -120,6 +152,12 @@ export type WorkspaceCapabilities = {
   readonly switchWorkspace: WorkspaceCapability;
   readonly arrange: WorkspaceCapability;
   readonly verifyRestore: WorkspaceCapability;
+  /**
+   * Multi-monitor / DPI evidence (#370): display census, per-frame
+   * display membership and mixed-DPI flags recorded on observations and
+   * restore reports. Observe-class.
+   */
+  readonly monitors: WorkspaceCapability;
 };
 
 /** The verification level every workspace claim carries until real-host proof. */
@@ -145,6 +183,14 @@ export function workspaceCapabilities(platform: NodeJS.Platform): WorkspaceCapab
       switchWorkspace: unsupported,
       arrange: unsupported,
       verifyRestore: unsupported,
+      monitors: {
+        support: "unsupported",
+        verification: "implemented",
+        reason:
+          "multi-monitor/DPI restore is design + contract only on Windows: " +
+          "the census is physical px and needs GetDpiForWindow / an " +
+          "awareness context (spec §9); no real-host claim is made",
+      },
     };
   }
   return {
@@ -182,6 +228,16 @@ export function workspaceCapabilities(platform: NodeJS.Platform): WorkspaceCapab
         "wherever an owned target is attested; what it proves about a real " +
         "AE restore is unverified on a real host",
     },
+    monitors: {
+      support: "implemented",
+      verification: VERIFICATION,
+      reason:
+        "display census (CGGetActiveDisplayList bounds/pixels/backingScale) " +
+        "+ per-frame display membership and mixed-DPI flags are observe-" +
+        "class evidence; single-display hosts report topology \"single\" " +
+        "honestly, and per-monitor restore fidelity stays unverified on a " +
+        "real host (spec §11)",
+    },
   };
 }
 
@@ -198,6 +254,13 @@ export type WorkspaceSeams = GuiObservationSeams &
     readonly dockedPanes?: readonly DockedPaneLocator[];
     /** Workspace-XML discovery overrides (explicit preferencesDir/aeVersion for tests). */
     readonly xml?: DiscoverOptions;
+    /**
+     * Display-census exec seam (#370). Production runs the CLT-python
+     * CoreGraphics probe inside the target session via
+     * `censusRunnerInSession`; tests inject a stub. An unavailable
+     * census degrades monitor evidence to `unknown`, never to a guess.
+     */
+    readonly displayCensusRun?: CensusRunner;
     readonly ownerId?: string;
     /** Pid-identity re-check, forwarded to the macOS surfaces. */
     readonly verifyProcess?: GuiRecoveryOptions["verifyProcess"];
@@ -242,6 +305,7 @@ function macWorkspaceOps(
     poll: _poll,
     dockedPanes: _panes,
     xml: _xml,
+    displayCensusRun: _displayRun,
     bounds: _bounds,
     ...surfaceSeams
   } = seams;
@@ -281,6 +345,19 @@ function macWorkspaceOps(
     // No `drag`: the B-IME mouse-drag poster does not exist yet, so
     // `arrange` reports `unsupported` — deliberately absent, not stubbed.
     snapshotXml: () => snapshotWorkspaceStore(seams.xml ?? {}),
+    // #370: the display census runs inside the target session like the
+    // window census — the session's own WindowServer view, never the
+    // caller's desktop by accident. Observe-class; a failed probe is
+    // `available: false`, not an empty ("single display") guess.
+    enumerateDisplays: () => {
+      const census = displayCensus(
+        seams.displayCensusRun ??
+          censusRunnerInSession(target.session, seams.runSession),
+      );
+      return census.available
+        ? { available: true, displays: census.displays }
+        : { available: false, reason: census.reason };
+    },
   };
 }
 
@@ -349,6 +426,22 @@ export class Workspace {
     return Promise.resolve().then(() =>
       this.#controller.verifyRestore(expected, options),
     );
+  }
+
+  /**
+   * A fresh observe pass plus its monitor/DPI assessment (#370):
+   * display topology (single/multi/unknown), which displays each panel
+   * frame intersects, and mixed-DPI flags for frames straddling
+   * displays with different backing scales. Observe-class — the
+   * pre-flight read before trusting a restore verdict on a
+   * mixed-resolution desktop. On a single-display host this honestly
+   * reports `topology.status: "single"`; an unavailable census reports
+   * `"unknown"`, never a guessed topology.
+   */
+  monitorReport(options?: {
+    readonly dockedPanes?: readonly DockedPaneLocator[];
+  }): Promise<WorkspaceMonitorReport> {
+    return Promise.resolve().then(() => this.#controller.monitorReport(options));
   }
 }
 
