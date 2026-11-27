@@ -236,7 +236,10 @@ unsaved edit in someone's open project is still their work.
 | `project.createComp({ name, width, height, duration, frameRate })` → `Comp` | refuses a name an item already has |
 | `comp.addTextLayer({ text, font?, fontSize?, fillColor?, position? })` | → `{ layer, info }`; `info.font` is what AE applied |
 | `comp.openInViewer()`, `comp.selectLayers(names)` | make the comp active; select exactly these layers |
+| `comp.time()` | → `{ comp, time, frame }`: the current-time indicator (`CompItem.time`), read-only |
+| `project.state()` | → `{ itemCount, dirty, activeItem }`: the project facts the DOM exposes, read-only |
 | `layer.setEnabled(on)`, `layer.transform()`, `layer.shapePaths()` | video switch; transform values; a shape layer's paths in layer space |
+| `layer.property(path)` | one property by name/match-name path (e.g. `["ADBE Transform Group", "ADBE Position"]`); the `PropertyInfo` also carries `selected`, `isTimeVarying` and `keyframes` (`{ index, time, value }`) where the host exposes them — read-only |
 | `ae.close({ unsavedChanges? })` | → `{ quit, ownership, reason? }` |
 | `ae.supervisionState()` | → `SupervisionReport`: the durable GUI-supervision document (`ae-a8n.supervision/v1`) — phase, observation health, blocking evidence, pending requests. Absent/corrupt/stale state reports `unavailable`/`monitor-lost`, never a fabricated healthy state |
 | `AfterEffects.rebuild(options)` | verified relaunch after proven owned process loss; refuses attached/unknown ownership, PID reuse, residual instances and live monitor leases; reconciles pending requests without resending |
@@ -252,8 +255,9 @@ property's `valueType`; nothing is written),
 error), `AfterEffectsNotInstalledError`. Lower-level pieces (`AeDriver`,
 `ScriptInvocationTransport`, `resolveInstall`) are exported for tooling.
 
-Not in this release: saving, layers other than text, keyframes, expressions,
-render-queue output modules.
+Not in this release: saving, layers other than text, keyframe writes (keyframe
+*readback* is available via `layer.property`/`effect.parameter().info()`),
+expressions, render-queue output modules.
 
 ### Driving a plugin's menu command
 
