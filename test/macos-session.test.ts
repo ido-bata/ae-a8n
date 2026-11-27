@@ -25,6 +25,7 @@ import {
   parseUiListing,
 } from "../src/driver/gui-recovery.js";
 import { consoleSessionUid, parseLaunchctlGuiSession, parseLsappinfo, startInSession } from "../src/driver/mac-session.js";
+import { AX_PANE_WALK_SCRIPT } from "../src/panels/docked/index.js";
 import { RECOVERY_BUTTONS, describeWindow, isHumanOnlyWindow } from "../src/driver/recovery.js";
 
 describe("the login session of a user", () => {
@@ -294,6 +295,7 @@ describe("the GUI recovery", () => {
         "press-button": PRESS_BUTTON_SCRIPT,
         "click-at": CLICK_AT_SCRIPT,
         "resize-panel": RESIZE_PANEL_SCRIPT,
+        "docked-pane-walk": AX_PANE_WALK_SCRIPT,
       })) {
         const source = join(dir, `${name}.applescript`);
         writeFileSync(source, `${script.join("\n")}\n`);

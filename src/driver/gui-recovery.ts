@@ -1306,6 +1306,26 @@ export class MacGuiRecovery {
   }
 
   /**
+   * Runs a caller-supplied read-only Accessibility AppleScript inside the
+   * target session and returns its stdout (#361 docked-pane walk; the
+   * menu-bar surface is the sibling consumer).
+   *
+   * The script arrives as `argv`-driven source — nothing from the outside
+   * is spliced into it — is audited as `observe` under `op`, and gets the
+   * same process-identity and session-proof re-checks every session
+   * command gets. It is for observation only: a script that mutates must
+   * go through `#mutate` instead, which this method deliberately is not.
+   */
+  accessibilityQuery(
+    script: readonly string[],
+    args: readonly string[],
+    op: string,
+  ): string {
+    this.#observe(op);
+    return this.#osascript(script, args).stdout;
+  }
+
+  /**
    * A screenshot of one rectangular region of the target session's
    * screen (#343 panel capture). `frame` is in the same points,
    * top-left-origin space the census and AX frames use. Read-only
