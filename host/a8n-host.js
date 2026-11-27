@@ -582,6 +582,31 @@
     return out;
   };
 
+  /**
+   * `project.items` in panel order (#422): the drop oracle for drag-drop.
+   * Each entry carries the item's name and a coarse type word — "comp",
+   * "footage", "folder" — or null when no known class matches (the DOM
+   * exposes no stable item id, so `id` stays absent and callers match on
+   * name multisets). Read-only: it never touches the project.
+   */
+  methods["project.items"] = function () {
+    var project = getProject();
+    var out = [];
+    for (var i = 1; i <= project.numItems; i++) {
+      var item = project.item(i);
+      var type = null;
+      if (item instanceof CompItem) {
+        type = "comp";
+      } else if (typeof FootageItem !== "undefined" && item instanceof FootageItem) {
+        type = "footage";
+      } else if (typeof FolderItem !== "undefined" && item instanceof FolderItem) {
+        type = "folder";
+      }
+      out.push({ name: String(item.name), type: type });
+    }
+    return { items: out, itemCount: project.numItems };
+  };
+
   methods["comp.info"] = function (params) {
     return compInfo(findComp(String(requireParam(params, "name"))));
   };

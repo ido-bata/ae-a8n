@@ -304,6 +304,48 @@ export type {
 } from "./api/index.js";
 
 /*
+ * Drag-drop surface (#422, specs/workspace-editing/spec.md §9
+ * "File/element drag-drop"): `ae.dragDrop()` — gated, lease-held
+ * NSDraggingSession file drops and segmented element drags through the
+ * `input-drag` helper, census-gated drop points, `project.items`
+ * DOM-delta oracle, never resent. `drop-file` is the permitted class
+ * (#411 vehicle evidence); `element-drag` stays gate-refused — see
+ * `dragDropCapabilities()`.
+ */
+export {
+  DragDrop,
+  DragDropError,
+  dragDropCapabilities,
+  dragDropForTarget,
+  dragDropMutationGate,
+} from "./api/index.js";
+export type {
+  DragDropCapabilities,
+  DragDropCapability,
+  DragDropControllerOptions,
+  DragDropDelta,
+  DragDropElementRequest,
+  DragDropErrorCode,
+  DragDropFilePayload,
+  DragDropFileProbe,
+  DragDropFileRequest,
+  DragDropMutationGate,
+  DragDropMutationOp,
+  DragDropOps,
+  DragDropPoint,
+  DragDropPollOptions,
+  DragDropProjectItem,
+  DragDropRequest,
+  DragDropResult,
+  DragDropSegmentCheck,
+  DragDropSnapshot,
+  DragDropSurfaceLocator,
+  DragDropTopmost,
+  DragDropVerdict,
+  GuiAppStateLike,
+} from "./api/index.js";
+
+/*
  * Project Open/Save dialog round-trip (#368, specs/workspace-editing/
  * spec.md §3 W4+): `ae.projectDialog()` — File > Open / Save through
  * the real menu and native picker with bounded waits and recorded

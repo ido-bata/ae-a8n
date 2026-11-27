@@ -51,6 +51,10 @@ import type {
   FocusHolder,
   InputPoster,
 } from "./types.js";
+import type {
+  DragDropFilePayload,
+  DragDropVerdict,
+} from "../dragdrop/types.js";
 
 /** The compiled helper binaries this adapter can invoke. */
 export type DarwinInputHelper =
@@ -58,7 +62,8 @@ export type DarwinInputHelper =
   | "input-clipboard"
   | "input-source"
   | "input-focus"
-  | "input-mouse";
+  | "input-mouse"
+  | "input-drag";
 
 export const DARWIN_INPUT_HELPERS: readonly DarwinInputHelper[] = [
   "input-post",
@@ -66,6 +71,7 @@ export const DARWIN_INPUT_HELPERS: readonly DarwinInputHelper[] = [
   "input-source",
   "input-focus",
   "input-mouse",
+  "input-drag",
 ];
 
 /** The exec seam: run one helper with args inside the target session. */
@@ -418,6 +424,122 @@ export function darwinMouseClick(
       "--button", button,
       "--tap", tap,
     ]);
+  };
+}
+
+// MARK: - Mouse drag / file drop (#422)
+
+/**
+ * The `input-drag` vehicle channels for the drag-drop contract (#422,
+ * `specs/workspace-editing/spec.md` §9). Deliberately NOT part of
+ * `InputPoster`: these post real drags — `press`/`move`/`release` are
+ * one CGEvent segment each so the controller can re-check the census
+ * between them, and `filedrag` runs the whole NSDraggingSession
+ * atomically inside the helper.
+ *
+ * Every channel returns the helper's verdict; a non-zero exit throws
+ * `DarwinInputError`, which the caller maps to `indeterminate` (the
+ * drag may have partially landed). These functions check nothing
+ * themselves — the gate chain lives in `src/dragdrop/` and must already
+ * be satisfied before they are called.
+ */
+export type DarwinDragChannels = {
+  readonly press: (point: { readonly x: number; readonly y: number }) => DragDropVerdict;
+  readonly move: (point: { readonly x: number; readonly y: number }) => DragDropVerdict;
+  readonly release: (point: { readonly x: number; readonly y: number }) => DragDropVerdict;
+  readonly fileDrag: (request: {
+    readonly file: DragDropFilePayload;
+    readonly from: { readonly x: number; readonly y: number };
+    readonly to: { readonly x: number; readonly y: number };
+    readonly steps: number;
+    readonly stepDelayMs: number;
+    readonly dwellMs: number;
+  }) => { readonly verdict: DragDropVerdict; readonly operation: string | null };
+};
+
+const DRAG_VERDICTS: readonly DragDropVerdict[] = [
+  "performed",
+  "not-performed",
+  "failed",
+];
+
+function dragVerdict(
+  helper: DarwinInputHelper,
+  stdout: string,
+  fallbackAction: string,
+): DragDropVerdict {
+  try {
+    const parsed = JSON.parse(stdout) as { verdict?: unknown; action?: unknown; ok?: unknown };
+    if (
+      typeof parsed.verdict === "string" &&
+      (DRAG_VERDICTS as readonly string[]).includes(parsed.verdict)
+    ) {
+      return parsed.verdict as DragDropVerdict;
+    }
+    // A receipt without a verdict field still proves the events were
+    // posted when ok:true and the action matches — performed.
+    if (parsed.ok === true && parsed.action === fallbackAction) {
+      return "performed";
+    }
+  } catch {
+    // Fall through to the honest default below.
+  }
+  throw new DarwinInputError(
+    helper,
+    1,
+    `unparseable drag receipt: ${stdout.slice(0, 200)}`,
+  );
+}
+
+export function darwinDragChannels(
+  exec: DarwinInputExec,
+  options: { readonly tap?: "hid" | "session" | undefined } = {},
+): DarwinDragChannels {
+  const tap = options.tap ?? "session";
+  const pointArgs = (action: string, point: { readonly x: number; readonly y: number }) => {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      throw new DarwinInputError("input-drag", 2, `${action} coordinates must be finite numbers`);
+    }
+    return [
+      action,
+      "--x", String(Math.round(point.x)),
+      "--y", String(Math.round(point.y)),
+      "--tap", tap,
+    ];
+  };
+  const segment = (action: "press" | "move" | "release") =>
+    (point: { readonly x: number; readonly y: number }): DragDropVerdict => {
+      const result = run(exec, "input-drag", pointArgs(action, point));
+      return dragVerdict("input-drag", result.stdout, action);
+    };
+  return {
+    press: segment("press"),
+    move: segment("move"),
+    release: segment("release"),
+    fileDrag(request) {
+      const args = [
+        "filedrag",
+        "--file", request.file.path,
+        "--from", `${Math.round(request.from.x)},${Math.round(request.from.y)}`,
+        "--to", `${Math.round(request.to.x)},${Math.round(request.to.y)}`,
+        "--steps", String(Math.max(1, Math.floor(request.steps))),
+        "--step-delay-ms", String(Math.max(0, Math.floor(request.stepDelayMs))),
+        "--dwell-ms", String(Math.max(0, Math.floor(request.dwellMs))),
+        "--vend", request.file.vend ?? "fileurl",
+      ];
+      const result = run(exec, "input-drag", args);
+      const verdict = dragVerdict("input-drag", result.stdout, "filedrag");
+      let operation: string | null = null;
+      try {
+        const parsed = JSON.parse(result.stdout) as { operation?: unknown };
+        if (typeof parsed.operation === "string") {
+          operation = parsed.operation;
+        }
+      } catch {
+        // The verdict already parsed; a missing operation stays null.
+      }
+      return { verdict, operation };
+    },
   };
 }
 

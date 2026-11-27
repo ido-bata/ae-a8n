@@ -76,6 +76,12 @@ import {
   type ProjectDialogCapabilities,
 } from "./project-dialog.js";
 import {
+  dragDropCapabilities,
+  dragDropForTarget,
+  type DragDrop,
+  type DragDropCapabilities,
+} from "./drag-drop.js";
+import {
   type RenderQueue,
   renderQueueCapabilities,
   renderQueueForTarget,
@@ -321,6 +327,36 @@ export {
   type ContextMenuTitles,
   type OpenContextMenuOptions,
 } from "./context-menu.js";
+export {
+  DragDrop,
+  DragDropError,
+  dragDropCapabilities,
+  dragDropForTarget,
+  dragDropMutationGate,
+  type DragDropCapabilities,
+  type DragDropCapability,
+  type DragDropControllerOptions,
+  type DragDropDelta,
+  type DragDropElementRequest,
+  type DragDropErrorCode,
+  type DragDropFilePayload,
+  type DragDropFileProbe,
+  type DragDropFileRequest,
+  type DragDropMutationGate,
+  type DragDropMutationOp,
+  type DragDropOps,
+  type DragDropPoint,
+  type DragDropPollOptions,
+  type DragDropProjectItem,
+  type DragDropRequest,
+  type DragDropResult,
+  type DragDropSegmentCheck,
+  type DragDropSnapshot,
+  type DragDropSurfaceLocator,
+  type DragDropTopmost,
+  type DragDropVerdict,
+  type GuiAppStateLike,
+} from "./drag-drop.js";
 export {
   ProjectDialog,
   ProjectDialogError,
@@ -1244,6 +1280,32 @@ export class AfterEffects {
    */
   contextMenu(): ContextMenu {
     return contextMenuForTarget(this.recoveryTarget());
+  }
+
+  /**
+   * What this build can do with drag-drop on this platform (#422,
+   * `specs/workspace-editing/spec.md` §9 "File/element drag-drop"):
+   * `drop-file` is implemented under the A-SAFETY decision in
+   * `docs/gui-supervision-safety-gates.md` (#411 vehicle evidence);
+   * `element-drag` reports `unavailable` — gate-refused pending its own
+   * class decision.
+   */
+  dragDropCapabilities(): DragDropCapabilities {
+    return dragDropCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's drag-drop surface
+   * (#422): `dropFile` vends a fixture file in an NSDraggingSession and
+   * drops it on a re-verified, census-proven owned surface;
+   * `dragElement` runs the segmented press→move→release with per-segment
+   * census re-checks. Both are mutate-gui, lease-held for the whole
+   * sequence, oracle-verified via `project.items`, never resent.
+   * Throws `DragDropError` when no owned target is attested or the
+   * platform is unsupported.
+   */
+  dragDrop(): DragDrop {
+    return dragDropForTarget(this.recoveryTarget(), this.#session);
   }
 
   /**

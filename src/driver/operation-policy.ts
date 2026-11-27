@@ -32,6 +32,7 @@ export type OperationRetryClass = "read-only" | "verified-retry" | "unknown-side
 const READ_ONLY_METHODS: ReadonlySet<string> = new Set([
   "app.info",
   "project.info",
+  "project.items",
   "project.comps",
   "comp.info",
   "comp.layers",
