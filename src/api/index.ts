@@ -51,6 +51,18 @@ import {
   type DockedPaneLocator,
 } from "./docked-pane.js";
 import {
+  type FileDialog,
+  fileDialogCapabilities,
+  fileDialogForTarget,
+  type FileDialogCapabilities,
+} from "./file-dialog.js";
+import {
+  type RenderQueue,
+  renderQueueCapabilities,
+  renderQueueForTarget,
+  type RenderQueueCapabilities,
+} from "./render-queue.js";
+import {
   createRecordingController,
   recordingApiForController,
   type RecordingApi,
@@ -177,6 +189,40 @@ export {
   type DockedPaneSeams,
   type DockedPaneTree,
 } from "./docked-pane.js";
+export {
+  FileDialog,
+  FileDialogError,
+  fileDialogCapabilities,
+  fileDialogForTarget,
+  matchFileDialog,
+  type AwaitFileDialogOptions,
+  type FileDialogActResult,
+  type FileDialogCapabilities,
+  type FileDialogCapability,
+  type FileDialogErrorCode,
+  type FileDialogMatch,
+  type FileDialogMutationGate,
+  type FileDialogOps,
+  type FileDialogResolution,
+  type FileDialogTitles,
+  type FilenameEntryVerdict,
+} from "./file-dialog.js";
+export {
+  RenderQueue,
+  RenderQueueError,
+  renderQueueCapabilities,
+  renderQueueForTarget,
+  RENDER_QUEUE_ORACLE,
+  type AddToRenderQueueOptions,
+  type RenderQueueAddResult,
+  type RenderQueueCapabilities,
+  type RenderQueueCapability,
+  type RenderQueueErrorCode,
+  type RenderQueueItem,
+  type RenderQueueOracle,
+  type RenderQueueSnapshot,
+  type RenderQueueWalkInfo,
+} from "./render-queue.js";
 export {
   Timeline,
   TimelineError,
@@ -870,6 +916,52 @@ export class AfterEffects {
    */
   dockedPane(locator: DockedPaneLocator): DockedPane {
     return dockedPaneForTarget(this.recoveryTarget(), locator);
+  }
+
+  /**
+   * What this build can do with the Render Queue surface on this
+   * platform (#365, `specs/workspace-editing/spec.md` §3 W3):
+   * `observe` is observe-class AX rows (`oracle: "limited"` — no DOM
+   * readback exists); `addViaMenu` is mutate-gui and reports
+   * `unavailable` while the A-SAFETY gate keeps menu invoke refused.
+   */
+  renderQueueCapabilities(): RenderQueueCapabilities {
+    return renderQueueCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's Render Queue pane
+   * (#365): `items` re-walks the pane's bounded AX subtree on every
+   * call — the only honest channel, since the DOM exposes no render
+   * queue. `addViaMenu` drives the real Composition menu and waits,
+   * bounded, for new rows; it never resends and never substitutes
+   * `menu.execute` for the GUI path. Throws `RenderQueueError` when no
+   * owned target is attested or the platform is unsupported.
+   */
+  renderQueue(locator: DockedPaneLocator): RenderQueue {
+    return renderQueueForTarget(this.recoveryTarget(), locator);
+  }
+
+  /**
+   * What this build can do with native file dialogs on this platform
+   * (#365): `awaitDialog` is observe-class; `confirm`/`cancel` are
+   * mutate-gui and gated; `enterFilename` is additionally unsupported
+   * until the B-IME OS text-input posters land (#372/#373).
+   */
+  fileDialogCapabilities(): FileDialogCapabilities {
+    return fileDialogCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's native file
+   * dialogs (#365): `awaitDialog` bounded-waits for the declared
+   * picker class; `confirm`/`cancel`/`enterFilename` are mutate-gui
+   * and gated — see `fileDialogCapabilities()` for what is currently
+   * allowed. Throws `FileDialogError` when no owned target is attested
+   * or the platform is unsupported.
+   */
+  fileDialog(): FileDialog {
+    return fileDialogForTarget(this.recoveryTarget());
   }
 
   /**
