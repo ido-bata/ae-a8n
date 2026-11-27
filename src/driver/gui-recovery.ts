@@ -175,6 +175,17 @@ export type GuiAppState = {
    */
   readonly axSuspect: boolean;
   /**
+   * Why `axSuspect` fired, in one sentence — which of the two shapes
+   * was measured (empty AX listing vs. a wholly foreign/unmatched
+   * listing) and what the WindowServer census counted. `null` whenever
+   * `axSuspect` is false. After Effects 2026/2027 is the canonical
+   * empty-listing case (#406): the app vends no AX windows at all, so
+   * `windows` is empty while the census lists real windows — the
+   * reason names that possibility so callers do not read it as a
+   * transient glitch.
+   */
+  readonly axSuspectReason: string | null;
+  /**
    * On-screen WindowServer windows for this pid that no Accessibility
    * window accounts for (#321). AX can list the ordinary project windows
    * while a modal dialog stays completely invisible — AE 2027 `ui.alert`
@@ -319,6 +330,9 @@ export function assessGuiObservation(
       ? window
       : { ...window, censusAttribution: attribution };
   });
+  const axSuspect =
+    mine.windowCount > 0 &&
+    observed.every((window) => window.censusAttribution !== "owned");
   return {
     pid,
     frontmost,
@@ -334,9 +348,18 @@ export function assessGuiObservation(
     // AX-invisible, the same unobservable-surface evidence one listing at
     // a time (#330). With the census unavailable `windowCount` is 0 and
     // this stays false exactly as before.
-    axSuspect:
-      mine.windowCount > 0 &&
-      observed.every((window) => window.censusAttribution !== "owned"),
+    axSuspect,
+    axSuspectReason: axSuspect
+      ? observed.length === 0
+        ? `the AX window listing is empty while the WindowServer census ` +
+          `lists ${mine.windowCount} window(s) for pid ${pid} — the app ` +
+          "may not vend AX windows at all (After Effects, #406) or the " +
+          "listing is untrusted; only AXFocusedWindow is reachable"
+        : `all ${observed.length} AX-listed window(s) are attributed to ` +
+          `other pids or to nothing while the census lists ` +
+          `${mine.windowCount} window(s) for pid ${pid} — the pid's real ` +
+          "windows are AX-invisible (#330)"
+      : null,
     axUnaccountedWindows,
     axForeignWindowCount: observed.filter(
       (window) => window.censusAttribution === "foreign",

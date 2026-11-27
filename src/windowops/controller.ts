@@ -123,6 +123,17 @@ export type WindowOpsControllerOptions = {
   readonly ops: WindowOpsSurfaceOps;
   /** The mutate-gui gate. Fail-closed: absent means every mutation refuses. */
   readonly authorizeMutation?: WindowOpsMutationGate;
+  /**
+   * Resolve through the app's AXFocusedWindow instead of the window
+   * enumeration (#406) — the explicit opt-in for hosts where After
+   * Effects vends no AX windows. OBSERVE-CLASS ONLY: every mutation
+   * refuses under this mode regardless of the gate, because the `act`
+   * vehicle addresses enumerated windows and no mutation vehicle for
+   * the focused element exists yet (A-SAFETY review required). Only
+   * the focused window is reachable; unfocused windows report
+   * not-found honestly.
+   */
+  readonly focusedOnly?: boolean;
   readonly poll?: WindowOpsPollOptions;
   readonly sleep?: (ms: number) => Promise<void>;
   readonly now?: () => Date;
@@ -169,6 +180,7 @@ export class WindowOpsController {
   readonly #locator: PanelLocator;
   readonly #ops: WindowOpsSurfaceOps;
   readonly #authorizeMutation: WindowOpsMutationGate | undefined;
+  readonly #focusedOnly: boolean;
   readonly #poll: Required<WindowOpsPollOptions>;
   readonly #sleep: (ms: number) => Promise<void>;
   readonly #now: () => Date;
@@ -178,6 +190,7 @@ export class WindowOpsController {
     this.#locator = options.locator;
     this.#ops = options.ops;
     this.#authorizeMutation = options.authorizeMutation;
+    this.#focusedOnly = options.focusedOnly === true;
     this.#poll = { ...DEFAULT_WINDOW_OPS_POLL, ...options.poll };
     this.#sleep =
       options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
@@ -229,6 +242,7 @@ export class WindowOpsController {
     listing: WindowOpsListing,
     info: WindowOpsWindowInfo,
     census: WindowOpsCensusView,
+    resolution: WindowOpsState["resolution"],
   ): WindowOpsState {
     let attribution: WindowOpsState["attribution"] = "unproven";
     let windowNumber: number | null = null;
@@ -243,6 +257,7 @@ export class WindowOpsController {
     }
     return {
       pid: this.#pid,
+      resolution,
       window: info,
       app: {
         frontmost: listing.frontmostPid === this.#pid,
@@ -259,7 +274,12 @@ export class WindowOpsController {
    * the vehicle gets a provable identity and the owned-attribution
    * check is the same one every sibling surface applies.
    */
-  #resolve(): { target: PanelTarget; info: WindowOpsWindowInfo; listing: WindowOpsListing } {
+  #resolve(): {
+    target: PanelTarget;
+    info: WindowOpsWindowInfo;
+    listing: WindowOpsListing;
+    resolution: "ax-windows" | "focused-window";
+  } {
     const listing = this.#listing();
     const census = censusOrDegraded(this.#ops);
     try {
@@ -269,6 +289,7 @@ export class WindowOpsController {
         census,
         locator: this.#locator,
         now: this.#now,
+        focusedOnly: this.#focusedOnly,
       });
       if (resolution.info === null) {
         throw new WindowOpsError(
@@ -277,7 +298,12 @@ export class WindowOpsController {
             "addressed for a window op",
         );
       }
-      return { target: resolution.target, info: resolution.info, listing };
+      return {
+        target: resolution.target,
+        info: resolution.info,
+        listing,
+        resolution: resolution.resolution,
+      };
     } catch (error) {
       throw asWindowOpsError(error, false);
     }
@@ -288,9 +314,9 @@ export class WindowOpsController {
    * re-observes; the answer is a fresh proof, not a cache.
    */
   state(): WindowOpsState {
-    const { info, listing } = this.#resolve();
+    const { info, listing, resolution } = this.#resolve();
     const census = censusOrDegraded(this.#ops);
-    return this.#stateFromInfo(listing, info, census);
+    return this.#stateFromInfo(listing, info, census, resolution);
   }
 
   // ------------------------------------------------------------------
@@ -438,6 +464,22 @@ export class WindowOpsController {
     op: WindowOpsOp,
     params: Pick<WindowOpsActRequest, "position" | "size">,
   ): Promise<WindowOpResult> {
+    if (this.#focusedOnly) {
+      // Structural refusal, independent of the A-SAFETY gate: the
+      // focused-window resolution is observe-class evidence (#406).
+      // The `act` vehicle re-lists the AX window enumeration — which is
+      // exactly what is empty on the hosts this mode exists for — and
+      // no mutation vehicle for the AXFocusedWindow element exists yet.
+      // Wiring one is a separate A-SAFETY review, not a flag flip.
+      throw new WindowOpsError(
+        "refused",
+        `window ${op} cannot run under focusedOnly resolution: the ` +
+          "AXFocusedWindow path is observe-class only (#406) — the act " +
+          "vehicle addresses enumerated windows and no focused-element " +
+          "mutation vehicle exists yet (A-SAFETY review required). " +
+          "Nothing was mutated.",
+      );
+    }
     this.#requireMutationAllowed(op);
 
     const { target, info: beforeInfo, listing: beforeListing } = this.#resolve();
@@ -457,7 +499,7 @@ export class WindowOpsController {
       );
     }
     const beforeCensus = censusOrDegraded(this.#ops);
-    const before = this.#stateFromInfo(beforeListing, beforeInfo, beforeCensus);
+    const before = this.#stateFromInfo(beforeListing, beforeInfo, beforeCensus, "ax-windows");
 
     const request: WindowOpsActRequest = {
       op,
@@ -560,7 +602,7 @@ export class WindowOpsController {
     const after =
       afterRow === null
         ? null
-        : this.#stateFromInfo(afterListing, afterRow, afterCensus);
+        : this.#stateFromInfo(afterListing, afterRow, afterCensus, "ax-windows");
     const focusAfter = this.#focusHolder();
     return {
       op,

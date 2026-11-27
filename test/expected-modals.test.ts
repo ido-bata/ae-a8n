@@ -83,6 +83,7 @@ class FakeGui implements GuiRecoverySurface {
       windows: this.windows,
       windowServer: { available: true, reason: null, windowCount: 0, onScreenCount: 0 },
       axSuspect: false,
+      axSuspectReason: null,
       axUnaccountedWindows: [],
       axForeignWindowCount: 0,
       axUnmatchedWindowCount: 0,

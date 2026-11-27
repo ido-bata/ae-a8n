@@ -843,6 +843,13 @@ export type GuiStateObservation = {
    */
   readonly axSuspect: boolean;
   /**
+   * Why `axSuspect` fired — the measured shape (empty AX listing vs.
+   * wholly foreign/unmatched listing) plus the census window count.
+   * `null` when `axSuspect` is false. The empty-listing reason names
+   * the After Effects non-vending case (#406) explicitly.
+   */
+  readonly axSuspectReason: string | null;
+  /**
    * On-screen WindowServer windows for this pid that no Accessibility
    * window accounts for (#321): surfaces the screen shows that the AX
    * listing — and therefore `windows` and `assessment` — cannot see. A

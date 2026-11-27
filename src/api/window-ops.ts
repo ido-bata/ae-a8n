@@ -95,6 +95,12 @@ export type WindowOpsCapability = {
 export type WindowOpsCapabilities = {
   readonly platform: "darwin" | "win32";
   readonly observe: WindowOpsCapability;
+  /**
+   * The AXFocusedWindow observe path (#406): resolves ONLY the window
+   * holding focus, for hosts where AE vends no AX windows at all.
+   * Observe-class; unfocused windows are unreachable by construction.
+   */
+  readonly focusedObserve: WindowOpsCapability;
   readonly move: WindowOpsCapability;
   readonly resize: WindowOpsCapability;
   readonly minimize: WindowOpsCapability;
@@ -135,6 +141,7 @@ export function windowOpsCapabilities(
     return {
       platform: "win32",
       observe: unsupported,
+      focusedObserve: unsupported,
       move: unsupported,
       resize: unsupported,
       minimize: unsupported,
@@ -156,7 +163,20 @@ export function windowOpsCapabilities(
       reason:
         "AX window listing (frame/miniaturized/main/focused) plus the " +
         "WindowServer census attribution is wired but unverified on a " +
-        "real After Effects window set",
+        "real After Effects window set; on AE 2026/2027 the enumeration " +
+        "returns zero windows (#406) — use focusedObserve for the only " +
+        "AX-reachable surface",
+    },
+    focusedObserve: {
+      support: "partial",
+      verification: VERIFICATION,
+      reason:
+        "AXFocusedWindow resolution against the WindowServer census " +
+        "(#406): only the FOCUSED window is reachable — unfocused " +
+        "windows are AX-unreachable on AE by construction, and no " +
+        "mutation vehicle exists for this path (observe-class only, " +
+        "mutations refuse regardless of the gate). Real-host evidence " +
+        "for the underlying AX behavior: docs/evidence/realhost-2026-11-27/",
     },
     move: gated("move"),
     resize: gated("resize"),
@@ -460,6 +480,28 @@ export class WindowOps {
   }
 }
 
+/** Options for `windowOpsForTarget` / `ae.windowOps()`. */
+export type WindowOpsOptions = {
+  /**
+   * Resolve through the app's AXFocusedWindow instead of the AX window
+   * enumeration (#406) — the explicit opt-in for hosts where After
+   * Effects vends no AX windows at all (verified on real host,
+   * `docs/evidence/realhost-2026-11-27/`).
+   *
+   * Observe-class ONLY: `state()` works; every mutation (`move`,
+   * `resize`, `minimize`, `restore`, `maximize`, `focus`) refuses
+   * `refused` regardless of the mutation gate, because the `act`
+   * vehicle addresses enumerated windows and no focused-element
+   * mutation vehicle exists yet — that needs a separate A-SAFETY
+   * review (`docs/gui-supervision-safety-gates.md`).
+   *
+   * Hard limitation: ONLY the window currently holding focus is
+   * reachable. Unfocused windows are AX-unreachable on AE — a
+   * `windowNumber` naming one reports `not-found`, never a guess.
+   */
+  readonly focusedOnly?: boolean;
+};
+
 /**
  * The `ae.windowOps()` body: attest the owned target, refuse
  * unsupported platforms, and bind the controller. `target === null`
@@ -470,6 +512,7 @@ export function windowOpsForTarget(
   target: GuiObservationTarget | null,
   locator: PanelLocator,
   seams: WindowOpsSeams = {},
+  options: WindowOpsOptions = {},
 ): WindowOps {
   if (target === null) {
     throw new WindowOpsError(
@@ -508,6 +551,7 @@ export function windowOpsForTarget(
     pid: target.pid,
     locator,
     ops,
+    focusedOnly: options.focusedOnly === true,
     // The A-SAFETY gate is wired explicitly, not left to the
     // controller's fail-closed default: docs/gui-supervision-safety-gates.md
     // is the policy source and src/windowops/gate.ts its flip point.

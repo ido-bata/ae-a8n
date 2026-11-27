@@ -88,6 +88,28 @@ export function attributePanelWindow(
   return { attribution: "unmatched", censusWindow: null };
 }
 
+/**
+ * Honest-degradation hint appended to not-found refusals when the
+ * observation itself flagged the AX tree as suspect (#406): an empty or
+ * wholly foreign/unmatched AX listing on a pid whose WindowServer census
+ * lists real windows is exactly the After Effects non-vending shape, and
+ * the caller deserves to hear that the locator may be fine while the AX
+ * enumeration is not — plus the one observe path that still works.
+ */
+function axSuspectHint(state: GuiAppState): string {
+  if (!state.axSuspect) {
+    return "";
+  }
+  return (
+    ` — note: this pid's AX tree is suspect` +
+    (state.axSuspectReason === null ? "" : ` (${state.axSuspectReason})`) +
+    "; the AX window enumeration may be empty or untrusted (After " +
+    "Effects vends no AXWindows at all, #406) — " +
+    "ae.windowOps(locator, { focusedOnly: true }) can still observe the " +
+    "focused window through AXFocusedWindow"
+  );
+}
+
 function locatorMatches(window: GuiWindowInfo, locator: PanelLocator): boolean {
   if (locator.title !== undefined) {
     const title = window.title;
@@ -160,7 +182,8 @@ export function resolvePanelTarget(input: {
         "not-found",
         `window ${locator.windowNumber} exists in the window census but no Accessibility ` +
           "window accounts for its frame — it cannot be addressed for resize; " +
-          "this is the docked/AX-invisible shape, reported rather than guessed",
+          "this is the docked/AX-invisible shape, reported rather than guessed" +
+          axSuspectHint(state),
       );
     }
     return buildTarget(pid, state, census, locator, ax, now());
@@ -177,7 +200,8 @@ export function resolvePanelTarget(input: {
     throw new PanelError(
       "not-found",
       `no attributed window of pid ${pid} matched the locator ` +
-        `${JSON.stringify(locator)} (${state.windows.length} window(s) observed)`,
+        `${JSON.stringify(locator)} (${state.windows.length} window(s) observed)` +
+        axSuspectHint(state),
     );
   }
   if (candidates.length > 1) {

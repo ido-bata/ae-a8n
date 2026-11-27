@@ -66,6 +66,7 @@ function state(windows: readonly GuiWindowInfo[], over: Partial<GuiAppState> = {
       onScreenCount: windows.length,
     },
     axSuspect: false,
+    axSuspectReason: null,
     axUnaccountedWindows: [],
     axForeignWindowCount: 0,
     axUnmatchedWindowCount: 0,
@@ -171,11 +172,15 @@ describe("guiStateReport", () => {
       observed: state([], {
         windowServer: { available: false, reason: "no python", windowCount: 0, onScreenCount: 0 },
         axSuspect: true,
+        axSuspectReason: "fixture: the AX listing is untrusted",
       }),
     });
     expect(report.status).toBe("observed");
     if (report.status === "observed") {
       expect(report.axSuspect).toBe(true);
+      expect(report.axSuspectReason).toBe(
+        "fixture: the AX listing is untrusted",
+      );
       expect(report.windowServer.available).toBe(false);
       expect(report.assessment.action).toBe("none");
     }

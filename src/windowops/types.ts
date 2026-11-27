@@ -47,7 +47,12 @@ export type WindowOpsOp =
 
 /** One AX window as the window-ops observation reports it. */
 export type WindowOpsWindowInfo = {
-  /** 1-based position in the observation's own listing — evidence only. */
+  /**
+   * 1-based position in the observation's own listing — evidence only.
+   * `0` means "not a listing row": the focused-window resolution path
+   * (#406) synthesizes a row for the app's AXFocusedWindow, which the
+   * window enumeration never contained.
+   */
   readonly index: number;
   readonly title: string;
   readonly role: string;
@@ -62,6 +67,21 @@ export type WindowOpsWindowInfo = {
   readonly focused: boolean | null;
 };
 
+/**
+ * The app's `AXFocusedWindow` element as the observation reports it —
+ * the same attributes as `WindowOpsWindowInfo` minus the listing
+ * `index`, which does not exist for it (#406).
+ *
+ * Why this exists: After Effects (2026 & 2027, verified on real host —
+ * `docs/evidence/realhost-2026-11-27/`)
+ * vends ZERO windows through `AXWindows`, `AXChildren`, AppleScript
+ * `windows of process` and `UI elements of process`. `AXFocusedWindow`
+ * is the only window attribute that still resolves a real window — and
+ * only while that window holds focus. Unfocused windows are
+ * AX-unreachable; this field can never enumerate them.
+ */
+export type WindowOpsFocusedWindow = Omit<WindowOpsWindowInfo, "index">;
+
 /** One full window-state observation of the target pid. */
 export type WindowOpsListing = {
   readonly pid: number;
@@ -70,12 +90,38 @@ export type WindowOpsListing = {
   /** Index into `windows` of the keyboard-focus holder, or null. */
   readonly focusedWindowIndex: number | null;
   readonly windows: readonly WindowOpsWindowInfo[];
+  /**
+   * The app's AXFocusedWindow, when the helper could read it — `null`
+   * when the attribute is absent or unreadable. On AE this is the only
+   * AX-reachable window (#406); on healthy apps it duplicates a
+   * `windows` row. It is observation evidence only: the `act` vehicle
+   * never addresses it.
+   */
+  readonly focusedWindow: WindowOpsFocusedWindow | null;
+  /**
+   * `AXIsProcessTrusted()` for the helper process — false means every
+   * AX read above is untrusted-empty rather than a real "no windows".
+   * `null` when the helper did not report it (older helper build).
+   */
+  readonly axTrusted: boolean | null;
   readonly observedAt: string;
 };
 
 /** The public observe result for the resolved window. */
 export type WindowOpsState = {
   readonly pid: number;
+  /**
+   * Which resolution path produced `window`:
+   *
+   *   - `"ax-windows"` — the normal AX window enumeration matched the
+   *     locator (every pre-#406 resolution).
+   *   - `"focused-window"` — the caller opted into `focusedOnly` and the
+   *     window resolved through the app's AXFocusedWindow matched
+   *     against the WindowServer census (#406). Only the *focused*
+   *     window is reachable this way; unfocused windows are
+   *     AX-unreachable on AE and this path can never see them.
+   */
+  readonly resolution: "ax-windows" | "focused-window";
   /**
    * The resolved window's state row. `frame` is non-null for
    * observe-class `state()` (resolution requires it) but may be null in
