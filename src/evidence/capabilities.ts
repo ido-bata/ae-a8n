@@ -89,10 +89,13 @@ export function guiEvidenceCapabilities(
       support: "partial",
       verification: CONTRACT_TESTED,
       reason:
-        "the record.start/stop lifecycle is implemented (#381) against " +
-        "a pluggable recorder seam, but no macOS backend exists yet " +
-        "(ScreenCaptureKit is #382, screencapture -V its fallback tier) " +
-        "— starts refuse until a backend registers",
+        "the record.start/stop lifecycle (#381) is backed on darwin by " +
+        "the #382 recorder: screen-record.swift (ScreenCaptureKit " +
+        "SCStream → .mov) with a screencapture -V fallback tier, always " +
+        "inside the attested target session. SCStream delivery under " +
+        "runInSession, TCC prompts, fps and finalize-on-signal are " +
+        "unverified on a real host; display/session scopes still refuse " +
+        "until recording authorization exists (#383)",
     },
     renderEvidence: {
       support: "partial",

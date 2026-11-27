@@ -11,10 +11,16 @@
  *
  * Honesty rules:
  *
- *   - The OS recording backends (ScreenCaptureKit #382, WGC #384) are
- *     later tickets. With no backend registered every start refuses —
- *     the gates still run first, so an unauthorized scope is refused for
- *     the *right* reason and the refusal lands in the index gaps.
+ *   - On darwin the recorder backend is the #382 implementation:
+ *     `screen-record.swift` (ScreenCaptureKit `SCStream` → `.mov`) with
+ *     the `screencapture -V` fallback tier. It runs inside the
+ *     driver-attested target session and reports `actualScope`/
+ *     `unhonoredExclusions` honestly when delivery is narrower than
+ *     requested. Whether SCStream actually delivers frames under
+ *     `runInSession`, TCC behavior in isolated sessions, and achievable
+ *     fps are UNVERIFIED — the backend reports `automated test` level
+ *     only. On other platforms no backend exists and every start
+ *     refuses.
  *   - `display`/`session` scopes, and every scope on a session whose
  *     kind is not proven `"isolated"`, require recording authorization
  *     (spec §5.6). No authorization mechanism exists yet, so those
@@ -27,6 +33,7 @@
 import { defaultLeaseController } from "../driver/gui-recovery.js";
 import { defaultGuiLeaseRoot } from "../platform/darwin/gui-lease.js";
 import { consoleSessionUid } from "../driver/mac-session.js";
+import { darwinRecorderResolver } from "../evidence/recording-darwin.js";
 import type { Session } from "./session.js";
 import {
   RecordingController,
@@ -191,9 +198,12 @@ function defaultAcquireLease(session: Session) {
 }
 
 /**
- * Builds the session's recording controller. `seams.recorder` is the
- * backend slot later tickets (#382/#384) fill; absent, every start
- * refuses `unsupported` after the safety gates have run.
+ * Builds the session's recording controller. `seams.recorder` overrides
+ * the backend; otherwise the production resolver installs the #382
+ * darwin backend (SCStream helper + `screencapture -V` fallback, always
+ * inside the driver-attested target session) and resolves `null`
+ * elsewhere — starts then refuse `unsupported` after the safety gates
+ * have run.
  */
 export function createRecordingController(
   session: Session,
@@ -201,8 +211,15 @@ export function createRecordingController(
 ): RecordingController {
   const recorder: ScreenRecorder | RecorderResolver =
     seams.recorder ??
-    // No OS recording backend exists yet — resolve to null so starts
-    // refuse honestly instead of silently doing nothing.
+    darwinRecorderResolver({
+      // The recorder only ever runs inside the session the transport
+      // attests for the AE target — never "whatever session is handy".
+      // `null` (no attested target) makes every start refuse.
+      session: () => session.driver.recoveryTarget()?.session ?? null,
+      artifactsDir: session.driver.artifactsDir,
+    }) ??
+    // No OS recording backend on this platform — resolve to null so
+    // starts refuse honestly instead of silently doing nothing.
     (() => null);
   return new RecordingController({
     artifactsDir: session.driver.artifactsDir,
