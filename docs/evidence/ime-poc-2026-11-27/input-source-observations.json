@@ -1,0 +1,9 @@
+{
+  "note": "input-source helper (TIS) run inside the Aqua session via launchctl asuser 501, macOS 27.2.1, 2026-11-27 ~19:27-19:58 JST",
+  "current_at_start": {"mode":"com.apple.keylayout.ABC","selected":true},
+  "list_japanese": {"id":"com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese","name":"Hiragana","type":"TISTypeKeyboardInputMode","enabled":true,"selectable":true},
+  "select_hiragana": {"ok":true,"requested":"com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese","observed":"com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese"},
+  "current_while_selected": {"mode":"com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese","selected":true},
+  "restore": {"ok":true,"requested":"com.apple.keylayout.ABC","observed":"com.apple.keylayout.ABC"},
+  "current_at_end": {"mode":"com.apple.keylayout.ABC","selected":true}
+}
