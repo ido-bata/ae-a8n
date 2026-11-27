@@ -51,6 +51,13 @@ import {
   type DockedPaneLocator,
 } from "./docked-pane.js";
 import {
+  Input,
+  inputCapabilities,
+  inputForTarget,
+  inputSessionKind,
+} from "./input.js";
+import type { InputCapabilities } from "../input/capabilities.js";
+import {
   createRecordingController,
   recordingApiForController,
   type RecordingApi,
@@ -177,6 +184,55 @@ export {
   type DockedPaneSeams,
   type DockedPaneTree,
 } from "./docked-pane.js";
+export {
+  Input,
+  inputCapabilities,
+  inputForTarget,
+  inputSessionKind,
+  type InputOps,
+  type InputOpsContext,
+  type InputOpsFactory,
+  type InputSeams,
+  type InputSessionKind,
+  type InputSurfaceOps,
+} from "./input.js";
+export {
+  INPUT_OPERATION_GATES,
+  INPUT_OPERATION_KINDS,
+  InputError,
+  type ClipboardSnapshot,
+  type ExpectedFocus,
+  type FocusHolder,
+  type GlobalInputAuthorization,
+  type ImeModeSnapshot,
+  type InputAuditRecord,
+  type InputAuthorizationRequest,
+  type InputAuthorizationVerdict,
+  type InputCleanupAction,
+  type InputCleanupReport,
+  type InputCleanupResult,
+  type InputErrorCode,
+  type InputFocusEvidence,
+  type InputMouseEvent,
+  type InputOperationClass,
+  type InputOperationGate,
+  type InputOperationKind,
+  type InputOperationScope,
+  type InputPlan,
+  type InputPlatform,
+  type InputPoster,
+  type InputStep,
+  type InputStepKind,
+  type InputStepRecord,
+  type InputVerdict,
+} from "../input/types.js";
+export {
+  inputCapabilities as inputCapabilityReport,
+  type InputCapabilities,
+  type InputCapability,
+  type InputGateState,
+  type InputVerification,
+} from "../input/capabilities.js";
 export {
   Timeline,
   TimelineError,
@@ -774,6 +830,42 @@ export class AfterEffects {
       {},
       target === null ? undefined : this.#stillEvidenceContext(target),
     );
+  }
+
+  /**
+   * What this build can do with OS-level input on this platform and
+   * session kind (#374, `specs/ime-input/spec.md` §7): per-capability
+   * support, verification level and gate status. Session-stream and
+   * shared-state input additionally report `unavailable` until an
+   * explicit `GlobalInputAuthorization` exists — see `input()`.
+   */
+  inputCapabilities(): InputCapabilities {
+    const target = this.recoveryTarget();
+    const sessionKind =
+      target === null ? "unknown" : inputSessionKind(target.session);
+    return inputCapabilities(process.platform, sessionKind);
+  }
+
+  /**
+   * A handle to one input surface of the owned After Effects instance
+   * (#374): `identify`/`imeModeQuery`/`clipboardRead` are observe-class;
+   * every other operation is a mutation routed through `runInputPlan` —
+   * PanelTarget re-resolution, owned-attribution check, GUI lease,
+   * global-input authorization, `inputMutationGate()`, the three-step
+   * focus proof for session-stream ops, and the §5.5 cleanup contract.
+   *
+   * Mutations return the `InputAuditRecord` (spec §5.6) whose `verdict`
+   * is `performed`/`refused`/`indeterminate`/`failed` — a refusal is
+   * evidence, not an exception. Today every mutation class is gated
+   * closed, so the honest production answer is a `refused` (or
+   * `unavailable` for session-stream/shared-state without an
+   * authorization grant) audit record. Throws `InputError` when no
+   * owned target is attested or the platform cannot resolve targets.
+   *
+   * `locator` names the surface exactly as `ae.panel(locator)` does.
+   */
+  input(locator: PanelLocator): Input {
+    return inputForTarget(this.recoveryTarget(), locator, {});
   }
 
   /**
