@@ -246,12 +246,17 @@ describe("ensureScreenRecordHelper", () => {
     ).resolves.toEqual({ path: helperPath });
   });
 
-  it("refuses a helperPath that is not executable", async () => {
-    const path = join(root, "not-exec");
-    writeFileSync(path, "nope");
-    const result = await ensureScreenRecordHelper({ helperPath: path });
-    expect("error" in result).toBe(true);
-  });
+  // Windows has no executable bit — X_OK degenerates to existence, so
+  // the refusal is only meaningful on POSIX.
+  it.runIf(process.platform !== "win32")(
+    "refuses a helperPath that is not executable",
+    async () => {
+      const path = join(root, "not-exec");
+      writeFileSync(path, "nope");
+      const result = await ensureScreenRecordHelper({ helperPath: path });
+      expect("error" in result).toBe(true);
+    },
+  );
 
   it("reports an error when the swift source is absent", async () => {
     const result = await ensureScreenRecordHelper({
