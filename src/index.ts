@@ -21,6 +21,9 @@ export {
   Parameter,
   Project,
   REDO_COMMAND_ID,
+  Timeline,
+  TimelineError,
+  timelineCapabilities,
   UNDO_COMMAND_ID,
 } from "./api/index.js";
 
@@ -101,6 +104,37 @@ export type {
   DockedPaneRow,
   DockedPaneSeams,
   DockedPaneTree,
+} from "./api/index.js";
+
+/*
+ * Timeline editing surface (#364, specs/workspace-editing/spec.md §3 W2):
+ * `ae.timeline(locator)` — timeline scrub, layer/property row selection
+ * and keyframe navigation. Every act is mutate-gui (GUI input + DOM
+ * readback oracle), gated pending A-SAFETY clearance; `rows` is
+ * observe-class. Real-host fidelity is unverified; see
+ * `timelineCapabilities()`.
+ */
+export type {
+  NavigateKeyframeRequest,
+  NavigateKeyframeResult,
+  ScrubRequest,
+  ScrubResult,
+  SelectRowRequest,
+  SelectRowResult,
+  TimelineCapabilities,
+  TimelineCapability,
+  TimelineErrorCode,
+  TimelineKeyTarget,
+  TimelineKeyframeVia,
+  TimelineMouseOps,
+  TimelineOpRecord,
+  TimelinePoint,
+  TimelinePostcondition,
+  TimelineRulerGeometry,
+  TimelineRowLocator,
+  TimelineRowVerify,
+  TimelineSeams,
+  TimelineVerdict,
 } from "./api/index.js";
 
 /*
