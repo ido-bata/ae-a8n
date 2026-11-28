@@ -44,6 +44,7 @@ import { windowsScreenRecorderResolver } from "../platform/windows/recording.js"
 import { consoleSessionUid } from "../driver/mac-session.js";
 import { darwinRecorderResolver } from "../evidence/recording-darwin.js";
 import type { Session } from "./session.js";
+import { observeOp } from "../observability/telemetry.js";
 import {
   RecordingController,
   recordingScopeAuthorizer,
@@ -274,10 +275,17 @@ export function recordingApiFor(
 }
 
 /** The `ae.record` API bound to an existing controller (kept for `close`). */
-export function recordingApiForController(controller: RecordingController): RecordingApi {
+export function recordingApiForController(
+  controller: RecordingController,
+  telemetry?: Session["telemetry"],
+): RecordingApi {
   return {
-    start: (scope, options) => controller.start(scope, options),
-    stop: (id) => controller.stop(id),
+    start: (scope, options) =>
+      observeOp(telemetry, "record.start", { scope }, () =>
+        controller.start(scope, options),
+      ),
+    stop: (id) =>
+      observeOp(telemetry, "record.stop", { id }, () => controller.stop(id)),
     active: () => controller.activeSegmentIds,
   };
 }

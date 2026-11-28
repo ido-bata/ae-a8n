@@ -26,6 +26,7 @@
  */
 
 import { MacGuiRecovery, type GuiRecoveryOptions } from "../driver/gui-recovery.js";
+import { observeOp, type OpTelemetry } from "../observability/telemetry.js";
 import {
   ContextMenuController,
   type ContextMenuOps,
@@ -171,9 +172,11 @@ function guiOptions(
  */
 export class ContextMenu {
   readonly #controller: ContextMenuController;
+  readonly #telemetry: OpTelemetry | undefined;
 
-  constructor(controller: ContextMenuController) {
+  constructor(controller: ContextMenuController, telemetry?: OpTelemetry) {
     this.#controller = controller;
+    this.#telemetry = telemetry;
   }
 
   /**
@@ -185,7 +188,9 @@ export class ContextMenu {
     locator: ContextMenuTargetLocator,
     options: OpenContextMenuOptions,
   ): Promise<ContextMenuResolution> {
-    return Promise.resolve().then(() => this.#controller.open(locator, options));
+    return observeOp(this.#telemetry, "contextMenu.open", { locator }, () =>
+      Promise.resolve().then(() => this.#controller.open(locator, options)),
+    );
   }
 
   /**
@@ -197,7 +202,9 @@ export class ContextMenu {
     resolution: ContextMenuResolution,
     titles: ContextMenuTitles,
   ): Promise<{ readonly items: readonly ContextMenuItem[]; readonly observedAt: string }> {
-    return Promise.resolve().then(() => this.#controller.items(resolution, titles));
+    return observeOp(this.#telemetry, "contextMenu.items", undefined, () =>
+      Promise.resolve().then(() => this.#controller.items(resolution, titles)),
+    );
   }
 
   /**
@@ -210,8 +217,10 @@ export class ContextMenu {
     titles: ContextMenuTitles,
     itemTitle: string,
   ): Promise<ContextMenuActResult> {
-    return Promise.resolve().then(() =>
-      this.#controller.invokeItem(resolution, titles, itemTitle),
+    return observeOp(this.#telemetry, "contextMenu.invokeItem", { itemTitle }, () =>
+      Promise.resolve().then(() =>
+        this.#controller.invokeItem(resolution, titles, itemTitle),
+      ),
     );
   }
 }
@@ -225,6 +234,7 @@ export class ContextMenu {
 export function contextMenuForTarget(
   target: GuiObservationTarget | null,
   seams: ContextMenuSeams = {},
+  telemetry?: OpTelemetry,
 ): ContextMenu {
   if (target === null) {
     throw new ContextMenuError(
@@ -301,5 +311,5 @@ export function contextMenuForTarget(
     // is the policy source and src/contextmenu/gate.ts its flip point.
     authorizeMutation: seams.authorizeMutation ?? contextMenuMutationGate(),
   });
-  return new ContextMenu(controller);
+  return new ContextMenu(controller, telemetry);
 }

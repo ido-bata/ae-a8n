@@ -60,6 +60,7 @@ import {
   macDockedPaneOps,
   type DockedPaneSeams,
 } from "./docked-pane.js";
+import { observeOp, type OpTelemetry } from "../observability/telemetry.js";
 
 export type {
   CompViewAxLocator,
@@ -247,9 +248,11 @@ function macCompViewOps(
  */
 export class CompView {
   readonly #controller: CompViewController;
+  readonly #telemetry: OpTelemetry | undefined;
 
-  constructor(controller: CompViewController) {
+  constructor(controller: CompViewController, telemetry?: OpTelemetry) {
     this.#controller = controller;
+    this.#telemetry = telemetry;
   }
 
   /**
@@ -258,7 +261,9 @@ export class CompView {
    * wait — deadline reports `indeterminate`, never resend.
    */
   pan(request: CompViewPanRequest): Promise<PanResult> {
-    return this.#controller.pan(request);
+    return observeOp(this.#telemetry, "compView.pan", { request }, () =>
+      this.#controller.pan(request),
+    );
   }
 
   /**
@@ -267,7 +272,9 @@ export class CompView {
    * capture diff plus pane geometry.
    */
   zoom(request: CompViewZoomRequest): Promise<ZoomResult> {
-    return this.#controller.zoom(request);
+    return observeOp(this.#telemetry, "compView.zoom", { request }, () =>
+      this.#controller.zoom(request),
+    );
   }
 }
 
@@ -282,6 +289,7 @@ export function compViewForTarget(
   locator: DockedPaneLocator,
   artifactDir: string,
   seams: CompViewSeams = {},
+  telemetry?: OpTelemetry,
 ): CompView {
   if (target === null) {
     throw new CompViewError(
@@ -318,5 +326,5 @@ export function compViewForTarget(
       ? {}
       : { newOperationId: seams.newOperationId }),
   };
-  return new CompView(new CompViewController(options));
+  return new CompView(new CompViewController(options), telemetry);
 }

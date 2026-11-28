@@ -45,6 +45,7 @@ import {
 import { fileDialogForTarget, type FileDialogSeams } from "./file-dialog.js";
 import { menuBarForTarget, type MenuSeams } from "./menus.js";
 import { MacGuiRecovery, type GuiRecoveryOptions } from "../driver/gui-recovery.js";
+import { observeOp, type OpTelemetry } from "../observability/telemetry.js";
 import type { ProjectInfo } from "./types.js";
 
 export type {
@@ -185,9 +186,11 @@ function statPath(path: string): ProjectDialogFileStat {
  */
 export class ProjectDialog {
   readonly #controller: ProjectDialogController;
+  readonly #telemetry: OpTelemetry | undefined;
 
-  constructor(controller: ProjectDialogController) {
+  constructor(controller: ProjectDialogController, telemetry?: OpTelemetry) {
     this.#controller = controller;
+    this.#telemetry = telemetry;
   }
 
   /**
@@ -196,7 +199,9 @@ export class ProjectDialog {
    * Mutate-gui, gated at every layer.
    */
   openProject(request: OpenProjectDialogRequest): Promise<ProjectDialogLegResult> {
-    return Promise.resolve().then(() => this.#controller.openProject(request));
+    return observeOp(this.#telemetry, "projectDialog.openProject", { request }, () =>
+      Promise.resolve().then(() => this.#controller.openProject(request)),
+    );
   }
 
   /**
@@ -204,7 +209,9 @@ export class ProjectDialog {
    * read-only stat of the declared `path`.
    */
   saveProjectAs(request: SaveProjectDialogRequest): Promise<ProjectDialogLegResult> {
-    return Promise.resolve().then(() => this.#controller.saveProjectAs(request));
+    return observeOp(this.#telemetry, "projectDialog.saveProjectAs", { request }, () =>
+      Promise.resolve().then(() => this.#controller.saveProjectAs(request)),
+    );
   }
 
   /**
@@ -212,7 +219,9 @@ export class ProjectDialog {
    * window-listing oracle proving no file-dialog window remains.
    */
   cancelDialog(request: CancelProjectDialogRequest): Promise<ProjectDialogLegResult> {
-    return Promise.resolve().then(() => this.#controller.cancelDialog(request));
+    return observeOp(this.#telemetry, "projectDialog.cancelDialog", { request }, () =>
+      Promise.resolve().then(() => this.#controller.cancelDialog(request)),
+    );
   }
 
   /**
@@ -224,7 +233,9 @@ export class ProjectDialog {
     readonly open: OpenProjectDialogRequest;
     readonly save: SaveProjectDialogRequest;
   }): Promise<ProjectDialogRoundTripResult> {
-    return Promise.resolve().then(() => this.#controller.roundTrip(request));
+    return observeOp(this.#telemetry, "projectDialog.roundTrip", { request }, () =>
+      Promise.resolve().then(() => this.#controller.roundTrip(request)),
+    );
   }
 }
 
@@ -271,22 +282,30 @@ export function projectDialogForTarget(
   // The composed surfaces are built lazily per leg so a session that
   // only observes never constructs the mutator views — and so each
   // surface's own mutation gate is consulted at act time.
-  const dialog = fileDialogForTarget(target, {
-    ...sharedSeams,
-    ...(seams.dialogAuthorizeMutation === undefined
-      ? {}
-      : { authorizeMutation: seams.dialogAuthorizeMutation }),
-    ...(seams.enterFilename === undefined
-      ? {}
-      : { enterFilename: seams.enterFilename }),
-  });
-  const menuBar = () =>
-    menuBarForTarget(target, {
+  const dialog = fileDialogForTarget(
+    target,
+    {
       ...sharedSeams,
-      ...(seams.menuAuthorizeMutation === undefined
+      ...(seams.dialogAuthorizeMutation === undefined
         ? {}
-        : { authorizeMutation: seams.menuAuthorizeMutation }),
-    });
+        : { authorizeMutation: seams.dialogAuthorizeMutation }),
+      ...(seams.enterFilename === undefined
+        ? {}
+        : { enterFilename: seams.enterFilename }),
+    },
+    session.telemetry,
+  );
+  const menuBar = () =>
+    menuBarForTarget(
+      target,
+      {
+        ...sharedSeams,
+        ...(seams.menuAuthorizeMutation === undefined
+          ? {}
+          : { authorizeMutation: seams.menuAuthorizeMutation }),
+      },
+      session.telemetry,
+    );
 
   const ops: ProjectDialogOps = {
     invokeMenu: (locator) => menuBar().invoke(locator),
@@ -312,5 +331,5 @@ export function projectDialogForTarget(
     ops,
     authorizeMutation: seams.authorizeMutation ?? projectDialogMutationGate(),
   });
-  return new ProjectDialog(controller);
+  return new ProjectDialog(controller, session.telemetry);
 }

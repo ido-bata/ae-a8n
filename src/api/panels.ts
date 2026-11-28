@@ -57,6 +57,10 @@ import {
   captureWithStillEvidence,
   type StillEvidenceContext,
 } from "../evidence/stills.js";
+import {
+  observeOp,
+  type OpTelemetry,
+} from "../observability/telemetry.js";
 
 export type {
   PanelCapabilities,
@@ -344,20 +348,30 @@ function macPanelOps(
 export class Panel {
   readonly #controller: PanelController;
   readonly #evidence: StillEvidenceContext | undefined;
+  readonly #telemetry: OpTelemetry | undefined;
 
-  constructor(controller: PanelController, evidence?: StillEvidenceContext) {
+  constructor(
+    controller: PanelController,
+    evidence?: StillEvidenceContext,
+    telemetry?: OpTelemetry,
+  ) {
     this.#controller = controller;
     this.#evidence = evidence;
+    this.#telemetry = telemetry;
   }
 
   /** Resolve the locator against the live screen. Observe-class. */
   identify(): Promise<PanelTarget> {
-    return Promise.resolve().then(() => this.#controller.identify());
+    return observeOp(this.#telemetry, "panel.identify", undefined, () =>
+      Promise.resolve().then(() => this.#controller.identify()),
+    );
   }
 
   /** OS geometry plus optional in-AE readback. Observe-class. */
   measure(): Promise<PanelMeasurement> {
-    return Promise.resolve().then(() => this.#controller.measure());
+    return observeOp(this.#telemetry, "panel.measure", undefined, () =>
+      Promise.resolve().then(() => this.#controller.measure()),
+    );
   }
 
   /**
@@ -366,12 +380,33 @@ export class Panel {
    * still refuses `unproven`/`refused`/`indeterminate` per the contract.
    */
   resize(size: { width: number; height: number }): Promise<PanelMeasurement> {
-    return this.#controller.resize(size);
+    return observeOp(
+      this.#telemetry,
+      "panel.resize",
+      { width: size.width, height: size.height },
+      () => this.#controller.resize(size),
+      {
+        expected: { width: size.width, height: size.height },
+        actual: (outcome: {
+          result?: PanelMeasurement | undefined;
+          error?: unknown;
+        }) =>
+          outcome.result === undefined
+            ? undefined
+            : {
+                width: outcome.result.frame.width,
+                height: outcome.result.frame.height,
+                matchesRequested: outcome.result.matchesRequested,
+              },
+      },
+    );
   }
 
   /** Restore the frame first resolved by this handle. Same gate as resize. */
   restore(): Promise<PanelMeasurement> {
-    return this.#controller.restore();
+    return observeOp(this.#telemetry, "panel.restore", undefined, () =>
+      this.#controller.restore(),
+    );
   }
 
   /**
@@ -383,10 +418,12 @@ export class Panel {
    * gaps instead of being silently lost.
    */
   capture(): Promise<PanelCapture> {
-    return Promise.resolve().then(() =>
-      this.#evidence === undefined
-        ? this.#controller.capture()
-        : captureWithStillEvidence(() => this.#controller.capture(), this.#evidence),
+    return observeOp(this.#telemetry, "panel.capture", undefined, () =>
+      Promise.resolve().then(() =>
+        this.#evidence === undefined
+          ? this.#controller.capture()
+          : captureWithStillEvidence(() => this.#controller.capture(), this.#evidence),
+      ),
     );
   }
 }
@@ -402,6 +439,7 @@ export function panelForTarget(
   artifactDir: string,
   seams: PanelSeams = {},
   evidence?: StillEvidenceContext,
+  telemetry?: OpTelemetry,
 ): Panel {
   if (target === null) {
     throw new PanelError(
@@ -436,5 +474,5 @@ export function panelForTarget(
       ? {}
       : { newOperationId: seams.newOperationId }),
   });
-  return new Panel(controller, evidence);
+  return new Panel(controller, evidence, telemetry);
 }

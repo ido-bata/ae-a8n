@@ -55,6 +55,7 @@ import {
 } from "../windowops/types.js";
 import type { PanelLocator } from "../panels/types.js";
 import type { GuiObservationSeams, GuiObservationTarget } from "./gui-state.js";
+import { observeOp, type OpTelemetry } from "../observability/telemetry.js";
 
 export type {
   WindowOpsActRequest,
@@ -417,9 +418,11 @@ function requireSize(
  */
 export class WindowOps {
   readonly #controller: WindowOpsController;
+  readonly #telemetry: OpTelemetry | undefined;
 
-  constructor(controller: WindowOpsController) {
+  constructor(controller: WindowOpsController, telemetry?: OpTelemetry) {
     this.#controller = controller;
+    this.#telemetry = telemetry;
   }
 
   /**
@@ -428,7 +431,9 @@ export class WindowOps {
    * Observe-class: no gate, re-observed on every call.
    */
   state(): Promise<WindowOpsState> {
-    return Promise.resolve().then(() => this.#controller.state());
+    return observeOp(this.#telemetry, "windowOps.state", undefined, () =>
+      Promise.resolve().then(() => this.#controller.state()),
+    );
   }
 
   /**
@@ -438,7 +443,9 @@ export class WindowOps {
    * cannot be proven in the bounded wait.
    */
   move(position: { readonly x: number; readonly y: number }): Promise<WindowOpResult> {
-    return this.#controller.move(requirePoint(position, "position"));
+    return observeOp(this.#telemetry, "windowOps.move", { position }, () =>
+      this.#controller.move(requirePoint(position, "position")),
+    );
   }
 
   /**
@@ -446,7 +453,9 @@ export class WindowOps {
    * gated, same refusal vocabulary as `move`.
    */
   resize(size: { readonly width: number; readonly height: number }): Promise<WindowOpResult> {
-    return this.#controller.resize(requireSize(size));
+    return observeOp(this.#telemetry, "windowOps.resize", { size }, () =>
+      this.#controller.resize(requireSize(size)),
+    );
   }
 
   /**
@@ -454,7 +463,9 @@ export class WindowOps {
    * Mutate-gui + gated.
    */
   minimize(): Promise<WindowOpResult> {
-    return this.#controller.minimize();
+    return observeOp(this.#telemetry, "windowOps.minimize", undefined, () =>
+      this.#controller.minimize(),
+    );
   }
 
   /**
@@ -462,7 +473,9 @@ export class WindowOps {
    * gated.
    */
   restore(): Promise<WindowOpResult> {
-    return this.#controller.restore();
+    return observeOp(this.#telemetry, "windowOps.restore", undefined, () =>
+      this.#controller.restore(),
+    );
   }
 
   /**
@@ -472,7 +485,9 @@ export class WindowOps {
    * pre-maximize frame to restore with `move` + `resize`.
    */
   maximize(): Promise<WindowOpResult> {
-    return this.#controller.maximize();
+    return observeOp(this.#telemetry, "windowOps.maximize", undefined, () =>
+      this.#controller.maximize(),
+    );
   }
 
   /**
@@ -481,7 +496,9 @@ export class WindowOps {
    * level. Mutate-gui + gated.
    */
   focus(): Promise<WindowOpResult> {
-    return this.#controller.focus();
+    return observeOp(this.#telemetry, "windowOps.focus", undefined, () =>
+      this.#controller.focus(),
+    );
   }
 }
 
@@ -518,6 +535,7 @@ export function windowOpsForTarget(
   locator: PanelLocator,
   seams: WindowOpsSeams = {},
   options: WindowOpsOptions = {},
+  telemetry?: OpTelemetry,
 ): WindowOps {
   if (target === null) {
     throw new WindowOpsError(
@@ -564,5 +582,5 @@ export function windowOpsForTarget(
     ...(seams.poll === undefined ? {} : { poll: seams.poll }),
     ...(seams.now === undefined ? {} : { now: seams.now }),
   });
-  return new WindowOps(controller);
+  return new WindowOps(controller, telemetry);
 }

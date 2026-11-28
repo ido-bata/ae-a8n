@@ -49,6 +49,7 @@ import type { CompInfo, CompTime, LayerInfo, PropertyInfo } from "./types.js";
 import type { GuiObservationTarget } from "./gui-state.js";
 import { MacGuiRecovery, type GuiRecoveryOptions } from "../driver/gui-recovery.js";
 import type { Session } from "./session.js";
+import { observeOp, type OpTelemetry } from "../observability/telemetry.js";
 import {
   macDockedPaneOps,
   type DockedPaneSeams,
@@ -242,9 +243,11 @@ function macTimelineOps(
  */
 export class Timeline {
   readonly #controller: TimelineController;
+  readonly #telemetry: OpTelemetry | undefined;
 
-  constructor(controller: TimelineController) {
+  constructor(controller: TimelineController, telemetry?: OpTelemetry) {
     this.#controller = controller;
+    this.#telemetry = telemetry;
   }
 
   /**
@@ -253,7 +256,9 @@ export class Timeline {
    * frame. Bounded wait — deadline reports `indeterminate`, never resend.
    */
   scrub(request: ScrubRequest): Promise<ScrubResult> {
-    return this.#controller.scrub(request);
+    return observeOp(this.#telemetry, "timeline.scrub", { request }, () =>
+      this.#controller.scrub(request),
+    );
   }
 
   /**
@@ -262,7 +267,9 @@ export class Timeline {
    * the selection. Mutate-gui + gated.
    */
   selectRow(request: SelectRowRequest): Promise<SelectRowResult> {
-    return this.#controller.selectRow(request);
+    return observeOp(this.#telemetry, "timeline.selectRow", { request }, () =>
+      this.#controller.selectRow(request),
+    );
   }
 
   /**
@@ -270,7 +277,9 @@ export class Timeline {
    * + gated; the oracle is `comp.time` landing on the expected key.
    */
   navigateToKeyframe(request: NavigateKeyframeRequest): Promise<NavigateKeyframeResult> {
-    return this.#controller.navigateToKeyframe(request);
+    return observeOp(this.#telemetry, "timeline.navigateToKeyframe", { request }, () =>
+      this.#controller.navigateToKeyframe(request),
+    );
   }
 
   /**
@@ -278,7 +287,9 @@ export class Timeline {
    * `TimelineRowLocator`s. Never mutates.
    */
   rows(): Promise<DockedPaneRow[]> {
-    return Promise.resolve().then(() => this.#controller.rows());
+    return observeOp(this.#telemetry, "timeline.rows", undefined, () =>
+      Promise.resolve().then(() => this.#controller.rows()),
+    );
   }
 }
 
@@ -328,5 +339,5 @@ export function timelineForTarget(
       ? {}
       : { newOperationId: seams.newOperationId }),
   };
-  return new Timeline(new TimelineController(options));
+  return new Timeline(new TimelineController(options), session.telemetry);
 }

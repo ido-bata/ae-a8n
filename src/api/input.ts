@@ -86,6 +86,7 @@ import {
   type InputErrorCode,
 } from "../input/types.js";
 import type { GuiObservationSeams, GuiObservationTarget } from "./gui-state.js";
+import { observeOp, type OpTelemetry } from "../observability/telemetry.js";
 import {
   WindowsInputHelpers,
   type WindowsInputChannel,
@@ -473,6 +474,7 @@ export class Input {
   readonly #authorizeMutation: InputMutationGate;
   readonly #authorization: GlobalInputAuthorization | null;
   readonly #now: () => Date;
+  readonly #telemetry: OpTelemetry | undefined;
   #ops: InputOps | null = null;
 
   constructor(options: {
@@ -480,6 +482,7 @@ export class Input {
     readonly locator: PanelLocator;
     readonly surface: InputSurfaceOps;
     readonly seams: InputSeams;
+    readonly telemetry?: OpTelemetry;
   }) {
     this.#pid = options.target.pid;
     this.#session = options.target.session;
@@ -493,6 +496,7 @@ export class Input {
       options.seams.authorizeMutation ?? inputMutationGate();
     this.#authorization = options.seams.authorization ?? null;
     this.#now = options.seams.now ?? (() => new Date());
+    this.#telemetry = options.telemetry;
   }
 
   /** One fresh PanelTarget resolution; throws InputError on refusal. */
@@ -605,56 +609,120 @@ export class Input {
       ...(this.#seams.now !== undefined ? { now: this.#seams.now } : {}),
     };
 
-    // Observe-class ops never take the lease; mutations on a proven
-    // owned target run inside it (spec §5.1: lease → audit → act).
-    // Non-owned targets skip the lease — the runner refuses `unproven`
-    // before anything could post.
-    if (gateRow.class === "observe" || target.surface.attribution !== "owned") {
-      return runInputPlan(resolved, deps);
-    }
+    // One ledger attempt per plan run (#434): the audit record's verdict
+    // is the outcome, its valueReadback is the expected/actual pair.
+    return observeOp(
+      this.#telemetry,
+      `input.${resolved.operation}`,
+      { operation: resolved.operation, class: gateRow.class },
+      async () => {
+        // Observe-class ops never take the lease; mutations on a proven
+        // owned target run inside it (spec §5.1: lease → audit → act).
+        // Non-owned targets skip the lease — the runner refuses `unproven`
+        // before anything could post.
+        if (gateRow.class === "observe" || target.surface.attribution !== "owned") {
+          return runInputPlan(resolved, deps);
+        }
 
-    const leaseCtl = this.#leaseController();
-    const op = `input:${resolved.operation}`;
-    let lease: GuiLease;
-    try {
-      lease = leaseCtl.acquire(op);
-    } catch (error) {
-      if (error instanceof GuiRecoveryError) {
-        throw new InputError("refused", error.message, { cause: error });
-      }
-      throw error;
-    }
-    try {
-      const record = await runInputPlan(resolved, deps);
-      try {
-        leaseCtl.audit({
-          kind: "mutate",
-          op,
-          outcome: record.verdict,
-          detail: record.refusal?.reason ?? record.verdict,
-        });
-      } catch {
-        // The audit record itself is the primary evidence; a failed
-        // lease-log line must not replace the operation's outcome.
-      }
-      return record;
-    } finally {
-      let released = true;
-      try {
-        lease.release();
-      } catch {
-        released = false;
-      }
-      try {
-        leaseCtl.audit({
-          kind: "lease-release",
-          op,
-          ...(released ? {} : { outcome: "error" }),
-        });
-      } catch {
-        // Nothing left to report to.
-      }
-    }
+        const leaseCtl = this.#leaseController();
+        const op = `input:${resolved.operation}`;
+        let lease: GuiLease;
+        try {
+          lease = leaseCtl.acquire(op);
+        } catch (error) {
+          if (error instanceof GuiRecoveryError) {
+            throw new InputError("refused", error.message, { cause: error });
+          }
+          throw error;
+        }
+        try {
+          const record = await runInputPlan(resolved, deps);
+          try {
+            leaseCtl.audit({
+              kind: "mutate",
+              op,
+              outcome: record.verdict,
+              detail: record.refusal?.reason ?? record.verdict,
+            });
+          } catch {
+            // The audit record itself is the primary evidence; a failed
+            // lease-log line must not replace the operation's outcome.
+          }
+          return record;
+        } finally {
+          let released = true;
+          try {
+            lease.release();
+          } catch {
+            released = false;
+          }
+          try {
+            leaseCtl.audit({
+              kind: "lease-release",
+              op,
+              ...(released ? {} : { outcome: "error" }),
+            });
+          } catch {
+            // Nothing left to report to.
+          }
+        }
+      },
+      {
+        expected: { operation: resolved.operation },
+        actual: ({ result }: { result?: InputAuditRecord | undefined; error?: unknown }) =>
+          result === undefined
+            ? undefined
+            : {
+                verdict: result.verdict,
+                ...(result.valueReadback === null
+                  ? {}
+                  : { valueReadback: result.valueReadback }),
+                steps: result.steps.length,
+              },
+        outcome: ({
+          result,
+          error,
+        }: {
+          result?: InputAuditRecord | undefined;
+          error?: unknown;
+        }) => {
+          if (result !== undefined) {
+            switch (result.verdict) {
+              case "performed":
+                return "ok";
+              case "refused":
+                return "refused";
+              case "indeterminate":
+                return "indeterminate";
+              case "failed":
+                return "error";
+            }
+          }
+          if (error !== undefined) {
+            return error instanceof InputError && error.code === "refused"
+              ? "refused"
+              : "error";
+          }
+          return "error";
+        },
+        stepTimings: ({ result }) =>
+          result === undefined
+            ? undefined
+            : result.steps.map((step) => ({
+                stepId: `step-${step.index}:${step.kind}`,
+                durationMs: step.durationMs ?? 0,
+                actual: { outcome: step.outcome, summary: step.summary },
+              })),
+        summarize: (record) => ({
+          operation: record.operation,
+          verdict: record.verdict,
+          ...(record.valueReadback === null
+            ? {}
+            : { valueReadback: record.valueReadback }),
+          steps: record.steps.length,
+        }),
+      },
+    );
   }
 
   /**
@@ -677,11 +745,13 @@ export class Input {
 
   /** Resolve the locator against the live screen. Observe-class. */
   identify(): Promise<PanelTarget> {
-    return Promise.resolve().then(() => {
-      const target = this.#resolve();
-      this.#auditObserve("input:identify", "performed");
-      return target;
-    });
+    return observeOp(this.#telemetry, "input.identify", { locator: this.#locator }, () =>
+      Promise.resolve().then(() => {
+        const target = this.#resolve();
+        this.#auditObserve("input:identify", "performed");
+        return target;
+      }),
+    );
   }
 
   /**
@@ -690,7 +760,8 @@ export class Input {
    * failure. Throws `InputError` `unavailable` when no IME port exists.
    */
   imeModeQuery(): Promise<ImeModeSnapshot> {
-    return Promise.resolve().then(() => {
+    return observeOp(this.#telemetry, "input.imeModeQuery", undefined, () =>
+      Promise.resolve().then(() => {
       this.#requireOwnedTarget();
       const ops = this.#inputOps();
       if (ops.ime === undefined) {
@@ -711,7 +782,8 @@ export class Input {
         );
         throw asInputError(error);
       }
-    });
+      }),
+    );
   }
 
   /**
@@ -720,7 +792,8 @@ export class Input {
    * snapshot record is what a later `clipboardWrite` restores from.
    */
   clipboardRead(): Promise<ClipboardSnapshot> {
-    return Promise.resolve().then(() => {
+    return observeOp(this.#telemetry, "input.clipboardRead", undefined, () =>
+      Promise.resolve().then(() => {
       this.#requireOwnedTarget();
       const ops = this.#inputOps();
       if (ops.clipboard === undefined) {
@@ -741,7 +814,8 @@ export class Input {
         );
         throw asInputError(error);
       }
-    });
+      }),
+    );
   }
 
   /**
@@ -767,7 +841,8 @@ export class Input {
       fixtureReport?: string | (() => string | Promise<string>);
     } = {},
   ): Promise<CompositionObserveReport> {
-    return Promise.resolve().then(async () => {
+    return observeOp(this.#telemetry, "input.compositionObserve", options, () =>
+      Promise.resolve().then(async () => {
       this.#requireOwnedTarget();
       const source = options.fixtureReport ?? this.#seams.fixtureReport;
       let jsonl: string | null = null;
@@ -792,7 +867,8 @@ export class Input {
         `surfaces=${report.coverage.length} rejections=${report.ingestRejections.length}`,
       );
       return report;
-    });
+      }),
+    );
   }
 
   // ------------------------------------------------------------ mutations
@@ -1168,6 +1244,7 @@ export function inputForTarget(
   target: GuiObservationTarget | null,
   locator: PanelLocator,
   seams: InputSeams = {},
+  telemetry?: OpTelemetry,
 ): Input {
   if (target === null) {
     throw new InputError(
@@ -1186,5 +1263,11 @@ export function inputForTarget(
   }
   const surface =
     seams.surfaceOps ?? macInputSurfaceOps(target, seams);
-  return new Input({ target, locator, surface, seams });
+  return new Input({
+    target,
+    locator,
+    surface,
+    seams,
+    ...(telemetry === undefined ? {} : { telemetry }),
+  });
 }

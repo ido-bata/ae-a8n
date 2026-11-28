@@ -452,6 +452,7 @@ export async function runInputPlan(
       }
 
       const { summary, payload } = summarizeStep(step);
+      const stepStart = Date.now();
       try {
         postStep(step, deps.poster, cleanupPlan);
         anyPosted = true;
@@ -462,6 +463,7 @@ export async function runInputPlan(
           payload,
           outcome: "posted",
           detail: null,
+          durationMs: Date.now() - stepStart,
         });
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
@@ -472,6 +474,7 @@ export async function runInputPlan(
           payload,
           outcome: "failed",
           detail,
+          durationMs: Date.now() - stepStart,
         });
         verdict = anyPosted ? "indeterminate" : "failed";
         refusal = {

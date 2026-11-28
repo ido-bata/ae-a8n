@@ -129,6 +129,8 @@ import {
   type EffectControlsCapabilities,
 } from "./effect-controls.js";
 import { supervisionReport, type SupervisionReport } from "../supervision/index.js";
+import { writeTeardownVerdict } from "../observability/teardown.js";
+import { observeOp } from "../observability/telemetry.js";
 import type { StillEvidenceContext } from "../evidence/stills.js";
 import type {
   EvidenceIndexSession,
@@ -1061,7 +1063,9 @@ export class AfterEffects {
     // The observation itself is synchronous (one Accessibility query inside
     // the target session); `.then` keeps even a synchronous failure a
     // rejection rather than a throw from a Promise-typed method.
-    return Promise.resolve().then(() => guiStateReport(this.recoveryTarget()));
+    return observeOp(this.#session.telemetry, "guiState", undefined, () =>
+      Promise.resolve().then(() => guiStateReport(this.recoveryTarget())),
+    );
   }
 
   /**
@@ -1095,6 +1099,7 @@ export class AfterEffects {
       this.artifactsDir,
       {},
       target === null ? undefined : this.#stillEvidenceContext(target),
+      this.#session.telemetry,
     );
   }
 
@@ -1131,7 +1136,7 @@ export class AfterEffects {
    * `locator` names the surface exactly as `ae.panel(locator)` does.
    */
   input(locator: PanelLocator): Input {
-    return inputForTarget(this.recoveryTarget(), locator, {});
+    return inputForTarget(this.recoveryTarget(), locator, {}, this.#session.telemetry);
   }
 
   /**
@@ -1206,7 +1211,7 @@ export class AfterEffects {
    * target is attested or the platform is unsupported.
    */
   menuBar(): MenuBar {
-    return menuBarForTarget(this.recoveryTarget());
+    return menuBarForTarget(this.recoveryTarget(), {}, this.#session.telemetry);
   }
 
   /**
@@ -1227,7 +1232,7 @@ export class AfterEffects {
    * unsupported, or the pane cannot be resolved.
    */
   dockedPane(locator: DockedPaneLocator): DockedPane {
-    return dockedPaneForTarget(this.recoveryTarget(), locator);
+    return dockedPaneForTarget(this.recoveryTarget(), locator, {}, this.#session.telemetry);
   }
 
   /**
@@ -1251,7 +1256,7 @@ export class AfterEffects {
    * owned target is attested or the platform is unsupported.
    */
   renderQueue(locator: DockedPaneLocator): RenderQueue {
-    return renderQueueForTarget(this.recoveryTarget(), locator);
+    return renderQueueForTarget(this.recoveryTarget(), locator, {}, this.#session.telemetry);
   }
 
   /**
@@ -1273,7 +1278,7 @@ export class AfterEffects {
    * or the platform is unsupported.
    */
   fileDialog(): FileDialog {
-    return fileDialogForTarget(this.recoveryTarget());
+    return fileDialogForTarget(this.recoveryTarget(), {}, this.#session.telemetry);
   }
 
   /**
@@ -1297,7 +1302,7 @@ export class AfterEffects {
    * when no owned target is attested or the platform is unsupported.
    */
   contextMenu(): ContextMenu {
-    return contextMenuForTarget(this.recoveryTarget());
+    return contextMenuForTarget(this.recoveryTarget(), {}, this.#session.telemetry);
   }
 
   /**
@@ -1382,7 +1387,7 @@ export class AfterEffects {
    */
   get record(): RecordingApi {
     this.#recordingController ??= createRecordingController(this.#session);
-    return recordingApiForController(this.#recordingController);
+    return recordingApiForController(this.#recordingController, this.#session.telemetry);
   }
 
   /**
@@ -1460,7 +1465,7 @@ export class AfterEffects {
    * is unsupported.
    */
   workspace(): Workspace {
-    return workspaceForTarget(this.recoveryTarget());
+    return workspaceForTarget(this.recoveryTarget(), {}, this.#session.telemetry);
   }
 
   /**
@@ -1495,7 +1500,7 @@ export class AfterEffects {
    * Observe-class only: `state()` works, every mutation refuses.
    */
   windowOps(locator: PanelLocator, options?: WindowOpsOptions): WindowOps {
-    return windowOpsForTarget(this.recoveryTarget(), locator, {}, options);
+    return windowOpsForTarget(this.recoveryTarget(), locator, {}, options, this.#session.telemetry);
   }
 
   /**
@@ -1526,6 +1531,8 @@ export class AfterEffects {
       this.recoveryTarget(),
       locator,
       this.artifactsDir,
+      {},
+      this.#session.telemetry,
     );
   }
 
@@ -1655,6 +1662,10 @@ export class AfterEffects {
       return { quit: false, ownership: this.ownership(), reason: "already closed" };
     }
     try {
+      // The pid the GUI lease audit is scoped by, captured while the
+      // target is still attestable — after stop() the host is gone and
+      // `recoveryTarget()` answers null (#434 teardown verdict).
+      this.#teardownPid = this.#session.driver.recoveryTarget()?.pid ?? null;
       // `finally` finalize (spec §5.4): every open recording segment gets
       // a stop attempt — and a residue sweep — before the host stops.
       // finalizeAll never throws; the catch is belt-and-braces so a
@@ -1670,13 +1681,35 @@ export class AfterEffects {
       // raise the unsaved-changes dialog supervision exists to see. It is
       // released only once the session is actually closed.
       this.#session.supervision?.stop();
+      this.#teardownVerdict(result);
       return result;
     } catch (error) {
       if (!(error instanceof HostError && error.name === "UnsavedChangesError")) {
         this.#closed = true;
         this.#session.supervision?.stop();
+        // The session is gone even though close failed: still leave the
+        // teardown verdict, evaluated against what actually happened.
+        this.#teardownVerdict({ error: error instanceof Error ? error.message : String(error) });
       }
       contextualise("session.close", error);
+    }
+  }
+
+  #teardownPid: number | null | undefined;
+
+  /**
+   * Persist the teardown verdict (#434, spec §10) for a session that is
+   * actually ending. Best-effort: a verdict write failure must never
+   * mask the close outcome it describes.
+   */
+  #teardownVerdict(close: CloseResult | { readonly error: string }): void {
+    try {
+      this.#teardownPid ??= this.#session.driver.recoveryTarget()?.pid ?? null;
+      writeTeardownVerdict(this.#session, close, {
+        targetPid: this.#teardownPid,
+      });
+    } catch {
+      // The verdict is evidence; losing it cannot fail the close.
     }
   }
 
