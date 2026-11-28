@@ -17,15 +17,29 @@
  *      `comp.layers` / `project.items` order) and `panel-tab`
  *      dock→float tear-off (census window-count oracle) — each the
  *      full production chain: gate → lease → census topmost endpoints
- *      → segmented CGEvent drag with per-segment re-check → oracle;
- *   5. records every result verbatim plus screenshots and quits the
- *      owned instance. Any uncaught failure still emits the evidence
- *      file before the owned instance is closed.
+ *      → segmented CGEvent drag with per-segment re-check → oracle.
+ *      Candidate loops stop on the first posted drag or on any
+ *      post-act/unknown error code (`indeterminate` included): a partial
+ *      drag may have landed, so the contract forbids resending — the
+ *      loop re-observes instead;
+ *   5. records every result verbatim plus screenshots, quits the
+ *      owned instance, runs a postflight census, and only then emits
+ *      the evidence file — the close result is always inside the JSON.
+ *
+ * Dialog handling is the sanctioned path only: the readiness wait is
+ * sampled per poll (still-launching vs probe-failure), blocking windows
+ * are classified through `createHostRecovery().attempt()` — the same
+ * taxonomy/lease/audit/attribution path the driver builds — and
+ * `ae.guiState()` during observation. Only a measured `auto-safe` class
+ * may ever be pressed; every other dialog is recorded, never dismissed.
+ * No key is ever posted to an unclassified window.
  *
  * Requires `npm run build` first. Usage:
  *   node scripts/poc-element-drag-427.mjs \
  *     --install "/Applications/Adobe After Effects 2027" \
- *     --out docs/evidence/realhost-2026-11-28/element-drag-427/run.json
+ *     --out docs/evidence/realhost-2026-11-28/element-drag-427/run.json \
+ *     [--timeout-ms 300000] [--readiness-timeout-ms 120000] \
+ *     [--launch-poll-ms 1000]
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -53,17 +67,37 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const options = { install: undefined, out: undefined, sessionRoot: undefined };
+  const options = {
+    install: undefined,
+    out: undefined,
+    sessionRoot: undefined,
+    // Readiness default is 120s, not the old fixed 240s: every successful
+    // owned launch recorded on this host answered the probe in well under
+    // 15s, and the larger budget was only ever consumed by modal-blocked
+    // launches that failed anyway. `poc-boot-attribution.mjs` uses the
+    // same 120s default for the same probe.
+    timeoutMs: 300_000,
+    readinessTimeoutMs: 120_000,
+    launchPollMs: 1_000,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--") break;
     if (arg === "--install") options.install = argv[++i];
     else if (arg === "--out") options.out = argv[++i];
     else if (arg === "--session-root") options.sessionRoot = argv[++i];
+    else if (arg === "--timeout-ms") options.timeoutMs = Number(argv[++i]);
+    else if (arg === "--readiness-timeout-ms") options.readinessTimeoutMs = Number(argv[++i]);
+    else if (arg === "--launch-poll-ms") options.launchPollMs = Number(argv[++i]);
     else fail(`unknown argument ${JSON.stringify(arg)}`);
   }
   if (options.install === undefined) fail("--install <dir> is required");
   if (options.out === undefined) fail("--out <file.json> is required");
+  for (const key of ["timeoutMs", "readinessTimeoutMs", "launchPollMs"]) {
+    if (!Number.isFinite(options[key]) || options[key] <= 0) {
+      fail(`--${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)} must be a positive number`);
+    }
+  }
   return options;
 }
 
@@ -145,14 +179,21 @@ async function main() {
   }
 
   // --- Launch owned AE. ---
+  // An explicit ScriptInvocationTransport (the same construction
+  // poc-boot-attribution uses) gives the readiness sampler access to
+  // `pendingLaunch()`/`hostState()`/`hostPid()`/`recoveryTargetPid()` —
+  // the transport's own pid+start-time re-proof.
+  const transport = new api.ScriptInvocationTransport({ install });
   const launchOptions = {
-    installDir: options.install,
-    timeoutMs: 300_000,
-    readinessTimeoutMs: 240_000,
+    transport,
+    timeoutMs: options.timeoutMs,
+    readinessTimeoutMs: options.readinessTimeoutMs,
   };
   if (options.sessionRoot !== undefined) launchOptions.sessionRoot = options.sessionRoot;
 
-  // --- Startup-dialog watchdog (same shape as poc-drag-drop-422). ---
+  // Focus helper only: bringing the owned app forward is sometimes needed
+  // for the AX listing and census gates. It sends no keys and touches no
+  // dialog — the old watchdog's Return injection is gone for good.
   const appPath = install.executable.replace(/\/Contents\/MacOS\/.*/, "");
   const activateApp = () => {
     try {
@@ -165,47 +206,70 @@ async function main() {
       return false;
     }
   };
-  const pressReturn = () => {
+
+  // --- Dialog handling: sanctioned path only --------------------------
+  // The previous watchdog pressed Return into heuristic dialog windows
+  // (owned pid + onScreen + layer>=8 + <800x600), bypassing the dialog
+  // taxonomy, the GUI lease, the audit log and pid attribution — an
+  // unclassified "discard changes" or "crash recovery" sheet would have
+  // been confirmed. That code is removed. What remains is the same
+  // `HostRecovery` the driver builds for `session.recover`
+  // (src/api/launch.ts): `attempt()` lists windows, classifies each
+  // blocking window through the measured taxonomy, and presses ONLY a
+  // measured `auto-safe` class through `pressButtonIn` (lease + audit +
+  // pid attribution). Human-required, unpressable and unclassified
+  // windows are recorded in the evidence and left for a human — the run
+  // fails closed instead of dismissing anything.
+  const dialogRecovery = (() => {
+    const session = transport.targetSession;
+    if (session === null || session.kind !== "Aqua") return null;
     try {
-      execFileSync("/usr/bin/osascript", [
-        "-e",
-        'tell application "System Events" to key code 36',
-      ], { timeout: 15_000 });
-      return true;
+      return api.createHostRecovery({
+        target: { platform: "darwin", session },
+        pid: () => transport.recoveryTargetPid(),
+        verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
+        screenshotDir: join(outDir, "recovery"),
+      });
     } catch {
-      return false;
+      return null;
     }
-  };
-  const dialogPid = () => inScopeAEPids(install)[0] ?? null;
-  const dialogWindowsFor = (pid) => {
-    const census = windowServerCensus(execFileCensusRunner());
-    if (!census.available) return [];
-    return census.windows.filter(
-      (w) =>
-        w.pid === pid &&
-        w.onScreen &&
-        (w.layer ?? 0) >= 8 &&
-        w.bounds !== null &&
-        w.bounds.width < 800 &&
-        w.bounds.height < 600,
-    );
-  };
-  let dialogDismissals = 0;
-  const maybeDismissDialogs = (tag) => {
-    const pid = dialogPid();
-    if (pid === null) return 0;
-    const dialogs = dialogWindowsFor(pid);
-    if (dialogs.length === 0) return 0;
-    activateApp();
-    let n = 0;
-    for (let i = 0; i < dialogs.length; i += 1) {
-      if (pressReturn()) n += 1;
+  })();
+  let dialogObservations = 0;
+  const observeDialogs = async (tag) => {
+    if (dialogRecovery === null) return;
+    try {
+      const outcome = await dialogRecovery.attempt({
+        requestId: `poc-element-drag-427-${tag}`,
+        method: "session.launch",
+        timeoutMs: options.readinessTimeoutMs,
+      });
+      // A "no modal window" refusal carries no window and is not worth a
+      // step per poll. Anything that saw a window, pressed a button, or
+      // quarantined is evidence.
+      if (
+        outcome.recovered === true ||
+        outcome.outcome === "quarantined" ||
+        outcome.window !== undefined
+      ) {
+        dialogObservations += 1;
+        step(`dialog-${tag}`, {
+          recovered: outcome.recovered,
+          outcome: outcome.outcome ?? null,
+          code: outcome.code ?? null,
+          dialogTier: outcome.dialogTier ?? null,
+          window: outcome.window ?? null,
+          evidence: outcome.evidence,
+          screenshotPath: outcome.screenshotPath ?? null,
+        });
+      }
+    } catch (error) {
+      step(`dialog-${tag}-error`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
-    dialogDismissals += n;
-    if (n > 0) step(`dialog-dismiss-${tag}`, { pid, windows: dialogs.length, pressed: n });
-    return n;
   };
 
+  const t0 = Date.now();
   let launchSettled = false;
   const launchPromise = AfterEffects.launch(launchOptions).then(
     (value) => ({ ok: true, value }),
@@ -214,44 +278,93 @@ async function main() {
   launchPromise.then(() => {
     launchSettled = true;
   });
-  const watchdog = setInterval(() => {
-    if (!launchSettled) maybeDismissDialogs("launch");
-  }, 2000);
-  const launchOutcome = await launchPromise;
-  clearInterval(watchdog);
-  if (!launchOutcome.ok) {
-    step("launch-error", {
-      message:
-        launchOutcome.error instanceof Error
-          ? launchOutcome.error.message
-          : String(launchOutcome.error),
-    });
-    evidence.outcome = "failed";
-    evidence.reason = "AfterEffects.launch did not complete";
-    evidence.dialogDismissals = dialogDismissals;
-    emit(evidence, outPath);
-    return;
-  }
-  const ae = launchOutcome.value;
-  step("launch", {
-    pid: ae.recoveryTarget()?.pid ?? null,
-    info: ae.info(),
-    dialogDismissals,
-  });
 
+  // Readiness samples (poc-boot-attribution shape): on darwin
+  // `awaitScriptable` returns immediately, so the whole readiness budget
+  // is one `app.info` probe. Sampling per poll separates "still
+  // launching" (no in-scope pid / hostState unknown) from "probe
+  // failing" (pid present and alive while the probe never answers), and
+  // the dialog-layer window count makes a modal-blocked launch visible
+  // instead of a silent timeout.
+  const readinessSamples = [];
+  const sampleDeadline = t0 + options.timeoutMs + 60_000;
+  while (!launchSettled && Date.now() < sampleDeadline) {
+    const scoped = inScopeAEPids(install);
+    const pending = transport.pendingLaunch();
+    const census = windowServerCensus(execFileCensusRunner());
+    readinessSamples.push({
+      t: Date.now() - t0,
+      scopedPids: scoped,
+      pendingLaunch:
+        pending === null
+          ? null
+          : {
+              pid: pending.pid,
+              startedAt: pending.startedAt,
+              presentAtLastLookup: pending.presentAtLastLookup,
+              session: pending.session,
+            },
+      hostState: transport.hostState(),
+      hostPid: transport.hostPid(),
+      dialogLayerWindows: census.available
+        ? census.windows.filter(
+            (w) =>
+              scoped.includes(w.pid) &&
+              w.onScreen &&
+              (w.layer ?? 0) >= 8,
+          ).length
+        : null,
+    });
+    const won = await Promise.race([
+      launchPromise.then(() => "settled"),
+      sleep(options.launchPollMs).then(() => "tick"),
+    ]);
+    if (won === "settled") break;
+  }
+  const launchOutcome = await launchPromise;
+  evidence.launchReadiness = {
+    timeoutMs: options.timeoutMs,
+    readinessTimeoutMs: options.readinessTimeoutMs,
+    samples: readinessSamples,
+  };
+
+  let ae = null;
   try {
+    if (!launchOutcome.ok) {
+      step("launch-error", {
+        message:
+          launchOutcome.error instanceof Error
+            ? launchOutcome.error.message
+            : String(launchOutcome.error),
+      });
+      // Classify what may have blocked the probe — recorded, never
+      // dismissed beyond the measured auto-safe class.
+      await observeDialogs("launch-failed");
+      evidence.outcome = "failed";
+      evidence.reason = "AfterEffects.launch did not complete";
+      return;
+    }
+    ae = launchOutcome.value;
+    step("launch", {
+      pid: ae.recoveryTarget()?.pid ?? null,
+      info: ae.info(),
+      dialogObservations,
+    });
+
     const target = ae.recoveryTarget();
     if (target === null) {
       evidence.outcome = "failed";
       evidence.reason = "recoveryTarget() is null; no owned pid/session attested";
-      emit(evidence, outPath);
       return;
     }
     step("recovery-target", { pid: target.pid, sessionKind: target.session.kind });
 
     await sleep(5000);
     activateApp();
-    maybeDismissDialogs("post-launch");
+    // One sanctioned classification pass post-launch: a measured
+    // auto-safe dialog may be pressed; anything else is recorded and
+    // left blocking — the ops below then fail honestly.
+    await observeDialogs("post-launch");
 
     // --- Window listing → DragDropSurfaceLocator (same as #422 e2e). ---
     const woHelpersDir = ensureDarwinWindowOpsHelpers();
@@ -320,13 +433,58 @@ async function main() {
       });
     };
 
+    // Read-only dialog observation through the sanctioned classifier:
+    // `ae.guiState()` lists the owned instance's windows inside its own
+    // session and reports the verdict `session.recover` would reach —
+    // without pressing anything. A blocking or unclassified window is
+    // recorded once per distinct state; nothing is ever dismissed here.
+    let lastDialogKey = null;
+    const observeGuiDialogs = async () => {
+      try {
+        const report = await ae.guiState();
+        if (report.status !== "observed") {
+          const key = `unavailable:${report.reason}`;
+          if (key !== lastDialogKey) {
+            lastDialogKey = key;
+            step("gui-state-dialog", { status: "unavailable", reason: report.reason });
+          }
+          return;
+        }
+        const action = report.assessment.action;
+        const key = `${action}:${report.assessment.window ?? ""}`;
+        if (action !== "none" && key !== lastDialogKey) {
+          lastDialogKey = key;
+          step("gui-state-dialog", {
+            status: "observed",
+            action,
+            code: report.assessment.code,
+            detail: report.assessment.detail,
+            window: report.assessment.window,
+            blockingWindows: report.windows
+              .filter((w) => w.blocking)
+              .map((w) => ({
+                index: w.index,
+                title: w.title,
+                classification: w.classification,
+              })),
+            axSuspect: report.axSuspect,
+            axUnaccountedWindowCount: report.axUnaccountedWindows.length,
+          });
+        }
+      } catch (error) {
+        step("gui-state-error", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+
     let rows = [];
     let main = null;
     const listDeadline = Date.now() + 120_000;
     while (Date.now() < listDeadline) {
       activateApp();
-      maybeDismissDialogs("observe");
       await sleep(2000);
+      await observeGuiDialogs();
       try {
         rows = observeRows();
         const ownedRows = rows.filter((r) => r.attribution === "owned");
@@ -344,7 +502,6 @@ async function main() {
       evidence.reason =
         "no framed owned window in the window-ops listing; cannot build a surface locator";
       evidence.windows = rows;
-      emit(evidence, outPath);
       return;
     }
     const windowIndex = rows.indexOf(main) + 1;
@@ -584,6 +741,38 @@ async function main() {
     const dragDrop = ae.dragDrop();
     const results = { timelineLayer: null, projectItem: null, tabTearoffProbe: null };
 
+    // Pre-act refusal codes: the gate rejected the attempt BEFORE anything
+    // was posted, so the next candidate point is still safe to try. This
+    // is the same whitelist the panel-tab loop below already used. Any
+    // other code — `indeterminate`, `focus-lost`, `unavailable`, or an
+    // unknown code — may mean a partial drag landed: the dragdrop
+    // contract forbids resending, so the loop stops and the post-loop
+    // DOM re-observation (`layers()`/`comps()`) is the only verdict.
+    const PRE_ACT_CODES = new Set([
+      "refused",
+      "unsupported",
+      "unproven",
+      "invalid-locator",
+      "stale-locator",
+    ]);
+    const recordAttempts = (result, attempts) => {
+      // The ledger holds compact per-candidate summaries (never the
+      // result object itself — that would be a circular reference and
+      // JSON.stringify would throw). Full results stay in the step
+      // records.
+      try {
+        result.attempts = attempts;
+      } catch {
+        /* frozen result: attempts live in the step records */
+      }
+    };
+    const attemptSummary = (result) => ({
+      verified: result.verified ?? null,
+      vehicle: result.vehicle ?? null,
+      aborted: result.aborted ?? null,
+      dragOperation: result.dragOperation ?? null,
+    });
+
     // --- Op 1: timeline-layer reorder (oracle: comp.layers order). -------
     // Press near the top layer row, release ~4 rows lower. If the AX rows
     // resolved, aim precisely; otherwise use the #411-relative anchor.
@@ -610,31 +799,45 @@ async function main() {
       }
     }
     step("timeline-candidates", { count: tlPairs.length, pairs: tlPairs.slice(0, 12) });
+    const tlAttempts = [];
     for (const [index, pair] of tlPairs.slice(0, 8).entries()) {
-      const attempt = {
-        element: "timeline-layer",
-        surface,
-        from: pair.from,
-        to: pair.to,
-        steps: 24,
-        stepDelayMs: 16,
-      };
       try {
-        results.timelineLayer = await dragDrop.dragElement(attempt);
-        step("timeline-layer-result", { attempt: index, from: pair.from, result: results.timelineLayer });
+        const result = await dragDrop.dragElement({
+          element: "timeline-layer",
+          surface,
+          from: pair.from,
+          to: pair.to,
+          steps: 24,
+          stepDelayMs: 16,
+        });
+        // A resolved result means the drag was posted to completion —
+        // never resend, verified or not; the flag is the verdict.
+        step("timeline-layer-attempt", { attempt: index, from: pair.from, to: pair.to, result });
+        tlAttempts.push({ attempt: index, from: pair.from, to: pair.to, result: attemptSummary(result) });
+        results.timelineLayer = result;
         break;
       } catch (error) {
-        step("timeline-layer-attempt-error", {
+        const code = error?.code ?? null;
+        const record = {
           attempt: index,
           from: pair.from,
+          to: pair.to,
           name: error?.name ?? typeof error,
-          code: error?.code ?? null,
+          code,
           message: String(error?.message ?? error).slice(0, 400),
-        });
-        if (index === Math.min(7, tlPairs.length - 1)) {
-          results.timelineLayer = { error: String(error?.message ?? error).slice(0, 400), code: error?.code ?? null };
+        };
+        tlAttempts.push(record);
+        step("timeline-layer-attempt", record);
+        results.timelineLayer = { error: record.message, code };
+        if (!PRE_ACT_CODES.has(code)) {
+          // Post-act or unknown outcome: a partial drag may have landed.
+          // Stop here — the layers() re-observation below decides.
+          break;
         }
       }
+    }
+    if (tlAttempts.length > 0 && results.timelineLayer !== null) {
+      recordAttempts(results.timelineLayer, tlAttempts);
     }
     if (tlPairs.length === 0) {
       results.timelineLayer = { error: "no census-clean candidate points in the layer-row band", code: "unproven" };
@@ -665,31 +868,43 @@ async function main() {
       }
     }
     step("project-candidates", { count: pPairs.length, pairs: pPairs.slice(0, 12) });
+    const pAttempts = [];
     for (const [index, pair] of pPairs.slice(0, 8).entries()) {
-      const attempt = {
-        element: "project-item",
-        surface,
-        from: pair.from,
-        to: pair.to,
-        steps: 24,
-        stepDelayMs: 16,
-      };
       try {
-        results.projectItem = await dragDrop.dragElement(attempt);
-        step("project-item-result", { attempt: index, from: pair.from, result: results.projectItem });
+        const result = await dragDrop.dragElement({
+          element: "project-item",
+          surface,
+          from: pair.from,
+          to: pair.to,
+          steps: 24,
+          stepDelayMs: 16,
+        });
+        // Same contract as the timeline loop: a posted drag is never
+        // resent, and every candidate outcome is on the record.
+        step("project-item-attempt", { attempt: index, from: pair.from, to: pair.to, result });
+        pAttempts.push({ attempt: index, from: pair.from, to: pair.to, result: attemptSummary(result) });
+        results.projectItem = result;
         break;
       } catch (error) {
-        step("project-item-attempt-error", {
+        const code = error?.code ?? null;
+        const record = {
           attempt: index,
           from: pair.from,
+          to: pair.to,
           name: error?.name ?? typeof error,
-          code: error?.code ?? null,
+          code,
           message: String(error?.message ?? error).slice(0, 400),
-        });
-        if (index === Math.min(7, pPairs.length - 1)) {
-          results.projectItem = { error: String(error?.message ?? error).slice(0, 400), code: error?.code ?? null };
+        };
+        pAttempts.push(record);
+        step("project-item-attempt", record);
+        results.projectItem = { error: record.message, code };
+        if (!PRE_ACT_CODES.has(code)) {
+          break;
         }
       }
+    }
+    if (pAttempts.length > 0 && results.projectItem !== null) {
+      recordAttempts(results.projectItem, pAttempts);
     }
     if (pPairs.length === 0) {
       results.projectItem = { error: "no census-clean candidate points in the project-row band", code: "unproven" };
@@ -774,14 +989,7 @@ async function main() {
         // Pre-act refusals (nothing posted) leave the tab `from` valid —
         // try the next destination. Anything else may have posted the
         // drag and possibly re-docked the panel, making `from` stale.
-        const preAct = new Set([
-          "refused",
-          "unsupported",
-          "unproven",
-          "invalid-locator",
-          "stale-locator",
-        ]);
-        if (!preAct.has(error?.code)) {
+        if (!PRE_ACT_CODES.has(error?.code)) {
           tabDone = true;
           break;
         }
@@ -818,21 +1026,32 @@ async function main() {
       verifiedCount >= 1 ? "partial" :
       "failed";
     evidence.results = results;
-    emit(evidence, outPath);
+    // No emit here: the evidence file is written in `finally`, AFTER the
+    // owned instance is closed and the postflight census ran — the same
+    // ordering poc-drag-alt.mjs uses, so the JSON always carries the
+    // close result and the remaining in-scope processes.
   } catch (error) {
     // Never lose the run: an uncaught op failure (bridge timeout, AE
-    // busy) still emits whatever evidence was gathered before the
-    // owned instance is closed in `finally`.
+    // busy) still reaches `finally`, which closes the owned instance,
+    // runs the postflight census and emits whatever was gathered.
     evidence.outcome = evidence.outcome === "refused" ? "refused" : "failed";
     evidence.reason = `uncaught: ${error instanceof Error ? error.message : String(error)}`.slice(0, 500);
-    emit(evidence, outPath);
   } finally {
-    try {
-      const close = await ae.close({ unsavedChanges: "discard" });
-      step("close", { ok: true, ...close });
-    } catch (error) {
-      step("close", { ok: false, error: error instanceof Error ? error.message : String(error) });
+    if (ae !== null) {
+      try {
+        const close = await ae.close({ unsavedChanges: "discard" });
+        step("close", { ok: true, ...close });
+      } catch (error) {
+        step("close", { ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
     }
+    const post = inScopeAEPids(install);
+    step("postflight-census", { remainingInScope: post, dialogObservations });
+    if (post.length > 0 && evidence.outcome !== "refused") {
+      evidence.postflightNote =
+        "owned AE did not exit cleanly; remaining in-scope pid(s) reported, not killed";
+    }
+    emit(evidence, outPath);
   }
 }
 
