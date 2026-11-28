@@ -594,6 +594,12 @@ export async function openAfterEffects(
               bootSupervision?.stop();
               bootSupervision = null;
             },
+            // Readiness classification (#444): the driver reads the boot
+            // monitor's durable report when a launch wait fails, so a
+            // startup modal is named (`modal-blocked:<class>`) instead of
+            // collapsing into an opaque timeout. Read-only — the monitor
+            // itself never presses.
+            report: () => bootSupervision?.report() ?? null,
           },
         }),
     ...(hostScript === null ? {} : { hostScriptPath: hostScript }),

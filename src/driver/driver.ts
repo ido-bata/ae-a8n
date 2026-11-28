@@ -69,8 +69,13 @@ import {
   writeSessionManifest,
   type SessionPaths,
 } from "../protocol/workspace.js";
-import type { TraceRecorder, TraceStatus } from "../trace/trace.js";
-import type { PendingRequest, SupervisionPhase, SupervisionReport } from "../supervision/types.js";
+import type { TraceRecorder, TraceStatus, TraceStepTiming } from "../trace/trace.js";
+import type {
+  PendingRequest,
+  SupervisionPhase,
+  SupervisionReport,
+  SupervisionWindow,
+} from "../supervision/types.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -144,10 +149,60 @@ export class TimeoutError extends Error {
   }
 }
 
+/**
+ * Why a readiness wait ended without a ready host (#444). The vocabulary is
+ * deliberately small and honest:
+ *
+ * - `modal-blocked`: supervision observed a blocking window. `code` carries
+ *   `modal-blocked:<dialogClass>` (or `modal-blocked:unclassified` when the
+ *   taxonomy matched nothing) and `modal` carries the window's tier — a
+ *   `human-required` window is recorded, never pressed.
+ * - `still-launching`: the readiness budget ran out and no After Effects
+ *   process could be proven at all — it may simply not have appeared yet.
+ * - `probe-failure`: the probe was actively refused or errored (denied
+ *   Apple Event, launcher failure, host gone), or the host process is gone.
+ * - `timeout`: the budget ran out with the host process present but silent.
+ *   An AX-invisible modal cannot be ruled out in this state — the honest
+ *   answer is "unanswered", not a guessed cause.
+ */
+export type ReadinessReason = "modal-blocked" | "still-launching" | "probe-failure" | "timeout";
+
+/** The blocking window a `modal-blocked` readiness failure saw, classified. */
+export type ReadinessModal = {
+  /** Registered taxonomy class, or null when nothing matched. */
+  readonly dialogClass: string | null;
+  /** The supervision tier (`human-required`, `auto-safe`, `unknown`, …). */
+  readonly tier: string | null;
+  /** The diagnostic code the class carries, when it has one. */
+  readonly code: string | null;
+  readonly title: string;
+  /** Host-level state the observation reported. */
+  readonly host: string;
+};
+
+/** Structured classification of a failed readiness wait (#444). */
+export type ReadinessFailure = {
+  /** The readiness phase the wait was in when it failed. */
+  readonly phase: string;
+  readonly reason: ReadinessReason;
+  /** Stable machine-readable code: `modal-blocked:<class>` or the reason. */
+  readonly code: string;
+  /** One-line human-readable detail. */
+  readonly detail: string;
+  /** Present only for `modal-blocked`. */
+  readonly modal?: ReadinessModal;
+};
+
 export class HostUnavailableError extends Error {
-  constructor(message: string) {
+  /** Structured readiness classification, when the failure was a launch wait (#444). */
+  readonly readiness?: ReadinessFailure;
+
+  constructor(message: string, readiness?: ReadinessFailure) {
     super(message);
     this.name = "HostUnavailableError";
+    if (readiness !== undefined) {
+      this.readiness = readiness;
+    }
   }
 }
 
@@ -184,8 +239,10 @@ export class HostLeftRunningError extends Error {
   readonly code = "A8N-AE-005" as const;
   /** The process this session started and could not prove. */
   readonly launch: PendingLaunch;
+  /** Structured readiness classification of the failed wait (#444), when known. */
+  readonly readiness?: ReadinessFailure;
 
-  constructor(launch: PendingLaunch, cause: unknown) {
+  constructor(launch: PendingLaunch, cause: unknown, readiness?: ReadinessFailure) {
     const session = launch.session;
     const where =
       session === null
@@ -203,11 +260,16 @@ export class HostLeftRunningError extends Error {
         "unknown; check before running again.";
     super(
       `After Effects was started (pid ${String(launch.pid)}${started}, ${launch.executable}${where}) ` +
-        `but did not answer the readiness probe: ${errorMessage(cause)}. ${aftermath}`,
+        `but did not answer the readiness probe: ${errorMessage(cause)}.` +
+        (readiness === undefined ? "" : ` Readiness: ${readiness.code} — ${readiness.detail}.`) +
+        ` ${aftermath}`,
       { cause },
     );
     this.name = "HostLeftRunningError";
     this.launch = launch;
+    if (readiness !== undefined) {
+      this.readiness = readiness;
+    }
   }
 }
 
@@ -252,6 +314,12 @@ export type DriverOptions = {
   readonly bootSupervision?: {
     start(): void;
     stop(): void;
+    /**
+     * The boot monitor's latest durable report, when it can answer (#444).
+     * Read-only: the driver consults it to classify a failed readiness
+     * wait. Absent means "no observation", never a guessed clean state.
+     */
+    report?(): SupervisionReport | null;
   };
 };
 
@@ -328,7 +396,9 @@ export class AeDriver {
   readonly #recovery: HostRecovery | undefined;
   readonly #recoveryGraceMs: number;
   readonly #supervision: { report(): SupervisionReport | null } | undefined;
-  readonly #bootSupervision: { start(): void; stop(): void } | undefined;
+  readonly #bootSupervision:
+    | { start(): void; stop(): void; report?(): SupervisionReport | null }
+    | undefined;
   /** The request currently inside `#settle`, for supervision's pending list. */
   #inFlight: { readonly id: string; readonly method: string; readonly since: string } | null = null;
   #started = false;
@@ -443,8 +513,45 @@ export class AeDriver {
       throw new HostLeftRunningError(left.launch, left.cause);
     }
     const began = Date.now();
+    // Readiness phase instrumentation (#444): every wait `start()` performs
+    // lands here as a named step, and the whole list rides the
+    // `session.launch` trace row's `stepTimings` — success and failure
+    // alike — so the attempt ledger and `scripts/acceptance-metrics.js` can
+    // name the phase that spent (or failed) the budget. Transport
+    // sub-phases (`process-census`, `pid-observe`, …) are folded in after
+    // `process-spawn`.
+    const readiness: TraceStepTiming[] = [];
+    /** The phase the wait is currently in; the failure classifier reads it. */
+    let readinessPhase = "process-spawn";
+    const timeReadinessPhase = async <T>(
+      stepId: string,
+      fn: () => T | Promise<T>,
+    ): Promise<T> => {
+      const started = Date.now();
+      const startedAt = new Date(started).toISOString();
+      try {
+        const value = await fn();
+        readiness.push({ stepId, startedAt, durationMs: Date.now() - started });
+        return value;
+      } catch (error) {
+        readiness.push({
+          stepId,
+          startedAt,
+          durationMs: Date.now() - started,
+          actual: { error: nameOf(error) },
+        });
+        throw error;
+      }
+    };
     try {
-      await this.#transport.launch();
+      await timeReadinessPhase("process-spawn", () => this.#transport.launch());
+      for (const phase of this.#transport.launchPhases?.() ?? []) {
+        readiness.push({
+          stepId: phase.stepId,
+          startedAt: phase.startedAt,
+          durationMs: phase.durationMs,
+        });
+      }
       // Boot supervision (#339): launch() has already run the transport's
       // process census, so the spawned or selected pid is attributable
       // before the probe's first ExtendScript response. Observation is
@@ -457,55 +564,90 @@ export class AeDriver {
           error: { name: nameOf(error), message: errorMessage(error) },
         });
       }
-      if (this.#transport.awaitScriptable !== undefined) {
-        const scriptable = await this.#transport.awaitScriptable(this.#readinessTimeoutMs);
+      const awaitScriptable = this.#transport.awaitScriptable?.bind(this.#transport);
+      if (awaitScriptable !== undefined) {
+        readinessPhase = "scriptable-wait";
+        const scriptable = await timeReadinessPhase("scriptable-wait", () =>
+          awaitScriptable(this.#readinessTimeoutMs),
+        );
         if (!scriptable) {
+          const failure = this.#classifyReadiness(readinessPhase, null, true);
           throw new HostUnavailableError(
             `After Effects did not become ready to run scripts within ${this.#readinessTimeoutMs}ms ` +
-              `(a dialog may be open in it, such as crash recovery); no script was sent`,
+              `— readiness ${failure.code}: ${failure.detail}; no script was sent`,
+            failure,
           );
         }
+      } else {
+        // Uniform phase shape for transports with no scriptable wait (the
+        // fake, the dispatcher): the phase is recorded as skipped rather
+        // than silently absent, so per-phase bounds never guess.
+        readiness.push({
+          stepId: "scriptable-wait",
+          startedAt: new Date().toISOString(),
+          durationMs: 0,
+          actual: { skipped: "transport has no awaitScriptable" },
+        });
       }
       // The probe and the teardown quit are lifecycle detail, not operations
       // the caller issued; naming them keeps the trace readable without
       // dropping the record.
-      const info = (await this.#call("app.info", {}, {
-        // Waiting for the host to be ready has used some of the budget, but
-        // the probe itself only needs the answer time of one script.
-        timeoutMs: this.#transport.awaitScriptable === undefined
-          ? this.#readinessTimeoutMs
-          : Math.max(Math.min(PROBE_AFTER_READY_MS, this.#readinessTimeoutMs), this.#readinessTimeoutMs - (Date.now() - began)),
-        opName: "session.probe",
-        ...(this.#transport.verifiesDestination === true ? { marker: "adopt" as const } : {}),
-      })) as {
+      readinessPhase = "extendscript-response";
+      const info = (await timeReadinessPhase("extendscript-response", () =>
+        this.#call("app.info", {}, {
+          // Waiting for the host to be ready has used some of the budget, but
+          // the probe itself only needs the answer time of one script.
+          timeoutMs: this.#transport.awaitScriptable === undefined
+            ? this.#readinessTimeoutMs
+            : Math.max(Math.min(PROBE_AFTER_READY_MS, this.#readinessTimeoutMs), this.#readinessTimeoutMs - (Date.now() - began)),
+          opName: "session.probe",
+          ...(this.#transport.verifiesDestination === true ? { marker: "adopt" as const } : {}),
+        }),
+      )) as {
         version: string;
         build?: string;
       };
-      this.#started = true;
-      this.#transport.confirmLaunched?.();
-      // Provenance is written only for a host this session proved it owns —
-      // owned by launch or by adoption alike. It is evidence for a later
-      // `resume`, never authority: the record is re-checked live on use.
-      // A write failure must not fail a session that is already usable.
-      const ownedProcess = this.#transport.ownedProcess?.() ?? null;
-      if (this.ownership().kind === "owned" && ownedProcess !== null) {
-        try {
-          recordLaunchProvenance(this.#paths.root, {
-            transport: this.#transport.kind,
-            host: ownedProcess,
-          });
-        } catch (error) {
-          this.#trace.record("session.provenance", "error", 0, {
-            error: { name: nameOf(error), message: errorMessage(error) },
-          });
+      readinessPhase = "handshake";
+      await timeReadinessPhase("handshake", () => {
+        this.#started = true;
+        this.#transport.confirmLaunched?.();
+        // Provenance is written only for a host this session proved it owns —
+        // owned by launch or by adoption alike. It is evidence for a later
+        // `resume`, never authority: the record is re-checked live on use.
+        // A write failure must not fail a session that is already usable.
+        const ownedProcess = this.#transport.ownedProcess?.() ?? null;
+        if (this.ownership().kind === "owned" && ownedProcess !== null) {
+          try {
+            recordLaunchProvenance(this.#paths.root, {
+              transport: this.#transport.kind,
+              host: ownedProcess,
+            });
+          } catch (error) {
+            this.#trace.record("session.provenance", "error", 0, {
+              error: { name: nameOf(error), message: errorMessage(error) },
+            });
+          }
         }
-      }
+      });
       this.#trace.record("session.launch", "ok", Date.now() - began, {
         args: { transport: this.#transport.kind },
         result: { ...info, ownership: this.ownership() },
+        stepTimings: readiness,
       });
       return info;
     } catch (error) {
+      // Readiness classification (#444) runs before the boot monitor is
+      // released: its durable report is the evidence a failed wait is
+      // classified from, and `stop()` drops the reader's reference to it.
+      // Observation only — nothing here presses a window.
+      const readinessFailure =
+        error instanceof HostUnavailableError && error.readiness !== undefined
+          ? error.readiness
+          : this.#classifyReadiness(
+              readinessPhase,
+              error,
+              error instanceof TimeoutError,
+            );
       // Whatever the boot hook started observes a launch that failed;
       // release it. The durable document it published stays behind —
       // readers see the last proven state and then monitor-lost, which is
@@ -520,20 +662,28 @@ export class AeDriver {
       // scriptable. The process is then this run's doing but unowned — it is
       // never quit on the strength of provenance, and the run must not drop
       // the one thing that names it.
+      //
+      // The failed wait is named — a supervision-observed modal
+      // (`modal-blocked:<class>`), a host that was never proven present
+      // (`still-launching`), an actively refused probe (`probe-failure`),
+      // or a silent-but-present host (`timeout`).
       const pending = this.#transport.pendingLaunch?.() ?? null;
       const detail = {
         args: { transport: this.#transport.kind },
         error: { name: nameOf(error), message: errorMessage(error) },
+        result: { readiness: readinessFailure },
+        stepTimings: readiness,
       };
       if (pending === null) {
         this.#trace.record("session.launch", "error", Date.now() - began, detail);
         throw error;
       }
       this.#leftRunning = { launch: pending, cause: error };
-      const leftRunning = new HostLeftRunningError(pending, error);
+      const leftRunning = new HostLeftRunningError(pending, error, readinessFailure);
       this.#trace.record("session.launch", "error", Date.now() - began, {
         ...detail,
         result: {
+          readiness: readinessFailure,
           pendingLaunch: {
             pid: pending.pid,
             startedAt: pending.startedAt,
@@ -548,6 +698,132 @@ export class AeDriver {
       });
       throw leftRunning;
     }
+  }
+
+  /**
+   * Classifies a failed readiness wait (#444). Observation only — the
+   * supervision report is read, never acted on: a `human-required` or
+   * unclassified window is recorded in `modal` and left for a human, the
+   * same contract the post-launch recovery path follows.
+   *
+   * The report consulted is the boot monitor's when one is running — it is
+   * the observer that exists during `start()`; the post-probe monitor is
+   * the fallback. A report that cannot answer (absent, unavailable,
+   * corrupt) is skipped, never treated as a clean screen. An AX-invisible
+   * modal — the BirthPrefs shape from the #436 RC run — produces no
+   * blocking window here, so it classifies as `timeout` with the honest
+   * note that an invisible modal cannot be ruled out; it is never guessed
+   * into a class the taxonomy did not measure.
+   */
+  #classifyReadiness(phase: string, cause: unknown, timedOut: boolean): ReadinessFailure {
+    try {
+      const report =
+        this.#bootSupervision?.report?.() ?? this.#supervision?.report() ?? null;
+      if (report?.status === "observed") {
+        const blocking = (report.doc.blocking?.windows ?? []).filter(
+          (window) => window.blocking,
+        );
+        if (blocking.length > 0) {
+          const modal = this.#primaryBlockingWindow(blocking);
+          const dialogClass = modal.dialogClass ?? "unclassified";
+          const summary = modal.content?.summary ?? "";
+          return {
+            phase,
+            reason: "modal-blocked",
+            code: `modal-blocked:${dialogClass}`,
+            detail:
+              `${blocking.length} blocking window(s) observed` +
+              (summary.length > 0
+                ? `: ${summary}`
+                : modal.dialogClass === null
+                  ? " (no measured dialog class matched)"
+                  : ""),
+            modal: {
+              dialogClass: modal.dialogClass,
+              tier: modal.tier,
+              code: modal.code,
+              title: modal.title,
+              host: report.doc.blocking?.host ?? "unknown",
+            },
+          };
+        }
+      }
+      const state = this.#transport.hostState?.();
+      const pending = this.#transport.pendingLaunch?.() ?? null;
+      const gone =
+        state === "gone" || (pending !== null && !pending.presentAtLastLookup);
+      const present = state === "alive" || pending?.presentAtLastLookup === true;
+      if (gone) {
+        return {
+          phase,
+          reason: "probe-failure",
+          code: "probe-failure",
+          detail:
+            "the After Effects process is gone" +
+            (pending === null ? "" : ` (pid ${String(pending.pid)})`) +
+            " before it became ready",
+        };
+      }
+      if (timedOut) {
+        return present
+          ? {
+              phase,
+              reason: "timeout",
+              code: "timeout",
+              detail:
+                "the host process is present but never answered within the readiness " +
+                "budget; a modal invisible to the accessibility layer cannot be ruled out",
+            }
+          : {
+              phase,
+              reason: "still-launching",
+              code: "still-launching",
+              detail:
+                "no After Effects process could be proven within the readiness " +
+                `budget (host state: ${state ?? "unknown"})`,
+            };
+      }
+      return {
+        phase,
+        reason: "probe-failure",
+        code: "probe-failure",
+        detail:
+          cause === null || cause === undefined
+            ? "the readiness probe failed"
+            : errorMessage(cause),
+      };
+    } catch {
+      // Classification is evidence, never a new failure mode: if even the
+      // observation path breaks, the wait's own outcome still stands.
+      return {
+        phase,
+        reason: timedOut ? "timeout" : "probe-failure",
+        code: timedOut ? "timeout" : "probe-failure",
+        detail: "readiness classification itself failed; the wait outcome stands",
+      };
+    }
+  }
+
+  /**
+   * The window a `modal-blocked` classification names: a classified
+   * human-required window first (it is the one a human must see), then any
+   * classified window, then the first observed. Observation order is never
+   * evidence of severity, so the pick is by tier, not by position.
+   */
+  #primaryBlockingWindow(windows: readonly SupervisionWindow[]): SupervisionWindow {
+    const rank = (window: SupervisionWindow): number => {
+      if (window.dialogClass === null) {
+        return 3;
+      }
+      if (window.tier === "human-required") {
+        return 0;
+      }
+      if (window.tier === "unknown") {
+        return 1;
+      }
+      return 2;
+    };
+    return [...windows].sort((a, b) => rank(a) - rank(b))[0] ?? windows[0]!;
   }
 
   /** Who owns the host process right now; see `HostOwnership`. */
