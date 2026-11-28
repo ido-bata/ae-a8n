@@ -195,8 +195,29 @@ export type GuiAppState = {
    * shows that AX-derived conclusions cannot see. Empty when the census
    * is unavailable (already degraded) or every on-screen window is
    * accounted for.
+   *
+   * This is the blocking-evidence subset: `onScreen` is required because
+   * only what the visible screen shows can block the host right now.
+   * The superset — the same unaccounted rows regardless of `onScreen` —
+   * is `axUnaccountedCensusWindows` below.
    */
   readonly axUnaccountedWindows: readonly WindowServerWindow[];
+  /**
+   * WindowServer census windows attributed to this pid that no
+   * Accessibility window accounts for, on ANY Space and whether on-screen
+   * or not (#451). `axUnaccountedWindows` is the on-screen subset used
+   * for blocking evidence; this field is degraded observation only —
+   * each row is a surface AX cannot see, honestly labelled "possibly
+   * parked/offscreen — not proven blocking". It exists because an
+   * AX-invisible modal can be parked (`onScreen: false`, layer 0) and
+   * still be the thing that stopped the host answering: measured on the
+   * AE 2027 BirthPrefs modal (pid 18577, issue #451), where the census
+   * showed the modal off-screen while AX reported zero windows. Rows
+   * carry `windowNumber` so a read-only `captureWindowById` can still
+   * image them. Empty when the census is unavailable or every census
+   * window is accounted for. This field NEVER feeds a blocking verdict.
+   */
+  readonly axUnaccountedCensusWindows: readonly WindowServerWindow[];
   /**
    * AX-listed windows the census attributes to OTHER pids (#330): the
    * bundle-confused listing of issue #330, where `windows of process`
@@ -235,19 +256,20 @@ export function framesMatch(ax: GuiFrame, ws: GuiFrame): boolean {
 }
 
 /**
- * Whether one census window is an on-screen surface no AX window accounts
- * for. Only on-screen windows with real bounds count: the census also
- * lists windows parked on other Spaces and minimized ones, which are not
- * evidence about what is blocking the screen right now (a healthy AE owns
- * several of those while AX shows only the visible window — measured
- * 2026-11-23, #321).
+ * Whether one census window is a surface no AX window accounts for,
+ * regardless of `onScreen`. Only rows with real bounds count: a census
+ * row without geometry cannot be matched or captured, so it is skipped
+ * rather than guessed at. Parked, off-Space and minimized windows ARE
+ * admitted here on purpose — they are degraded evidence (#451), never
+ * proof of a blocker: a healthy AE owns several while AX shows only the
+ * visible window (measured 2026-11-23, #321).
  */
-function isAxUnaccountedWindow(
+function isAxUnaccountedCensusWindow(
   ws: WindowServerWindow,
   pid: number,
   windows: readonly GuiWindowInfo[],
 ): boolean {
-  if (ws.pid !== pid || !ws.onScreen) {
+  if (ws.pid !== pid) {
     return false;
   }
   const bounds = ws.bounds;
@@ -257,6 +279,20 @@ function isAxUnaccountedWindow(
   return !windows.some(
     (ax) => ax.frame != null && framesMatch(ax.frame, bounds),
   );
+}
+
+/**
+ * Whether one census window is an on-screen surface no AX window accounts
+ * for. On-screen is the blocking-evidence bar (#321); the off-screen rows
+ * the same predicate admits are `axUnaccountedCensusWindows`' degraded
+ * evidence instead (#451).
+ */
+function isAxUnaccountedWindow(
+  ws: WindowServerWindow,
+  pid: number,
+  windows: readonly GuiWindowInfo[],
+): boolean {
+  return ws.onScreen && isAxUnaccountedCensusWindow(ws, pid, windows);
 }
 
 /**
@@ -317,6 +353,9 @@ export function assessGuiObservation(
   census: WindowCensus,
 ): GuiAppState {
   const mine = censusForPid(census, pid);
+  const axUnaccountedCensusWindows = census.available
+    ? census.windows.filter((ws) => isAxUnaccountedCensusWindow(ws, pid, windows))
+    : [];
   const axUnaccountedWindows = census.available
     ? census.windows.filter((ws) => isAxUnaccountedWindow(ws, pid, windows))
     : [];
@@ -361,6 +400,7 @@ export function assessGuiObservation(
           "windows are AX-invisible (#330)"
       : null,
     axUnaccountedWindows,
+    axUnaccountedCensusWindows,
     axForeignWindowCount: observed.filter(
       (window) => window.censusAttribution === "foreign",
     ).length,

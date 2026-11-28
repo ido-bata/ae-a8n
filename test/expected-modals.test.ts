@@ -85,6 +85,7 @@ class FakeGui implements GuiRecoverySurface {
       axSuspect: false,
       axSuspectReason: null,
       axUnaccountedWindows: [],
+      axUnaccountedCensusWindows: [],
       axForeignWindowCount: 0,
       axUnmatchedWindowCount: 0,
     };

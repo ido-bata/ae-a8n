@@ -14,12 +14,14 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AeDriver, TimeoutError } from "../src/driver/driver.js";
-import type { GuiWindowInfo } from "../src/driver/gui-recovery.js";
+import type { WindowServerWindow } from "../src/platform/darwin/window-census.js";
+import type { GuiAppState, GuiWindowInfo } from "../src/driver/gui-recovery.js";
 import {
   KNOWN_DIALOG_CLASSES,
   MacHostRecovery,
   chooseRecoveryWindow,
   classifyDialog,
+  type GuiRecoverySurface,
   type HostRecovery,
 } from "../src/driver/recovery.js";
 import type { HostOwnership, HostTransport, InvokeOptions } from "../src/driver/transport.js";
@@ -472,5 +474,148 @@ describe("the macOS host recovery's target process", () => {
     expect(outcome.recovered).toBe(false);
     expect(outcome.outcome).toBe("refused");
     expect(outcome.code).toBe("A8N-AE-004");
+  });
+});
+
+describe("the AX-invisible census evidence path (#451)", () => {
+  const censusWindow = (over: Partial<WindowServerWindow> = {}): WindowServerWindow => ({
+    pid: 4242,
+    owner: "After Effects",
+    layer: 8,
+    onScreen: false,
+    name: "BirthPrefs",
+    windowNumber: 777,
+    bounds: { x: 10, y: 20, width: 200, height: 100 },
+    ...over,
+  });
+
+  /** An AX-blind listing: no AX windows, census windows for the pid. */
+  function axBlindState(census: readonly WindowServerWindow[]): GuiAppState {
+    return {
+      pid: 4242,
+      frontmost: false,
+      windows: [],
+      windowServer: {
+        available: true,
+        reason: null,
+        windowCount: census.length,
+        onScreenCount: census.filter((w) => w.onScreen).length,
+      },
+      axSuspect: true,
+      axSuspectReason: "fixture: the AX listing is untrusted",
+      axUnaccountedWindows: [],
+      axUnaccountedCensusWindows: census,
+      axForeignWindowCount: 0,
+      axUnmatchedWindowCount: 0,
+    };
+  }
+
+  function fakeGui(
+    state: GuiAppState,
+    options: { windowCapture?: boolean; windowCaptureError?: Error } = {},
+  ): {
+    gui: GuiRecoverySurface;
+    captures: string[];
+    windowCaptures: Array<{ path: string; windowNumber: number }>;
+  } {
+    const captures: string[] = [];
+    const windowCaptures: Array<{ path: string; windowNumber: number }> = [];
+    const gui: GuiRecoverySurface = {
+      listWindows: () => state,
+      capture: (path: string) => {
+        captures.push(path);
+        return path;
+      },
+      pressButtonIn: () => false,
+      ...(options.windowCapture === false
+        ? {}
+        : {
+            captureWindowById: (path: string, windowNumber: number) => {
+              if (options.windowCaptureError !== undefined) {
+                throw options.windowCaptureError;
+              }
+              windowCaptures.push({ path, windowNumber });
+              return path;
+            },
+          }),
+    };
+    return { gui, captures, windowCaptures };
+  }
+
+  function hostRecovery(gui: GuiRecoverySurface) {
+    return new MacHostRecovery({
+      session: { uid: 502, username: "test", asid: 100040, kind: "Aqua" },
+      pid: () => 4242,
+      screenshotDir: join(root, "shots"),
+      gui,
+    });
+  }
+
+  const CONTEXT = { requestId: "req-1", method: "app.info", timeoutMs: 1000 };
+
+  it("captures the session and each census window AX cannot see", async () => {
+    // The BirthPrefs shape: AX reports nothing, the census lists the
+    // modal parked off-screen. The old branch returned before any
+    // capture; now every census row is imaged by window number.
+    const state = axBlindState([
+      censusWindow({ windowNumber: 777, onScreen: false }),
+      censusWindow({ layer: 0, onScreen: true, name: "", windowNumber: 778, bounds: null }),
+    ]);
+    const { gui, captures, windowCaptures } = fakeGui(state);
+    const outcome = await hostRecovery(gui).attempt(CONTEXT);
+    expect(outcome.recovered).toBe(false);
+    expect(outcome.outcome).toBe("refused");
+    // The session screenshot exists — the branch no longer skips it.
+    expect(captures).toHaveLength(1);
+    expect(outcome.screenshotPath).toBe(captures[0]);
+    // Each census window was addressed by its window number.
+    expect(windowCaptures.map((c) => c.windowNumber)).toEqual([777, 778]);
+    expect(outcome.censusCaptures).toHaveLength(2);
+    expect(outcome.censusCaptures?.[0]?.path).toBe(windowCaptures[0]?.path);
+    // The off-screen row is labelled honestly, never as a proven blocker.
+    expect(outcome.censusCaptures?.[0]?.window).toContain("possibly parked/offscreen");
+    expect(outcome.evidence).toContain("possibly parked/offscreen");
+    expect(outcome.evidence).toContain("invisible to AX");
+  });
+
+  it("records uncapturable rows with the reason instead of dropping them", async () => {
+    const state = axBlindState([
+      censusWindow({ windowNumber: null }),
+      censusWindow({ windowNumber: 779 }),
+    ]);
+    const { gui } = fakeGui(state, { windowCapture: false });
+    const outcome = await hostRecovery(gui).attempt(CONTEXT);
+    expect(outcome.censusCaptures).toHaveLength(2);
+    expect(outcome.censusCaptures?.[0]?.note).toContain("no window number");
+    expect(outcome.censusCaptures?.[1]?.note).toContain("cannot capture a single window");
+    expect(outcome.censusCaptures?.every((c) => c.path === undefined)).toBe(true);
+    // The session screenshot still ran: only the per-window path was absent.
+    expect(outcome.screenshotPath).toBeDefined();
+  });
+
+  it("records a failed window capture rather than claiming an image", async () => {
+    const state = axBlindState([censusWindow({ windowNumber: 780 })]);
+    const { gui } = fakeGui(state, { windowCaptureError: new Error("screencapture denied") });
+    const outcome = await hostRecovery(gui).attempt(CONTEXT);
+    expect(outcome.censusCaptures?.[0]?.path).toBeUndefined();
+    expect(outcome.censusCaptures?.[0]?.note).toContain("window capture failed");
+  });
+
+  it("captures nothing when AX and the census agree there is nothing to see", async () => {
+    // A routine timeout with a clean observation keeps the old shape:
+    // no screenshot was owed, so none is invented.
+    const state: GuiAppState = {
+      ...axBlindState([]),
+      axSuspect: false,
+      axSuspectReason: null,
+      windowServer: { available: true, reason: null, windowCount: 0, onScreenCount: 0 },
+    };
+    const { gui, captures, windowCaptures } = fakeGui(state);
+    const outcome = await hostRecovery(gui).attempt(CONTEXT);
+    expect(outcome.outcome).toBe("refused");
+    expect(outcome.screenshotPath).toBeUndefined();
+    expect(outcome.censusCaptures).toBeUndefined();
+    expect(captures).toHaveLength(0);
+    expect(windowCaptures).toHaveLength(0);
   });
 });

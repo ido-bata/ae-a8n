@@ -77,6 +77,7 @@ function appState(windows: readonly GuiWindowInfo[], over: Partial<GuiAppState> 
     axSuspect: false,
     axSuspectReason: null,
     axUnaccountedWindows: [],
+    axUnaccountedCensusWindows: [],
     axForeignWindowCount: 0,
     axUnmatchedWindowCount: 0,
     ...over,

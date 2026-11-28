@@ -83,6 +83,7 @@ function appState(windows: readonly GuiWindowInfo[]): GuiAppState {
     axSuspect: false,
     axSuspectReason: null,
     axUnaccountedWindows: [],
+    axUnaccountedCensusWindows: [],
     axForeignWindowCount: 0,
     axUnmatchedWindowCount: 0,
   };

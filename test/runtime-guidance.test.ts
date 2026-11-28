@@ -254,6 +254,39 @@ describe("supervision report nextActions", () => {
     }
   });
 
+  it("blocked and quarantined phases name the terminate → rebuild exit, withheld pending permit (#451)", () => {
+    // The defect set: guidance named wait/inspect/human steps but never the
+    // terminate→rebuild escape hatch that supervisionNextActions could
+    // already describe. Now blocked, recovering and quarantined reports all
+    // name it — allowed:false because the permit is required.
+    const cases: Array<{ name: string; doc: SupervisionStateDoc }> = [
+      {
+        name: "blocked",
+        doc: docWith([blocking("none", "1 blocking window(s): X", "unknown")]),
+      },
+      {
+        name: "quarantined",
+        doc: docWith([
+          blocking("none", "1 blocking window(s): X", "unknown"),
+          { kind: "quarantine", reason: "fixture" },
+        ]),
+      },
+    ];
+    for (const { name, doc } of cases) {
+      const report = reportFor(doc);
+      if (report.status !== "observed") throw new Error("expected observed");
+      expectWellFormed(report.nextActions);
+      const terminate = report.nextActions.find((a) => a.code === "session.terminate");
+      expect(terminate, `${name} phase must name the terminate exit`).toBeDefined();
+      expect(terminate?.kind).toBe("automatic");
+      // Withheld: the permit gates it, so automation is never told it may run.
+      expect(terminate?.allowed).toBe(false);
+      expect(terminate?.reason.code).toBe("requires-permission");
+      expect(terminate?.action).toContain("terminate-owned-host");
+      expect(terminate?.action).toContain("rebuild");
+    }
+  });
+
   it("absent state: unavailable is explicit, with evidence path and guidance", () => {
     const dir = sessionRoot();
     const report = supervisionReport(dir, { now: NOW });
