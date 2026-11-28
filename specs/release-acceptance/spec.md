@@ -147,6 +147,7 @@ Each row is a contract-level scenario (`RC-S*`). "Accept" means the scenario mus
 | RC-S14 | Recording overhead measurement | US-B4 | §6 recording-overhead budget measured and recorded (`measuredOverheadMs`, fps/drop stats) | within gui-evidence §11 budget or capability reports `degraded` with numbers | accept **only when recording is in the candidate**; otherwise `not-applicable` with reason |
 | RC-S15 | Multi-instance non-interference | US-A3 | Two supervised sessions (or AE instances) do not cross-attribute windows, leases, or state | zero cross-attributed actions; per-session state isolated | accept where multi-instance is supported; else `not-applicable` |
 | RC-S16 | Packed-consumer path (ae-test / ae-devtools / named consumer) | US-A4, US-B1..B4 | Consumer drives the same tarball through its real entry point; consumer-visible results match ledger | consumer run recorded as attempts on the same candidate identity | accept per consumer availability; a consumer that cannot run reports `blocked`, not absent |
+| RC-S17 | AX-invisible anomaly end-to-end (live BirthPrefs-modal subject, #453; #337 Plan A) | US-A1, US-A4 | Detect → recover-or-authorized-safe-exit → readiness → follow-up ops → teardown, all on public paths only, against an anomaly the AX layer cannot see (census-visible, AX-unaccounted; onScreen:false modal shape) | every step lands in the ledger with per-step timing, decision basis, state changes and teardown verdict; an unowned/provenance-less host must be refused by terminate (fail-closed is the correct outcome, not a pass of the exit step); a reproduction gap (anomaly not re-triggerable on a provenance-bearing host) is recorded `indeterminate`/`blocked` with reason, never claimed | accept (macOS); evidence `docs/evidence/release-0-7-0-rc-s17/` |
 
 **Explicitly out of scope for RC acceptance** (from #337 non-goals and safety boundaries — recorded here so their absence is a decision, not an omission):
 
@@ -202,7 +203,7 @@ Verdict ∈ `clean` / `residue` (with itemized list) / `unverifiable` (could not
 An RC acceptance run is judged as follows:
 
 1. **Preconditions**: candidate frozen (§3); budgets declared (§6); fixture manifest fixed (§7); guarantee-boundary matrix published (§9); platform lanes named.
-2. **Execution**: scenarios RC-S1..RC-S16 run on the public path (§4) per platform lane; every attempt lands in the ledger (§5); teardown verdicts recorded (§10).
+2. **Execution**: scenarios RC-S1..RC-S17 run on the public path (§4) per platform lane; every attempt lands in the ledger (§5); teardown verdicts recorded (§10).
 3. **Per-scenario verdict**: `pass` requires the verdict criterion *and* the consecutive-success rule (§7) *and* all budgets met; otherwise `fail` / `indeterminate` / `blocked` / `environment` / `not-applicable` as defined.
 4. **Per-US verdict**: a US is accepted only when every scenario mapped to it in §13 has a `pass` verdict on every required platform lane, or an explicit `not-applicable`/`out-of-scope` row with recorded reason. US verdicts roll up to the RC verdict: `pass` only if every in-scope US passes; any `fail` → `fail`; missing evidence → `blocked`. The RC verdict is an input to the human release decision in `docs/releasing.md`, not a publish authorization.
 5. **Evidence packaging**: ledger + run manifest + budgets + fixture manifest + matrix + teardown verdicts + per-platform `platforms/*.json` records bound to the candidate identity, under `docs/evidence/`.
@@ -213,10 +214,10 @@ Every #337 user story maps to at least one RC scenario or an explicit out-of-sco
 
 | US | Scenarios | Notes / out-of-scope |
 | --- | --- | --- |
-| US-A1 (detect/classify/respond to blocking states on the normal path) | RC-S1, RC-S2, RC-S3, RC-S4, RC-S5, RC-S6, RC-S12 | Unknown-class handling ends in controlled stop by design; "every dialog auto-safe" is a non-goal (§8) |
+| US-A1 (detect/classify/respond to blocking states on the normal path) | RC-S1, RC-S2, RC-S3, RC-S4, RC-S5, RC-S6, RC-S12, RC-S17 | Unknown-class handling ends in controlled stop by design; "every dialog auto-safe" is a non-goal (§8) |
 | US-A2 (UNKNOWN non-resend; proven-loss rebuild; new-generation continuation) | RC-S2, RC-S7 | Arbitrary-script side-effect restoration / mid-op resume: out-of-scope per #337 |
 | US-A3 (execution-mode/ownership boundaries; non-interference; no consent auto-approval) | RC-S8, RC-S9, RC-S15 | Remote-worker supervision: ae-farm scope, out-of-scope |
-| US-A4 (runtime facts, nextActions, evidence on every surface) | RC-S1, RC-S12, RC-S16 | Consumer-specific UX depth is downstream scope; ae-a8n must expose the facts |
+| US-A4 (runtime facts, nextActions, evidence on every surface) | RC-S1, RC-S12, RC-S16, RC-S17 | Consumer-specific UX depth is downstream scope; ae-a8n must expose the facts |
 | US-A5 (test outcome/recovery/retry separation; circuit breaker; no fake PASS/SKIP) | RC-S7, RC-S10 | — |
 | US-B1 (panel identify → resize → capture → ae-test assertion, both OS) | RC-S16 (+ capability ops in §9 matrix) | Accept **when B-PANEL/B-TEST slices are in the candidate**; until then `not-applicable` with tracking (#343, ae-test#144) — never claimed |
 | US-B2 (CEP composition vs OS IME E2E; input/convert/confirm/cancel) | RC-S16 (+ B-IME ops) | Accept when B-IME (#344) slice is in the candidate; ScriptUI/native/custom-draw surfaces per actual verification, internal composition observation not initially required (#337) |
@@ -230,5 +231,5 @@ Every #337 user story maps to at least one RC scenario or an explicit out-of-sco
 | This acceptance contract exists as spec/ADR text | `implemented` (this document) |
 | Anchors cited (`readinessTimeoutMs` 180 s default, monitor interval 2 s / TTL 30 s, `recoveryGraceMs`, UNKNOWN non-resend, `platforms/*.json` schema, gui-evidence §11 budget proposal, #406 AX non-vend behavior) | `implemented` — read from source/docs; the underlying behaviors carry their own levels per the safety-gates audit |
 | Attempt ledger, guarantee-boundary matrix, teardown verdict, RC harness | not implemented — follow-up tickets; this spec fixes only the required shape |
-| Any RC scenario outcome (RC-S1..RC-S16) | `unverified` — no RC run has executed under this contract |
+| Any RC scenario outcome (RC-S1..RC-S17) | `unverified` — no RC run has executed under this contract |
 | "10 consecutive" bar | codified here from the provisional convention used in earlier real-host runs; the number is a contract decision, not a measurement |
