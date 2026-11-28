@@ -1,0 +1,146 @@
+{
+  "pid": 37622,
+  "frontmost": false,
+  "axSuspect": true,
+  "axSuspectReason": "the AX window listing is empty while the WindowServer census lists 6 window(s) for pid 37622 — the app may not vend AX windows at all (After Effects, #406) or the listing is untrusted; only AXFocusedWindow is reachable",
+  "windowServer": {
+    "available": true,
+    "reason": null,
+    "windowCount": 6,
+    "onScreenCount": 0
+  },
+  "axUnaccountedCensusWindows": [
+    {
+      "pid": 37622,
+      "owner": "After Effects",
+      "layer": 0,
+      "onScreen": false,
+      "name": "",
+      "windowNumber": 9716,
+      "bounds": {
+        "x": 592,
+        "y": 367,
+        "width": 525,
+        "height": 377
+      }
+    },
+    {
+      "pid": 37622,
+      "owner": "After Effects",
+      "layer": 0,
+      "onScreen": false,
+      "name": "",
+      "windowNumber": 9736,
+      "bounds": {
+        "x": 0,
+        "y": 612,
+        "width": 500,
+        "height": 500
+      }
+    },
+    {
+      "pid": 37622,
+      "owner": "After Effects",
+      "layer": 0,
+      "onScreen": false,
+      "name": "",
+      "windowNumber": 9727,
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 1710,
+        "height": 38
+      }
+    },
+    {
+      "pid": 37622,
+      "owner": "After Effects",
+      "layer": 0,
+      "onScreen": false,
+      "name": "",
+      "windowNumber": 9726,
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 1710,
+        "height": 38
+      }
+    },
+    {
+      "pid": 37622,
+      "owner": "After Effects",
+      "layer": 0,
+      "onScreen": false,
+      "name": "",
+      "windowNumber": 9725,
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 1710,
+        "height": 38
+      }
+    },
+    {
+      "pid": 37622,
+      "owner": "After Effects",
+      "layer": 0,
+      "onScreen": false,
+      "name": "",
+      "windowNumber": 9724,
+      "bounds": {
+        "x": 0,
+        "y": 0,
+        "width": 1710,
+        "height": 38
+      }
+    }
+  ],
+  "axForeignWindowCount": 0,
+  "axUnmatchedWindowCount": 0,
+  "windows": [],
+  "captures": [
+    {
+      "layer": 0,
+      "onScreen": false,
+      "name": "",
+      "windowNumber": 9716,
+      "path": "/Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-c-subject-37622/window-9716.png"
+    },
+    {
+      "layer": 0,
+      "onScreen": false,
+      "name": "",
+      "windowNumber": 9736,
+      "path": "/Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-c-subject-37622/window-9736.png"
+    },
+    {
+      "layer": 0,
+      "onScreen": false,
+      "name": "",
+      "windowNumber": 9727,
+      "path": "/Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-c-subject-37622/window-9727.png"
+    },
+    {
+      "layer": 0,
+      "onScreen": false,
+      "name": "",
+      "windowNumber": 9726,
+      "path": "/Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-c-subject-37622/window-9726.png"
+    },
+    {
+      "layer": 0,
+      "onScreen": false,
+      "name": "",
+      "windowNumber": 9725,
+      "path": "/Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-c-subject-37622/window-9725.png"
+    },
+    {
+      "layer": 0,
+      "onScreen": false,
+      "name": "",
+      "windowNumber": 9724,
+      "path": "/Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-c-subject-37622/window-9724.png"
+    }
+  ],
+  "sessionShot": "/Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-c-subject-37622/session.png"
+}

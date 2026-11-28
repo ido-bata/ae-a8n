@@ -1,0 +1,16 @@
+{
+  "phase": "B",
+  "verdict": "indeterminate",
+  "notes": [
+    "launch2027: AfterEffectsError: no After Effects process this run started could be tied to it: app.info (97ca7a1f-02db-4fe7-a841-be13f8b7d8a4) timed out and no host process was found",
+    "supervise status(2027) exit=6",
+    "supervise terminate(2027, --force) exit=4",
+    "launch2026: AfterEffectsError: After Effects was started (pid 37622, started 2026-11-28T10:08:43.000Z, /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 159908ms; the After Effects process is still running but did not answer; the call took 166613ms in",
+    "final census: [{\"pid\":18577,\"uid\":501,\"executable\":\"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects\"},{\"pid\":37622,\"uid\":501,\"executable\":\"/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects\"}]; subject 18577 alive=true",
+    "both launch attempts failed; see per-attempt readiness evidence"
+  ],
+  "roots": {
+    "r2027": "/Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-b-launch-2027-r2",
+    "r2026": "/Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-b-launch-2026"
+  }
+}
