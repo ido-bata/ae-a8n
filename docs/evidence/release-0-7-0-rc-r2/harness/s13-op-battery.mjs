@@ -37,7 +37,7 @@ try {
     return d ? Object.keys(d).length : "no diagnostics api";
   });
   await steps.run("openProject", "open fixture", async () => {
-    const p = await ae.openProject(FIXTURE.path);
+    const p = await ae.openProject(FIXTURE.path, { unsavedChanges: "discard" });
     return (await p.info()).itemCount;
   });
   await steps.run("project-state", "project.state", async () => {

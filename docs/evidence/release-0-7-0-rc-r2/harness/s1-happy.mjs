@@ -40,6 +40,16 @@ try {
     ["trace:session.launch"],
   );
 
+  // RC-S1 is the OWNED path only: an attached session (a leftover AE 2027
+  // already running) proves nothing about launch→owned-close and must
+  // never score pass — same false-pass class as run-1 planb-a (#436).
+  const own = ae.ownership?.();
+  if (own?.kind !== "owned") {
+    verdict = "indeterminate";
+    notes.push(`launch resolved as ownership=${own?.kind} (${String(own?.evidence).slice(0, 160)}) — not the owned RC-S1 path; scenario not exercised`);
+    throw new Error("not an owned session");
+  }
+
   await steps.run("capabilities", "ae.capabilities() returns handshake", async () => {
     const hs = await ae.capabilities();
     return { contractVersion: hs.contractVersion, ownership: hs.target.ownership, caps: hs.availableCapabilities.length };
@@ -54,7 +64,7 @@ try {
     "openProject+state",
     `ae.openProject(${FIXTURE.id}) succeeds; project.info/state report the fixture`,
     async () => {
-      const p = await ae.openProject(FIXTURE.path);
+      const p = await ae.openProject(FIXTURE.path, { unsavedChanges: "discard" });
       const info = await p.info();
       const state = await p.state();
       return { file: info.file, name: info.name, itemCount: info.itemCount, state };
@@ -83,7 +93,7 @@ try {
   ae = null;
   verdict = "pass";
 } catch (e) {
-  verdict = "fail";
+  if (verdict !== "indeterminate") verdict = "fail";
   notes.push(`scenario error: ${e?.name}: ${String(e?.message ?? e).slice(0, 400)}`);
   try {
     if (ae) {

@@ -144,7 +144,7 @@ try {
   });
 
   await steps.run("openProject", "fixture opens", async () => {
-    const p = await ae.openProject(FIXTURE.path);
+    const p = await ae.openProject(FIXTURE.path, { unsavedChanges: "discard" });
     return (await p.info()).itemCount;
   });
 
