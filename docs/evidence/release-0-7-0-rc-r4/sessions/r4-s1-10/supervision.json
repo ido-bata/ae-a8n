@@ -1,9 +1,13 @@
 {
   "schemaVersion": "ae-a8n.supervision/v1",
   "sessionId": null,
-  "phase": "running",
+  "phase": "blocked",
   "observationHealth": "degraded",
-  "blocking": null,
+  "blocking": {
+    "host": "process-gone",
+    "windows": [],
+    "detail": "the recorded owned After Effects process is proven gone by terminate (pid 58673 still names the recorded After Effects (started 2026-11-28T15:17:28.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 58673 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 58673; pid 58673 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 58673 is proven gone)"
+  },
   "pendingRequests": [
     {
       "id": "83b156f2-f662-4a72-92ba-306372ef7243",
@@ -13,17 +17,24 @@
       "transport": "script-invocation"
     }
   ],
-  "enteredAt": "2026-11-28T15:17:33.962Z",
-  "deadline": null,
+  "enteredAt": "2026-11-28T15:21:17.246Z",
+  "deadline": "2026-11-28T15:36:17.246Z",
   "evidence": [
-    "probe-degraded: the accessibility query in rebui's session failed: "
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "pid 58673 still names the recorded After Effects (started 2026-11-28T15:17:28.000Z)",
+    "no other instance of the recorded install is running in scope",
+    "graceful terminate request to pid 58673 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n",
+    "force terminate request delivered to pid 58673",
+    "pid 58673 with the recorded start time is absent from the process list",
+    "no other instance of the recorded install is running in scope",
+    "pid 58673 is proven gone"
   ],
   "monitor": {
     "ownerId": "ae-a8n-session",
     "pid": 57600,
     "pidStart": null,
     "acquiredAt": "2026-11-28T15:17:33.953Z",
-    "heartbeatAt": "2026-11-28T15:17:49.560Z"
+    "heartbeatAt": "2026-11-28T15:20:17.826Z"
   },
   "history": [
     {
@@ -31,7 +42,13 @@
       "to": "running",
       "at": "2026-11-28T15:17:33.962Z",
       "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T15:21:17.246Z",
+      "reason": "the recorded owned After Effects process is proven gone by terminate (pid 58673 still names the recorded After Effects (started 2026-11-28T15:17:28.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 58673 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 58673; pid 58673 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 58673 is proven gone)"
     }
   ],
-  "updatedAt": "2026-11-28T15:18:04.837Z"
+  "updatedAt": "2026-11-28T15:21:17.246Z"
 }

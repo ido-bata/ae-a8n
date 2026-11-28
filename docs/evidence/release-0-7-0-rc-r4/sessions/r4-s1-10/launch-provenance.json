@@ -1,6 +1,6 @@
 {
   "schema": "a8n.launch-provenance/v1",
-  "recordedAt": "2026-11-28T15:17:32.411Z",
+  "recordedAt": "2026-11-28T15:20:48.620Z",
   "a8nVersion": "0.6.0",
   "transport": "script-invocation",
   "phase": "spawned",

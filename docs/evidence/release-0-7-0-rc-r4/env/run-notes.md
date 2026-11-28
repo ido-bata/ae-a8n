@@ -40,3 +40,27 @@
    Reversible; documented here and in the manifest environmentNotes.
    Effect observed (or not) is reported per-attempt in the ledger —
    this is environment preparation, not scenario evidence.
+
+## Incident: worktree deletion mid-run (~00:24 JST)
+
+The disk-pressure cleanup deleted the `ae-a8n.436-r4` worktree while the
+s1-streak loop was running. Effects, all recovered or documented:
+
+- Branch `436-r4` and all pushed commits survived on origin (PR #461).
+  The user also committed `656c74f wip: snapshot uncommitted changes
+  before worktree cleanup` capturing the ledger through ~attempt s1-10.
+- The in-repo `scenario-ledger.jsonl` was recreated by the still-running
+  harness (`initLedger` mkdir -p) and accumulated 1 post-deletion RC-S17
+  sweep row; that row was appended verbatim (marked) to the restored
+  ledger. **Scenario-ledger rows for attempts r4-s1-11..r4-s1-33 were
+  lost** — driver-level artifacts (trace/attempt-ledger/teardown under
+  /tmp/rc436r4-sessions/) for r4-s1-10/r4-s1-11 survive and are archived
+  under sessions/; r4-s1-12..33 crashed on the missing fixture BEFORE
+  launch (ENOENT in shasumFile) so they spawned no AE process, produced
+  no session root, and are NOT counted as attempts — they are a
+  harness-interrupted gap, recorded here, not silently dropped verdicts.
+- recover-leftover sweeps for r4-s1-12..33 found no provenance-bearing
+  host (nothing was launched) → verdict `indeterminate`, correctly not
+  ledgered (no RC-S17 chain exercised).
+- The streak was killed at ~00:33 JST and restarted after worktree
+  recreation; labels continue at r4-s1-34 to preserve attempt ordering.
