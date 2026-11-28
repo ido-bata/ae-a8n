@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "none",
+    "windows": [
+      {
+        "title": "<unobservable window>",
+        "role": "AXWindow",
+        "subrole": null,
+        "texts": [
+          "WindowServer reports 6 window(s) not visible to AX"
+        ],
+        "buttons": [],
+        "blocking": true,
+        "tier": "unknown",
+        "dialogClass": null,
+        "code": "A8N-SEC-001",
+        "content": {
+          "dialogClass": null,
+          "tier": "unknown",
+          "code": "A8N-SEC-001",
+          "evidenceLevel": null,
+          "fields": {},
+          "summary": "unclassified AXWindow \"<unobservable window>\" — WindowServer reports 6 window(s) not visible to AX"
+        }
+      }
+    ],
+    "detail": "1 blocking window(s): <unobservable window>"
+  },
+  "pendingRequests": [],
+  "enteredAt": "2026-11-28T04:53:49.614Z",
+  "deadline": "2026-11-28T05:08:49.614Z",
+  "evidence": [
+    "probe-degraded: AX tree unserviceable: WindowServer reports 6 window(s) for this pid while AX listed none attributable to it"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-detached-supervisor",
+    "pid": 17102,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T04:53:43.641Z",
+    "heartbeatAt": "2026-11-28T04:53:43.677Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T04:53:43.646Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T04:53:49.614Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    }
+  ],
+  "updatedAt": "2026-11-28T04:53:49.614Z"
+}

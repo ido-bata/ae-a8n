@@ -1,0 +1,13 @@
+{
+  "label": "s10-a",
+  "scenarioId": "RC-S10",
+  "verdict": "fail",
+  "ownedPid": null,
+  "steps": [],
+  "cleanup": {
+    "verdict": "unverifiable",
+    "ref": null,
+    "note": "calling process was killed mid-op; teardown verdict may be absent — harness verified orphan cleanup separately"
+  },
+  "sessionRoot": "/tmp/rc436-sessions/s10-a"
+}

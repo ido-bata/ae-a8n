@@ -32,8 +32,20 @@
   },
   "budgets": {
     "readinessProbeMs": 180000,
-    "note": "readinessProbeMs is the spec-fixed default (180000). Representative-op budgets are declared below after the pre-RC baseline measurement runs (spec §6: numbers fixed per RC from the pre-RC baseline).",
-    "ops": {}
+    "note": "readinessProbeMs is the spec-fixed default (180000). Representative-op budgets declared from the pre-RC baseline measurement runs on this same candidate (spec §6).",
+    "ops": {
+      "session.launch": 120000,
+      "app.info": 60000,
+      "project.open": 60000,
+      "project.info": 120000,
+      "project.state": 120000,
+      "project.comps": 60000,
+      "comp.info": 120000,
+      "comp.renderFrame": 120000,
+      "session.quit": 60000,
+      "session.close": 120000
+    },
+    "opsProvenance": "p95-style ceilings keyed by driver attempt-ledger feature names, derived from pre-RC baseline runs s1-warm-01..03 on the same frozen candidate (observed max: session.launch 36.6s, app.info 18.6s, project.info 53.1s, comp.info 80.8s, session.close 86.5s-error/50.3s-ok; ceilings ~1.4-3x observed max). Declared before the formal attempt sequence; warm-01..03 + s1-cold-01 + s001-smoke attempts are retained in the ledger as first-class evidence."
   },
   "recordingInCandidate": true,
   "scenarios": "RC-S1..RC-S16 per specs/release-acceptance/spec.md §8; darwin-applicable rows only; others recorded not-applicable with reason",

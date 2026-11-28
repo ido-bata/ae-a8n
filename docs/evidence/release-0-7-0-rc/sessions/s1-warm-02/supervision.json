@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "none",
+    "windows": [
+      {
+        "title": "<unobservable window>",
+        "role": "AXWindow",
+        "subrole": null,
+        "texts": [
+          "WindowServer reports 10 window(s) not visible to AX"
+        ],
+        "buttons": [],
+        "blocking": true,
+        "tier": "unknown",
+        "dialogClass": null,
+        "code": "A8N-SEC-001",
+        "content": {
+          "dialogClass": null,
+          "tier": "unknown",
+          "code": "A8N-SEC-001",
+          "evidenceLevel": null,
+          "fields": {},
+          "summary": "unclassified AXWindow \"<unobservable window>\" — WindowServer reports 10 window(s) not visible to AX"
+        }
+      }
+    ],
+    "detail": "1 blocking window(s): <unobservable window>"
+  },
+  "pendingRequests": [
+    {
+      "id": "7dcc1e1c-5db5-486b-808e-50bbe8f7784d",
+      "method": "app.quit",
+      "since": "2026-11-28T04:44:11.980Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T04:44:56.594Z",
+  "deadline": "2026-11-28T04:59:56.594Z",
+  "evidence": [
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 10 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 10 window(s) for this pid while AX listed none attributable to it"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 958,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T04:39:19.411Z",
+    "heartbeatAt": "2026-11-28T04:44:29.712Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T04:39:19.412Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T04:44:27.091Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T04:44:56.594Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    }
+  ],
+  "updatedAt": "2026-11-28T04:44:56.618Z"
+}

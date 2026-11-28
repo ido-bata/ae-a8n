@@ -1,0 +1,7 @@
+{
+  "v": 1,
+  "transport": "script-invocation",
+  "hostScript": "/tmp/rc436-consumer/ext/rc436-host.jsx",
+  "stagedHostScript": "/tmp/rc436-sessions/s4-a/staging/rc436-host.jsx",
+  "pid": 59304
+}

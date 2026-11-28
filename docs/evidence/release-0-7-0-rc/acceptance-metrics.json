@@ -1,0 +1,883 @@
+{
+  "schemaVersion": 1,
+  "kind": "ae-a8n.acceptance-metrics/v1",
+  "generatedAt": "2026-11-28T06:07:02.371Z",
+  "inputs": {
+    "ledgers": [
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s2-a/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s8-a/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s6-a/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/planb-a/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s11-a/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s15-a-owned/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s5-a/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s001-smoke/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s1-warm-03/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s1-warm-02/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s10-a/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s4-a/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s14-a/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/planb-b/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s002-attach/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s1-repro-01/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s9-a/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s3-a/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s13-a/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s7-a/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s1-cold-01/attempt-ledger.jsonl",
+      "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/sessions/s1-warm-01/attempt-ledger.jsonl"
+    ],
+    "traces": [],
+    "evidenceIndexes": [],
+    "manifest": "/Users/rebui/work/ae-a8n.436/docs/evidence/release-0-7-0-rc/run-manifest.json",
+    "envelopes": [
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "25216f27-4782-4a5c-a2d9-32bbde4b03cc",
+        "sessionRoot": "/tmp/rc436-sessions/s2-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:12:29.623Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "21ef01d7-c84a-4ef1-b057-5b0fa205632e",
+        "sessionRoot": "/tmp/rc436-sessions/s8-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:32:33.663Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "d0af42e4-68a7-423a-83de-f293fbfad73d",
+        "sessionRoot": "/tmp/rc436-sessions/s6-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:15:39.277Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "20db1719-272f-4498-8159-0c3771d7adbc",
+        "sessionRoot": "/tmp/rc436-sessions/planb-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:49:01.761Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "bbd8a841-e261-45b8-9f29-5699de8bffb2",
+        "sessionRoot": "/tmp/rc436-sessions/s11-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:39:26.968Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "c6876e69-4d00-4cbc-bfb1-81934d806b98",
+        "sessionRoot": "/tmp/rc436-sessions/s15-a-owned",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:45:39.182Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "335eef1b-317e-429d-8fe1-a01e22ca36e1",
+        "sessionRoot": "/tmp/rc436-sessions/s5-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:03:01.913Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "ea262339-9b94-4ecf-a436-0d53495466c2",
+        "sessionRoot": "/tmp/rc436-sessions/s001-smoke",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T04:28:45.780Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "dadbc347-5ac4-4f04-8856-0db0fb57b41e",
+        "sessionRoot": "/tmp/rc436-sessions/s1-warm-03",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T04:45:07.502Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "a77f8142-9b33-44ba-a897-130ae72f7a12",
+        "sessionRoot": "/tmp/rc436-sessions/s1-warm-02",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T04:39:15.438Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "39a90fbd-47b6-4c05-b960-8c3af09cacb8",
+        "sessionRoot": "/tmp/rc436-sessions/s10-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:09:21.828Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "da29346f-8967-42c6-8ecb-01d3e690bc26",
+        "sessionRoot": "/tmp/rc436-sessions/s4-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T04:59:57.936Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "0a400c5c-410a-44e8-8ed7-2d9777406ee2",
+        "sessionRoot": "/tmp/rc436-sessions/s14-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:42:34.546Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "391ec9bd-a4bf-4d91-87d0-3e356ae61134",
+        "sessionRoot": "/tmp/rc436-sessions/planb-b",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:55:07.336Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "ce616a35-459b-4e9e-894c-599f74ee1c95",
+        "sessionRoot": "/tmp/rc436-sessions/s002-attach",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T04:33:05.445Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "89ce3f4c-6de0-4d6d-a763-0a69d96ddd07",
+        "sessionRoot": "/tmp/rc436-sessions/s1-repro-01",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:24:04.707Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "d5f72e0c-75a4-4838-98e3-2624fe6b9780",
+        "sessionRoot": "/tmp/rc436-sessions/s9-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:36:18.337Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "b349b6da-745a-484b-92d2-8fa4e4b4fbf5",
+        "sessionRoot": "/tmp/rc436-sessions/s3-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T04:56:56.051Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "40cd5043-5217-422d-80e5-640b69165a4d",
+        "sessionRoot": "/tmp/rc436-sessions/s13-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:18:45.107Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "53cc0aed-8070-4561-abea-4cef2312f506",
+        "sessionRoot": "/tmp/rc436-sessions/s7-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T05:06:18.998Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "42e36a0f-6709-4d34-8625-a2fca99f256d",
+        "sessionRoot": "/tmp/rc436-sessions/s1-cold-01",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T04:53:49.912Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "13407daf-19a3-4c8a-9cd9-29028e07cd16",
+        "sessionRoot": "/tmp/rc436-sessions/s1-warm-01",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T04:35:38.038Z"
+      }
+    ]
+  },
+  "budgets": [
+    {
+      "name": "readiness-probe",
+      "status": "unmeasured",
+      "basis": "manifest",
+      "boundMs": 180000,
+      "measured": {
+        "count": 0,
+        "min": null,
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "phases": null,
+      "phasesMeasured": false,
+      "note": "session.launch is not split into named readiness phases in trace.jsonl today; per-phase bounds are unmeasurable until the harness records stepTimings — spec §6 phase granularity gap"
+    },
+    {
+      "name": "ops:app.info",
+      "status": "pass",
+      "measured": {
+        "count": 4,
+        "min": 4814,
+        "p50": 6303,
+        "p95": 18588,
+        "max": 18588
+      },
+      "bound": 60000
+    },
+    {
+      "name": "ops:comp.info",
+      "status": "pass",
+      "measured": {
+        "count": 3,
+        "min": 9956,
+        "p50": 10436,
+        "p95": 80771,
+        "max": 80771
+      },
+      "bound": 120000
+    },
+    {
+      "name": "ops:comp.renderFrame",
+      "status": "pass",
+      "measured": {
+        "count": 3,
+        "min": 10226,
+        "p50": 11242,
+        "p95": 17388,
+        "max": 17388
+      },
+      "bound": 120000
+    },
+    {
+      "name": "ops:comp.renderFrame.evidence",
+      "status": "provisional",
+      "measured": {
+        "count": 3,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "note": "no manifest budget declared; measured baseline only (spec §6: numbers fixed per RC from pre-RC baseline)"
+    },
+    {
+      "name": "ops:project.comps",
+      "status": "pass",
+      "measured": {
+        "count": 3,
+        "min": 11282,
+        "p50": 11571,
+        "p95": 24693,
+        "max": 24693
+      },
+      "bound": 60000
+    },
+    {
+      "name": "ops:project.info",
+      "status": "pass",
+      "measured": {
+        "count": 7,
+        "min": 8755,
+        "p50": 10384,
+        "p95": 53097,
+        "max": 53097
+      },
+      "bound": 120000
+    },
+    {
+      "name": "ops:project.open",
+      "status": "pass",
+      "measured": {
+        "count": 4,
+        "min": 9727,
+        "p50": 9888,
+        "p95": 16217,
+        "max": 16217
+      },
+      "bound": 60000
+    },
+    {
+      "name": "ops:project.state",
+      "status": "pass",
+      "measured": {
+        "count": 2,
+        "min": 9625,
+        "p50": 9625,
+        "p95": 43787,
+        "max": 43787
+      },
+      "bound": 120000
+    },
+    {
+      "name": "ops:session.authorization",
+      "status": "provisional",
+      "measured": {
+        "count": 7,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "note": "no manifest budget declared; measured baseline only (spec §6: numbers fixed per RC from pre-RC baseline)"
+    },
+    {
+      "name": "ops:session.close",
+      "status": "pass",
+      "measured": {
+        "count": 6,
+        "min": 0,
+        "p50": 0,
+        "p95": 50302,
+        "max": 50302
+      },
+      "bound": 120000
+    },
+    {
+      "name": "ops:session.launch",
+      "status": "pass",
+      "measured": {
+        "count": 7,
+        "min": 5050,
+        "p50": 14232,
+        "p95": 36628,
+        "max": 36628
+      },
+      "bound": 120000
+    },
+    {
+      "name": "ops:session.probe",
+      "status": "provisional",
+      "measured": {
+        "count": 7,
+        "min": 2345,
+        "p50": 4443,
+        "p95": 14367,
+        "max": 14367
+      },
+      "note": "no manifest budget declared; measured baseline only (spec §6: numbers fixed per RC from pre-RC baseline)"
+    },
+    {
+      "name": "ops:session.quit",
+      "status": "pass",
+      "measured": {
+        "count": 3,
+        "min": 6611,
+        "p50": 8368,
+        "p95": 15487,
+        "max": 15487
+      },
+      "bound": 60000
+    },
+    {
+      "name": "ops:supervision.health",
+      "status": "provisional",
+      "measured": {
+        "count": 2,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "note": "no manifest budget declared; measured baseline only (spec §6: numbers fixed per RC from pre-RC baseline)"
+    },
+    {
+      "name": "ops:supervision.next-actions",
+      "status": "provisional",
+      "measured": {
+        "count": 2,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "note": "no manifest budget declared; measured baseline only (spec §6: numbers fixed per RC from pre-RC baseline)"
+    },
+    {
+      "name": "ops:supervision.transition",
+      "status": "provisional",
+      "measured": {
+        "count": 11,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "note": "no manifest budget declared; measured baseline only (spec §6: numbers fixed per RC from pre-RC baseline)"
+    },
+    {
+      "name": "recovery-wait",
+      "status": "unmeasured",
+      "basis": "fixed anchor recoveryGraceMs=60000 + per-class=0 (per-class bound not declared — provisional)",
+      "boundMs": 60000,
+      "measured": {
+        "count": 0,
+        "min": null,
+        "p50": null,
+        "p95": null,
+        "max": null,
+        "waits": []
+      }
+    },
+    {
+      "name": "supervision-detection-latency",
+      "status": "provisional",
+      "basis": "fixed anchors monitorIntervalMs=2000 + monitorTtlMs=30000; observation/confirm components are manifest-declared per RC",
+      "boundMs": null,
+      "measured": {
+        "transitionCount": 0,
+        "publishToTraceMs": {
+          "count": 0,
+          "min": null,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "note": "blocking-condition-arisal timestamp is not recorded in trace.jsonl; detection latency proper is unmeasurable — spec §6 gap (harness must timestamp the observed condition)"
+      }
+    },
+    {
+      "name": "recording-overhead",
+      "status": "provisional",
+      "basis": "gui-evidence spec §11 proposal (<5% frame-drop at 30 fps); op-latency bound is provisional until the RC manifest declares it",
+      "bound": {
+        "maxFrameDropRatio": 0.05,
+        "targetFps": 30
+      },
+      "measured": {
+        "segments": 0,
+        "dropBreaches": [],
+        "measuredOverheadMs": {
+          "count": 0,
+          "min": null,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "unmeasuredSegments": 0
+      }
+    },
+    {
+      "name": "consecutive-success",
+      "status": "pending",
+      "bound": {
+        "required": 10
+      },
+      "measured": {
+        "groups": [
+          {
+            "group": "app.info",
+            "trailingPass": 4,
+            "accepted": false
+          },
+          {
+            "group": "comp.info",
+            "trailingPass": 3,
+            "accepted": false
+          },
+          {
+            "group": "comp.renderFrame",
+            "trailingPass": 3,
+            "accepted": false
+          },
+          {
+            "group": "comp.renderFrame.evidence",
+            "trailingPass": 3,
+            "accepted": false
+          },
+          {
+            "group": "project.comps",
+            "trailingPass": 3,
+            "accepted": false
+          },
+          {
+            "group": "project.info",
+            "trailingPass": 7,
+            "accepted": false
+          },
+          {
+            "group": "project.open",
+            "trailingPass": 4,
+            "accepted": false
+          },
+          {
+            "group": "project.state",
+            "trailingPass": 2,
+            "accepted": false
+          },
+          {
+            "group": "session.authorization",
+            "trailingPass": 7,
+            "accepted": false
+          },
+          {
+            "group": "session.close",
+            "trailingPass": 1,
+            "accepted": false
+          },
+          {
+            "group": "session.launch",
+            "trailingPass": 1,
+            "accepted": false
+          },
+          {
+            "group": "session.probe",
+            "trailingPass": 1,
+            "accepted": false
+          },
+          {
+            "group": "session.quit",
+            "trailingPass": 1,
+            "accepted": false
+          },
+          {
+            "group": "session.recover",
+            "trailingPass": 0,
+            "accepted": false
+          },
+          {
+            "group": "supervision.health",
+            "trailingPass": 2,
+            "accepted": false
+          },
+          {
+            "group": "supervision.next-actions",
+            "trailingPass": 2,
+            "accepted": false
+          },
+          {
+            "group": "supervision.transition",
+            "trailingPass": 11,
+            "accepted": true
+          }
+        ]
+      },
+      "note": "report-only aggregate; per-scenario acceptance is §12.3"
+    }
+  ],
+  "reproducibility": {
+    "groups": [
+      {
+        "group": "app.info",
+        "attempts": 4,
+        "pass": 4,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 4,
+        "accepted": false
+      },
+      {
+        "group": "comp.info",
+        "attempts": 3,
+        "pass": 3,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 3,
+        "accepted": false
+      },
+      {
+        "group": "comp.renderFrame",
+        "attempts": 3,
+        "pass": 3,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 3,
+        "accepted": false
+      },
+      {
+        "group": "comp.renderFrame.evidence",
+        "attempts": 3,
+        "pass": 3,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 3,
+        "accepted": false
+      },
+      {
+        "group": "project.comps",
+        "attempts": 3,
+        "pass": 3,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 3,
+        "accepted": false
+      },
+      {
+        "group": "project.info",
+        "attempts": 7,
+        "pass": 7,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 7,
+        "accepted": false
+      },
+      {
+        "group": "project.open",
+        "attempts": 4,
+        "pass": 4,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 4,
+        "accepted": false
+      },
+      {
+        "group": "project.state",
+        "attempts": 2,
+        "pass": 2,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 2,
+        "accepted": false
+      },
+      {
+        "group": "session.authorization",
+        "attempts": 7,
+        "pass": 7,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 7,
+        "accepted": false
+      },
+      {
+        "group": "session.close",
+        "attempts": 8,
+        "pass": 6,
+        "fail": 2,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 0.75,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 1,
+        "accepted": false
+      },
+      {
+        "group": "session.launch",
+        "attempts": 23,
+        "pass": 7,
+        "fail": 16,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 0.30434782608695654,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 1,
+        "accepted": false
+      },
+      {
+        "group": "session.probe",
+        "attempts": 23,
+        "pass": 7,
+        "fail": 9,
+        "indeterminate": 7,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 0.30434782608695654,
+        "indeterminateRate": 0.30434782608695654,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 1,
+        "accepted": false
+      },
+      {
+        "group": "session.quit",
+        "attempts": 4,
+        "pass": 3,
+        "fail": 1,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 0.75,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 1,
+        "accepted": false
+      },
+      {
+        "group": "session.recover",
+        "attempts": 16,
+        "pass": 0,
+        "fail": 16,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 0,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 0,
+        "accepted": false
+      },
+      {
+        "group": "supervision.health",
+        "attempts": 2,
+        "pass": 2,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 2,
+        "accepted": false
+      },
+      {
+        "group": "supervision.next-actions",
+        "attempts": 2,
+        "pass": 2,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 2,
+        "accepted": false
+      },
+      {
+        "group": "supervision.transition",
+        "attempts": 11,
+        "pass": 11,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 11,
+        "accepted": true
+      }
+    ],
+    "identityProblems": []
+  },
+  "teardowns": {
+    "clean": 6,
+    "residue": 0,
+    "unverifiable": 1
+  },
+  "notes": [
+    "readiness-probe: phase-level bounds unmeasured (see budget row note)",
+    "recovery-wait: no supervision.transition rows; nothing to bound",
+    "supervision-detection-latency: no manifest bound declared; measured proxies only",
+    "recording-overhead: evidence index supplied but carries no captureStats",
+    "teardown:dadbc347-5ac4-4f04-8856-0db0fb57b41e: unverifiable — process=unverifiable"
+  ],
+  "verdict": {
+    "action": "deny",
+    "reasons": [
+      "budget-unmeasured:readiness-probe"
+    ]
+  }
+}

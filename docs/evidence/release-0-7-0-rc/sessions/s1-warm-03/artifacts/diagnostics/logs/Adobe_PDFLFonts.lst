@@ -1,0 +1,618 @@
+%!Adobe-FontList 1.25
+%Locale:0x411
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobeArabic-Bold
+FamilyName:Adobe Arabic
+StyleName:Bold
+MenuName:Adobe Arabic
+StyleBits:2
+WeightClass:700
+WidthClass:5
+AngleClass:0
+FullName:Adobe Arabic Bold
+FamilyNameNative:
+StyleNameNative:Bold
+FullNameNative:
+WritingScript:Arabic
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/AdobeArabic-Bold.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:307228
+FileModTime:816079405
+NameArray:0,Mac,4,Adobe Arabic Bold
+NameArray:0,Win,1,Adobe Arabic
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobeArabic-BoldItalic
+FamilyName:Adobe Arabic
+StyleName:Bold Italic
+MenuName:Adobe Arabic
+StyleBits:3
+WeightClass:700
+WidthClass:5
+AngleClass:1
+FullName:Adobe Arabic Bold Italic
+FamilyNameNative:
+StyleNameNative:Bold Italic
+FullNameNative:
+WritingScript:Arabic
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/AdobeArabic-BoldItalic.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:329784
+FileModTime:816079405
+NameArray:0,Mac,4,Adobe Arabic Bold Italic
+NameArray:0,Win,1,Adobe Arabic
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobeArabic-Italic
+FamilyName:Adobe Arabic
+StyleName:Italic
+MenuName:Adobe Arabic
+StyleBits:1
+WeightClass:400
+WidthClass:5
+AngleClass:1
+FullName:Adobe Arabic Italic
+FamilyNameNative:
+StyleNameNative:Italic
+FullNameNative:
+WritingScript:Arabic
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/AdobeArabic-Italic.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:339276
+FileModTime:816079398
+NameArray:0,Mac,4,Adobe Arabic Italic
+NameArray:0,Win,1,Adobe Arabic
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobeArabic-Regular
+FamilyName:Adobe Arabic
+StyleName:Regular
+MenuName:Adobe Arabic
+StyleBits:0
+WeightClass:400
+WidthClass:5
+AngleClass:0
+FullName:Adobe Arabic Regular
+FamilyNameNative:
+StyleNameNative:Regular
+FullNameNative:
+WritingScript:Arabic
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/AdobeArabic-Regular.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:299680
+FileModTime:816079399
+NameArray:0,Mac,18,Adobe Arabic
+NameArray:0,Mac,4,Adobe Arabic Regular
+NameArray:0,Win,1,Adobe Arabic
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobeHebrew-Bold
+FamilyName:Adobe Hebrew
+StyleName:Bold
+MenuName:Adobe Hebrew
+StyleBits:2
+WeightClass:600
+WidthClass:5
+AngleClass:0
+FullName:Adobe Hebrew Bold
+FamilyNameNative:
+StyleNameNative:Bold
+FullNameNative:
+WritingScript:Hebrew
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/AdobeHebrew-Bold.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:72116
+FileModTime:816079405
+NameArray:0,Mac,4,Adobe Hebrew Bold
+NameArray:0,Win,1,Adobe Hebrew
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobeHebrew-BoldItalic
+FamilyName:Adobe Hebrew
+StyleName:Bold Italic
+MenuName:Adobe Hebrew
+StyleBits:3
+WeightClass:600
+WidthClass:5
+AngleClass:1
+FullName:Adobe Hebrew Bold Italic
+FamilyNameNative:
+StyleNameNative:Bold Italic
+FullNameNative:
+WritingScript:Hebrew
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/AdobeHebrew-BoldItalic.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:75304
+FileModTime:816079405
+NameArray:0,Mac,4,Adobe Hebrew Bold Italic
+NameArray:0,Win,1,Adobe Hebrew
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobeHebrew-Italic
+FamilyName:Adobe Hebrew
+StyleName:Italic
+MenuName:Adobe Hebrew
+StyleBits:1
+WeightClass:400
+WidthClass:5
+AngleClass:1
+FullName:Adobe Hebrew Italic
+FamilyNameNative:
+StyleNameNative:Italic
+FullNameNative:
+WritingScript:Hebrew
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/AdobeHebrew-Italic.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:75220
+FileModTime:816079405
+NameArray:0,Mac,4,Adobe Hebrew Italic
+NameArray:0,Win,1,Adobe Hebrew
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobeHebrew-Regular
+FamilyName:Adobe Hebrew
+StyleName:Regular
+MenuName:Adobe Hebrew
+StyleBits:0
+WeightClass:400
+WidthClass:5
+AngleClass:0
+FullName:Adobe Hebrew Regular
+FamilyNameNative:
+StyleNameNative:Regular
+FullNameNative:
+WritingScript:Hebrew
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/AdobeHebrew-Regular.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:73492
+FileModTime:816079405
+NameArray:0,Mac,18,Adobe Hebrew
+NameArray:0,Mac,4,Adobe Hebrew Regular
+NameArray:0,Win,1,Adobe Hebrew
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobePiStd
+FamilyName:Adobe Pi Std
+StyleName:Regular
+MenuName:Adobe Pi Std
+StyleBits:0
+WeightClass:400
+WidthClass:5
+AngleClass:0
+FullName:Adobe Pi Std
+WritingScript:Roman
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/AdobePiStd.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:92588
+FileModTime:816079399
+DesignSize:240
+NameArray:0,Mac,4,Adobe Pi Std
+NameArray:0,Win,1,Adobe Pi Std
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobeThai-Bold
+FamilyName:Adobe Thai
+StyleName:Bold
+MenuName:Adobe Thai
+StyleBits:2
+WeightClass:600
+WidthClass:5
+AngleClass:0
+FullName:Adobe Thai Bold
+WritingScript:Thai
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/AdobeThai-Bold.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:70092
+FileModTime:816079405
+NameArray:0,Mac,4,Adobe Thai Bold
+NameArray:0,Win,1,Adobe Thai
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobeThai-BoldItalic
+FamilyName:Adobe Thai
+StyleName:Bold Italic
+MenuName:Adobe Thai
+StyleBits:3
+WeightClass:600
+WidthClass:5
+AngleClass:1
+FullName:Adobe Thai Bold Italic
+WritingScript:Thai
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/AdobeThai-BoldItalic.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:73224
+FileModTime:816079399
+NameArray:0,Mac,4,Adobe Thai Bold Italic
+NameArray:0,Win,1,Adobe Thai
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobeThai-Italic
+FamilyName:Adobe Thai
+StyleName:Italic
+MenuName:Adobe Thai
+StyleBits:1
+WeightClass:400
+WidthClass:5
+AngleClass:1
+FullName:Adobe Thai Italic
+WritingScript:Thai
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/AdobeThai-Italic.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:73512
+FileModTime:816079398
+NameArray:0,Mac,4,Adobe Thai Italic
+NameArray:0,Win,1,Adobe Thai
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:AdobeThai-Regular
+FamilyName:Adobe Thai
+StyleName:Regular
+MenuName:Adobe Thai
+StyleBits:0
+WeightClass:400
+WidthClass:5
+AngleClass:0
+FullName:Adobe Thai Regular
+WritingScript:Thai
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/AdobeThai-Regular.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:69840
+FileModTime:816079398
+NameArray:0,Mac,18,Adobe Thai
+NameArray:0,Mac,4,Adobe Thai Regular
+NameArray:0,Win,1,Adobe Thai
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:CourierStd-Bold
+FamilyName:Courier Std
+StyleName:Bold
+MenuName:Courier Std
+StyleBits:2
+WeightClass:700
+WidthClass:5
+AngleClass:0
+FullName:Courier Std Bold
+WritingScript:Roman
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/CourierStd-Bold.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:37524
+FileModTime:816079398
+DesignSize:120
+NameArray:0,Mac,4,Courier Std Bold
+NameArray:0,Win,1,Courier Std
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:CourierStd-BoldOblique
+FamilyName:Courier Std
+StyleName:Bold Oblique
+MenuName:Courier Std
+StyleBits:3
+WeightClass:700
+WidthClass:5
+AngleClass:1
+FullName:Courier Std Bold Oblique
+WritingScript:Roman
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/CourierStd-BoldOblique.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:38984
+FileModTime:816079399
+DesignSize:120
+NameArray:0,Mac,4,Courier Std Bold Oblique
+NameArray:0,Win,1,Courier Std
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:CourierStd-Oblique
+FamilyName:Courier Std
+StyleName:Medium Oblique
+MenuName:Courier Std
+StyleBits:1
+WeightClass:500
+WidthClass:5
+AngleClass:1
+FullName:Courier Std Medium Oblique
+WritingScript:Roman
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/CourierStd-Oblique.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:39332
+FileModTime:816079398
+DesignSize:120
+NameArray:0,Mac,18,Courier Std Oblique
+NameArray:0,Mac,4,Courier Std Medium Oblique
+NameArray:0,Win,1,Courier Std
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:CourierStd
+FamilyName:Courier Std
+StyleName:Medium
+MenuName:Courier Std
+StyleBits:0
+WeightClass:500
+WidthClass:5
+AngleClass:0
+FullName:Courier Std Medium
+WritingScript:Roman
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/CourierStd.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:37860
+FileModTime:816079399
+DesignSize:120
+NameArray:0,Mac,18,Courier Std
+NameArray:0,Mac,4,Courier Std Medium
+NameArray:0,Win,1,Courier Std
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:MinionPro-Regular
+FamilyName:Minion Pro
+StyleName:Regular
+MenuName:Minion Pro
+StyleBits:0
+WeightClass:400
+WidthClass:5
+AngleClass:0
+FullName:Minion Pro
+WritingScript:Roman
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/MinionPro-Regular.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:218640
+FileModTime:816079398
+DesignSize:110
+NameArray:0,Mac,4,Minion Pro
+NameArray:0,Win,1,Minion Pro
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Type1
+FontName:MyriadPro-Regular
+FamilyName:Myriad Pro
+StyleName:Regular
+MenuName:Myriad Pro
+StyleBits:0
+WeightClass:400
+WidthClass:5
+AngleClass:0
+FullName:Myriad Pro
+WritingScript:Roman
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/MyriadPro-Regular.otf
+DataFormat:sfntData
+UsesStandardEncoding:yes
+isCFF:yes
+hasSVG:no
+hasSBIX:no
+hasCOLR:no
+VariableFontType:NonVariableFont
+FileLength:97072
+FileModTime:816079405
+DesignSize:110
+NameArray:0,Mac,4,Myriad Pro
+NameArray:0,Win,1,Myriad Pro
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Invalid
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/PFM/sy______.inf
+FileLength:487
+FileModTime:816079399
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:PFM
+FontName:Symbol
+NumMMAxes:0
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/PFM/sy______.pfm
+FileLength:672
+FileModTime:816079398
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:PFM
+FontName:AdobeSansMM
+NumMMAxes:2
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/PFM/zx______.mmm
+FileLength:7248
+FileModTime:816079399
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:PFM
+FontName:AdobeSansMM
+NumMMAxes:0
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/PFM/zx______.pfm
+FileLength:683
+FileModTime:816079405
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:PFM
+FontName:AdobeSerifMM
+NumMMAxes:2
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/PFM/zy______.mmm
+FileLength:7248
+FileModTime:816079405
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:PFM
+FontName:AdobeSerifMM
+NumMMAxes:0
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/PFM/zy______.pfm
+FileLength:684
+FileModTime:816079398
+%EndFont
+
+%BeginFont
+Handler:DirectoryHandler
+FontType:Invalid
+OutlineFileName:/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/Resources/pdfl/Fonts/sy______.afm
+FileLength:9932
+FileModTime:816079399
+%EndFont
+
