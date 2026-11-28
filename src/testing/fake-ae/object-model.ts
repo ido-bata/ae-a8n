@@ -787,7 +787,18 @@ export class FakeProject {
     return this.#items[index - 1];
   }
 
-  close(closeOptions: number): void {
+  /**
+   * Test hook: when true, `close` answers `false` and leaves the project —
+   * including `dirty` — untouched, the way a close blocked by a dialog does
+   * on a real host (#443).
+   */
+  refuseClose = false;
+
+  /** As `Project.close(closeOptions)`: false when the close did not happen. */
+  close(closeOptions: number): boolean {
+    if (this.refuseClose) {
+      return false;
+    }
     if (closeOptions !== CloseOptions.DO_NOT_SAVE_CHANGES && this.file !== null) {
       throw new Error("fake projects cannot be saved");
     }
@@ -795,6 +806,7 @@ export class FakeProject {
     this.activeItem = null;
     this.file = null;
     this.dirty = false;
+    return true;
   }
 }
 

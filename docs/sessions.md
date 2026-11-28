@@ -228,6 +228,20 @@ parameters, rendering — `saveFrameToPng` changes the viewer resolution and
 restores it, which AE counts as an edit) must pass `"discard"` to close: the
 edits are its own, and saying so is the point.
 
+Two details observed on real AE 2027 during the RC acceptance run (#443):
+
+- A project opened through `app.open` can report `project.dirty === true`
+  even with no edits — the open itself, or AE's own bookkeeping, marks it.
+  `close()` with the default `"refuse"` will then reject with
+  `UnsavedChangesError`; that is the guard working, not a bug. Pass
+  `"discard"` when the session is done with the project.
+- `"discard"` is verified, not assumed: the host closes the project with
+  `CloseOptions.DO_NOT_SAVE_CHANGES` and re-checks that no dirty project
+  remains *before* calling `app.quit()`. If the close is refused or a dirty
+  project survives, the call rejects with `UnsavedChangesError` and AE is
+  left running — quitting anyway would stall on AE's own save prompt
+  (observed: `app.quit` returned, the process never exited).
+
 ## Timeouts
 
 `DoScriptFile` (macOS) runs the script to completion before it returns, and
@@ -264,6 +278,16 @@ an ExtendScript cannot be interrupted from outside. So a timeout ends the
 - **`close()`** sends `app.quit` the same way: it waits for a script still
   running, within the quit's 10 s budget. If that runs out, `close()` rejects
   with `TimeoutError`, AE is left running, and the quit was never sent.
+- **A quit that does not take effect is classified, not just reported.**
+  When `app.quit` is delivered but the owned process does not exit within
+  the exit budget, `close()` rejects and the teardown verdict re-checks the
+  recorded launch identity against a live process census (#443): the host
+  still running is recorded as `residue` (safety-relevant — an owned AE
+  left running), a host that has since exited is `clean` (the quit landed
+  after its budget), and an unprovable answer stays `unverifiable`. The
+  residue detail names the recovery path: `AfterEffects.attach` +
+  `rebuild`, or `AfterEffects.terminate` under
+  `permit: "terminate-owned-host"` — never a bare kill of the pid.
 - **A timeout is classified, not just reported.** When a call times out the
   driver asks what the host looked like and the failure carries
   `hostCondition`: `"gone"` (the process is proven absent — a crash or a

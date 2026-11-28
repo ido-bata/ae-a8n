@@ -36,6 +36,16 @@ import { readSupervisionState } from "../supervision/state.js";
 import type { Session } from "../api/session.js";
 import type { CloseResult } from "../api/index.js";
 import type { TraceEvent } from "../trace/trace.js";
+import {
+  readLaunchProvenance,
+  type LaunchProvenance,
+} from "../driver/launch-provenance.js";
+import {
+  psProcesses,
+  sameProcess,
+  windowsProcesses,
+  type HostProcess,
+} from "../driver/host-processes.js";
 
 export const TEARDOWN_SCHEMA_VERSION = 1;
 export const TEARDOWN_KIND = "ae-a8n.teardown/v1";
@@ -76,6 +86,12 @@ export type TeardownOptions = {
   readonly leaseStateRoot?: string;
   /** The AE pid captured before close, when still known. */
   readonly targetPid?: number | null;
+  /**
+   * Process census for the quit-timeout re-check (#443); production uses
+   * the same listing the transport's ownership checks read. Injectable so
+   * tests never scan the real process table.
+   */
+  readonly processCensus?: () => readonly HostProcess[];
 };
 
 function readJsonFile(path: string): unknown {
@@ -109,6 +125,123 @@ function aggregate(
 }
 
 /**
+ * Process verdict for a close that failed because `app.quit` did not take
+ * effect inside the exit budget (#443).
+ *
+ * "Unverifiable" is only honest when the host's fate cannot be re-proven.
+ * The launch provenance written while the session owned the host carries
+ * pid + start identity, so a live census can answer definitively:
+ *
+ * - the recorded process is still running → `residue`: an owned host was
+ *   left running, which is exactly the state a later session must not
+ *   trip over. Recovery is the ownership-proven path — `AfterEffects.
+ *   attach` + `rebuild`, or `AfterEffects.terminate` under
+ *   `permit: "terminate-owned-host"` — never a bare kill.
+ * - the recorded process is gone → the quit landed after the budget; the
+ *   process area is `clean` and the detail says the close outran its
+ *   timeout, not that teardown was unobserved.
+ * - provenance or census unreadable, or the pid is alive without a start
+ *   time to tell it from a reuse → `unverifiable`, as before.
+ */
+function quitTimeoutProcessItem(
+  sessionRoot: string,
+  closeError: string,
+  options: TeardownOptions,
+): TeardownItem {
+  const base = `session close failed: ${closeError}`;
+  let provenance: LaunchProvenance | null;
+  try {
+    provenance = readLaunchProvenance(sessionRoot);
+  } catch (error) {
+    return {
+      area: "process",
+      verdict: "unverifiable",
+      detail:
+        `${base}; launch provenance could not be read ` +
+        `(${error instanceof Error ? error.message : String(error)}), ` +
+        "so the recorded host cannot be re-identified",
+    };
+  }
+  if (provenance === null) {
+    return {
+      area: "process",
+      verdict: "unverifiable",
+      detail:
+        `${base}; no launch provenance exists for this session root, ` +
+        "so the host app.quit reached cannot be re-identified",
+    };
+  }
+  const host = provenance.host;
+  const census =
+    options.processCensus ??
+    (process.platform === "win32" ? windowsProcesses : psProcesses);
+  let processes: readonly HostProcess[];
+  try {
+    processes = census();
+  } catch (error) {
+    return {
+      area: "process",
+      verdict: "unverifiable",
+      detail:
+        `${base}; the process census failed ` +
+        `(${error instanceof Error ? error.message : String(error)}), ` +
+        "so whether the host was left running is unproven",
+    };
+  }
+  const pidAlive = processes.some((p) => p.pid === host.pid);
+  if (host.startedAt === null) {
+    // Without a start time a live pid cannot be told apart from the
+    // recorded process or a reuse — the same ambiguity rebuild refuses on.
+    return pidAlive
+      ? {
+          area: "process",
+          verdict: "unverifiable",
+          detail:
+            `${base}; pid ${host.pid} is still running and the launch record ` +
+            "has no start time, so the recorded After Effects cannot be " +
+            "told apart from a reused pid",
+        }
+      : {
+          area: "process",
+          verdict: "clean",
+          detail:
+            `${base}; pid ${host.pid} is absent from the process list at ` +
+            "teardown — the quit landed after its budget",
+        };
+  }
+  const recorded: HostProcess = {
+    pid: host.pid,
+    startedAt: host.startedAt,
+    executable: host.executable,
+    ...(host.identity === null ? {} : { identity: host.identity }),
+  };
+  const same = processes.filter((p) =>
+    sameProcess(process.platform, p, recorded),
+  );
+  if (same.length > 0) {
+    return {
+      area: "process",
+      verdict: "residue",
+      safetyRelevant: true,
+      detail:
+        `${base}; the recorded After Effects (pid ${host.pid}, started ` +
+        `${new Date(host.startedAt).toISOString()}) is still running at ` +
+        "teardown — an owned host was left running after app.quit. " +
+        "Recover through the ownership-proven path: AfterEffects.attach " +
+        "+ rebuild, or AfterEffects.terminate with " +
+        'permit "terminate-owned-host"; never signal the pid directly.',
+    };
+  }
+  return {
+    area: "process",
+    verdict: "clean",
+    detail:
+      `${base}; the recorded After Effects (pid ${host.pid}) is gone at ` +
+      "teardown — the quit landed after its budget",
+  };
+}
+
+/**
  * Evaluate and persist the teardown verdict for `session`. Called by
  * `AfterEffects.close()` on both the success and failure paths; also
  * exported for the RC harness, which may evaluate a session it did not
@@ -121,7 +254,10 @@ function aggregate(
  */
 export function writeTeardownVerdict(
   session: Session,
-  close: CloseResult | { readonly error: string } | null,
+  close:
+    | CloseResult
+    | { readonly error: string; readonly quitTimedOut?: boolean }
+    | null,
   options: TeardownOptions = {},
 ): TeardownReport {
   const now = options.now ?? (() => new Date());
@@ -142,11 +278,18 @@ export function writeTeardownVerdict(
         detail: "no close result was supplied; session teardown was not observed",
       });
     } else if (closeFailed) {
-      items.push({
-        area: "process",
-        verdict: "unverifiable",
-        detail: `session close failed: ${close.error}; whether the host was left running is unproven`,
-      });
+      if (close.quitTimedOut === true) {
+        // `app.quit` was delivered but the owned process did not exit in
+        // budget (#443). The recorded launch identity lets the verdict
+        // re-check live instead of reporting an unproven failure.
+        items.push(quitTimeoutProcessItem(sessionRoot, close.error, options));
+      } else {
+        items.push({
+          area: "process",
+          verdict: "unverifiable",
+          detail: `session close failed: ${close.error}; whether the host was left running is unproven`,
+        });
+      }
     } else {
       const quit = close.quit === true;
       const owned = close.ownership?.kind === "owned";

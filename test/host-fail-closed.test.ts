@@ -129,6 +129,48 @@ describe("ES3 host failure safety (#265)", () => {
     });
   });
 
+  it("quits when the dirty project is closed under discard", () => {
+    app.project.dirty = true;
+    const reply = dispatch("app.quit", { discardUnsavedChanges: true });
+    expect(reply.execution.success).toBe(true);
+    expect(reply.result).toMatchObject({ ok: true, result: { quitting: true } });
+    expect(app.quitCount).toBe(1);
+    expect(app.project.dirty).toBe(false);
+  });
+
+  it("does not quit when the discard close itself is refused (#443)", () => {
+    // A Project.close that answers false leaves the dirty project in place;
+    // app.quit after that would stall on AE's own save prompt. The host
+    // must fail fast instead — the session stays open for a retry.
+    app.project.dirty = true;
+    app.project.refuseClose = true;
+    const reply = dispatch("app.quit", { discardUnsavedChanges: true });
+    expect(reply.execution.success).toBe(true);
+    expect(reply.result).toMatchObject({
+      ok: false,
+      error: { name: "UnsavedChangesError" },
+    });
+    expect(app.quitCount).toBe(0);
+    expect(app.project.dirty).toBe(true);
+  });
+
+  it("does not open over a dirty project when the discard close is refused (#443)", () => {
+    app.project.dirty = true;
+    app.project.refuseClose = true;
+    const file = join(root, "other.aep");
+    writeFileSync(file, "fake");
+    const reply = dispatch("project.open", {
+      path: file,
+      discardUnsavedChanges: true,
+    });
+    expect(reply.execution.success).toBe(true);
+    expect(reply.result).toMatchObject({
+      ok: false,
+      error: { name: "UnsavedChangesError" },
+    });
+    expect(app.openedPaths).toHaveLength(0);
+  });
+
   it.each([
     { fontSize: 0 },
     { fontSize: "big" },

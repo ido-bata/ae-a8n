@@ -4,7 +4,7 @@
  * against the in-memory trace recorder and tmp dirs (no AE, no GUI).
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -19,6 +19,7 @@ import {
   outcomeForEvent,
 } from "../src/observability/attempt-ledger.js";
 import { writeTeardownVerdict } from "../src/observability/teardown.js";
+import { recordLaunchProvenance } from "../src/driver/launch-provenance.js";
 import type { Session } from "../src/api/session.js";
 import type { CloseResult } from "../src/api/index.js";
 
@@ -314,6 +315,134 @@ describe("writeTeardownVerdict", () => {
     expect(report.verdict).toBe("unverifiable");
     const process = report.items.find((item) => item.area === "process");
     expect(process?.verdict).toBe("unverifiable");
+  });
+
+  describe("quit timeout (#443)", () => {
+    const QUIT_TIMEOUT =
+      "After Effects did not exit within 60000 ms of app.quit; it was left running";
+    const HOST = {
+      pid: 4242,
+      startedAt: 1_700_000_000_000,
+      identity: "creation-1",
+      executable: "/Applications/AE.app/Contents/MacOS/After Effects",
+    };
+
+    function provenance(
+      root: string,
+      host: {
+        pid: number;
+        startedAt: number;
+        identity?: string;
+        executable: string;
+      } = HOST,
+    ): void {
+      recordLaunchProvenance(root, { transport: "script-invocation", host });
+    }
+
+    function censusWith(host = HOST) {
+      return () => [
+        {
+          pid: host.pid,
+          startedAt: host.startedAt,
+          executable: host.executable,
+          identity: host.identity,
+        },
+      ];
+    }
+
+    it("is residue when the recorded host is still running", () => {
+      const root = tmpRoot();
+      provenance(root);
+      const report = writeTeardownVerdict(
+        fakeSession(root, []),
+        { error: QUIT_TIMEOUT, quitTimedOut: true },
+        {
+          leaseStateRoot: join(root, "leases"),
+          processCensus: censusWith(),
+        },
+      );
+      const process = report.items.find((item) => item.area === "process");
+      expect(process?.verdict).toBe("residue");
+      expect(process?.safetyRelevant).toBe(true);
+      expect(process?.detail).toContain("terminate-owned-host");
+      expect(report.verdict).toBe("residue");
+    });
+
+    it("is clean when the recorded host is gone — the quit landed late", () => {
+      const root = tmpRoot();
+      provenance(root);
+      const report = writeTeardownVerdict(
+        fakeSession(root, []),
+        { error: QUIT_TIMEOUT, quitTimedOut: true },
+        {
+          leaseStateRoot: join(root, "leases"),
+          processCensus: () => [],
+        },
+      );
+      const process = report.items.find((item) => item.area === "process");
+      expect(process?.verdict).toBe("clean");
+      expect(process?.detail).toContain("quit landed after its budget");
+    });
+
+    it("is unverifiable without launch provenance to re-identify the host", () => {
+      const root = tmpRoot();
+      const report = writeTeardownVerdict(
+        fakeSession(root, []),
+        { error: QUIT_TIMEOUT, quitTimedOut: true },
+        {
+          leaseStateRoot: join(root, "leases"),
+          processCensus: censusWith(),
+        },
+      );
+      const process = report.items.find((item) => item.area === "process");
+      expect(process?.verdict).toBe("unverifiable");
+      expect(report.verdict).toBe("unverifiable");
+    });
+
+    it("is unverifiable when the census cannot be read", () => {
+      const root = tmpRoot();
+      provenance(root);
+      const report = writeTeardownVerdict(
+        fakeSession(root, []),
+        { error: QUIT_TIMEOUT, quitTimedOut: true },
+        {
+          leaseStateRoot: join(root, "leases"),
+          processCensus: () => {
+            throw new Error("ps failed");
+          },
+        },
+      );
+      const process = report.items.find((item) => item.area === "process");
+      expect(process?.verdict).toBe("unverifiable");
+    });
+
+    it("is unverifiable when the pid lives but the record has no start time", () => {
+      const root = tmpRoot();
+      // recordLaunchProvenance requires a start time; a record without one
+      // is written directly, as an older or foreign writer could leave it.
+      writeFileSync(
+        join(root, "launch-provenance.json"),
+        JSON.stringify({
+          schema: "a8n.launch-provenance/v1",
+          recordedAt: new Date().toISOString(),
+          a8nVersion: "0.0.0-test",
+          transport: "script-invocation",
+          host: { ...HOST, startedAt: null, identity: null },
+        }),
+      );
+      const report = writeTeardownVerdict(
+        fakeSession(root, []),
+        { error: QUIT_TIMEOUT, quitTimedOut: true },
+        {
+          leaseStateRoot: join(root, "leases"),
+          processCensus: () => [
+            { pid: HOST.pid, startedAt: 1, executable: HOST.executable },
+          ],
+        },
+      );
+      const process = report.items.find((item) => item.area === "process");
+      expect(process?.verdict).toBe("unverifiable");
+    });
   });
 
   it("flags an owned host that was not quit as process residue", () => {
