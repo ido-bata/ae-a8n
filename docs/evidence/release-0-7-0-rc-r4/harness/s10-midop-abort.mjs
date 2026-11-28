@@ -42,7 +42,7 @@ try {
   // Phase 1: child launches + starts slow op; parent kills the CHILD mid-op.
   const child = spawn(process.execPath, ["--input-type=module", "-e", childSrc], {
     cwd: "/tmp/rc436r4-consumer",
-    env: { ...process.env, RC_DIR: "/Users/rebui/work/ae-a8n.436-r4/docs/evidence/release-0-7-0-rc-r3" },
+    env: { ...process.env, RC_DIR: "/Users/rebui/work/ae-a8n.436-r4/docs/evidence/release-0-7-0-rc-r4" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let childOut = "";

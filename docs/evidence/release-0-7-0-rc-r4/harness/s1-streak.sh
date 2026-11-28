@@ -8,7 +8,7 @@
 set -uo pipefail
 
 CONSUMER=/tmp/rc436r4-consumer
-RC_DIR=/Users/rebui/work/ae-a8n.436-r4/docs/evidence/release-0-7-0-rc-r3
+RC_DIR=/Users/rebui/work/ae-a8n.436-r4/docs/evidence/release-0-7-0-rc-r4
 export RC_DIR
 PASS_STREAK=10
 MAX_ATTEMPTS=${MAX_ATTEMPTS:-25}
@@ -18,7 +18,7 @@ streak=0
 attempt=$((START_AT-1))
 while [ "$attempt" -lt "$MAX_ATTEMPTS" ] && [ "$streak" -lt "$PASS_STREAK" ]; do
   attempt=$((attempt+1))
-  label=$(printf "r3-s1-%02d" "$attempt")
+  label=$(printf "r4-s1-%02d" "$attempt")
   echo "=== $label (streak=$streak) $(date '+%H:%M:%S') ==="
   (cd "$CONSUMER" && node harness/s1-happy.mjs "$label")
   rc=$?
