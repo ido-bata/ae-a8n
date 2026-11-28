@@ -13,9 +13,10 @@
  *      observes the dead pid and would overwrite every rebuild transition;
  *      rebuilding under it would produce a document that immediately
  *      reverts, so it refuses instead.
- *   3. Launch provenance must exist — only a session that proved
- *      `owned` ever records one, so attached and unknown sessions refuse
- *      here without anything being spawned.
+ *   3. Launch provenance must exist — a session that spawned or proved
+ *      an owned host records one (`phase: "spawned"` or `"ready"`,
+ *      #458), so attached and unknown sessions refuse here without
+ *      anything being spawned.
  *   4. A fresh census must agree the recorded pid+start identity is gone
  *      and that no other instance of the install runs in scope.
  *   5. On macOS the target uid must still have an Aqua login session.
@@ -494,8 +495,9 @@ export async function openRebuiltSession(
     );
   }
 
-  // 3. Ownership: only a session that proved `owned` ever wrote provenance.
-  //    Its absence is the attached/unknown answer — refuse without spawning.
+  // 3. Ownership: a session that spawned or proved an owned host wrote
+  //    provenance (`phase: "spawned"` or `"ready"`, #458). Its absence is
+  //    the attached/unknown answer — refuse without spawning.
   let provenance: ReturnType<typeof readLaunchProvenance>;
   try {
     provenance = readLaunchProvenance(sessionRoot);

@@ -547,6 +547,39 @@ export class AeDriver {
   }
 
   /**
+   * Writes the spawn-phase provenance record (#458) for the process the
+   * transport reported it started but has not yet proven. The record is
+   * the same driver-authored evidence the ready-phase write leaves —
+   * pid, pinned start identity, executable — distinguished only by
+   * `phase: "spawned"`, so consumers can tell "we spawned this" from
+   * "the probe proved this". It is evidence, never authority: terminate
+   * still re-proves pid+start identity and the no-sibling rule against a
+   * live census before any signal, and a null start time stays
+   * ambiguous there. A write failure is traced and swallowed — provenance
+   * must never fail a launch that is still in progress.
+   */
+  #recordSpawnProvenance(pending: PendingLaunch): void {
+    try {
+      recordLaunchProvenance(this.#paths.root, {
+        transport: this.#transport.kind,
+        phase: "spawned",
+        host: {
+          pid: pending.pid,
+          startedAt: pending.startedAt,
+          executable: pending.executable,
+        },
+      });
+      this.#trace.record("session.provenance", "ok", 0, {
+        result: { phase: "spawned", pid: pending.pid },
+      });
+    } catch (error) {
+      this.#trace.record("session.provenance", "error", 0, {
+        error: { name: nameOf(error), message: errorMessage(error) },
+      });
+    }
+  }
+
+  /**
    * Launch the host and prove it answers before returning. Without the probe,
    * every later call fails identically and the trace cannot tell "AE never
    * started" from "AE rejected this operation".
@@ -600,6 +633,20 @@ export class AeDriver {
           startedAt: phase.startedAt,
           durationMs: phase.durationMs,
         });
+      }
+      // Spawn provenance (#458): the transport may already know exactly
+      // which process it started even though the readiness probe has not
+      // answered. Recording it now — phase "spawned" — gives `terminate`
+      // a driver-authored record it can re-prove live (pid + pinned start
+      // identity, no siblings), so a host that never becomes scriptable —
+      // a modal-blocked BirthPrefs launch, a denied Apple Event — is not
+      // unkillable through every public path. `pendingLaunch()` is null
+      // for attached/adopted hosts and whenever the session started
+      // nothing, so no record ever names a process this driver did not
+      // spawn. A write failure must not fail the launch.
+      const spawned = this.#transport.pendingLaunch?.() ?? null;
+      if (spawned !== null) {
+        this.#recordSpawnProvenance(spawned);
       }
       // Boot supervision (#339): launch() has already run the transport's
       // process census, so the spawned or selected pid is attributable
@@ -727,6 +774,12 @@ export class AeDriver {
         this.#trace.record("session.launch", "error", Date.now() - began, detail);
         throw error;
       }
+      // The launch failed — possibly inside `transport.launch()` itself,
+      // before the post-spawn write above could run. The pending record is
+      // still the driver-authored spawn evidence terminate needs (#458);
+      // writing it here covers that path too. Idempotent when the earlier
+      // write already landed.
+      this.#recordSpawnProvenance(pending);
       this.#leftRunning = { launch: pending, cause: error };
       const leftRunning = new HostLeftRunningError(pending, error, readinessFailure);
       this.#trace.record("session.launch", "error", Date.now() - began, {

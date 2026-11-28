@@ -85,6 +85,8 @@ type ProvenanceHost = {
   readonly startedAt?: number | null;
   readonly identity?: string | null;
   readonly executable?: string;
+  /** #458: "spawned" records a host the probe never proved; "ready" the proven one. */
+  readonly phase?: "spawned" | "ready";
 };
 
 /**
@@ -109,6 +111,7 @@ function seedProvenance(overrides: ProvenanceHost = {}): void {
         recordedAt: new Date(T0).toISOString(),
         a8nVersion: "0.0.0-test",
         transport: "script-invocation",
+        ...(overrides.phase === undefined ? {} : { phase: overrides.phase }),
         host: {
           pid: overrides.pid ?? OLD_PID,
           startedAt:
@@ -324,6 +327,91 @@ describe("terminateSessionHost authorization gates", () => {
     const report = await terminateSessionHost(options(), h.deps);
     expect(report.outcome).toBe("terminated");
     expect(report.method).toBe("graceful");
+  });
+});
+
+describe("terminateSessionHost on spawn-phase provenance (#458)", () => {
+  // A host the driver spawned but whose readiness probe never answered —
+  // the modal-blocked launch — leaves a `phase: "spawned"` record. It is
+  // weaker evidence than "ready" (no probe ever proved ownership), but the
+  // terminate gates that matter are unchanged: the live census must still
+  // re-prove pid+start identity with no siblings before any signal.
+
+  it("terminates the recorded spawned host under force, then proves it gone", async () => {
+    seedProvenance({ phase: "spawned" });
+    writeSupervisionState(sessionRoot, runningDoc());
+    const h = harness();
+    // The modal-blocked host ignores the polite quit; only the explicit
+    // force kill ends it — the exact RC-S17 shape.
+    h.onSignal = (mode) => {
+      if (mode === "force") {
+        h.setProcesses([]);
+      }
+    };
+
+    const report = await terminateSessionHost(options({ force: true }), h.deps);
+
+    expect(report.outcome).toBe("terminated");
+    expect(report.method).toBe("forced");
+    expect(h.calls.map((call) => call.mode)).toEqual(["graceful", "force"]);
+    expect(h.calls.every((call) => call.pid === OLD_PID)).toBe(true);
+    expect(report.disappearanceProven).toBe(true);
+    expect(readDoc().blocking?.host).toBe("process-gone");
+  });
+
+  it("still refuses a live pid the record cannot identify — pid reuse is never signalled", async () => {
+    seedProvenance({ phase: "spawned", startedAt: null });
+    const h = harness();
+    h.setProcesses([recordedProcess()]);
+    await expectTerminateRefusal(
+      terminateSessionHost(options({ force: true }), h.deps),
+      /reused pid|cannot be told apart/i,
+    );
+    expect(h.calls).toHaveLength(0);
+  });
+
+  it("still refuses when a sibling instance of the install is running", async () => {
+    seedProvenance({ phase: "spawned" });
+    const h = harness();
+    h.setProcesses([
+      recordedProcess(),
+      recordedProcess({ pid: 2222, startedAt: OLD_STARTED_AT + 1 }),
+    ]);
+    await expectTerminateRefusal(
+      terminateSessionHost(options({ force: true }), h.deps),
+      /ambiguous|other instance/i,
+    );
+    expect(h.calls).toHaveLength(0);
+  });
+
+  it("never signals a process the driver did not spawn: a live pid with a different start time is not the record", async () => {
+    seedProvenance({ phase: "spawned" });
+    const h = harness();
+    // The recorded spawn is gone; its pid now names a *different*
+    // process of the same install (reused pid, or a host someone else
+    // started). Terminate must refuse on the sibling ambiguity — it may
+    // not reason about "part" of the environment.
+    h.setProcesses([
+      recordedProcess({ startedAt: OLD_STARTED_AT + 999_999 }),
+    ]);
+    await expectTerminateRefusal(
+      terminateSessionHost(options({ force: true }), h.deps),
+      /other instance|ambiguous/i,
+    );
+    expect(h.calls).toHaveLength(0);
+  });
+
+  it("reports already-gone for a spawned record whose host already exited", async () => {
+    seedProvenance({ phase: "spawned" });
+    writeSupervisionState(sessionRoot, runningDoc());
+    const h = harness();
+    h.setProcesses([]);
+
+    const report = await terminateSessionHost(options(), h.deps);
+
+    expect(report.outcome).toBe("already-gone");
+    expect(h.calls).toHaveLength(0);
+    expect(readDoc().blocking?.host).toBe("process-gone");
   });
 });
 
