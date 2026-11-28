@@ -149,15 +149,16 @@ describe("readDialogSurfaces", () => {
 
   const fakeOcr =
     (result: { text?: string; ok?: boolean; timedOut?: boolean; reason?: string }) =>
-    async () => ({
-      engine: "tesseract" as const,
-      languages: ["jpn", "eng"],
-      durationMs: 12,
-      timedOut: result.timedOut ?? false,
-      ok: result.ok ?? true,
-      ...(result.reason === undefined ? {} : { reason: result.reason }),
-      ...(result.text === undefined ? {} : { text: result.text }),
-    });
+    () =>
+      Promise.resolve({
+        engine: "tesseract" as const,
+        languages: ["jpn", "eng"],
+        durationMs: 12,
+        timedOut: result.timedOut ?? false,
+        ok: result.ok ?? true,
+        ...(result.reason === undefined ? {} : { reason: result.reason }),
+        ...(result.text === undefined ? {} : { text: result.text }),
+      });
 
   it("reads an AX dialog surface from the AX channel only", async () => {
     const report = await readDialogSurfaces(
@@ -264,7 +265,7 @@ describe("readDialogSurfaces", () => {
           if (windowNumber === 1) throw new Error("screencapture denied");
           return path;
         },
-        ocr: async () => ocrs[i++]!(),
+        ocr: () => ocrs[i++]!(),
         maxPixelReads: 5,
       },
     );
@@ -303,12 +304,13 @@ describe("readDialogSurfaces", () => {
 describe("createTesseractOcr", () => {
   it("parses --list-langs output and intersects with the requested set", async () => {
     const calls: string[][] = [];
-    const exec: OcrExec = async (file, args) => {
+    const exec: OcrExec = (file, args) => {
       calls.push([file, ...args]);
-      if (args[0] === "--list-langs") {
-        return { stdout: "List of available languages in \"x\":\neng\nosd\njpn\n", stderr: "" };
-      }
-      return { stdout: "recognized text", stderr: "" };
+      return Promise.resolve(
+        args[0] === "--list-langs"
+          ? { stdout: "List of available languages in \"x\":\neng\nosd\njpn\n", stderr: "" }
+          : { stdout: "recognized text", stderr: "" },
+      );
     };
     const ocr = createTesseractOcr({ exec, languages: ["jpn", "deu", "eng"] });
     const result = await ocr("/tmp/x.png");
@@ -321,10 +323,11 @@ describe("createTesseractOcr", () => {
   });
 
   it("reports ok:false honestly when no requested language is installed", async () => {
-    const exec: OcrExec = async () => ({
-      stdout: "List of available languages in \"x\":\neng\nosd\n",
-      stderr: "",
-    });
+    const exec: OcrExec = () =>
+      Promise.resolve({
+        stdout: "List of available languages in \"x\":\neng\nosd\n",
+        stderr: "",
+      });
     const ocr = createTesseractOcr({ exec, languages: ["jpn"] });
     const result = await ocr("/tmp/x.png");
     expect(result.ok).toBe(false);
@@ -332,9 +335,9 @@ describe("createTesseractOcr", () => {
   });
 
   it("maps a killed subprocess to timedOut, never a hang", async () => {
-    const exec: OcrExec = async (_file, args) => {
+    const exec: OcrExec = (_file, args) => {
       if (args[0] === "--list-langs") {
-        return { stdout: "List:\neng\n", stderr: "" };
+        return Promise.resolve({ stdout: "List:\neng\n", stderr: "" });
       }
       const error = new Error("Command failed: tesseract") as Error & {
         killed: boolean;
@@ -342,7 +345,7 @@ describe("createTesseractOcr", () => {
       };
       error.killed = true;
       error.signal = "SIGKILL";
-      throw error;
+      return Promise.reject(error);
     };
     const ocr = createTesseractOcr({ exec, languages: ["eng"], timeoutMs: 25 });
     const result = await ocr("/tmp/x.png");
@@ -352,9 +355,7 @@ describe("createTesseractOcr", () => {
   });
 
   it("reports a missing binary as ok:false, not a throw", async () => {
-    const exec: OcrExec = async () => {
-      throw new Error("spawn tesseract ENOENT");
-    };
+    const exec: OcrExec = () => Promise.reject(new Error("spawn tesseract ENOENT"));
     const ocr = createTesseractOcr({ exec });
     const result = await ocr("/tmp/x.png");
     expect(result.ok).toBe(false);
@@ -386,7 +387,7 @@ describe("MacGuiProbe.readings", () => {
     const probe = new MacGuiProbe(42, {
       listWindows: () => state([]),
       pidAlive: () => true,
-      readings: async () => [reading],
+      readings: () => Promise.resolve([reading]),
     });
     expect(await probe.readings()).toEqual([reading]);
     // observe() stays synchronous and never touches the readings dep.
@@ -409,14 +410,15 @@ describe("guiStateReport readings option", () => {
     const deep = await guiStateReport(TARGET, { observed }, {
       evidenceDir: mkdtempSync(join(tmpdir(), "a8n-gui-readings-")),
       captureWindow: (path) => path,
-      ocr: async () => ({
-        engine: "tesseract",
-        languages: ["eng"],
-        durationMs: 1,
-        timedOut: false,
-        ok: true,
-        text: "a dialog",
-      }),
+      ocr: () =>
+        Promise.resolve({
+          engine: "tesseract" as const,
+          languages: ["eng"],
+          durationMs: 1,
+          timedOut: false,
+          ok: true,
+          text: "a dialog",
+        }),
     }, { readings: true });
     expect(deep.status).toBe("observed");
     if (deep.status === "observed") {
@@ -451,12 +453,12 @@ describe("MacHostRecovery dialogOcr", () => {
   }
 
   function fakeOcrExec(text: string): OcrExec {
-    return async (_file, args) => {
-      if (args[0] === "--list-langs") {
-        return { stdout: "List:\neng\njpn\n", stderr: "" };
-      }
-      return { stdout: text, stderr: "" };
-    };
+    return (_file, args) =>
+      Promise.resolve(
+        args[0] === "--list-langs"
+          ? { stdout: "List:\neng\njpn\n", stderr: "" }
+          : { stdout: text, stderr: "" },
+      );
   }
 
   it("attaches an OCR reading to each captured census window, evidence-only", async () => {
