@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "kind": "ae-a8n.rc-run-manifest/v1",
+  "spec": "specs/release-acceptance/spec.md",
+  "createdAt": "2026-11-28",
+  "attempt": "re-run 2 (run 1 evidence: docs/evidence/release-0-7-0-rc/, environment-blocked by AE 2027 BirthPrefs modal; blocker resolved and verified before this run)",
+  "candidate": {
+    "commit": "3acacf715a0d296b80d04bcd9b11a226417194c3",
+    "tarball": "ido-bata-ae-a8n-0.6.0.tgz",
+    "tarballSha256": "2cf892709a7536bcad916f510279602da201b37645c85fc1a25fae4930a750b7",
+    "package": "@ido-bata/ae-a8n",
+    "version": "0.6.0",
+    "frozenFrom": "origin/release-0-7-0 HEAD at run-2 start (includes #443 close fail-fast, #444 readiness phase split + modal-blocked classification, #445 panel.restore advertise, #437-#441 harness/metrics fixes)"
+  },
+  "platform": {
+    "lane": "macos",
+    "os": "macOS 27.2.1 (darwin 27)",
+    "arch": "arm64",
+    "aeInstall": "/Applications/Adobe After Effects 2027",
+    "aeVersion": "27.0x78",
+    "aeBuild": "78",
+    "note": "AE 2026 (foreign, user-owned, pid 39218 at run start) is never mutated; it serves as the foreign-interference fixture. AE 2027 pre-run probe (unrecorded environment check, public path): launch handshake 65.6s, version 27.0x78 build 78, discard close succeeded."
+  },
+  "fixture": {
+    "id": "fixture.aep",
+    "path": "docs/evidence/release-0-7-0-rc-r2/fixtures/fixture.aep",
+    "sha256": "84d5d91112fcbef9d0cea461afc4e99d06a88822084e9dfb6cf59a63f96768c0",
+    "contents": "one composition 'A8N Acceptance' 640x480@30fps 5s (same fixture as run 1; sha256 verified identical)"
+  },
+  "consumer": {
+    "surface": "packed-tarball consumer install + AfterEffects.launch/attach/rebuild/terminate + ae.* API + ae-a8n CLI",
+    "installDir": "/tmp/rc436r2-consumer (npm install of the packed tarball; not committed)"
+  },
+  "budgets": {
+    "readinessProbeMs": 180000,
+    "note": "readinessProbeMs is the spec-fixed default (180000). Representative-op budgets declared before the formal attempt sequence; values carry over from the run-1 manifest ceilings (p95-style, ~1.4-3x observed max on the same op set) and are re-validated against this candidate's measurements — a breach on this candidate is a finding, not a re-declaration.",
+    "ops": {
+      "session.launch": 120000,
+      "app.info": 60000,
+      "project.open": 60000,
+      "project.info": 120000,
+      "project.state": 120000,
+      "project.comps": 60000,
+      "comp.info": 120000,
+      "comp.renderFrame": 120000,
+      "session.quit": 60000,
+      "session.close": 120000
+    },
+    "opsProvenance": "Same ceiling set as run-1 manifest (derived from baseline s1-warm-01..03 on candidate a67a956). Run-2 attempt timings are measured fresh on 3acacf7; budgets are NOT relaxed post-hoc."
+  },
+  "recordingInCandidate": true,
+  "scenarios": "RC-S1..RC-S16 per specs/release-acceptance/spec.md §8; darwin-applicable rows only; others recorded not-applicable with reason",
+  "environmentNotes": [
+    "Foreign AE 2026 instance running throughout (pid 39218 at start) — read-only observation only (census + detached supervisor monitor-only).",
+    "Input source baseline: PressAndHold + Kotoeri RomajiTyping/Japanese (com.apple.HIToolbox AppleSelectedInputSources) — see env/baseline.txt.",
+    "Clipboard baseline sha256 recorded at run start (env/baseline.txt).",
+    "Harness: docs/evidence/release-0-7-0-rc-r2/harness/ (copied from run-1 harness; session roots retargeted to /tmp/rc436r2-sessions, consumer ext staged at /tmp/rc436r2-consumer/ext/).",
+    "BirthPrefs modal blocker from run 1: verified resolved before freeze (AppleScript version=27.0.0; launch probe succeeded). If it recurs, #444 instrumentation should classify it modal-blocked:<class> — recorded honestly, no dismissal attempted."
+  ]
+}
