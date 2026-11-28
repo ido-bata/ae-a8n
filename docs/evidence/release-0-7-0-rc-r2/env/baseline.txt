@@ -1,0 +1,32 @@
+== date ==
+2026-11-28T06:57:42Z
+== census ==
+39218 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects
+39234 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/crashpad_handler
+39243 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/dynamiclinkmanager
+39247 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/TeamProjectsLocalHub.app/Contents/MacOS/TeamProjectsLocalHub
+77613 /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects
+77708 /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/crashpad_handler
+77900 /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/dynamiclinkmanager
+78002 /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/TeamProjectsLocalHub.app/Contents/MacOS/TeamProjectsLocalHub
+== input sources ==
+(
+        {
+        "Bundle ID" = "com.apple.PressAndHold";
+        InputSourceKind = "Non Keyboard Input Method";
+    },
+        {
+        "Bundle ID" = "com.apple.inputmethod.Kotoeri.RomajiTyping";
+        "Input Mode" = "com.apple.inputmethod.Japanese";
+        InputSourceKind = "Input Mode";
+    }
+)
+== clipboard sha256 ==
+46b866e75035b6a2b22e87b38dc5d3734b2faa41ab31e2f19431274c81993a92  -
+== frontmost ==
+After Effects
+== os ==
+ProductName:		macOS
+ProductVersion:		27.2.1
+BuildVersion:		26B131
+arm64

@@ -1,0 +1,35 @@
+{
+  "label": "r2-s3-a",
+  "scenarioId": "RC-S3",
+  "verdict": "fail",
+  "steps": [
+    {
+      "stepId": "launch",
+      "startedAt": "2026-11-28T07:50:07.762Z",
+      "durationMs": 65156,
+      "expected": "owned launch",
+      "actual": {},
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "register-expectation",
+      "startedAt": "2026-11-28T07:51:12.918Z",
+      "durationMs": 1,
+      "expected": "ae.expectModal registers the ae-a8n ui.alert modal",
+      "actual": {
+        "error": "TypeError",
+        "message": "expected modal resolve must be a function"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "TypeError",
+        "message": "expected modal resolve must be a function"
+      }
+    }
+  ],
+  "cleanup": {
+    "verdict": "clean",
+    "ref": "/tmp/rc436r2-sessions/r2-s3-a/teardown-092df65e-6869-4c6a-9a86-af95c81fb033.json"
+  },
+  "sessionRoot": "/tmp/rc436r2-sessions/r2-s3-a"
+}

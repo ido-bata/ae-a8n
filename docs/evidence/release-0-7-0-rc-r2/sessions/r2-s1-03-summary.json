@@ -1,0 +1,108 @@
+{
+  "label": "r2-s1-03",
+  "scenarioId": "RC-S1",
+  "verdict": "fail",
+  "steps": [
+    {
+      "stepId": "launch+handshake-readiness",
+      "startedAt": "2026-11-28T07:08:02.171Z",
+      "durationMs": 65363,
+      "expected": "AfterEffects.launch resolves within readinessTimeoutMs (180000) with owned session",
+      "actual": {},
+      "evidenceRefs": [
+        "trace:session.launch"
+      ]
+    },
+    {
+      "stepId": "capabilities",
+      "startedAt": "2026-11-28T07:09:07.534Z",
+      "durationMs": 525,
+      "expected": "ae.capabilities() returns handshake",
+      "actual": {
+        "contractVersion": {
+          "major": 1,
+          "minor": 0
+        },
+        "ownership": "owned",
+        "caps": 30
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "version",
+      "startedAt": "2026-11-28T07:09:08.059Z",
+      "durationMs": 61535,
+      "expected": "ae.version() returns 27.0x78",
+      "actual": {
+        "version": "27.0x78",
+        "info": {
+          "version": "27.0x78",
+          "build": "78"
+        }
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "openProject+state",
+      "startedAt": "2026-11-28T07:10:09.594Z",
+      "durationMs": 64048,
+      "expected": "ae.openProject(fixture.aep) succeeds; project.info/state report the fixture",
+      "actual": {
+        "file": null,
+        "name": null,
+        "itemCount": 1,
+        "state": {
+          "itemCount": 1,
+          "dirty": true,
+          "activeItem": null
+        }
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "comps",
+      "startedAt": "2026-11-28T07:11:13.642Z",
+      "durationMs": 62077,
+      "expected": "fixture comp list contains 'A8N Acceptance'",
+      "actual": [
+        "A8N Acceptance"
+      ],
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "renderFrame",
+      "startedAt": "2026-11-28T07:12:15.719Z",
+      "durationMs": 64184,
+      "expected": "comp.renderFrame(0) writes a PNG artifact",
+      "actual": {
+        "path": "/tmp/rc436r2-sessions/r2-s1-03/artifacts/r2-s1-03-frame.00000.png",
+        "frame": 0,
+        "width": 640,
+        "height": 480
+      },
+      "evidenceRefs": [
+        "artifacts:*.png"
+      ]
+    },
+    {
+      "stepId": "close",
+      "startedAt": "2026-11-28T07:13:19.903Z",
+      "durationMs": 127332,
+      "expected": "ae.close({unsavedChanges:'discard'}) quits the owned host",
+      "actual": {
+        "error": "AfterEffectsError",
+        "message": "session.close failed: After Effects did not exit within 60000 ms of app.quit; it was left running; the process still owns window(s): \"プロジェクトを開く\", \"名称未設定プロジェクト\""
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "AfterEffectsError",
+        "message": "session.close failed: After Effects did not exit within 60000 ms of app.quit; it was left running; the process still owns window(s): \"プロジェクトを開く\", \"名称未設定プロジェクト\""
+      }
+    }
+  ],
+  "cleanup": {
+    "verdict": "residue",
+    "ref": "/tmp/rc436r2-sessions/r2-s1-03/teardown-966cd2c3-56b4-4046-91ea-6d6c7c20bd2c.json"
+  },
+  "sessionRoot": "/tmp/rc436r2-sessions/r2-s1-03"
+}

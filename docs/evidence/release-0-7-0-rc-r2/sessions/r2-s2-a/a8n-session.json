@@ -1,0 +1,7 @@
+{
+  "v": 1,
+  "transport": "script-invocation",
+  "hostScript": "/Users/rebui/work/ae-a8n.436-r2/host/a8n-host.js",
+  "stagedHostScript": "/tmp/rc436r2-sessions/r2-s2-a/staging/a8n-host.js",
+  "pid": 46108
+}

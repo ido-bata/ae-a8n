@@ -1,0 +1,24 @@
+{
+  "kind": "ae-a8n.recovery-evidence/v1",
+  "requestId": "736d4251-0260-4f50-99bd-60b81a09f43f",
+  "method": "app.info",
+  "timeoutMs": 179582,
+  "recovered": false,
+  "outcome": "refused",
+  "code": "A8N-AE-004",
+  "window": null,
+  "expectedModal": null,
+  "evidence": "no After Effects process this run started could be tied to it: app.info (736d4251-0260-4f50-99bd-60b81a09f43f) timed out and no host process was found",
+  "screenshot": {
+    "before": null,
+    "after": null,
+    "note": null
+  },
+  "uncapturable": [],
+  "hostLogs": {
+    "collector": "ae.diagnostics()",
+    "cepCsxs": "not collected: CEPHtmlEngine/CSXS sources are #336's scope"
+  },
+  "supervision": null,
+  "capturedAt": "2026-11-28T07:31:57.287Z"
+}
