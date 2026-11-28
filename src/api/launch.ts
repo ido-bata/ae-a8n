@@ -512,6 +512,12 @@ export async function openAfterEffects(
           verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
           screenshotDir: join(sessionRoot, "artifacts"),
           expectedModals,
+          // Dialog perception (#462): the AX-invisible census captures the
+          // recovery already takes get a bounded OCR reading as evidence.
+          // Off the decision path — the recovery verdict is computed
+          // before OCR runs; an absent/slow engine degrades to
+          // `unreadable`, never a hang.
+          dialogOcr: {},
         });
         expectedModalsActive = true;
       }

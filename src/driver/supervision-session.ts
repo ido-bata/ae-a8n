@@ -34,6 +34,9 @@ import {
   MacGuiRecovery,
 } from "./gui-recovery.js";
 import { MacGuiProbe } from "../platform/darwin/gui-probe.js";
+import { createTesseractOcr } from "../platform/darwin/ocr.js";
+import { readDialogSurfaces } from "../platform/darwin/dialog-perception.js";
+import { join } from "node:path";
 import { WindowsGuiProbe } from "../platform/windows/gui-probe.js";
 import type { WindowsGuiSession } from "./windows-gui-recovery.js";
 import {
@@ -309,9 +312,26 @@ export class SessionSupervision {
       } catch {
         return null;
       }
+      // Dialog perception (#462): pull-based readings over the same
+      // recovery instance — never inside the monitor tick. Captures land
+      // under the session's artifacts dir; OCR is the bounded tesseract
+      // subprocess (absent/slow engine degrades to `unreadable`, never
+      // a hang).
+      const ocr = createTesseractOcr();
+      const evidenceDir = join(options.sessionRoot, "artifacts");
       return new MacGuiProbe(options.pid, {
         listWindows: () => recovery.listWindows(),
         pidAlive: () => verifyPid(options.pid),
+        readings: async () => {
+          const state = recovery.listWindows();
+          const report = await readDialogSurfaces(state, {
+            captureWindow: (path, windowNumber) =>
+              recovery.captureWindowById(path, windowNumber),
+            ocr,
+            evidenceDir,
+          });
+          return report.readings;
+        },
       });
     }
 

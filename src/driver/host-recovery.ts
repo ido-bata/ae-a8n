@@ -23,6 +23,7 @@ import type { ExpectedModalRegistry } from "./expected-modals.js";
 import type { MacSession } from "./mac-session.js";
 import {
   MacHostRecovery,
+  type DialogOcrOptions,
   type GuiRecoverySurface,
   type HostRecovery,
 } from "./recovery.js";
@@ -60,6 +61,12 @@ export type CreateHostRecoveryOptions = {
    */
   readonly expectedModals?: ExpectedModalRegistry | undefined;
   /**
+   * Dialog-perception OCR for census-window captures (#462), forwarded
+   * to `MacHostRecovery` only — the evidence path that reads AX-invisible
+   * surfaces after the recovery decision. Absent keeps capture-only.
+   */
+  readonly dialogOcr?: DialogOcrOptions | undefined;
+  /**
    * Test seam forwarded to `MacHostRecovery` only: replaces the
    * `MacGuiRecovery` the attempt builds. Never set in production wiring.
    */
@@ -91,6 +98,7 @@ export function createHostRecovery(options: CreateHostRecoveryOptions): HostReco
       screenshotDir: options.screenshotDir,
       ...(options.buttons === undefined ? {} : { buttons: options.buttons }),
       ...(options.expectedModals === undefined ? {} : { expectedModals: options.expectedModals }),
+      ...(options.dialogOcr === undefined ? {} : { dialogOcr: options.dialogOcr }),
       ...(options.macGui === undefined ? {} : { gui: options.macGui }),
     });
   }

@@ -169,6 +169,7 @@ import type {
   CompInfo,
   DiagnosticsOptions,
   DispatcherActivation,
+  GuiStateOptions,
   GuiStateReport,
   LaunchOptions,
   OpenProjectOptions,
@@ -1059,16 +1060,22 @@ export class AfterEffects {
    * attested — an attached or unknown host has no proven pid/session, so
    * there is no honest window list to report.
    *
+   * `options.readings: true` additionally runs the dialog-perception
+   * pipeline (#462): every AX∪census surface gets a `DialogReading`,
+   * including honest `unreadable` answers for surfaces no channel can
+   * read. Pixel capture + bounded OCR make this the slow variant — it is
+   * opt-in and never part of the default observation.
+   *
    * On macOS the first observation in a session may raise the standard
    * Accessibility consent prompt; that is the OS asking a human, not this
    * API bypassing it.
    */
-  guiState(): Promise<GuiStateReport> {
-    // The observation itself is synchronous (one Accessibility query inside
-    // the target session); `.then` keeps even a synchronous failure a
-    // rejection rather than a throw from a Promise-typed method.
+  guiState(options?: GuiStateOptions): Promise<GuiStateReport> {
+    // The observation itself is one Accessibility query inside the target
+    // session; `readings: true` adds the bounded dialog-perception pass
+    // (window capture + OCR, #462) — still one traced op, still read-only.
     return observeOp(this.#session.telemetry, "guiState", undefined, () =>
-      Promise.resolve().then(() => guiStateReport(this.recoveryTarget())),
+      guiStateReport(this.recoveryTarget(), undefined, {}, options ?? {}),
     );
   }
 

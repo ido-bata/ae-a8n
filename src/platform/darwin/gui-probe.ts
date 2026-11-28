@@ -50,10 +50,18 @@ import type { WindowServerWindow } from "./window-census.js";
 import type { DialogWindow } from "../recovery-policy.js";
 import type { GuiProbe, ProbeCensus, ProbeSnapshot } from "../../supervision/probe.js";
 import type { HostLevelState } from "../../supervision/types.js";
+import type { DialogReading } from "../dialog-reading.js";
 
 export type MacGuiProbeDeps = {
   /** Anything that can list the target's windows (MacGuiRecovery works). */
   readonly listWindows: () => GuiAppState;
+  /**
+   * On-demand dialog perception (#462): produces one `DialogReading` per
+   * AX∪census surface. Called only through `readings()` — never inside
+   * `observe()`, because pixel capture + bounded OCR are far slower than
+   * the monitor tick. Absent means readings are unproven, not "none".
+   */
+  readonly readings?: () => Promise<readonly DialogReading[]>;
   /** Process liveness, injectable for tests. Default: kill(pid, 0). */
   readonly pidAlive?: (pid: number) => boolean;
   /** GUI-session liveness, injectable for tests. */
@@ -346,5 +354,14 @@ export class MacGuiProbe implements GuiProbe {
       census,
       ...(degraded.length > 0 ? { degraded } : {}),
     };
+  }
+
+  /**
+   * Dialog readings on demand (#462). Delegates to the injected
+   * perception dep; without one this answers `[]` — readings unproven,
+   * which consumers must not read as "no dialogs".
+   */
+  readings(): Promise<readonly DialogReading[]> {
+    return this.#deps.readings?.() ?? Promise.resolve([]);
   }
 }

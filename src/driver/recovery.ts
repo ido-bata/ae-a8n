@@ -26,6 +26,12 @@ import {
   type ExpectedModalRegistry,
 } from "./expected-modals.js";
 import type { WindowServerWindow } from "../platform/darwin/window-census.js";
+import type { DialogReading } from "../platform/dialog-reading.js";
+import {
+  createTesseractOcr,
+  type OcrRunner,
+  type TesseractOcrOptions,
+} from "../platform/darwin/ocr.js";
 import {
   GuiAttributionError,
   GuiMutationError,
@@ -120,11 +126,28 @@ export type CensusWindowCapture = {
   readonly path?: string;
   /** Why no image exists, when it does not. */
   readonly note?: string;
+  /**
+   * The dialog reading of this surface (#462), present only when the
+   * recovery was built with `dialogOcr` and the OCR pass ran. Evidence
+   * only — a reading never changes the recovery's decision, which was
+   * already made before OCR ran.
+   */
+  readonly reading?: DialogReading;
 };
 
 export interface HostRecovery {
   attempt(context: RecoveryContext): Promise<RecoveryOutcome>;
 }
+
+/**
+ * OCR options for the recovery evidence path (#462): the bounded
+ * tesseract contract plus a cap on how many captured surfaces get read
+ * per attempt.
+ */
+export type DialogOcrOptions = TesseractOcrOptions & {
+  /** Captured surfaces OCR'd per attempt; default 8. */
+  readonly maxReadings?: number;
+};
 
 /** Buttons a recovery may press: they end a dialog without changing anything. */
 export const RECOVERY_BUTTONS: readonly string[] = ["OK", "Cancel", "Close", "Dismiss"];
@@ -454,6 +477,17 @@ export type MacHostRecoveryOptions = {
    */
   readonly expectedModals?: ExpectedModalRegistry | undefined;
   /**
+   * Dialog perception for census-window captures (#462,
+   * specs/dialog-perception/spec.md §5). When present, each successfully
+   * captured `axUnaccountedCensusWindows` image is run through bounded
+   * OCR *after* the recovery decision — the reading lands on
+   * `CensusWindowCapture.reading` as evidence. Absent (the default)
+   * keeps the #451 capture-only behaviour: no OCR cost, no readings.
+   * Evidence-only: a reading never changes `chooseRecoveryWindow`'s
+   * verdict, which is computed before OCR runs.
+   */
+  readonly dialogOcr?: DialogOcrOptions | undefined;
+  /**
    * Test seam: replaces the `MacGuiRecovery` the attempt builds. The
    * surface is the three calls an attempt makes — list, capture, press —
    * so a fake can drive every classification and fault path without a
@@ -491,7 +525,9 @@ export class MacHostRecovery implements HostRecovery {
   readonly #screenshotDir: string;
   readonly #buttons: readonly string[];
   readonly #expectedModals: ExpectedModalRegistry | undefined;
+  readonly #dialogOcr: DialogOcrOptions | undefined;
   readonly #gui: GuiRecoverySurface | undefined;
+  #ocrRunner: OcrRunner | null = null;
 
   constructor(options: MacHostRecoveryOptions) {
     this.#session = options.session;
@@ -500,21 +536,125 @@ export class MacHostRecovery implements HostRecovery {
     this.#screenshotDir = options.screenshotDir;
     this.#buttons = options.buttons ?? RECOVERY_BUTTONS;
     this.#expectedModals = options.expectedModals;
+    this.#dialogOcr = options.dialogOcr;
     this.#gui = options.gui;
   }
 
   attempt(context: RecoveryContext): Promise<RecoveryOutcome> {
-    // The whole recovery is synchronous: every action is one Accessibility
-    // query or one press inside the target session, each a blocking
-    // `osascript`. It is deliberately not made asynchronous — the calls have
-    // no interleaving that would be safe (a listing and the press that
-    // depends on it must not be split by another action on the same screen),
-    // and the cost is that the calling process's event loop is held for the
-    // length of the attempt. That is acceptable for a recovery, which happens
-    // once, after a timeout, and never as part of ordinary operation; a
-    // caller that runs several sessions in one process sees their timers
-    // late while it runs.
-    return Promise.resolve(this.#attempt(context));
+    // The decision half of the recovery is synchronous: every action is
+    // one Accessibility query or one press inside the target session,
+    // each a blocking `osascript`. It is deliberately not made
+    // asynchronous — the calls have no interleaving that would be safe
+    // (a listing and the press that depends on it must not be split by
+    // another action on the same screen). The dialog-perception OCR pass
+    // (#462) runs *after* the decision as a bounded subprocess, so it
+    // adds latency to the evidence, never to the press ordering; a
+    // caller that runs several sessions in one process sees their
+    // timers late while it runs.
+    return Promise.resolve()
+      .then(() => this.#attempt(context))
+      .then((outcome) => this.#annotateDialogReadings(outcome));
+  }
+
+  /**
+   * OCR each captured census window and attach its `DialogReading`
+   * (#462). Runs only when `dialogOcr` was configured and the outcome
+   * carries census captures — the `kind: "none"` path, which has no
+   * press to interleave with. Capped so a pathological census cannot
+   * turn one recovery into an unbounded OCR queue; unread surfaces past
+   * the cap simply carry no `reading`.
+   */
+  async #annotateDialogReadings(outcome: RecoveryOutcome): Promise<RecoveryOutcome> {
+    const captures = outcome.censusCaptures;
+    if (this.#dialogOcr === undefined || captures === undefined) {
+      return outcome;
+    }
+    const pid = this.#pid();
+    if (pid === null) {
+      return outcome;
+    }
+    this.#ocrRunner ??= createTesseractOcr(this.#dialogOcr);
+    const ocr = this.#ocrRunner;
+    const maxReadings = this.#dialogOcr.maxReadings ?? 8;
+    const annotated: CensusWindowCapture[] = [];
+    let reads = 0;
+    for (const capture of captures) {
+      if (
+        reads >= maxReadings ||
+        capture.path === undefined ||
+        capture.windowNumber === null
+      ) {
+        annotated.push(capture);
+        continue;
+      }
+      reads += 1;
+      annotated.push({
+        ...capture,
+        reading: await this.#readCapture(
+          pid,
+          capture.windowNumber ?? 0,
+          capture.path,
+          ocr,
+        ),
+      });
+    }
+    return { ...outcome, censusCaptures: annotated };
+  }
+
+  /**
+   * One bounded OCR pass over an already-captured window PNG. Every
+   * failure mode — engine absent, timeout, empty text — becomes an
+   * honest `unreadable`/`partial` reading; nothing throws.
+   */
+  async #readCapture(
+    pid: number,
+    windowNumber: number,
+    capturePath: string,
+    ocr: OcrRunner,
+  ): Promise<DialogReading> {
+    const surfaceId = `census:${windowNumber}`;
+    const result = await ocr(capturePath);
+    const summary = {
+      engine: result.engine,
+      languages: result.languages,
+      durationMs: result.durationMs,
+      timedOut: result.timedOut,
+      ok: result.ok,
+      ...(result.reason === undefined ? {} : { reason: result.reason }),
+    };
+    const text = result.text?.trim() ?? "";
+    const base = {
+      pid,
+      surfaceId,
+      buttons: [],
+      modality: "unknown" as const,
+      evidence: { capturePath, ocr: summary },
+    };
+    if (!result.ok) {
+      return {
+        ...base,
+        source: "pixels",
+        confidence: "unreadable",
+        unreadableReason: result.timedOut
+          ? `OCR timed out: ${result.reason ?? "killed at the timeout"}`
+          : `OCR failed: ${result.reason ?? "unknown engine error"}`,
+      };
+    }
+    if (text === "") {
+      return {
+        ...base,
+        source: "pixels",
+        confidence: "unreadable",
+        unreadableReason:
+          "OCR ran but the capture held no recognizable text (blank or fully transparent surface)",
+      };
+    }
+    return {
+      ...base,
+      source: "pixels",
+      bodyText: text.slice(0, 4_000),
+      confidence: "partial",
+    };
   }
 
   #attempt(context: RecoveryContext): RecoveryOutcome {

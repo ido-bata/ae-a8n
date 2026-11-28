@@ -17,6 +17,7 @@ import {
   isHumanOnlyWindow,
   type DialogWindow,
 } from "../platform/recovery-policy.js";
+import type { DialogReading } from "../platform/dialog-reading.js";
 import {
   extractDialogContent,
   type StructuredDialogContent,
@@ -93,6 +94,17 @@ export type ProbeSnapshot =
 /** The OS-native eye. Implementations must not throw for expected failure. */
 export interface GuiProbe {
   observe(): ProbeSnapshot | Promise<ProbeSnapshot>;
+  /**
+   * On-demand dialog readings (#462, specs/dialog-perception/spec.md):
+   * one `DialogReading` per AX∪census surface, including honest
+   * `unreadable` answers. Optional — a probe without perception support
+   * omits it, and consumers must treat absence as "readings unproven",
+   * never as "no dialogs". Pull-based by contract: the monitor's
+   * `observe()` tick never calls this, because pixel acquisition + OCR
+   * are bounded-but-slow (tens of seconds per surface) and must never
+   * block supervision.
+   */
+  readings?(): Promise<readonly DialogReading[]>;
 }
 
 /**
