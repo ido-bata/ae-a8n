@@ -77,3 +77,23 @@ Incidents: one cold-launch readiness timeout (run.json), one foreign
 mid-sequence (run3.json). No foreign AE process was signalled; owned
 instances were quit via the API (`close`) or `osascript quit` after path
 verification.
+
+## 監査注記（#433、2026-11 時点の script 欠陥との対応）
+
+本 directory の run JSON は `poc-element-drag-427.mjs` の **修正前** の
+出力であり、#432 で確定した欠陥 class を含む。証跡の解釈時に割り引く
+こと:
+
+- `run.json` の `dialog-dismiss-launch` step — script 内の独自 watchdog
+  が dialog class を区別せず key を注入した記録。supervision の
+  dialog-taxonomy / MacGuiRecovery lease を bypass している。
+- 全 run で `close` / `postflight-census` step が JSON に存在しない
+  （emit が cleanup より先）。上記「Owned instance quit cleanly」は
+  console 側の記述であり、JSON 証跡には cleanup が残っていない。
+- `run2.json` の `project-candidates` は indeterminate/失敗後も候補座標を
+  反復しており、error.code 未判定・再観測なしの mutation resend に
+  相当し得る。
+
+mutation oracle（`comp.layers` / `project.items` delta）に基づく
+`verified` 判定自体は有効だが、上記の副作用が混入した可能性を
+考慮して読むこと。詳細は `docs/poc-verification-limits.md` §6。

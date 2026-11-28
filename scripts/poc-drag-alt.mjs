@@ -77,7 +77,7 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const options = { install: undefined, plan: undefined, out: undefined, sessionRoot: undefined, helpersDir: undefined };
+  const options = { install: undefined, plan: undefined, out: undefined, sessionRoot: undefined, helpersDir: undefined, readinessTimeoutMs: 240_000 };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--") break;
@@ -87,10 +87,14 @@ function parseArgs(argv) {
     else if (arg === "--session-root") options.sessionRoot = argv[++i];
     else if (arg === "--helpers-dir") options.helpersDir = argv[++i];
     else if (arg === "--attach-pid") options.attachPid = Number(argv[++i]);
+    else if (arg === "--readiness-timeout-ms") options.readinessTimeoutMs = Number(argv[++i]);
     else fail(`unknown argument ${JSON.stringify(arg)}`);
   }
   if (options.install === undefined) fail("--install <dir> is required");
   if (options.plan === undefined) fail("--plan <file.json> is required");
+  if (!Number.isFinite(options.readinessTimeoutMs) || options.readinessTimeoutMs <= 0) {
+    fail("--readiness-timeout-ms must be a positive number");
+  }
   return options;
 }
 
@@ -309,7 +313,7 @@ async function main() {
     installDir: options.install,
     hostScript,
     timeoutMs: 300_000,
-    readinessTimeoutMs: 240_000,
+    readinessTimeoutMs: options.readinessTimeoutMs,
   };
   if (options.sessionRoot !== undefined) launchOptions.sessionRoot = options.sessionRoot;
   let ae;
@@ -321,15 +325,23 @@ async function main() {
       installDir: options.install,
       hostScript,
       timeoutMs: 300_000,
-      readinessTimeoutMs: 240_000,
+      readinessTimeoutMs: options.readinessTimeoutMs,
       target: { pid: attachPid },
       authorization: { extensionMethods: true },
       ...(options.sessionRoot !== undefined ? { sessionRoot: options.sessionRoot } : {}),
     });
-    step("attach", { pid: attachPid, info: ae.info() });
+    step("attach", {
+      pid: attachPid,
+      info: ae.info(),
+      readinessTimeoutMs: options.readinessTimeoutMs,
+    });
   } else {
     ae = await AfterEffects.launch(launchOptions);
-    step("launch", { pid: ae.recoveryTarget()?.pid ?? null, info: ae.info() });
+    step("launch", {
+      pid: ae.recoveryTarget()?.pid ?? null,
+      info: ae.info(),
+      readinessTimeoutMs: options.readinessTimeoutMs,
+    });
   }
 
   const foreignBaselinePids = new Set(foreignAtStart.map((p) => p.pid));
@@ -341,10 +353,10 @@ async function main() {
     // not "owned"); the pinned pid is the attested target for gating.
     const target = ae.recoveryTarget() ?? (attachPid !== null ? { pid: attachPid } : null);
     if (target === null) {
-      evidence.outcome = "failed";
-      evidence.reason = "recoveryTarget() is null; no owned pid/session attested";
-      emit(evidence, options.out);
-      return;
+      // Throw instead of emit+return: an early emit here would write the
+      // evidence BEFORE the finally close()/attach-quit and the postflight
+      // census run, losing the cleanup record.
+      throw new Error("recoveryTarget() is null; no owned pid/session attested");
     }
     step("recovery-target", { pid: target.pid });
 
@@ -800,15 +812,28 @@ async function main() {
       // An attached session can never quit its host; this instance was
       // launched by an earlier owned run of this PoC, so leaving it would
       // strand an in-scope AE. SIGTERM first, SIGKILL fallback.
+      // Ownership proof: the pid was verified as THIS install's After
+      // Effects by the attach census at session open; re-verify it still
+      // is before signalling — a pid that no longer names the install's
+      // executable (reused, or quit and replaced) is never signalled.
+      // What cannot be proven is that the earlier run launched it; that
+      // assumption is the documented --attach-pid contract.
       try {
-        process.kill(attachPid, "SIGTERM");
-        const deadline = Date.now() + 15_000;
-        while (Date.now() < deadline) {
-          try { process.kill(attachPid, 0); } catch { break; }
-          await new Promise((r) => setTimeout(r, 500));
+        if (!inScopeAEPids(install).includes(attachPid)) {
+          step("attach-quit", {
+            pid: attachPid,
+            skipped: "pid is no longer an in-scope After Effects; not signalled",
+          });
+        } else {
+          process.kill(attachPid, "SIGTERM");
+          const deadline = Date.now() + 15_000;
+          while (Date.now() < deadline) {
+            try { process.kill(attachPid, 0); } catch { break; }
+            await new Promise((r) => setTimeout(r, 500));
+          }
+          try { process.kill(attachPid, 0); process.kill(attachPid, "SIGKILL"); } catch { /* gone */ }
+          step("attach-quit", { pid: attachPid, sigterm: true });
         }
-        try { process.kill(attachPid, 0); process.kill(attachPid, "SIGKILL"); } catch { /* gone */ }
-        step("attach-quit", { pid: attachPid, sigterm: true });
       } catch (error) {
         step("attach-quit", { pid: attachPid, error: error instanceof Error ? error.message : String(error) });
       }

@@ -77,6 +77,7 @@ function parseArgs(argv) {
     settleMs: 1200,
     steps: 24,
     stepDelayMs: 16,
+    readinessTimeoutMs: 240_000,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -92,6 +93,7 @@ function parseArgs(argv) {
     else if (arg === "--settle-ms") options.settleMs = Number(argv[++i]);
     else if (arg === "--steps") options.steps = Number(argv[++i]);
     else if (arg === "--step-delay-ms") options.stepDelayMs = Number(argv[++i]);
+    else if (arg === "--readiness-timeout-ms") options.readinessTimeoutMs = Number(argv[++i]);
     else fail(`unknown argument ${JSON.stringify(arg)}`);
   }
   if (options.install === undefined) {
@@ -115,6 +117,9 @@ function parseArgs(argv) {
   }
   if (!Number.isFinite(options.settleMs) || options.settleMs < 0) {
     fail("--settle-ms must be a non-negative number");
+  }
+  if (!Number.isFinite(options.readinessTimeoutMs) || options.readinessTimeoutMs <= 0) {
+    fail("--readiness-timeout-ms must be a positive number");
   }
   return options;
 }
@@ -356,21 +361,25 @@ async function main() {
     installDir: options.install,
     hostScript,
     timeoutMs: 300_000,
-    readinessTimeoutMs: 240_000,
+    readinessTimeoutMs: options.readinessTimeoutMs,
   };
   if (options.sessionRoot !== undefined) {
     launchOptions.sessionRoot = options.sessionRoot;
   }
   const ae = await AfterEffects.launch(launchOptions);
-  step("launch", { pid: ae.recoveryTarget()?.pid ?? null, info: ae.info() });
+  step("launch", {
+    pid: ae.recoveryTarget()?.pid ?? null,
+    info: ae.info(),
+    readinessTimeoutMs: options.readinessTimeoutMs,
+  });
 
   try {
     const target = ae.recoveryTarget();
     if (target === null) {
-      evidence.outcome = "failed";
-      evidence.reason = "recoveryTarget() is null; no owned pid/session attested";
-      emit(evidence, options.out);
-      return;
+      // Throw instead of emit+return: an early emit here would write the
+      // evidence BEFORE the finally close() and the postflight census run,
+      // losing the cleanup record (same defect class as #432).
+      throw new Error("recoveryTarget() is null; no owned pid/session attested");
     }
     step("recovery-target", { pid: target.pid });
 
@@ -414,6 +423,11 @@ async function main() {
       if (!fresh.available) return { error: "census unavailable" };
       for (const w of fresh.windows) {
         if (w.onScreen !== true || w.bounds === null) continue;
+        // Desktop-level surfaces carry hugely negative `layer` values and
+        // cover the whole screen; they sort before real app windows, so an
+        // unfiltered first-match always returns them (same fix as
+        // poc-drag-alt.mjs). Real app windows are layer >= 0.
+        if (typeof w.layer === "number" && w.layer < 0) continue;
         const b = w.bounds;
         if (x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height) {
           return { pid: w.pid, owner: w.owner, windowNumber: w.windowNumber ?? null };
