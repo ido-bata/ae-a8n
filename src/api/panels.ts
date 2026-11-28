@@ -94,6 +94,7 @@ export function panelCapabilities(platform: NodeJS.Platform): PanelCapabilities 
       identify: unsupported,
       measure: unsupported,
       resize: unsupported,
+      restore: unsupported,
       captureRegion: unsupported,
       captureWindow: unsupported,
       dockedRegion: unsupported,
@@ -134,6 +135,19 @@ export function panelCapabilities(platform: NodeJS.Platform): PanelCapabilities 
         "resize → measure → restore on a real ScriptUI palette. " +
         "Requires the AX window enumeration, which AE only vends after the " +
         "app has been frontmost at least once (#406/#357)",
+    },
+    restore: {
+      support: "implemented",
+      verification: "verified on real host",
+      reason:
+        "same mutate-gui class and vehicle as resize: permitted by " +
+        "panelMutationGate() under the #358 A-SAFETY class decision " +
+        "(docs/gui-supervision-safety-gates.md §panel mutation) — the " +
+        "direct-AX `AXUIElementSetAttributeValue` set back to the frame " +
+        "first resolved by the handle, behind owned attribution + GUI " +
+        "lease + in-session identity re-verify. Verified end-to-end on " +
+        "owned AE 2027 (docs/evidence/realhost-2026-11-27/): " +
+        "resize → measure → restore on a real ScriptUI palette",
     },
     captureRegion: {
       support: "implemented",

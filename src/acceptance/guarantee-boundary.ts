@@ -673,36 +673,6 @@ export function buildGuaranteeBoundaryMatrix(): GuaranteeBoundaryMatrix {
     }
   }
 
-  // Panel `restore` is a public op the capability table does not
-  // advertise (panelCapabilities lists resize but not restore). The
-  // gate permits it under the same #358 class decision; report the row
-  // with the honest gap noted rather than silently omitting the op.
-  {
-    const gateFn = panelMutationGate();
-    const probe = gateFn("restore");
-    for (const platform of ["darwin", "win32"] as const) {
-      rows.push({
-        capability: "panel",
-        op: "restore",
-        platforms: [PLATFORM_MAP[platform] ?? (platform as "macos" | "windows")],
-        support: platform === "darwin" ? "partial" : "unsupported",
-        supportRaw: platform === "darwin" ? "unavailable" : "unsupported",
-        verificationLevel: "implemented",
-        gate: "panelMutationGate",
-        refuseConditions: [
-          ...(probe.allowed ? [] : ["mutation-gate-refused"]),
-          ...(platform === "darwin" ? [] : ["unsupported:windows"]),
-        ].sort(),
-        gateProbe: probe.allowed ? { allowed: true } : { allowed: false, reason: probe.reason },
-        evidenceRef: "specs/panel-interaction/spec.md",
-        note:
-          "public op not advertised by panelCapabilities(); gate permits " +
-          "it under the #358 resize/restore class decision — capability " +
-          "table gap flagged for the spec owner",
-      });
-    }
-  }
-
   rows.push(...supervisionRows());
 
   // Merge rows identical on every contract field across platforms

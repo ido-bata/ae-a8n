@@ -189,6 +189,7 @@ export type PanelCapabilities = {
   readonly identify: PanelCapability;
   readonly measure: PanelCapability;
   readonly resize: PanelCapability;
+  readonly restore: PanelCapability;
   readonly captureRegion: PanelCapability;
   readonly captureWindow: PanelCapability;
   readonly dockedRegion: PanelCapability;

@@ -617,6 +617,11 @@ describe("panelForTarget / public surface", () => {
     // #358: the A-SAFETY class decision cleared panel resize/restore on
     // the direct-AX vehicle; the capability reports it honestly.
     expect(darwin.resize.support).toBe("implemented");
+    expect(darwin.resize.verification).toBe("verified on real host");
+    // #445: restore rides the same gate-permitted class and is
+    // advertised with the same evidence level — no capability gap.
+    expect(darwin.restore.support).toBe("implemented");
+    expect(darwin.restore.verification).toBe("verified on real host");
     // #361: the docked-region observe walk exists on macOS; mutation of a
     // docked region stays unsupported because it is not a window.
     expect(darwin.dockedRegion.support).toBe("partial");
@@ -632,6 +637,7 @@ describe("panelForTarget / public surface", () => {
     expect(win.platform).toBe("win32");
     expect(win.identify.support).toBe("unsupported");
     expect(win.resize.support).toBe("unsupported");
+    expect(win.restore.support).toBe("unsupported");
   });
 
   it("refuses panel() when no owned target is attested", async () => {

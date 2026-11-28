@@ -1072,8 +1072,9 @@ export class AfterEffects {
    * What this build can do with After Effects panels on this platform
    * (#343, `specs/panel-interaction/spec.md`): per-capability support,
    * verification level and gate status. Unsupported combinations are
-   * explicit answers — macOS-only in this slice, and `resize` reports
-   * `unavailable` while the mutate-gui gate is pending A-SAFETY review.
+   * explicit answers — macOS-only in this slice; `resize`/`restore`
+   * report `implemented` + `verified on real host` on darwin under the
+   * #358 A-SAFETY class decision and `unsupported` elsewhere.
    */
   panelCapabilities(): PanelCapabilities {
     return panelCapabilities(process.platform);

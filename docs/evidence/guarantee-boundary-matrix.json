@@ -3012,16 +3012,17 @@
       "platforms": [
         "macos"
       ],
-      "support": "partial",
-      "supportRaw": "unavailable",
-      "verificationLevel": "implemented",
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified on real host",
       "gate": "panelMutationGate",
       "refuseConditions": [],
+      "reason": "same mutate-gui class and vehicle as resize: permitted by panelMutationGate() under the #358 A-SAFETY class decision (docs/gui-supervision-safety-gates.md §panel mutation) — the direct-AX `AXUIElementSetAttributeValue` set back to the frame first resolved by the handle, behind owned attribution + GUI lease + in-session identity re-verify. Verified end-to-end on owned AE 2027 (docs/evidence/realhost-2026-11-27/): resize → measure → restore on a real ScriptUI palette",
+      "evidenceRef": "specs/panel-interaction/spec.md",
       "gateProbe": {
         "allowed": true
-      },
-      "evidenceRef": "specs/panel-interaction/spec.md",
-      "note": "public op not advertised by panelCapabilities(); gate permits it under the #358 resize/restore class decision — capability table gap flagged for the spec owner"
+      }
     },
     {
       "capability": "panel",
@@ -3032,15 +3033,16 @@
       "support": "unsupported",
       "supportRaw": "unsupported",
       "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
       "gate": "panelMutationGate",
       "refuseConditions": [
         "unsupported:windows"
       ],
+      "reason": "panel operations are implemented for macOS only in this slice; the Windows census/UIA substrate exists but no panel vehicle is implemented or verified",
+      "evidenceRef": "specs/panel-interaction/spec.md",
       "gateProbe": {
         "allowed": true
-      },
-      "evidenceRef": "specs/panel-interaction/spec.md",
-      "note": "public op not advertised by panelCapabilities(); gate permits it under the #358 resize/restore class decision — capability table gap flagged for the spec owner"
+      }
     },
     {
       "capability": "projectDialog",
