@@ -39,8 +39,8 @@
       "transport": "script-invocation"
     }
   ],
-  "enteredAt": "2026-11-28T10:17:15.244Z",
-  "deadline": "2026-11-28T10:32:15.244Z",
+  "enteredAt": "2026-11-28T10:18:18.054Z",
+  "deadline": "2026-11-28T10:33:18.054Z",
   "evidence": [
     "probe-degraded: AX tree unserviceable: WindowServer reports 1 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
     "probe-degraded: AX tree unserviceable: WindowServer reports 2 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
@@ -52,7 +52,7 @@
     "pid": 67905,
     "pidStart": null,
     "acquiredAt": "2026-11-28T10:14:05.841Z",
-    "heartbeatAt": "2026-11-28T10:17:08.692Z"
+    "heartbeatAt": "2026-11-28T10:18:10.638Z"
   },
   "history": [
     {
@@ -210,7 +210,49 @@
       "to": "blocked",
       "at": "2026-11-28T10:17:15.244Z",
       "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:17:26.453Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:17:35.914Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:17:44.936Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:17:52.488Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:18:00.723Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:18:08.635Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:18:18.054Z",
+      "reason": "1 blocking window(s): <unobservable window>"
     }
   ],
-  "updatedAt": "2026-11-28T10:17:15.246Z"
+  "updatedAt": "2026-11-28T10:18:18.057Z"
 }

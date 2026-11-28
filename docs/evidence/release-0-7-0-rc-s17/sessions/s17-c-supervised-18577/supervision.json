@@ -31,8 +31,8 @@
     "detail": "1 blocking window(s): <unobservable window>"
   },
   "pendingRequests": [],
-  "enteredAt": "2026-11-28T10:17:28.613Z",
-  "deadline": "2026-11-28T10:32:28.613Z",
+  "enteredAt": "2026-11-28T10:18:10.370Z",
+  "deadline": "2026-11-28T10:33:10.370Z",
   "evidence": [
     "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none attributable to it"
   ],
@@ -41,7 +41,7 @@
     "pid": 83994,
     "pidStart": null,
     "acquiredAt": "2026-11-28T10:15:29.398Z",
-    "heartbeatAt": "2026-11-28T10:17:20.272Z"
+    "heartbeatAt": "2026-11-28T10:18:04.043Z"
   },
   "history": [
     {
@@ -139,7 +139,37 @@
       "to": "blocked",
       "at": "2026-11-28T10:17:28.613Z",
       "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:17:37.055Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:17:45.675Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:17:53.209Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:18:02.038Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:18:10.370Z",
+      "reason": "1 blocking window(s): <unobservable window>"
     }
   ],
-  "updatedAt": "2026-11-28T10:17:28.613Z"
+  "updatedAt": "2026-11-28T10:18:10.370Z"
 }

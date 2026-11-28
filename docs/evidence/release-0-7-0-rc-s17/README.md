@@ -113,7 +113,7 @@ op-level ledger は各 `<sessionRoot>/attempt-ledger.jsonl`、trace は `trace.j
 - pid 18577: run 終始 read-only 観測のみ（census / `sample` / `MacGuiRecovery.listWindows` / `capture` / `captureWindowById` / `supervise status`）。入力・signal・dismiss なし。最終 census で生存を確認。
 - pid 37622: 本 run が spawn した唯一の新規 process。終了経路が無いため residue として残置（SIGKILL 禁止ルール遵守）。
 - foreign AE: run 中に外部起動なし（最終 census は 18577/37622 + crashpad/CEP helper のみ）。
-- detached supervisor 2 プロセス（pid 67905→37622, 83994→18577）が observation-only で稼働中。終了は `kill <pid>`（node process であり AE ではない）で可能。lease TTL 30s で自然失効もする。
+- detached supervisor 2 プロセス（pid 67905→37622, 83994→18577）は証拠確定後に SIGTERM で正常終了させた（node process であり AE ではない。AE process への signal はゼロ）。停止後の `supervise status` は `health:monitor-lost` を正直に報告することを確認済み。
 
 ## Teardown verdict: **residue**
 
@@ -121,7 +121,7 @@ op-level ledger は各 `<sessionRoot>/attempt-ledger.jsonl`、trace は `trace.j
 | --- | --- |
 | AE 2027 pid 18577 | modal-blocked で残留（foreign/unowned、公開経路で終了不能 — #458） |
 | AE 2026 pid 37622 | modal-blocked で残留（driver-spawned だが provenance 無し、同上） |
-| detached supervisors 67905 / 83994 | observation-only で稼働中（kill 可能、または TTL 失効） |
+| detached supervisors 67905 / 83994 | 証拠確定後に SIGTERM で停止済み。最終 `supervise status` は `phase:blocked, health:monitor-lost`（最後の証明済み状態 blocked、現在の GUI 状態は unknown）を正直に報告 |
 | fixture.aep | 変更なし（sha256 前後一致を harness が検証） |
 | session roots | `sessions/` 配下に全 artifact 保全（trace / attempt-ledger / supervision / artifacts/*.evidence.json） |
 
