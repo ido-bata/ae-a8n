@@ -12,9 +12,10 @@ RC_DIR=/Users/rebui/work/ae-a8n.436-r3/docs/evidence/release-0-7-0-rc-r3
 export RC_DIR
 PASS_STREAK=10
 MAX_ATTEMPTS=${MAX_ATTEMPTS:-25}
+START_AT=${START_AT:-1}
 
 streak=0
-attempt=0
+attempt=$((START_AT-1))
 while [ "$attempt" -lt "$MAX_ATTEMPTS" ] && [ "$streak" -lt "$PASS_STREAK" ]; do
   attempt=$((attempt+1))
   label=$(printf "r3-s1-%02d" "$attempt")

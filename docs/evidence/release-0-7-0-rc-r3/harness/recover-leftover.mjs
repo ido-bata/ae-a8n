@@ -122,22 +122,60 @@ steps.push({
 });
 notes.push(`census before=${JSON.stringify(censusBefore.map((p) => p.pid))} after=${JSON.stringify(censusAfter.map((p) => p.pid))}`);
 
-const verdict = !sawWork ? "indeterminate" : recovered.length > 0 && censusAfter.length === 0 ? "pass" : "fail";
-// Honest partial: some recovered but strays remain -> fail; none found -> indeterminate.
-if (!sawWork) notes.push("no live provenance-bearing AE found — nothing to recover");
+// Stray detection: AE pids alive in census that NO session-root provenance
+// claims. These cannot be terminated through the public path (no
+// provenance = fail-closed by design, #458) — report them honestly so the
+// operator can dispose via the polite quit path and the finding is ledgered.
+const claimedPids = new Set();
+for (const root of sessionRoots(ROOT)) {
+  try {
+    const prov = JSON.parse(readFileSync(join(root, "launch-provenance.json"), "utf-8"));
+    if (Number.isInteger(prov?.host?.pid)) claimedPids.add(prov.host.pid);
+  } catch {}
+}
+const unclaimed = censusAfter.filter(
+  (p) => p.executable.includes("MacOS/After Effects") && !claimedPids.has(p.pid),
+);
+if (unclaimed.length > 0) {
+  steps.push({
+    stepId: "unclaimed-ae-pids",
+    expected: "every live AE pid is claimed by a session provenance record",
+    actual: unclaimed,
+    durationMs: 0,
+  });
+  notes.push(`UNCLAIMED AE pids (no provenance — public terminate refuses by design): ${JSON.stringify(unclaimed)}`);
+}
+
+// Pass requires every recovered target proven gone; unrelated live AE
+// (e.g. the foreign AE 2026 fixture) does not fail the sweep.
+const recoveredPids = new Set(recovered.map((r) => r.pid));
+const survivingTargets = censusAfter.filter((p) => recoveredPids.has(p.pid));
+const stray2027 = unclaimed.filter((p) => p.executable.includes("After Effects 2027"));
+const foundWork = sawWork || stray2027.length > 0;
+const verdict = !foundWork
+  ? "indeterminate"
+  : survivingTargets.length === 0 && recovered.length > 0 && stray2027.length === 0
+    ? "pass"
+    : "fail";
+if (!foundWork) notes.push("no live provenance-bearing or unclaimed AE2027 found — nothing to recover");
 
 const summaryPath = `/tmp/rc436r3-sessions/recover-${label}-summary.json`;
 writeJson(summaryPath, { label, verdict, recovered, censusBefore, censusAfter });
 // A sweep that found nothing to terminate is not an RC-S17 attempt — it
 // exercised no detect/exit/readiness chain. Only ledger real work.
-if (sawWork) {
+if (foundWork) {
   recordAttempt({
     scenarioId: "RC-S17",
     verdict,
     steps,
     anomaly: "known-safe-modal",
     recovery: recovered.map((r) => ({ kind: "spawn-provenance-terminate", ...r })),
-    cleanup: { verdict: censusAfter.length === 0 ? "clean" : "residue", ref: summaryPath },
+    cleanup: {
+      verdict: survivingTargets.length === 0 &&
+        !unclaimed.some((p) => p.executable.includes("After Effects 2027"))
+        ? "clean" : "residue",
+      ref: summaryPath,
+    },
     evidenceRefs: [summaryPath],
     notes: `[modal-recovery sweep ${label}] ${notes.join(" | ")}`,
     sessionRoot: ROOT,
