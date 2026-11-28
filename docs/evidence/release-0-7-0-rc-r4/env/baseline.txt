@@ -1,0 +1,26 @@
+== ps census ==
+44375 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects
+44804 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/crashpad_handler
+44908 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/dynamiclinkmanager
+44942 /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/TeamProjectsLocalHub.app/Contents/MacOS/TeamProjectsLocalHub
+
+== input sources ==
+(
+        {
+        "Bundle ID" = "com.apple.PressAndHold";
+        InputSourceKind = "Non Keyboard Input Method";
+    },
+        {
+        InputSourceKind = "Keyboard Layout";
+        "KeyboardLayout ID" = 252;
+        "KeyboardLayout Name" = ABC;
+    }
+)
+
+== clipboard sha256 ==
+f78827a4cfb3a6e3f6c1d2bb55cb26f205a8fe46525ebdb7f5f30be4ea1d9f6e  -
+
+== frontmost ==
+After Effects
+
+Sat Nov 28 23:26:10 JST 2026

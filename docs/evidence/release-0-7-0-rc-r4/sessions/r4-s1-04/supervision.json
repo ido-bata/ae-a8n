@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "process-gone",
+    "windows": [],
+    "detail": "the recorded owned After Effects process is proven gone by terminate (pid 54364 still names the recorded After Effects (started 2026-11-28T14:50:06.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 54364 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 54364; pid 54364 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 54364 is proven gone)"
+  },
+  "pendingRequests": [
+    {
+      "id": "f76f5cf1-4b75-46d5-a404-e843607e7e5c",
+      "method": "app.info",
+      "since": "2026-11-28T14:50:26.567Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T14:54:36.417Z",
+  "deadline": "2026-11-28T15:09:36.417Z",
+  "evidence": [
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "pid 54364 still names the recorded After Effects (started 2026-11-28T14:50:06.000Z)",
+    "no other instance of the recorded install is running in scope",
+    "graceful terminate request to pid 54364 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n",
+    "force terminate request delivered to pid 54364",
+    "pid 54364 with the recorded start time is absent from the process list",
+    "no other instance of the recorded install is running in scope",
+    "pid 54364 is proven gone"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 53014,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T14:50:12.540Z",
+    "heartbeatAt": "2026-11-28T14:52:47.734Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T14:50:12.544Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T14:54:36.417Z",
+      "reason": "the recorded owned After Effects process is proven gone by terminate (pid 54364 still names the recorded After Effects (started 2026-11-28T14:50:06.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 54364 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 54364; pid 54364 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 54364 is proven gone)"
+    }
+  ],
+  "updatedAt": "2026-11-28T14:54:36.417Z"
+}

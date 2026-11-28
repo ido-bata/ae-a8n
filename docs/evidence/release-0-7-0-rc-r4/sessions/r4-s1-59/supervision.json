@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "process-gone",
+    "windows": [],
+    "detail": "the recorded owned After Effects process is proven gone by terminate (pid 9685 still names the recorded After Effects (started 2026-11-28T18:18:32.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 9685 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 9685; pid 9685 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 9685 is proven gone)"
+  },
+  "pendingRequests": [
+    {
+      "id": "73a5555f-94ce-441b-a2e8-28a84c0d1458",
+      "method": "app.info",
+      "since": "2026-11-28T18:18:39.449Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T18:22:24.167Z",
+  "deadline": "2026-11-28T18:37:24.167Z",
+  "evidence": [
+    "probe-degraded: AX tree unserviceable: WindowServer reports 6 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "pid 9685 still names the recorded After Effects (started 2026-11-28T18:18:32.000Z)",
+    "no other instance of the recorded install is running in scope",
+    "graceful terminate request to pid 9685 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n",
+    "force terminate request delivered to pid 9685",
+    "pid 9685 with the recorded start time is absent from the process list",
+    "no other instance of the recorded install is running in scope",
+    "pid 9685 is proven gone"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 9208,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T18:18:33.558Z",
+    "heartbeatAt": "2026-11-28T18:21:30.170Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T18:18:33.561Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T18:22:24.167Z",
+      "reason": "the recorded owned After Effects process is proven gone by terminate (pid 9685 still names the recorded After Effects (started 2026-11-28T18:18:32.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 9685 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 9685; pid 9685 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 9685 is proven gone)"
+    }
+  ],
+  "updatedAt": "2026-11-28T18:22:24.167Z"
+}

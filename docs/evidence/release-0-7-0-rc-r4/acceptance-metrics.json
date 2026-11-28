@@ -1,0 +1,1377 @@
+{
+  "schemaVersion": 1,
+  "kind": "ae-a8n.acceptance-metrics/v1",
+  "generatedAt": "2026-11-28T19:22:01.698Z",
+  "inputs": {
+    "ledgers": [
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r3-s1-01/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-planb-a/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-00-smoke/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-02/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-03/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-04/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-05/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-06/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-07/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-08/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-09/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-10/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-11/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-34/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-35/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-36/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-37/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-38/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-39/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-40/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-41/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-42/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-43/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-44/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-45/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-46-probe/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-47/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-48/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-49/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-50/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-51/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-52/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-53/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-54/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-55/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-56/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-57/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-58/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-59/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-60/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-61/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-62/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-63/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-64/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-65/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-66/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-67/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-68/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-69/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-70/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s10-a/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s11-a/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s13-a/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s14-a/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s15-a-owned/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s2-a/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s3-a/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s4-a/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s5-a/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s6-a/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s7-a/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s8-a/attempt-ledger.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s9-a/attempt-ledger.jsonl"
+    ],
+    "traces": [
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r3-s1-01/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-planb-a/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-00-smoke/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-02/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-03/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-04/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-05/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-06/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-07/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-08/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-09/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-10/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-11/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-34/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-35/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-36/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-37/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-38/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-39/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-40/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-41/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-42/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-43/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-44/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-45/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-46-probe/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-47/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-48/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-49/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-50/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-51/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-52/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-53/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-54/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-55/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-56/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-57/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-58/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-59/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-60/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-61/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-62/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-63/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-64/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-65/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-66/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-67/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-68/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-69/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s1-70/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s10-a/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s11-a/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s13-a/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s14-a/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s15-a-owned/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s2-a/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s3-a/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s4-a/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s5-a/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s6-a/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s7-a/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s8-a/trace.jsonl",
+      "docs/evidence/release-0-7-0-rc-r4/sessions/r4-s9-a/trace.jsonl"
+    ],
+    "evidenceIndexes": [],
+    "manifest": "docs/evidence/release-0-7-0-rc-r4/run-manifest.json",
+    "envelopes": [
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "6a32f196-207a-4535-ae89-6d9f919da0dc",
+        "sessionRoot": "/tmp/rc436r4-sessions/r3-s1-01",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T14:36:12.892Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "2746ef4d-491d-42a3-a470-e41e0de21788",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-planb-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T19:16:17.524Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "e6b9f6d7-037e-4420-bb86-e2dd833485a2",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-00-smoke",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T14:26:29.634Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "fe4c0de7-5d31-4f55-9d9b-cfbe46251065",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-02",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T14:40:48.064Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "a37d8511-e637-4629-a4ff-e7430ea7f486",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-03",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T14:45:26.703Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "4985c65e-e8c2-4aac-b038-c113af39f81e",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-04",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T14:50:04.089Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "1fb18a0f-db8d-4723-9cc5-dfe41c37bf09",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-05",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T14:54:42.879Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "9c800ea6-3ddd-40ea-a4b7-76d39094569f",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-06",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T14:59:08.414Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "30275797-6609-429a-8192-123a43419f0f",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-07",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T15:03:32.640Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "31dd23d4-2028-419f-8dd1-de21f6d2db26",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-08",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T15:08:08.360Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "2bcb123a-7798-4d56-9515-c16d4d26ff06",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-09",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T15:13:04.039Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "3e4dbbf3-e2cd-4090-8bee-c64c0d790d09",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-10",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T15:17:25.309Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "b0e4b992-2351-40dc-acd3-da0866326796",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-11",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T15:21:19.720Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "66e0c54b-e899-435f-84bb-0acb28a2b3ab",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-34",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T15:39:00.244Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "95635929-4fa0-460e-a498-874f980ee364",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-35",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T15:43:52.928Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "c9d0660a-089d-4a9a-97a9-d53ccb94284f",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-36",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T15:48:41.673Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "28b1f265-dc74-44d3-99b9-bcaa6c8092a3",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-37",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T15:54:17.669Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "e828ad71-b792-4fa1-834e-79c7e0d4926c",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-38",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T15:59:06.307Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "a6f0efc6-09be-41fb-9769-3ca9a63bae41",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-39",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T16:03:15.698Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "67656e78-4615-4828-8ed5-30c1a76e0611",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-40",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T16:07:23.179Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "0e466bc9-e3ac-4329-8f3d-4b38b8adf7ec",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-41",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T16:11:56.895Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "0db1a44d-e277-4739-ad8e-7dd22f0817f2",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-42",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T16:16:09.044Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "112c2986-8517-4c51-b823-d645b09cce5c",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-43",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T16:20:04.508Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "050e9f3f-611e-47bc-8b48-5c55347bf988",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-44",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T16:23:57.096Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "04d38ff0-6eef-4151-a99e-ee33f70c57c3",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-45",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T16:27:38.296Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "3656b471-4f6c-4101-a66c-ba6cffe8700c",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-46-probe",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:28:27.517Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "e2fa9a52-320f-4b5e-8d9a-c8514aa4e1e2",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-47",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:33:06.973Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "40c1ec48-e635-408c-bbd1-e1ed77ccbd03",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-48",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:37:33.518Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "f5238500-6261-4ab3-9411-984a4e55ce78",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-49",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:42:57.548Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "244e6b4d-9aed-451f-91f7-204e0bab7523",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-50",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:50:31.649Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "742b23e8-6170-4dd9-8e96-5981a684c601",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-51",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:54:34.327Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "c65b978f-1fd3-4e02-9c47-ee53154cca89",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-52",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:57:01.819Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "12af19d4-5ead-4015-84b2-d35838990cd9",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-53",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:01:12.996Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "f337d667-b9cd-4653-be76-24cd499d46df",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-54",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:03:36.423Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "7631c25d-f1cf-4027-af12-884dc2316ca9",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-55",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:05:49.716Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "a35ecef9-5b9c-4a3f-8e7a-0a86a84dddcd",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-56",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:07:42.881Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "641374bc-3dd9-4998-aa55-df9ae74e8b64",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-57",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:10:55.524Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "e679db05-9baa-468f-93e2-6322a5fba548",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-58",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:14:38.244Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "a3df526b-2e48-4482-a380-9f3d31283e72",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-59",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:18:30.765Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "5e2c3efa-4ebc-47e0-a7e8-331e8a97ffd8",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-60",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:22:25.719Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "5df7b43f-0070-4975-af5f-aaa7ede4f87e",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-61",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:26:06.257Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "ce1ce054-36cc-4982-8e6d-6f95c9b94e0e",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-62",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:30:01.808Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "afecde25-de3c-478a-87ba-337d5484ab90",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-63",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:34:30.889Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "659aedcc-cf71-4026-9d15-614c12cb561f",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-64",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:38:19.770Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "974d94a1-f2e7-4839-bf36-95a2ca532909",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-65",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:43:05.855Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "57213bfb-2435-40a7-9e5d-1007faaf82a7",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-66",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:47:50.893Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "157459a0-4cc4-4cc3-baa9-69b7cd6bf53a",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-67",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:53:31.919Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "c3d6716d-540e-46f6-bbf9-7328481fbce9",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-68",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T18:58:10.157Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "5d9a9d7c-78d5-4b60-b63e-8b31df18c219",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-69",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T19:01:58.816Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "7081d8e0-3a0b-4bf0-a10c-f7cad8d51317",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-70",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T19:06:18.380Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "6ede9df6-dc61-417e-a22f-f3241c66e16f",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s10-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:09:22.917Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "0230faad-c719-46d4-9af3-4ebaad6dcfee",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s11-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:14:35.544Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "990b9b46-3ddc-4c0f-ac96-3bb0854713e2",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s13-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:19:37.123Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "6ccbd7f2-10d5-4f9c-99d8-e41427ad32d5",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s14-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:23:54.445Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "763b354e-6f1d-401e-9ed8-3da4e6a57a72",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s15-a-owned",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:25:02.793Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "a15ad7d3-6609-4cfe-91e6-a9f5db72fc2e",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s2-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T16:32:05.339Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "611637b8-534a-41ce-8ace-59fe87ade2c3",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s3-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T16:36:36.414Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "37ad1d5f-c8ef-4321-a1f9-d857d2c250a6",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s4-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T16:42:11.969Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "9e4bd576-2f3e-4d24-bb41-c211f34d6604",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s5-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T16:46:56.240Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "b7f1c456-4576-4da3-8bf5-e3f92c1a53ba",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s6-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T16:51:54.649Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "d4276b0a-3028-4938-b2c2-64b7c7b224c8",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s7-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T16:56:08.283Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "17cd0305-485a-4ae7-b394-0f110e0470e2",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s8-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:00:23.684Z"
+      },
+      {
+        "schemaVersion": 1,
+        "kind": "ae-a8n.attempt-ledger/v1",
+        "sessionId": "ab8f15b2-f40c-481c-b3e8-32bacf7ad38d",
+        "sessionRoot": "/tmp/rc436r4-sessions/r4-s9-a",
+        "platform": "darwin",
+        "startedAt": "2026-11-28T17:04:36.348Z"
+      }
+    ]
+  },
+  "budgets": [
+    {
+      "name": "readiness-probe",
+      "status": "unmeasured",
+      "basis": "manifest",
+      "boundMs": 180000,
+      "measured": {
+        "count": 14,
+        "min": 14413,
+        "p50": 28627,
+        "p95": 72852,
+        "max": 72852
+      },
+      "phases": null,
+      "phasesMeasured": true
+    },
+    {
+      "name": "ops:app.info",
+      "status": "pass",
+      "measured": {
+        "count": 12,
+        "min": 11138,
+        "p50": 12304,
+        "p95": 30319,
+        "max": 30319
+      },
+      "bound": 60000
+    },
+    {
+      "name": "ops:comp.info",
+      "status": "pass",
+      "measured": {
+        "count": 12,
+        "min": 849,
+        "p50": 14078,
+        "p95": 26808,
+        "max": 26808
+      },
+      "bound": 120000
+    },
+    {
+      "name": "ops:comp.renderFrame",
+      "status": "pass",
+      "measured": {
+        "count": 12,
+        "min": 1029,
+        "p50": 12611,
+        "p95": 23678,
+        "max": 23678
+      },
+      "bound": 120000
+    },
+    {
+      "name": "ops:comp.renderFrame.evidence",
+      "status": "provisional",
+      "measured": {
+        "count": 12,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "note": "no manifest budget declared; measured baseline only (spec §6: numbers fixed per RC from pre-RC baseline)"
+    },
+    {
+      "name": "ops:project.comps",
+      "status": "pass",
+      "measured": {
+        "count": 12,
+        "min": 974,
+        "p50": 15602,
+        "p95": 25874,
+        "max": 25874
+      },
+      "bound": 60000
+    },
+    {
+      "name": "ops:project.info",
+      "status": "pass",
+      "measured": {
+        "count": 25,
+        "min": 1129,
+        "p50": 14743,
+        "p95": 27850,
+        "max": 40094
+      },
+      "bound": 120000
+    },
+    {
+      "name": "ops:project.open",
+      "status": "pass",
+      "measured": {
+        "count": 13,
+        "min": 1082,
+        "p50": 11810,
+        "p95": 31177,
+        "max": 31177
+      },
+      "bound": 60000
+    },
+    {
+      "name": "ops:project.state",
+      "status": "pass",
+      "measured": {
+        "count": 12,
+        "min": 954,
+        "p50": 13312,
+        "p95": 26826,
+        "max": 26826
+      },
+      "bound": 120000
+    },
+    {
+      "name": "ops:session.authorization",
+      "status": "provisional",
+      "measured": {
+        "count": 14,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "note": "no manifest budget declared; measured baseline only (spec §6: numbers fixed per RC from pre-RC baseline)"
+    },
+    {
+      "name": "ops:session.close",
+      "status": "pass",
+      "measured": {
+        "count": 10,
+        "min": 4517,
+        "p50": 7820,
+        "p95": 56760,
+        "max": 56760
+      },
+      "bound": 60000
+    },
+    {
+      "name": "ops:session.launch",
+      "status": "pass",
+      "measured": {
+        "count": 14,
+        "min": 14413,
+        "p50": 28627,
+        "p95": 72852,
+        "max": 72852
+      },
+      "bound": 120000
+    },
+    {
+      "name": "ops:session.probe",
+      "status": "provisional",
+      "measured": {
+        "count": 14,
+        "min": 744,
+        "p50": 13566,
+        "p95": 25564,
+        "max": 25564
+      },
+      "note": "no manifest budget declared; measured baseline only (spec §6: numbers fixed per RC from pre-RC baseline)"
+    },
+    {
+      "name": "ops:session.provenance",
+      "status": "provisional",
+      "measured": {
+        "count": 112,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "note": "no manifest budget declared; measured baseline only (spec §6: numbers fixed per RC from pre-RC baseline)"
+    },
+    {
+      "name": "ops:session.quit",
+      "status": "pass",
+      "measured": {
+        "count": 14,
+        "min": 2536,
+        "p50": 7454,
+        "p95": 25916,
+        "max": 25916
+      },
+      "bound": 60000
+    },
+    {
+      "name": "ops:supervision.health",
+      "status": "provisional",
+      "measured": {
+        "count": 53,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "note": "no manifest budget declared; measured baseline only (spec §6: numbers fixed per RC from pre-RC baseline)"
+    },
+    {
+      "name": "ops:supervision.next-actions",
+      "status": "provisional",
+      "measured": {
+        "count": 53,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "note": "no manifest budget declared; measured baseline only (spec §6: numbers fixed per RC from pre-RC baseline)"
+    },
+    {
+      "name": "ops:supervision.transition",
+      "status": "provisional",
+      "measured": {
+        "count": 65,
+        "min": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0
+      },
+      "note": "no manifest budget declared; measured baseline only (spec §6: numbers fixed per RC from pre-RC baseline)"
+    },
+    {
+      "name": "recovery-wait",
+      "status": "unmeasured",
+      "basis": "fixed anchor recoveryGraceMs=60000 + per-class=0 (per-class bound not declared — provisional)",
+      "boundMs": 60000,
+      "measured": {
+        "count": 0,
+        "min": null,
+        "p50": null,
+        "p95": null,
+        "max": null,
+        "waits": []
+      }
+    },
+    {
+      "name": "supervision-detection-latency",
+      "status": "provisional",
+      "basis": "fixed anchors monitorIntervalMs=2000 + monitorTtlMs=30000; observation/confirm components are manifest-declared per RC",
+      "boundMs": null,
+      "measured": {
+        "transitionCount": 65,
+        "publishToTraceMs": {
+          "count": 65,
+          "min": 0,
+          "p50": 4,
+          "p95": 96,
+          "max": 1066
+        },
+        "note": "blocking-condition-arisal timestamp is not recorded in trace.jsonl; detection latency proper is unmeasurable — spec §6 gap (harness must timestamp the observed condition)"
+      }
+    },
+    {
+      "name": "recording-overhead",
+      "status": "provisional",
+      "basis": "gui-evidence spec §11 proposal (<5% frame-drop at 30 fps); op-latency bound is provisional until the RC manifest declares it",
+      "bound": {
+        "maxFrameDropRatio": 0.05,
+        "targetFps": 30
+      },
+      "measured": {
+        "segments": 0,
+        "dropBreaches": [],
+        "measuredOverheadMs": {
+          "count": 0,
+          "min": null,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "unmeasuredSegments": 0
+      }
+    },
+    {
+      "name": "consecutive-success",
+      "status": "pending",
+      "bound": {
+        "required": 10
+      },
+      "measured": {
+        "groups": [
+          {
+            "group": "app.info",
+            "trailingPass": 12,
+            "accepted": true
+          },
+          {
+            "group": "comp.info",
+            "trailingPass": 12,
+            "accepted": true
+          },
+          {
+            "group": "comp.renderFrame",
+            "trailingPass": 12,
+            "accepted": true
+          },
+          {
+            "group": "comp.renderFrame.evidence",
+            "trailingPass": 12,
+            "accepted": true
+          },
+          {
+            "group": "project.comps",
+            "trailingPass": 12,
+            "accepted": true
+          },
+          {
+            "group": "project.info",
+            "trailingPass": 25,
+            "accepted": true
+          },
+          {
+            "group": "project.open",
+            "trailingPass": 13,
+            "accepted": true
+          },
+          {
+            "group": "project.state",
+            "trailingPass": 12,
+            "accepted": true
+          },
+          {
+            "group": "record.start",
+            "trailingPass": 0,
+            "accepted": false
+          },
+          {
+            "group": "session.authorization",
+            "trailingPass": 14,
+            "accepted": true
+          },
+          {
+            "group": "session.close",
+            "trailingPass": 2,
+            "accepted": false
+          },
+          {
+            "group": "session.launch",
+            "trailingPass": 0,
+            "accepted": false
+          },
+          {
+            "group": "session.probe",
+            "trailingPass": 0,
+            "accepted": false
+          },
+          {
+            "group": "session.provenance",
+            "trailingPass": 112,
+            "accepted": true
+          },
+          {
+            "group": "session.quit",
+            "trailingPass": 14,
+            "accepted": true
+          },
+          {
+            "group": "session.recover",
+            "trailingPass": 0,
+            "accepted": false
+          },
+          {
+            "group": "supervision.health",
+            "trailingPass": 53,
+            "accepted": true
+          },
+          {
+            "group": "supervision.next-actions",
+            "trailingPass": 53,
+            "accepted": true
+          },
+          {
+            "group": "supervision.transition",
+            "trailingPass": 65,
+            "accepted": true
+          }
+        ]
+      },
+      "note": "report-only aggregate; per-scenario acceptance is §12.3"
+    }
+  ],
+  "reproducibility": {
+    "groups": [
+      {
+        "group": "app.info",
+        "attempts": 12,
+        "pass": 12,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 12,
+        "accepted": true
+      },
+      {
+        "group": "comp.info",
+        "attempts": 12,
+        "pass": 12,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 12,
+        "accepted": true
+      },
+      {
+        "group": "comp.renderFrame",
+        "attempts": 12,
+        "pass": 12,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 12,
+        "accepted": true
+      },
+      {
+        "group": "comp.renderFrame.evidence",
+        "attempts": 12,
+        "pass": 12,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 12,
+        "accepted": true
+      },
+      {
+        "group": "project.comps",
+        "attempts": 12,
+        "pass": 12,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 12,
+        "accepted": true
+      },
+      {
+        "group": "project.info",
+        "attempts": 25,
+        "pass": 25,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 25,
+        "accepted": true
+      },
+      {
+        "group": "project.open",
+        "attempts": 13,
+        "pass": 13,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 13,
+        "accepted": true
+      },
+      {
+        "group": "project.state",
+        "attempts": 12,
+        "pass": 12,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 12,
+        "accepted": true
+      },
+      {
+        "group": "record.start",
+        "attempts": 2,
+        "pass": 0,
+        "fail": 2,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 0,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 0,
+        "accepted": false
+      },
+      {
+        "group": "session.authorization",
+        "attempts": 14,
+        "pass": 14,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 14,
+        "accepted": true
+      },
+      {
+        "group": "session.close",
+        "attempts": 14,
+        "pass": 10,
+        "fail": 4,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 0.7142857142857143,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 2,
+        "accepted": false
+      },
+      {
+        "group": "session.launch",
+        "attempts": 64,
+        "pass": 14,
+        "fail": 50,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 0.21875,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 0,
+        "accepted": false
+      },
+      {
+        "group": "session.probe",
+        "attempts": 63,
+        "pass": 14,
+        "fail": 0,
+        "indeterminate": 49,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 0.2222222222222222,
+        "indeterminateRate": 0.7777777777777778,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 0,
+        "accepted": false
+      },
+      {
+        "group": "session.provenance",
+        "attempts": 112,
+        "pass": 112,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 112,
+        "accepted": true
+      },
+      {
+        "group": "session.quit",
+        "attempts": 14,
+        "pass": 14,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 14,
+        "accepted": true
+      },
+      {
+        "group": "session.recover",
+        "attempts": 49,
+        "pass": 0,
+        "fail": 49,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 0,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 0,
+        "accepted": false
+      },
+      {
+        "group": "supervision.health",
+        "attempts": 53,
+        "pass": 53,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 53,
+        "accepted": true
+      },
+      {
+        "group": "supervision.next-actions",
+        "attempts": 53,
+        "pass": 53,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 53,
+        "accepted": true
+      },
+      {
+        "group": "supervision.transition",
+        "attempts": 65,
+        "pass": 65,
+        "fail": 0,
+        "indeterminate": 0,
+        "blocked": 0,
+        "environment": 0,
+        "skipped": 0,
+        "notApplicable": 0,
+        "anomalies": 0,
+        "successRate": 1,
+        "indeterminateRate": 0,
+        "anomalyDetectionRate": 0,
+        "trailingPass": 65,
+        "accepted": true
+      }
+    ],
+    "identityProblems": []
+  },
+  "teardowns": {
+    "clean": 10,
+    "residue": 4,
+    "unverifiable": 0
+  },
+  "notes": [
+    "readiness-probe: 50 session.launch row(s) did not succeed; the bound applies to successful launches only",
+    "recovery-wait: transitions present but no blocking→resolution pair measured",
+    "supervision-detection-latency: no manifest bound declared; measured proxies only",
+    "recording-overhead: evidence index supplied but carries no captureStats",
+    "teardown:54fda541-28c2-4653-aa3a-f47110a38b13: residue — process=residue(safety)",
+    "teardown:f5238500-6261-4ab3-9411-984a4e55ce78: residue — process=residue(safety)",
+    "teardown:c65b978f-1fd3-4e02-9c47-ee53154cca89: residue — process=residue(safety)",
+    "teardown:a35ecef9-5b9c-4a3f-8e7a-0a86a84dddcd: residue — process=residue(safety)"
+  ],
+  "verdict": {
+    "action": "deny",
+    "reasons": [
+      "safety-residue:54fda541-28c2-4653-aa3a-f47110a38b13:process",
+      "safety-residue:f5238500-6261-4ab3-9411-984a4e55ce78:process",
+      "safety-residue:c65b978f-1fd3-4e02-9c47-ee53154cca89:process",
+      "safety-residue:a35ecef9-5b9c-4a3f-8e7a-0a86a84dddcd:process"
+    ]
+  }
+}

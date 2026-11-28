@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "process-gone",
+    "windows": [],
+    "detail": "the recorded owned After Effects process is proven gone by terminate (pid 32615 still names the recorded After Effects (started 2026-11-28T19:06:21.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 32615 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 32615; pid 32615 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 32615 is proven gone)"
+  },
+  "pendingRequests": [
+    {
+      "id": "612d00ad-ed25-4060-9cf6-60a472cb7ba9",
+      "method": "app.info",
+      "since": "2026-11-28T19:06:37.957Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T19:10:19.116Z",
+  "deadline": "2026-11-28T19:25:19.116Z",
+  "evidence": [
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "pid 32615 still names the recorded After Effects (started 2026-11-28T19:06:21.000Z)",
+    "no other instance of the recorded install is running in scope",
+    "graceful terminate request to pid 32615 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n",
+    "force terminate request delivered to pid 32615",
+    "pid 32615 with the recorded start time is absent from the process list",
+    "no other instance of the recorded install is running in scope",
+    "pid 32615 is proven gone"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 31475,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T19:06:24.727Z",
+    "heartbeatAt": "2026-11-28T19:09:09.416Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T19:06:24.743Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T19:10:19.116Z",
+      "reason": "the recorded owned After Effects process is proven gone by terminate (pid 32615 still names the recorded After Effects (started 2026-11-28T19:06:21.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 32615 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 32615; pid 32615 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 32615 is proven gone)"
+    }
+  ],
+  "updatedAt": "2026-11-28T19:10:19.116Z"
+}

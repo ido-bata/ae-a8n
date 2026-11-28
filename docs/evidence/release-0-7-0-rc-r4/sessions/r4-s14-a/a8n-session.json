@@ -1,0 +1,7 @@
+{
+  "v": 1,
+  "transport": "script-invocation",
+  "hostScript": "/private/tmp/rc436r4-consumer/node_modules/@ido-bata/ae-a8n/host/a8n-host.js",
+  "stagedHostScript": "/tmp/rc436r4-sessions/r4-s14-a/staging/a8n-host.js",
+  "pid": 31834
+}

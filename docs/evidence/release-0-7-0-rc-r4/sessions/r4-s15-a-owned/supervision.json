@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "running",
+  "observationHealth": "degraded",
+  "blocking": null,
+  "pendingRequests": [
+    {
+      "id": "d2a79f6b-4f81-4a20-9116-30791e3c92ad",
+      "method": "app.info",
+      "since": "2026-11-28T17:25:15.044Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T17:25:06.055Z",
+  "deadline": null,
+  "evidence": [
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none attributable to it; AX listing included 1 window(s) the WindowServer attributes to other processes — the bundle-confused listing of #330; excluded as foreign; AX listing included 1 window(s) no census window accounts for — excluded as unattributed; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the After Effects process 47511 is no longer the one this run started (A8N-AE-004); no GUI action was taken."
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 46736,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T17:25:06.051Z",
+    "heartbeatAt": "2026-11-28T17:26:34.413Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T17:25:06.055Z",
+      "reason": "supervision started"
+    }
+  ],
+  "updatedAt": "2026-11-28T17:26:37.662Z"
+}

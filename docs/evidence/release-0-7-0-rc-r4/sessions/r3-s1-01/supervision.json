@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "process-gone",
+    "windows": [],
+    "detail": "the recorded owned After Effects process is proven gone by terminate (pid 55498 still names the recorded After Effects (started 2026-11-28T14:36:16.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 55498 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 55498; pid 55498 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 55498 is proven gone)"
+  },
+  "pendingRequests": [
+    {
+      "id": "79db9f04-5427-4951-8b4a-485a2b8ae3ba",
+      "method": "app.info",
+      "since": "2026-11-28T14:36:35.048Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T14:40:33.197Z",
+  "deadline": "2026-11-28T14:55:33.197Z",
+  "evidence": [
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "pid 55498 still names the recorded After Effects (started 2026-11-28T14:36:16.000Z)",
+    "no other instance of the recorded install is running in scope",
+    "graceful terminate request to pid 55498 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n",
+    "force terminate request delivered to pid 55498",
+    "pid 55498 with the recorded start time is absent from the process list",
+    "no other instance of the recorded install is running in scope",
+    "pid 55498 is proven gone"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 54642,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T14:36:20.572Z",
+    "heartbeatAt": "2026-11-28T14:39:09.412Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T14:36:20.598Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T14:40:33.197Z",
+      "reason": "the recorded owned After Effects process is proven gone by terminate (pid 55498 still names the recorded After Effects (started 2026-11-28T14:36:16.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 55498 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 55498; pid 55498 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 55498 is proven gone)"
+    }
+  ],
+  "updatedAt": "2026-11-28T14:40:33.197Z"
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "running",
+  "observationHealth": "degraded",
+  "blocking": null,
+  "pendingRequests": [],
+  "enteredAt": "2026-11-28T15:16:25.032Z",
+  "deadline": null,
+  "evidence": [
+    "probe-degraded: the accessibility query in rebui's session failed: "
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-detached-supervisor",
+    "pid": 52094,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T15:16:25.009Z",
+    "heartbeatAt": "2026-11-28T15:16:25.036Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T15:16:25.032Z",
+      "reason": "supervision started"
+    }
+  ],
+  "updatedAt": "2026-11-28T15:16:37.341Z"
+}

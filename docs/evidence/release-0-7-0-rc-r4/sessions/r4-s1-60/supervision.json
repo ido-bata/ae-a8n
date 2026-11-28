@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "process-gone",
+    "windows": [],
+    "detail": "the recorded owned After Effects process is proven gone by terminate (pid 51010 still names the recorded After Effects (started 2026-11-28T18:22:26.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 51010 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 51010; pid 51010 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 51010 is proven gone)"
+  },
+  "pendingRequests": [
+    {
+      "id": "0cd99cff-d5b2-4fb6-aa18-bdde599f33f5",
+      "method": "app.info",
+      "since": "2026-11-28T18:22:34.283Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T18:26:04.938Z",
+  "deadline": "2026-11-28T18:41:04.938Z",
+  "evidence": [
+    "probe-degraded: AX tree unserviceable: WindowServer reports 6 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "pid 51010 still names the recorded After Effects (started 2026-11-28T18:22:26.000Z)",
+    "no other instance of the recorded install is running in scope",
+    "graceful terminate request to pid 51010 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n",
+    "force terminate request delivered to pid 51010",
+    "pid 51010 with the recorded start time is absent from the process list",
+    "no other instance of the recorded install is running in scope",
+    "pid 51010 is proven gone"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 50530,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T18:22:27.953Z",
+    "heartbeatAt": "2026-11-28T18:25:23.340Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T18:22:27.954Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T18:26:04.938Z",
+      "reason": "the recorded owned After Effects process is proven gone by terminate (pid 51010 still names the recorded After Effects (started 2026-11-28T18:22:26.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 51010 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 51010; pid 51010 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 51010 is proven gone)"
+    }
+  ],
+  "updatedAt": "2026-11-28T18:26:04.938Z"
+}

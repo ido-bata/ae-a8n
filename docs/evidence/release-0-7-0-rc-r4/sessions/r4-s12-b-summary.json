@@ -1,0 +1,69 @@
+{
+  "label": "r4-s12-b",
+  "scenarioId": "RC-S12",
+  "verdict": "indeterminate",
+  "steps": [
+    {
+      "stepId": "foreign-target",
+      "expected": "foreign AE 2026 pid present",
+      "actual": {
+        "pid": 44375,
+        "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+      },
+      "ok": true
+    },
+    {
+      "stepId": "gui-session",
+      "expected": "Aqua session resolvable",
+      "actual": {
+        "uid": 501,
+        "username": "rebui",
+        "asid": 100021,
+        "kind": "Aqua"
+      },
+      "ok": true
+    },
+    {
+      "stepId": "spawn-supervisor",
+      "expected": "detached supervisor pid returned",
+      "actual": {
+        "pid": 4582
+      },
+      "ok": true
+    },
+    {
+      "stepId": "fresh-heartbeat",
+      "expected": "report health ok/degraded with fresh monitor",
+      "actual": {
+        "status": "observed",
+        "health": "degraded",
+        "phase": "blocked"
+      },
+      "ok": true
+    },
+    {
+      "stepId": "kill-supervisor",
+      "expected": "SIGKILL supervisor pid 4582",
+      "actual": {
+        "killed": 4582
+      },
+      "ok": true
+    },
+    {
+      "stepId": "post-kill-report",
+      "expected": "health=monitor-lost within TTL+margin",
+      "actual": {
+        "status": "observed",
+        "health": "monitor-lost",
+        "detail": "the monitor heartbeat is stale (last beat 2026-11-28T15:56:13.510Z, ttl 30000ms); the target's current GUI state is unknown"
+      },
+      "ok": true
+    }
+  ],
+  "notes": [
+    "pre-kill: {\"status\":\"observed\",\"health\":\"degraded\"}",
+    "supervisor never established a fresh heartbeat (health=degraded, monitor={\"ownerId\":\"ae-a8n-detached-supervisor\",\"pid\":4582,\"pidStart\":null,\"acquiredAt\":\"2026-11-28T15:55:13.818Z\",\"heartbeatAt\") — cannot test loss",
+    "post-kill: {\"status\":\"observed\",\"health\":\"monitor-lost\"}"
+  ],
+  "sessionDir": "/tmp/rc436r4-sessions/r4-s12-b/supervisor"
+}

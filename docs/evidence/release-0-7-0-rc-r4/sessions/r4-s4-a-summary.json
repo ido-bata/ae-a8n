@@ -1,0 +1,29 @@
+{
+  "label": "r4-s4-a",
+  "scenarioId": "RC-S4",
+  "verdict": "fail",
+  "ownedPid": null,
+  "steps": [
+    {
+      "stepId": "launch+extension",
+      "startedAt": "2026-11-28T16:42:08.470Z",
+      "durationMs": 221664,
+      "expected": "owned launch with rc436 extension host script",
+      "actual": {
+        "error": "AfterEffectsError",
+        "message": "After Effects was started (pid 51193, started 2026-11-28T16:42:31.000Z, /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 97822ms; the After Effects process is still running but did not answer; the call took 112724ms in total. Readiness: timeout — the host process is present but never answered within the readiness budg"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "AfterEffectsError",
+        "message": "After Effects was started (pid 51193, started 2026-11-28T16:42:31.000Z, /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 97822ms; the After Effects process is still running but did not answer; the call took 112724ms in total. Readiness: timeout — the host process is present but never answered within the readiness budg"
+      }
+    }
+  ],
+  "cleanup": {
+    "verdict": "unverifiable",
+    "ref": null,
+    "note": "session killed with host; teardown evaluated by harness below AE2027 still running: [{\"pid\":51193,\"executable\":\"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects\"}]"
+  },
+  "sessionRoot": "/tmp/rc436r4-sessions/r4-s4-a"
+}

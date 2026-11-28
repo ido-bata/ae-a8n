@@ -1,0 +1,28 @@
+{
+  "label": "/Users/rebui/.local/share/mise/installs/node/24.22.1/bin/node",
+  "verdict": "pass",
+  "recovered": [
+    {
+      "pid": 96416,
+      "root": "/tmp/rc436r4-sessions/r4-planb-a",
+      "outcome": "terminated",
+      "method": "forced"
+    }
+  ],
+  "censusBefore": [
+    {
+      "pid": 19378,
+      "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+    },
+    {
+      "pid": 96416,
+      "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects"
+    }
+  ],
+  "censusAfter": [
+    {
+      "pid": 19378,
+      "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+    }
+  ]
+}

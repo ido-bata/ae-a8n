@@ -1,0 +1,68 @@
+{
+  "kind": "ae-a8n.gui-evidence/v1",
+  "session": {
+    "pid": 14128,
+    "processStartIdentity": "pid-start:1795889264000",
+    "sessionId": "100021",
+    "sessionKind": "console",
+    "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-56",
+    "adapter": "script-invocation"
+  },
+  "segments": [],
+  "artifacts": [
+    {
+      "id": "render-4a10848f-853c-467c-80ac-7f07b540cdff-0",
+      "kind": "render-frame",
+      "role": "original",
+      "path": "r4-s1-56-frame.00000.png",
+      "sha256": "d614f328a8a46a034df38fffe6a0c492754871e086b3a75d517ec7494cc6a340",
+      "bytes": 1271,
+      "session": {
+        "pid": 14128,
+        "processStartIdentity": "pid-start:1795889264000",
+        "sessionId": "100021",
+        "sessionKind": "console"
+      },
+      "time": {
+        "capturedAt": "2026-11-28T18:08:59.249Z",
+        "t0EpochMs": 1795889339249,
+        "t0MonoMs": 89053.401625,
+        "durationMs": null,
+        "endEpochMs": null
+      },
+      "geometry": {
+        "widthPx": 640,
+        "heightPx": 480,
+        "coordinateSpace": "pixels-top-left"
+      },
+      "provenance": {
+        "producer": "ae-render",
+        "tool": "a8n-host comp.renderFrame"
+      },
+      "operationIds": [
+        "4a10848f-853c-467c-80ac-7f07b540cdff"
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "requestId": "4a10848f-853c-467c-80ac-7f07b540cdff",
+      "traceSeq": 14,
+      "op": "comp.renderFrame",
+      "evidenceRefs": [
+        "render-4a10848f-853c-467c-80ac-7f07b540cdff-0"
+      ],
+      "coverage": "render"
+    }
+  ],
+  "gaps": {
+    "uncapturable": [],
+    "unrecorded": [],
+    "orphaned": []
+  },
+  "clock": {
+    "basis": "epoch+mono"
+  },
+  "capturedAt": "2026-11-28T18:09:10.494Z",
+  "updatedAt": "2026-11-28T18:09:10.507Z"
+}

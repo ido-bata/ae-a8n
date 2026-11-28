@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "running",
+  "observationHealth": "degraded",
+  "blocking": null,
+  "pendingRequests": [
+    {
+      "id": "e9362749-849b-47ed-8870-ff187b95f9b4",
+      "method": "app.info",
+      "since": "2026-11-28T18:01:33.793Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T18:01:16.158Z",
+  "deadline": null,
+  "evidence": [
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: "
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 41837,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T18:01:16.157Z",
+    "heartbeatAt": "2026-11-28T18:03:14.623Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T18:01:16.158Z",
+      "reason": "supervision started"
+    }
+  ],
+  "updatedAt": "2026-11-28T18:03:30.507Z"
+}

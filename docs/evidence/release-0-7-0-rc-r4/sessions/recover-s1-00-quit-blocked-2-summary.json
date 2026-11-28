@@ -1,0 +1,28 @@
+{
+  "label": "s1-00-quit-blocked-2",
+  "verdict": "pass",
+  "recovered": [
+    {
+      "pid": 8007,
+      "root": "/tmp/rc436r4-sessions/r4-s1-00-smoke",
+      "outcome": "terminated",
+      "method": "forced"
+    }
+  ],
+  "censusBefore": [
+    {
+      "pid": 8007,
+      "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects"
+    },
+    {
+      "pid": 44375,
+      "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+    }
+  ],
+  "censusAfter": [
+    {
+      "pid": 44375,
+      "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+    }
+  ]
+}
