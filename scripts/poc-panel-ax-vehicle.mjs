@@ -87,6 +87,7 @@ function parseArgs(argv) {
     settleMs: 800,
     enumTimeoutMs: 300_000,
     pollMs: 5_000,
+    readinessTimeoutMs: 600_000,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -96,12 +97,13 @@ function parseArgs(argv) {
     else if (arg === "--settle-ms") options.settleMs = Number(argv[++i]);
     else if (arg === "--enum-timeout-ms") options.enumTimeoutMs = Number(argv[++i]);
     else if (arg === "--poll-ms") options.pollMs = Number(argv[++i]);
+    else if (arg === "--readiness-timeout-ms") options.readinessTimeoutMs = Number(argv[++i]);
     else fail(`unknown argument ${JSON.stringify(arg)}`);
   }
   if (options.install === undefined) {
     fail("--install <dir> is required (this PoC never guesses an install)");
   }
-  for (const key of ["settleMs", "enumTimeoutMs", "pollMs"]) {
+  for (const key of ["settleMs", "enumTimeoutMs", "pollMs", "readinessTimeoutMs"]) {
     if (!Number.isFinite(options[key]) || options[key] < 0) {
       fail(`--${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)} must be a non-negative number`);
     }
@@ -109,10 +111,12 @@ function parseArgs(argv) {
   return options;
 }
 
+function inScopeAEProcesses(install) {
+  return psProcesses().filter((p) => p.executable === install.executable);
+}
+
 function inScopeAEPids(install) {
-  return psProcesses()
-    .filter((p) => p.executable === install.executable)
-    .map((p) => p.pid);
+  return inScopeAEProcesses(install).map((p) => p.pid);
 }
 
 function run(file, args, timeoutMs = 60_000) {
@@ -179,6 +183,7 @@ function summarizeWindowOpsState(json) {
 }
 
 async function main() {
+  const runStartedAtMs = Date.now();
   const options = parseArgs(process.argv.slice(2));
   const evidence = {
     schema: "a8n.poc-panel-ax-vehicle/v1",
@@ -247,17 +252,34 @@ async function main() {
       hostScript,
       timeoutMs: 300_000,
       // Prior run hit a >4min cold start; poll transport readiness
-      // patiently instead of timing out early.
-      readinessTimeoutMs: 600_000,
+      // patiently instead of timing out early. Configurable via
+      // --readiness-timeout-ms; the default keeps that measured need.
+      readinessTimeoutMs: options.readinessTimeoutMs,
     });
-    step("launch", { pid: ae.recoveryTarget()?.pid ?? null, info: ae.info() });
+    step("launch", {
+      pid: ae.recoveryTarget()?.pid ?? null,
+      info: ae.info(),
+      readinessTimeoutMs: options.readinessTimeoutMs,
+    });
   } catch (error) {
     evidence.outcome = "failed";
     evidence.error = `launch failed: ${error instanceof Error ? error.message : String(error)}`;
-    // Best-effort cleanup: any in-scope pid now is ours (preflight saw none).
-    const leftovers = inScopeAEPids(install);
-    step("launch-failure-leftovers", { pids: leftovers });
-    if (leftovers.length > 0) {
+    // Best-effort cleanup: preflight proved zero in-scope instances, so a
+    // leftover is ours ONLY if its process start time falls inside this
+    // run's window — a same-install AE launched by another actor before
+    // or during the run is reported, never quit. ps lstart has one-second
+    // resolution; the 10 s slack covers clock/parse skew, not reuse.
+    const leftovers = inScopeAEProcesses(install);
+    const attributable = leftovers.filter(
+      (p) => Number.isFinite(p.startedAt) && p.startedAt >= runStartedAtMs - 10_000,
+    );
+    const foreignLaunched = leftovers.filter((p) => !attributable.includes(p));
+    step("launch-failure-leftovers", {
+      pids: leftovers.map((p) => p.pid),
+      attributablePids: attributable.map((p) => p.pid),
+      notOursPids: foreignLaunched.map((p) => p.pid),
+    });
+    if (attributable.length > 0 && foreignLaunched.length === 0) {
       const bundlePath = join(options.install, install.versionName);
       const q = run(
         "/usr/bin/osascript",
@@ -265,7 +287,14 @@ async function main() {
         30_000,
       );
       step("launch-failure-quit", { ok: q.ok, detail: q.output });
+    } else if (attributable.length > 0) {
+      // Mixed census: an app-level `tell application … quit` cannot prove
+      // which instance it would hit, so nothing is signalled.
+      step("launch-failure-quit", {
+        skipped: "in-scope leftovers include a process not started by this run; nothing signalled",
+      });
     }
+    step("launch-failure-leftovers-after", { pids: inScopeAEPids(install) });
     emit(evidence, options.out);
     return;
   }
@@ -273,10 +302,10 @@ async function main() {
   try {
     const target = ae.recoveryTarget();
     if (target === null) {
-      evidence.outcome = "failed";
-      evidence.reason = "recoveryTarget() is null; no owned pid/session attested";
-      emit(evidence, options.out);
-      return;
+      // Throw instead of emit+return: an early emit here would write the
+      // evidence BEFORE the finally close() and the postflight census run,
+      // losing the cleanup record.
+      throw new Error("recoveryTarget() is null; no owned pid/session attested");
     }
     targetPid = target.pid;
     step("recovery-target", { pid: targetPid });
