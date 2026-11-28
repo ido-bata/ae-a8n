@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "running",
+  "observationHealth": "degraded",
+  "blocking": null,
+  "pendingRequests": [
+    {
+      "id": "cbcbdc52-efdc-4cf2-b0c3-79aaaa6b46b7",
+      "method": "app.info",
+      "since": "2026-11-28T17:54:48.204Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T17:54:36.692Z",
+  "deadline": null,
+  "evidence": [
+    "probe-degraded: the accessibility query in rebui's session failed: "
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 67994,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T17:54:36.690Z",
+    "heartbeatAt": "2026-11-28T17:56:43.853Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T17:54:36.692Z",
+      "reason": "supervision started"
+    }
+  ],
+  "updatedAt": "2026-11-28T17:56:56.417Z"
+}

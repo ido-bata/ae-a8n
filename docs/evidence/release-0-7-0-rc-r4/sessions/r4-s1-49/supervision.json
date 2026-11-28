@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "process-gone",
+    "windows": [],
+    "detail": "the recorded owned After Effects process is proven gone by terminate (pid 86534 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; terminate found the recorded host already gone)"
+  },
+  "pendingRequests": [
+    {
+      "id": "1ed0e8c1-e2c5-4606-b1c3-4c94bfade380",
+      "method": "app.quit",
+      "since": "2026-11-28T17:48:25.300Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T17:50:25.024Z",
+  "deadline": "2026-11-28T18:05:25.024Z",
+  "evidence": [
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 9 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 9 window(s) for this pid while AX listed none attributable to it",
+    "pid 86534 with the recorded start time is absent from the process list",
+    "no other instance of the recorded install is running in scope",
+    "terminate found the recorded host already gone"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 84798,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T17:43:18.803Z",
+    "heartbeatAt": "2026-11-28T17:49:24.972Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T17:43:19.376Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T17:48:08.684Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T17:48:23.611Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T17:48:36.693Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T17:48:54.943Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T17:49:10.881Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T17:49:22.935Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T17:49:36.661Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T17:50:25.024Z",
+      "reason": "the recorded owned After Effects process is proven gone by terminate (pid 86534 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; terminate found the recorded host already gone)"
+    }
+  ],
+  "updatedAt": "2026-11-28T17:50:25.024Z"
+}

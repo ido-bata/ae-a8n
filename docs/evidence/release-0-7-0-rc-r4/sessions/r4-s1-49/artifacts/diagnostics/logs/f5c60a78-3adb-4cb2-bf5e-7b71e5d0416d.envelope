@@ -1,0 +1,3 @@
+{"event_id":"f5c60a78-3adb-4cb2-bf5e-7b71e5d0416d"}
+{"type":"session","length":226}
+{"init":true,"sid":"3756663d-96e1-4b20-d115-6c7b2fad99ba","status":"ok","did":"","errors":0,"started":"2026-11-28T17:43:08.815118Z","duration":318.86036,"attrs":{"release":"After Effects@27.0.0+78","environment":"Production"}}

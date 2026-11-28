@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "process-gone",
+    "windows": [],
+    "detail": "the recorded owned After Effects process is proven gone by terminate (pid 30201 still names the recorded After Effects (started 2026-11-28T18:30:03.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 30201 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 30201; pid 30201 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 30201 is proven gone)"
+  },
+  "pendingRequests": [
+    {
+      "id": "75164a1f-119c-4ee5-bf0c-c925e4cbea5e",
+      "method": "app.info",
+      "since": "2026-11-28T18:30:19.160Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T18:34:27.200Z",
+  "deadline": "2026-11-28T18:49:27.200Z",
+  "evidence": [
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "pid 30201 still names the recorded After Effects (started 2026-11-28T18:30:03.000Z)",
+    "no other instance of the recorded install is running in scope",
+    "graceful terminate request to pid 30201 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n",
+    "force terminate request delivered to pid 30201",
+    "pid 30201 with the recorded start time is absent from the process list",
+    "no other instance of the recorded install is running in scope",
+    "pid 30201 is proven gone"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 29443,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T18:30:06.959Z",
+    "heartbeatAt": "2026-11-28T18:32:55.218Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T18:30:06.963Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T18:34:27.200Z",
+      "reason": "the recorded owned After Effects process is proven gone by terminate (pid 30201 still names the recorded After Effects (started 2026-11-28T18:30:03.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 30201 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 30201; pid 30201 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 30201 is proven gone)"
+    }
+  ],
+  "updatedAt": "2026-11-28T18:34:27.200Z"
+}

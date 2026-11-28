@@ -1,0 +1,107 @@
+{
+  "label": "r4-s1-53",
+  "scenarioId": "RC-S1",
+  "verdict": "pass",
+  "steps": [
+    {
+      "stepId": "launch+handshake-readiness",
+      "startedAt": "2026-11-28T18:01:12.243Z",
+      "durationMs": 19528,
+      "expected": "AfterEffects.launch resolves within readinessTimeoutMs (180000) with owned session",
+      "actual": {},
+      "evidenceRefs": [
+        "trace:session.launch"
+      ]
+    },
+    {
+      "stepId": "capabilities",
+      "startedAt": "2026-11-28T18:01:32.189Z",
+      "durationMs": 1604,
+      "expected": "ae.capabilities() returns handshake",
+      "actual": {
+        "contractVersion": {
+          "major": 1,
+          "minor": 0
+        },
+        "ownership": "owned",
+        "caps": 30
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "version",
+      "startedAt": "2026-11-28T18:01:33.793Z",
+      "durationMs": 12305,
+      "expected": "ae.version() returns 27.0x78",
+      "actual": {
+        "version": "27.0x78",
+        "info": {
+          "version": "27.0x78",
+          "build": "78"
+        }
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "openProject+state",
+      "startedAt": "2026-11-28T18:01:46.098Z",
+      "durationMs": 36720,
+      "expected": "ae.openProject(fixture.aep) succeeds; project.info/state report the fixture",
+      "actual": {
+        "file": null,
+        "name": null,
+        "itemCount": 1,
+        "state": {
+          "itemCount": 1,
+          "dirty": true,
+          "activeItem": null
+        }
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "comps",
+      "startedAt": "2026-11-28T18:02:22.818Z",
+      "durationMs": 984,
+      "expected": "fixture comp list contains 'A8N Acceptance'",
+      "actual": [
+        "A8N Acceptance"
+      ],
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "renderFrame",
+      "startedAt": "2026-11-28T18:02:23.802Z",
+      "durationMs": 25876,
+      "expected": "comp.renderFrame(0) writes a PNG artifact",
+      "actual": {
+        "path": "/tmp/rc436r4-sessions/r4-s1-53/artifacts/r4-s1-53-frame.00000.png",
+        "frame": 0,
+        "width": 640,
+        "height": 480
+      },
+      "evidenceRefs": [
+        "artifacts:*.png"
+      ]
+    },
+    {
+      "stepId": "close",
+      "startedAt": "2026-11-28T18:02:49.678Z",
+      "durationMs": 43437,
+      "expected": "ae.close({unsavedChanges:'discard'}) quits the owned host",
+      "actual": {
+        "quit": true,
+        "ownership": {
+          "kind": "owned",
+          "evidence": "pid 43131 is still the only instance"
+        }
+      },
+      "evidenceRefs": []
+    }
+  ],
+  "cleanup": {
+    "verdict": "clean",
+    "ref": "/tmp/rc436r4-sessions/r4-s1-53/teardown-12af19d4-5ead-4015-84b2-d35838990cd9.json"
+  },
+  "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-53"
+}

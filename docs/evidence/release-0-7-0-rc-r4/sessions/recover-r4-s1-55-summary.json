@@ -1,0 +1,17 @@
+{
+  "label": "r4-s1-55",
+  "verdict": "indeterminate",
+  "recovered": [],
+  "censusBefore": [
+    {
+      "pid": 7814,
+      "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+    }
+  ],
+  "censusAfter": [
+    {
+      "pid": 7814,
+      "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+    }
+  ]
+}

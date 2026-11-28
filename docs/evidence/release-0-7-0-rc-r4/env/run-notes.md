@@ -64,3 +64,23 @@ s1-streak loop was running. Effects, all recovered or documented:
   ledgered (no RC-S17 chain exercised).
 - The streak was killed at ~00:33 JST and restarted after worktree
   recreation; labels continue at r4-s1-34 to preserve attempt ordering.
+
+## Warm window and streak outcome (02:25–04:20 JST)
+
+- 02:25 JST `r4-s15-a` launched cleanly (owned pid 47511) — BirthPrefs had
+  disarmed on its own; no human dismiss occurred. `r4-s14-a` also launched
+  (pid 33064) but `record.start` failed with
+  `RecordingError: unknown capture scope: "screen"` → ledgered `blocked`.
+- S1 streak loop (`s1-streak.sh`, MAX_ATTEMPTS=60, labels r4-s1-34..70):
+  passes at s1-46-probe/47/48, 50/51, 53/54/55 (8 total, best streak 3).
+  s1-49/52/56 hit the `session.close` quit-timeout flake (#464) → teardown
+  `residue` → forced terminate → each recorded as RC-S17 pass.
+- ~03:10 JST s1-57 re-armed BirthPrefs (consistent with the
+  unclean-shutdown → re-arm hypothesis); s1-58..70 all readiness-timeout,
+  each swept by recover-leftover as RC-S17 pass. Loop ended at attempt 70.
+- 04:16 JST `r4-planb-a` (repo-side Plan B) also hit readiness timeout
+  (pid 96416) → recovered via RC-S17 sweep. BirthPrefs remained armed at
+  end of run.
+- Final ledger: 121 rows — S1 8p/40f, S12 1p/3i, S15 pass, S16 environment
+  (corrected), S17 52p, S2–S11/S13 fail (launch readiness), S14 blocked,
+  Plan B fail. Metrics: 613 op attempts, deny only on 4 safety-residue.

@@ -1,0 +1,31 @@
+{
+  "label": "r4-planb-a",
+  "scenarioId": "RC-PLAN-B",
+  "verdict": "fail",
+  "ownedPid": null,
+  "dropFixture": "/tmp/rc436r4-sessions/r4-planb-a-drop-fixture.png",
+  "dropFixtureSha": "765e6f001d0078c07a53d6b54980b245d8a4fcb38055c75469843d9191722d59",
+  "steps": [
+    {
+      "stepId": "launch+extension",
+      "startedAt": "2026-11-28T19:16:16.960Z",
+      "durationMs": 200022,
+      "expected": "owned launch AE 2027 + extension",
+      "actual": {
+        "error": "AfterEffectsError",
+        "message": "After Effects was started (pid 96416, started 2026-11-28T19:16:20.000Z, /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 164992ms; the After Effects process is still running but did not answer; the call took 173965ms in total. Readiness: timeout — the host process is present but never answered within the readiness bud"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "AfterEffectsError",
+        "message": "After Effects was started (pid 96416, started 2026-11-28T19:16:20.000Z, /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 164992ms; the After Effects process is still running but did not answer; the call took 173965ms in total. Readiness: timeout — the host process is present but never answered within the readiness bud"
+      }
+    }
+  ],
+  "cleanup": {
+    "verdict": "unverifiable",
+    "ref": null,
+    "note": " AE2027 still running: [{\"pid\":96416,\"executable\":\"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects\"}]"
+  },
+  "sessionRoot": "/tmp/rc436r4-sessions/r4-planb-a"
+}

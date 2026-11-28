@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "process-gone",
+    "windows": [],
+    "detail": "the recorded owned After Effects process is proven gone by terminate (pid 95464 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; terminate found the recorded host already gone)"
+  },
+  "pendingRequests": [
+    {
+      "id": "8e6dc495-f678-4ba6-82dc-45e1db67b4e9",
+      "method": "app.info",
+      "since": "2026-11-28T17:57:25.083Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T18:01:10.683Z",
+  "deadline": "2026-11-28T18:16:10.683Z",
+  "evidence": [
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "pid 95464 with the recorded start time is absent from the process list",
+    "no other instance of the recorded install is running in scope",
+    "terminate found the recorded host already gone"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 92262,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T17:57:13.916Z",
+    "heartbeatAt": "2026-11-28T18:00:39.957Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T17:57:13.917Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T18:01:10.683Z",
+      "reason": "the recorded owned After Effects process is proven gone by terminate (pid 95464 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; terminate found the recorded host already gone)"
+    }
+  ],
+  "updatedAt": "2026-11-28T18:01:10.683Z"
+}

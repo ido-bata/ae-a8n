@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "none",
+    "windows": [
+      {
+        "title": "<unobservable window>",
+        "role": "AXWindow",
+        "subrole": null,
+        "texts": [
+          "WindowServer reports 9 window(s) not visible to AX"
+        ],
+        "buttons": [],
+        "blocking": true,
+        "tier": "unknown",
+        "dialogClass": null,
+        "code": "A8N-SEC-001",
+        "content": {
+          "dialogClass": null,
+          "tier": "unknown",
+          "code": "A8N-SEC-001",
+          "evidenceLevel": null,
+          "fields": {},
+          "summary": "unclassified AXWindow \"<unobservable window>\" — WindowServer reports 9 window(s) not visible to AX"
+        }
+      }
+    ],
+    "detail": "1 blocking window(s): <unobservable window>"
+  },
+  "pendingRequests": [],
+  "enteredAt": "2026-11-28T16:01:17.085Z",
+  "deadline": "2026-11-28T16:16:17.085Z",
+  "evidence": [
+    "probe-degraded: AX tree unserviceable: WindowServer reports 9 window(s) for this pid while AX listed none attributable to it"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-detached-supervisor",
+    "pid": 31789,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T15:59:56.717Z",
+    "heartbeatAt": "2026-11-28T16:00:59.523Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T15:59:56.753Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T16:00:17.234Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T16:00:36.216Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T16:00:57.431Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T16:01:17.085Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    }
+  ],
+  "updatedAt": "2026-11-28T16:01:17.093Z"
+}
