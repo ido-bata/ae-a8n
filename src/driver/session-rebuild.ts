@@ -66,7 +66,7 @@ export type RebuildHostVerdict =
  * neither can be proven foreign. Other platforms match the recorded
  * executable path only.
  */
-function isInstallInstance(
+export function isInstallInstance(
   candidate: HostProcess,
   recordedExecutable: string,
   platform: NodeJS.Platform,

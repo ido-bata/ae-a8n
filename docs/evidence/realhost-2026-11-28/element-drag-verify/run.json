@@ -1,0 +1,36 @@
+{
+  "schema": "a8n.poc-element-drag-427/v1",
+  "issue": 427,
+  "recordedAt": "2026-11-27T22:51:20.481Z",
+  "install": "/Applications/Adobe After Effects 2027",
+  "steps": [
+    {
+      "name": "preflight",
+      "at": "2026-11-27T22:51:20.700Z",
+      "install": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "preexisting": []
+    },
+    {
+      "name": "dialog-dismiss-launch",
+      "at": "2026-11-27T22:51:24.716Z",
+      "pid": 79028,
+      "windows": 1,
+      "pressed": 1
+    },
+    {
+      "name": "dialog-dismiss-launch",
+      "at": "2026-11-27T22:51:28.782Z",
+      "pid": 79028,
+      "windows": 1,
+      "pressed": 1
+    },
+    {
+      "name": "launch-error",
+      "at": "2026-11-27T22:55:22.452Z",
+      "message": "After Effects was started (pid 79028, started 2026-11-27T22:51:21.000Z, /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 237530ms; the After Effects process is still running but did not answer; the call took 238931ms in total. It is still running, and this session cannot prove it may quit it, so it was left running: quit it by hand before running again."
+    }
+  ],
+  "outcome": "failed",
+  "reason": "AfterEffects.launch did not complete",
+  "dialogDismissals": 2
+}

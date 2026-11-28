@@ -76,7 +76,7 @@ keeps the default protections.
 ## Release-only integration gate
 
 `main` accepts only the current release train's PR. The canonical train is
-the repository variable `RELEASE_TRAIN` (currently `release-0-6-0`), not a
+the repository variable `RELEASE_TRAIN` (currently `release-0-7-0`), not a
 branch-name pattern — a spoofed `release-*` head fails the gate.
 
 `.github/workflows/release-gate.yml` runs on `pull_request_target`, so the

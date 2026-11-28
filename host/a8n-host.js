@@ -308,17 +308,61 @@
     return valueShape(name) === null ? "custom-value" : "value";
   }
 
+  /**
+   * The keyframes of a Property, as AE numbers them (1-based). `value` is
+   * carried only in the shapes this API reads elsewhere — a number or an
+   * array of numbers — and is null when `keyValue` refuses (NO_VALUE and
+   * CUSTOM_VALUE properties do on AE 26.5x89) or returns another shape.
+   */
+  function describeKeyframes(property) {
+    var out = [];
+    var count = typeof property.numKeys === "number" ? property.numKeys : 0;
+    for (var i = 1; i <= count; i++) {
+      var entry = { index: i, time: property.keyTime(i), value: null };
+      try {
+        var keyValue = property.keyValue(i);
+        var carried = isFiniteNumber(keyValue);
+        if (!carried && isArray(keyValue) && keyValue.length > 0) {
+          carried = true;
+          for (var k = 0; k < keyValue.length; k++) {
+            if (!isFiniteNumber(keyValue[k])) {
+              carried = false;
+              break;
+            }
+          }
+        }
+        if (carried) {
+          entry.value = keyValue;
+        }
+      } catch (keyError) {
+        // The key's time still enumerates; only its value is unreadable.
+      }
+      out.push(entry);
+    }
+    return out;
+  }
+
   function describeProperty(property) {
     var kind = propertyKind(property);
     var out = { name: property.name, kind: kind };
     if (property.matchName !== undefined && property.matchName !== null) {
       out.matchName = property.matchName;
     }
+    // The timeline selection state the GUI oracles read back (#359). Only
+    // reported where the host exposes it as a boolean — never guessed.
+    if (typeof property.selected === "boolean") {
+      out.selected = property.selected;
+    }
     if (kind !== "group") {
       out.valueType = valueTypeName(property);
     }
     if (kind === "value") {
       out.value = property.value;
+    }
+    // Keyframe state exists on Property, not on PropertyGroup.
+    if (property.propertyType === PropertyType.PROPERTY) {
+      out.isTimeVarying = property.isTimeVarying === true;
+      out.keyframes = describeKeyframes(property);
     }
     return out;
   }
@@ -418,6 +462,32 @@
   }
 
   /**
+   * Closes the open project without saving and proves nothing dirty remains
+   * before the caller proceeds.
+   *
+   * `Project.close` answers `false` when it did not close — a blocking
+   * dialog, a refused close — and the script must not carry on as if the
+   * project were gone. Left in place, a still-dirty project puts After
+   * Effects' own save prompt in front of whatever comes next: `app.quit()`
+   * then returns while the process never exits (observed on AE 27, where a
+   * quit timed out with the untitled project window still up). Failing here
+   * keeps the session usable — the caller can retry or decide — instead of
+   * trading a refused close for a hung quit.
+   */
+  function closeProjectWithoutSaving(action) {
+    var closed = app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+    var project = app.project;
+    var stillDirty = project !== null && project !== undefined && project.dirty === true;
+    if (closed === false || stillDirty) {
+      var stuck = new Error(
+        "the open project could not be closed without saving; " + action + " was not attempted"
+      );
+      stuck.name = "UnsavedChangesError";
+      throw stuck;
+    }
+  }
+
+  /**
    * Shows a modal dialog in After Effects and waits until it is closed.
    *
    * The dialog is native, not scripted: it is the one case an ExtendScript
@@ -444,7 +514,7 @@
     if (guardUnsavedChanges(params, "quitting")) {
       // Closed first, untitled or not: a dirty project would otherwise put a
       // save prompt in front of the quit.
-      app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+      closeProjectWithoutSaving("quitting");
     }
     app.quit();
     return { quitting: true };
@@ -460,7 +530,7 @@
     // save prompt in front of the script, and the changes may be someone
     // else's work.
     if (guardUnsavedChanges(params, "opening another project")) {
-      app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+      closeProjectWithoutSaving("opening another project");
     }
     var opened = app.open(file);
     // app.open answers with the Project it opened; the path is on
@@ -497,6 +567,28 @@
     };
   };
 
+  /**
+   * The project facts the DOM exposes for readback (#359): item count,
+   * unsaved-changes flag, and the active item. `activeItem.comp` is true
+   * only for a CompItem — footage and other items still report their name.
+   */
+  methods["project.state"] = function () {
+    var project = getProject();
+    var active = project.activeItem;
+    var activeItem = null;
+    if (active !== null && active !== undefined) {
+      activeItem = {
+        name: String(active.name),
+        comp: active instanceof CompItem
+      };
+    }
+    return {
+      itemCount: project.numItems,
+      dirty: project.dirty === true,
+      activeItem: activeItem
+    };
+  };
+
   methods["project.comps"] = function () {
     var project = getProject();
     var out = [];
@@ -516,8 +608,48 @@
     return out;
   };
 
+  /**
+   * `project.items` in panel order (#422): the drop oracle for drag-drop.
+   * Each entry carries the item's name and a coarse type word — "comp",
+   * "footage", "folder" — or null when no known class matches (the DOM
+   * exposes no stable item id, so `id` stays absent and callers match on
+   * name multisets). Read-only: it never touches the project.
+   */
+  methods["project.items"] = function () {
+    var project = getProject();
+    var out = [];
+    for (var i = 1; i <= project.numItems; i++) {
+      var item = project.item(i);
+      var type = null;
+      if (item instanceof CompItem) {
+        type = "comp";
+      } else if (typeof FootageItem !== "undefined" && item instanceof FootageItem) {
+        type = "footage";
+      } else if (typeof FolderItem !== "undefined" && item instanceof FolderItem) {
+        type = "folder";
+      }
+      out.push({ name: String(item.name), type: type });
+    }
+    return { items: out, itemCount: project.numItems };
+  };
+
   methods["comp.info"] = function (params) {
     return compInfo(findComp(String(requireParam(params, "name"))));
+  };
+
+  /**
+   * `CompItem.time` — the current-time indicator, in seconds (#359). Read
+   * only: setting it is a scripting mutation and stays setup-only. `frame`
+   * is `time` in frames and can be fractional while the indicator sits
+   * between frames.
+   */
+  methods["comp.time"] = function (params) {
+    var comp = findComp(String(requireParam(params, "name")));
+    return {
+      comp: comp.name,
+      time: comp.time,
+      frame: comp.time * comp.frameRate
+    };
   };
 
   methods["comp.layers"] = function (params) {
@@ -847,6 +979,44 @@
     }
     layer.enabled = enabled;
     return layerInfo(layer);
+  };
+
+  /**
+   * One property of a layer, addressed by a path of names or match names —
+   * e.g. `["ADBE Transform Group", "ADBE Position"]` or
+   * `["ADBE Effect Parade", "ADBE Fake Tint", "ADBE Fake Tint-0001"]`
+   * (#359). Read only. The result is `describeProperty`: kind/valueType/
+   * value as elsewhere, plus `selected`, `isTimeVarying` and `keyframes`
+   * where the host exposes them.
+   */
+  methods["layer.property"] = function (params) {
+    var comp = findComp(String(requireParam(params, "comp")));
+    var layer = findLayer(comp, String(requireParam(params, "layer")));
+    var path = requireParam(params, "path");
+    if (!isArray(path) || path.length === 0) {
+      throw new Error("path must be a non-empty array of property names or match names");
+    }
+    var node = layer;
+    for (var i = 0; i < path.length; i++) {
+      if (node === null || node === undefined || typeof node.property !== "function") {
+        throw new Error(
+          "property path ends at a property, not a group, on layer '" +
+            layer.name + "': " + path.slice(0, i).join(" › ")
+        );
+      }
+      node = node.property(String(path[i]));
+      if (node === null || node === undefined) {
+        var missing = new Error(
+          "property not found on layer '" + layer.name + "': " + String(path[i])
+        );
+        // Same contract as requireProperty: exactly this becomes
+        // EntityNotFoundError(kind: "property") in the API.
+        missing.name = "NotFoundError";
+        missing.kind = "property";
+        throw missing;
+      }
+    }
+    return describeProperty(node);
   };
 
   methods["layer.transform"] = function (params) {

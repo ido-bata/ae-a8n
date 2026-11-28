@@ -12,14 +12,29 @@
 export {
   AfterEffects,
   Comp,
+  CompView,
+  CompViewError,
+  compViewCapabilities,
+  ContextMenu,
+  DockedPane,
+  EffectControls,
+  EffectControlsError,
+  effectControlsCapabilities,
   Effects,
   Effect,
   Layer,
   MenuCommand,
+  Panel,
   Parameter,
   Project,
+  ProjectDialog,
   REDO_COMMAND_ID,
+  Timeline,
+  TimelineError,
+  timelineCapabilities,
   UNDO_COMMAND_ID,
+  WindowOps,
+  Workspace,
 } from "./api/index.js";
 
 export {
@@ -40,6 +55,594 @@ export {
 } from "./api/errors.js";
 export type { CloseResult } from "./api/index.js";
 export type { AttachFailureReason } from "./api/errors.js";
+
+/*
+ * Panel interaction surface (#343, specs/panel-interaction/spec.md):
+ * `ae.panel(locator)` plus the capability report. Mutation (resize /
+ * restore) is gate-pending; observe operations run on owned targets.
+ */
+export { panelCapabilities, PanelError } from "./api/panels.js";
+export type {
+  PanelCapabilities,
+  PanelCapability,
+  PanelCapture,
+  PanelErrorCode,
+  PanelFrame,
+  PanelLocator,
+  PanelMeasurement,
+  PanelSize,
+  PanelSurface,
+  PanelTarget,
+} from "./panels/types.js";
+
+/*
+ * OS-level input surface (#374, specs/ime-input/spec.md §5–§6, parent
+ * #344 / program #337): `ae.input(locator)` plus the per-OS/session-kind
+ * capability report. Every mutation routes through `runInputPlan` —
+ * PanelTarget re-resolution, owned attribution, GUI lease, global-input
+ * authorization, `inputMutationGate()` (closed today), the three-step
+ * focus proof and the §5.5 cleanup contract. Mutations return the
+ * `InputAuditRecord`; nothing posts without the full gate chain.
+ * Verification level: `automated test` — real delivery unverified.
+ */
+export {
+  Input,
+  inputCapabilities,
+  inputForTarget,
+  inputSessionKind,
+} from "./api/input.js";
+export {
+  INPUT_OPERATION_GATES,
+  INPUT_OPERATION_KINDS,
+  InputError,
+} from "./input/types.js";
+/*
+ * Tier evidence records (#376, specs/ime-input/spec.md §4・§5.6):
+ * independent Tier-1a (CEP composition self-report), Tier-1b (OS IME
+ * end-to-end) and Tier-2 (real key + committed result) records, the
+ * spec §4.2 forbidden-evidence rejection, fixture JSONL ingest, and
+ * the composition-observe channel/coverage report. The tiers are never
+ * merged into one "IME works" verdict. Verification level:
+ * `automated test` — no real composition or IME event observed.
+ */
+export {
+  buildCompositionObserveReport,
+  buildInputEvidenceReport,
+  buildTier1aRecord,
+  buildTier2Record,
+  classifyInputDelivery,
+  classifyInputDeliveryForTier2,
+  compositionCoverage,
+  compositionObserveChannels,
+  evaluateTier1bEvidence,
+  INPUT_DELIVERY_MECHANISMS,
+  INPUT_EVIDENCE_REPORT_SCHEMA,
+  INPUT_FIXTURE_ID,
+  INPUT_TIER1A_SCHEMA,
+  INPUT_TIER1B_SCHEMA,
+  INPUT_TIER2_SCHEMA,
+  parseFixtureReport,
+  parseFixtureReportLine,
+} from "./input/evidence.js";
+export type {
+  CompositionObserveReport,
+  CompositionSurfaceCoverage,
+  CompositionSupport,
+  DeliveryAdmissibility,
+  DeliveryAssessment,
+  FixtureReportRecord,
+  FixtureReportRejection,
+  InputDeliveryClass,
+  InputDeliveryMechanism,
+  InputEvidenceReport,
+  InputObservationChannel,
+  InputObservationChannelReport,
+  Tier1aEvidenceRecord,
+  Tier1bEvidenceRecord,
+  Tier1bPhases,
+  Tier2CommittedResult,
+  Tier2EvidenceRecord,
+  TierVerdict,
+} from "./input/evidence.js";
+export type {
+  ClipboardSnapshot,
+  ExpectedFocus,
+  FocusHolder,
+  GlobalInputAuthorization,
+  ImeModeSnapshot,
+  InputAuditRecord,
+  InputAuthorizationRequest,
+  InputAuthorizationVerdict,
+  InputCapability,
+  InputCapabilities,
+  InputCleanupAction,
+  InputCleanupReport,
+  InputCleanupResult,
+  InputErrorCode,
+  InputFocusEvidence,
+  InputGateState,
+  InputMouseEvent,
+  InputOperationClass,
+  InputOperationGate,
+  InputOperationKind,
+  InputOperationScope,
+  InputOps,
+  InputOpsContext,
+  InputOpsFactory,
+  InputPlan,
+  InputPlatform,
+  InputPoster,
+  InputSeams,
+  InputSessionKind,
+  InputStep,
+  InputStepKind,
+  InputStepRecord,
+  InputSurfaceOps,
+  InputVerification,
+  InputVerdict,
+} from "./api/index.js";
+
+/*
+ * Menu-bar surface (#360, specs/workspace-editing/spec.md): `ae.menuBar()`
+ * plus the capability report. Enumerate and checkmark readback are
+ * observe-class; invoke is mutate-gui and gate-pending.
+ */
+export {
+  MenuBar,
+  MenuError,
+  menuBarForTarget,
+  menuCapabilities,
+} from "./api/menus.js";
+export type {
+  MenuBarItemInfo,
+  MenuBarSnapshot,
+  MenuCapabilities,
+  MenuCapability,
+  MenuCheckReading,
+  MenuCheckState,
+  MenuErrorCode,
+  MenuInvokeResult,
+  MenuItemLocator,
+  MenuItemNode,
+  ResolvedMenuItem,
+} from "./menus/types.js";
+
+/*
+ * Docked-region pane surface (#361, specs/workspace-editing/spec.md §6/§7):
+ * `ae.dockedPane(locator)` — observe-class bounded AX walk of a pane inside
+ * the main window. Real-host AX fidelity is unverified; see
+ * `panelCapabilities().dockedRegion`.
+ */
+export type {
+  DockedPaneBounds,
+  DockedPaneLocator,
+  DockedPaneOps,
+  DockedPaneResolution,
+  DockedPaneRow,
+  DockedPaneSeams,
+  DockedPaneTree,
+} from "./api/index.js";
+
+/*
+ * Render Queue + native file-dialog surface (#365,
+ * specs/workspace-editing/spec.md §3 W3): `ae.renderQueue(locator)` —
+ * observe-class AX rows (`oracle: "limited"`, no DOM readback exists)
+ * plus gated menu-driven add; `ae.fileDialog()` — bounded wait for the
+ * declared picker class, gated confirm/cancel, and filename entry that
+ * stays `unsupported` until the B-IME OS input posters land (#372/#373).
+ */
+export {
+  FileDialog,
+  FileDialogError,
+  fileDialogCapabilities,
+  fileDialogForTarget,
+  matchFileDialog,
+  RenderQueue,
+  RenderQueueError,
+  renderQueueCapabilities,
+  renderQueueForTarget,
+  RENDER_QUEUE_ORACLE,
+} from "./api/index.js";
+export type {
+  AddToRenderQueueOptions,
+  AwaitFileDialogOptions,
+  FileDialogActResult,
+  FileDialogCapabilities,
+  FileDialogCapability,
+  FileDialogErrorCode,
+  FileDialogMatch,
+  FileDialogMutationGate,
+  FileDialogOps,
+  FileDialogResolution,
+  FileDialogTitles,
+  FilenameEntryVerdict,
+  RenderQueueAddResult,
+  RenderQueueCapabilities,
+  RenderQueueCapability,
+  RenderQueueErrorCode,
+  RenderQueueItem,
+  RenderQueueOracle,
+  RenderQueueSnapshot,
+  RenderQueueWalkInfo,
+} from "./api/index.js";
+
+/*
+ * Context-menu surface (#368, specs/workspace-editing/spec.md §3 W4+):
+ * `ae.contextMenu()` — gated right-click inside a re-verified frame
+ * (CGEvent right-button via `input-mouse` on macOS), bounded new-window
+ * classification like a dialog, gated item invoke. Whether the
+ * right-button post and the context-menu AX surface work on a real AE
+ * is unverified; see `contextMenuCapabilities()`.
+ */
+export {
+  ContextMenuError,
+  contextMenuCapabilities,
+  contextMenuForTarget,
+  contextMenuItems,
+  contextMenuMutationGate,
+  contextMenuWindowKey,
+  contextMenuExposedTitles,
+  matchContextMenu,
+} from "./api/index.js";
+export type {
+  ContextMenuActResult,
+  ContextMenuCapabilities,
+  ContextMenuCapability,
+  ContextMenuControllerOptions,
+  ContextMenuErrorCode,
+  ContextMenuItem,
+  ContextMenuMatch,
+  ContextMenuMutationGate,
+  ContextMenuMutationOp,
+  ContextMenuOps,
+  ContextMenuPostVerdict,
+  ContextMenuResolution,
+  ContextMenuSurface,
+  ContextMenuTargetLocator,
+  ContextMenuTitles,
+  OpenContextMenuOptions,
+} from "./api/index.js";
+
+/*
+ * Drag-drop surface (#422, specs/workspace-editing/spec.md §9
+ * "File/element drag-drop"): `ae.dragDrop()` — gated, lease-held
+ * NSDraggingSession file drops and segmented element drags through the
+ * `input-drag` helper, census-gated drop points, `project.items`
+ * DOM-delta oracle, never resent. `drop-file` and the proven
+ * `element-drag` reorder classes (`project-item`/`timeline-layer`)
+ * and `panel-tab` dock→float tear-off (#427) are permitted; `other`
+ * element drags stay gate-refused — see `dragDropCapabilities()`.
+ */
+export {
+  DragDrop,
+  DragDropError,
+  dragDropCapabilities,
+  dragDropForTarget,
+  dragDropMutationGate,
+} from "./api/index.js";
+export type {
+  DragDropCapabilities,
+  DragDropCapability,
+  DragDropControllerOptions,
+  DragDropDelta,
+  DragDropElementRequest,
+  DragDropElementTarget,
+  DragDropErrorCode,
+  DragDropFilePayload,
+  DragDropFileProbe,
+  DragDropFileRequest,
+  DragDropMutationGate,
+  DragDropMutationOp,
+  DragDropOps,
+  DragDropPoint,
+  DragDropPollOptions,
+  DragDropProjectItem,
+  DragDropRequest,
+  DragDropResult,
+  DragDropSegmentCheck,
+  DragDropSnapshot,
+  DragDropSurfaceLocator,
+  DragDropTopmost,
+  DragDropVerdict,
+  GuiAppStateLike,
+} from "./api/index.js";
+
+/*
+ * Project Open/Save dialog round-trip (#368, specs/workspace-editing/
+ * spec.md §3 W4+): `ae.projectDialog()` — File > Open / Save through
+ * the real menu and native picker with bounded waits and recorded
+ * oracles (`project.info` for open, read-only file stat for save).
+ * Every leg is mutate-gui and gate-pending; filename entry additionally
+ * awaits the B-IME OS text-input posters (#372/#373).
+ */
+export {
+  ProjectDialogError,
+  projectDialogCapabilities,
+  projectDialogForTarget,
+  projectDialogMutationGate,
+} from "./api/index.js";
+export type {
+  CancelProjectDialogRequest,
+  OpenProjectDialogRequest,
+  ProjectDialogCapabilities,
+  ProjectDialogCapability,
+  ProjectDialogChannel,
+  ProjectDialogControllerOptions,
+  ProjectDialogErrorCode,
+  ProjectDialogEvidence,
+  ProjectDialogFileStat,
+  ProjectDialogLegResult,
+  ProjectDialogMutationGate,
+  ProjectDialogMutationOp,
+  ProjectDialogOps,
+  ProjectDialogProjectInfo,
+  ProjectDialogRoundTripResult,
+  SaveProjectDialogRequest,
+} from "./api/index.js";
+
+/*
+ * GUI evidence recording surface (#381, specs/gui-evidence/spec.md §5.4):
+ * `ae.record.start/stop` plus the `ScreenRecorder` seam OS backends
+ * (#382/#384) implement. The lifecycle is platform-neutral; with no
+ * backend registered starts refuse honestly.
+ */
+export {
+  RECORDING_DEFAULT_MAX_DURATION_MS,
+  RECORDING_MAX_DURATION_MS_CAP,
+  RecordingController,
+  RecordingError,
+  recordingAttributionRefusal,
+  recordingRequiresAuthorization,
+} from "./evidence/recording.js";
+export type {
+  RecorderFileProbe,
+  RecorderHandle,
+  RecorderStartRequest,
+  RecorderStartResult,
+  RecorderStopResult,
+  RecordStartOptions,
+  RecordingApiSeams,
+  RecordingAuthorizer,
+  RecordingAuthorizationRequest,
+  RecordingControllerOptions,
+  RecordingErrorCode,
+  RecordingLease,
+  RecordingSession,
+  RecordingStopResult,
+  RecordingApi,
+  ScreenRecorder,
+} from "./api/record.js";
+export type {
+  CaptureScope,
+  EvidenceArtifact,
+  EvidenceExclusion,
+  EvidenceIndexSession,
+  EvidenceSegment,
+  GuiEvidenceIndexDocument,
+} from "./evidence/types.js";
+
+/*
+ * Render-evidence join + consumer handoff (#385, E4 of program #337):
+ * `ae.evidence` plus the same-run join (`joinOperationEvidence`) and
+ * the ae-test `Artifact` mapping (`consumerArtifacts`). Channel S/R
+ * stay distinct claims; unverified joins report `verified: false`.
+ */
+export {
+  consumerArtifactKind,
+  consumerArtifacts,
+  consumerRefs,
+  joinOperationEvidence,
+} from "./evidence/consumer.js";
+export type {
+  ConsumerArtifact,
+  ConsumerArtifactKind,
+  EvidenceApi,
+  OperationEvidenceCheck,
+  OperationEvidenceJoin,
+} from "./api/index.js";
+export type {
+  EvidenceConsumerRefs,
+  EvidenceCoverage,
+  EvidenceKind,
+  EvidenceOperation,
+} from "./evidence/types.js";
+
+/*
+ * Timeline editing surface (#364, specs/workspace-editing/spec.md §3 W2):
+ * `ae.timeline(locator)` — timeline scrub, layer/property row selection
+ * and keyframe navigation. Every act is mutate-gui (GUI input + DOM
+ * readback oracle), gated pending A-SAFETY clearance; `rows` is
+ * observe-class. Real-host fidelity is unverified; see
+ * `timelineCapabilities()`.
+ */
+export type {
+  NavigateKeyframeRequest,
+  NavigateKeyframeResult,
+  ScrubRequest,
+  ScrubResult,
+  SelectRowRequest,
+  SelectRowResult,
+  TimelineCapabilities,
+  TimelineCapability,
+  TimelineErrorCode,
+  TimelineKeyTarget,
+  TimelineKeyframeVia,
+  TimelineMouseOps,
+  TimelineOpRecord,
+  TimelinePoint,
+  TimelinePostcondition,
+  TimelineRulerGeometry,
+  TimelineRowLocator,
+  TimelineRowVerify,
+  TimelineSeams,
+  TimelineVerdict,
+} from "./api/index.js";
+
+/*
+ * Workspace editing surface (#363, W1 of specs/workspace-editing/spec.md;
+ * parent #345 / program #337): `ae.workspace()` plus the capability
+ * report and the read-only workspace-XML reader (#362). Observe-class
+ * operations run on owned targets; switch/arrange are mutate-gui and
+ * gate-pending, and arrange additionally awaits the B-IME drag vehicle.
+ */
+export {
+  workspaceCapabilities,
+  workspaceForTarget,
+  WorkspaceError,
+  assessFrameMonitors,
+  classifyTopology,
+  displaysForFrame,
+  monitorEvidence,
+  toMonitorDisplay,
+  DISPLAY_CENSUS_SCRIPT,
+  displayCensus,
+  parseDisplayCensus,
+} from "./api/index.js";
+export type {
+  WorkspaceArrangeDestination,
+  WorkspaceArrangeExpectation,
+  WorkspaceArrangeRequest,
+  WorkspaceArrangeResult,
+  WorkspaceCapability,
+  WorkspaceCapabilities,
+  WorkspaceDragRequest,
+  WorkspaceDragVerdict,
+  WorkspaceErrorCode,
+  WorkspaceIdentity,
+  WorkspaceMenuEntry,
+  WorkspaceMenuPath,
+  WorkspaceMonitorReport,
+  WorkspaceObservation,
+  WorkspaceObservationFailure,
+  WorkspacePanelFrame,
+  WorkspacePollOptions,
+  WorkspaceRestoreReport,
+  WorkspaceSeams,
+  WorkspaceSurfaceOps,
+  WorkspaceSwitchResult,
+  WorkspaceTarget,
+  WorkspaceXmlComparison,
+  WorkspaceXmlEvidence,
+  FrameMonitorInfo,
+  MonitorCensus,
+  MonitorDisplay,
+  MonitorEvidence,
+  MonitorTopology,
+  DisplayCensus,
+  DisplayInfo,
+} from "./api/index.js";
+export {
+  DEFAULT_WORKSPACE_MENU_PATH,
+  compareWorkspaceFrames,
+  workspaceFramesMatch,
+} from "./api/index.js";
+export {
+  WorkspaceXmlError,
+  discoverWorkspaceXml,
+  inspectWorkspaceXml,
+  resolveWorkspacePreferencesDir,
+  snapshotWorkspaceStore,
+  workspaceXmlRef,
+  extractWorkspaceNames,
+  compareVersionDirNames,
+  WORKSPACE_STORE_NAMES,
+} from "./api/index.js";
+export type {
+  DiscoverOptions,
+  InspectedWorkspaceXml,
+  MissingWorkspaceStore,
+  ResolvePreferencesOptions,
+  WorkspaceDiscovery,
+  WorkspaceLayout,
+  WorkspaceStoreKind,
+  WorkspaceStoreSnapshot,
+  WorkspaceXmlErrorCode,
+  WorkspaceXmlFile,
+  WorkspaceXmlInspection,
+  WorkspaceXmlRef,
+} from "./api/index.js";
+
+/*
+ * Window ops surface (#366, W4+ of specs/workspace-editing/spec.md §9;
+ * parent #345 / program #337): `ae.windowOps(locator)` — observe-class
+ * `state` plus gated mutate-gui `move`/`resize`/`minimize`/`restore`/
+ * `maximize`/`focus`. Every act re-resolves the window, refuses
+ * non-"owned" attribution, never resends, and reports `indeterminate`
+ * on an unproven postcondition. Real-host AX fidelity is unverified;
+ * see `windowOpsCapabilities()`.
+ */
+export {
+  windowOpsCapabilities,
+  windowOpsForTarget,
+  WindowOpsError,
+  windowOpsFramesMatch,
+  windowOpsMutationGate,
+  DEFAULT_WINDOW_OPS_POLL,
+} from "./api/index.js";
+export type {
+  WindowOpsActRequest,
+  WindowOpsActResult,
+  WindowOpsActVerdict,
+  WindowOpsCapabilities,
+  WindowOpsCapability,
+  WindowOpsCensusView,
+  WindowOpsErrorCode,
+  WindowOpsListing,
+  WindowOpsMutationGate,
+  WindowOpsOp,
+  WindowOpsOpsContext,
+  WindowOpsOpsFactory,
+  WindowOpsOptions,
+  WindowOpsPollOptions,
+  WindowOpsSeams,
+  WindowOpsState,
+  WindowOpsSurfaceOps,
+  WindowOpsWindowInfo,
+  WindowOpResult,
+} from "./api/index.js";
+
+/*
+ * Comp-view pan/zoom + Effect Controls surface (#367, W4+ of
+ * specs/workspace-editing/spec.md; parent #345 / program #337):
+ * `ae.compView(locator)` and `ae.effectControls(locator)`. Every act is
+ * mutate-gui (GUI input + capture-diff/geometry or DOM readback
+ * oracle), gated pending A-SAFETY clearance; value entry additionally
+ * requires session-stream authorization. Real-host fidelity is
+ * unverified; see `compViewCapabilities()`/`effectControlsCapabilities()`.
+ */
+export type {
+  CompViewAxLocator,
+  CompViewCapabilities,
+  CompViewCapability,
+  CompViewCapture,
+  CompViewCaptureDelta,
+  CompViewErrorCode,
+  CompViewMouseOps,
+  CompViewOpRecord,
+  CompViewPanRequest,
+  CompViewSeams,
+  CompViewVerdict,
+  CompViewZoomRequest,
+  EffectControlsCapabilities,
+  EffectControlsCapability,
+  EffectControlsErrorCode,
+  EffectControlsMouseOps,
+  EffectControlsOpRecord,
+  EffectControlsReadback,
+  EffectControlsRowLocator,
+  EffectControlsSeams,
+  EffectControlsVerdict,
+  PanResult,
+  SetFoldedRequest,
+  SetFoldedResult,
+  SetParameterRequest,
+  SetParameterResult,
+  ZoomResult,
+} from "./api/index.js";
+export {
+  formatParameterValue,
+  parameterValueMatches,
+} from "./api/index.js";
 
 /*
  * Capability handshake surface (#102): `ae.capabilities()` plus the
@@ -92,6 +695,7 @@ export type {
   GuiAssessment,
   GuiSessionInfo,
   GuiStateObservation,
+  GuiStateOptions,
   GuiStateReport,
   GuiWindowClassification,
   GuiWindowReport,
@@ -105,6 +709,12 @@ export type {
   TextLayerOptions,
   OpenProjectOptions,
   OperationOptions,
+  RebuildOptions,
+  ResumeOptions,
+  SessionRebuildReport,
+  TerminateOptions,
+  TerminateReport,
+  TransportRestage,
   ParameterValue,
   ProjectInfo,
   PropertyInfo,
@@ -118,6 +728,7 @@ export type {
 } from "./api/types.js";
 
 export { TraceRecorder } from "./trace/trace.js";
+export { TERMINATE_PERMIT } from "./api/types.js";
 export type { TraceEvent, TraceStatus } from "./trace/trace.js";
 export type { DiagnosticCode } from "./doctor/diagnostics.js";
 
@@ -246,12 +857,14 @@ export {
   chooseRecoveryWindow,
   classifyDialog,
   classifyUnpressable,
+  describeCensusWindow,
   describeWindow,
   isHumanOnlyWindow,
   KNOWN_DIALOG_CLASSES,
   MacHostRecovery,
   RECOVERY_BUTTONS,
   UNPRESSABLE_DIALOG_CLASSES,
+  type CensusWindowCapture,
   type HostRecovery,
   type MacHostRecoveryOptions,
   type RecoveryContext,
@@ -310,6 +923,25 @@ export {
 } from "./platform/darwin/window-census.js";
 
 /*
+ * Dialog perception substrate (#462, specs/dialog-perception/spec.md,
+ * ADR-0009): the AX∪census surface union and the honest `DialogReading`
+ * every surface produces. Evidence-only — nothing here presses.
+ */
+export type {
+  DialogButtonReading,
+  DialogModality,
+  DialogReadingsReport,
+  DialogReading,
+  DialogReadingConfidence,
+  DialogReadingSource,
+  DialogRect,
+  DialogSurface,
+  DialogSurfaceCensus,
+  DialogSurfaceKind,
+  OcrSummary,
+} from "./platform/dialog-reading.js";
+
+/*
  * GUI supervision contract (#278–#288, specs/gui-supervision/spec.md).
  *
  * `ae.supervisionState()` reads the live session's report; the standalone
@@ -329,6 +961,15 @@ export {
   type DetachedSupervisor,
   type DetachedSupervisorOptions,
 } from "./supervision/detached.js";
+export {
+  NEXT_ACTION_REASON_CODES,
+  nextAction,
+  supervisionNextActions,
+  type NextAction,
+  type NextActionInput,
+  type NextActionReason,
+  type NextActionReasonCode,
+} from "./supervision/index.js";
 export type {
   BlockingInfo,
   DialogTier,
@@ -338,6 +979,7 @@ export type {
   PendingRequest,
   SupervisionPhase,
   SupervisionReport,
+  SupervisionReportFacts,
   SupervisionStateDoc,
   SupervisionTransition,
   SupervisionWindow,

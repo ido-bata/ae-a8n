@@ -1,0 +1,32 @@
+Tier-1a CEP composition — real OS input on owned AE 2027 (pid 41964), 2026-11-28 ~06:14-06:17 JST
+=====================================================================================================
+Panel: fixtures/input/cep opened via Window > Extensions > "ae-a8n IME Input Fixture"
+        (CEPHtmlEngine pid 49771, CDP 127.0.0.1:47890, --enable-nodejs --mixed-context)
+Fixture self-report: lib/report.js -> node-fs JSONL sink
+  $TMPDIR/ae-a8n-ime-input/report.jsonl  (copy: cep-report.jsonl)
+CDP observation channel: Runtime.evaluate via ws://127.0.0.1:47890/devtools/page/...
+  (__keys listener armed on #composition-field for all composition/input events)
+
+Focus procedure that worked:
+  1. Real session-tap click INTO the DOM <input> at its screen position
+     (panel window at CG (100,76,640,504); input center ~ (420,165) screen pt).
+     Y-sweep showed focus lands at y=160..170; y<=150 / y>=180 hit body.
+  2. document.hasFocus() === true and activeElement === composition-field
+     ONLY after the real click — CDP el.focus() alone does NOT give OS focus.
+
+Key delivery: input-post key press --tap session --delay-ms 60
+  (60ms gap between keyDown/keyUp required; instant pairs are dropped —
+   same finding as Tier-2 ScriptUI).
+
+Observed sequence (Kotoeri Hiragana selected):
+  typed "ceptest" -> live composition "cえpてst" (romaji->kana per keystroke)
+  space -> conversion candidate "知恵test" (still composing)
+  return -> compositionend "知恵test", DOM value committed "知恵test"
+
+Channels BOTH captured the same truth:
+  - report.jsonl: compositionstart/update/end + input
+    (inputType=insertCompositionText, isComposing=true, domValue tracked)
+  - CDP __keys: identical event stream + final value "知恵test"
+
+Fixture records carry provesOsIme:false / verification:"implemented" by
+design; the OS-IME verdict is this runbook's audit record.

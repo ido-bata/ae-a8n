@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "process-gone",
+    "windows": [],
+    "detail": "the recorded owned After Effects process is proven gone by terminate (pid 67404 still names the recorded After Effects (started 2026-11-28T10:58:02.000Z); no other instance of the recorded install is running in scope; graceful terminate request delivered to pid 67404; pid 67404 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 67404 is proven gone)"
+  },
+  "pendingRequests": [
+    {
+      "id": "25796a2d-917a-4d1c-8c38-7883a22f6f9e",
+      "method": "app.info",
+      "since": "2026-11-28T10:50:55.427Z",
+      "state": "unknown",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T11:00:38.481Z",
+  "deadline": "2026-11-28T11:15:38.481Z",
+  "evidence": [
+    "probe-degraded: AX tree unserviceable: WindowServer reports 6 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "pid 17579 still names the recorded After Effects (started 2026-11-28T10:50:43.000Z)",
+    "no other instance of the recorded install is running in scope",
+    "graceful terminate request to pid 17579 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n",
+    "force terminate request delivered to pid 17579",
+    "pid 17579 with the recorded start time is absent from the process list",
+    "no other instance of the recorded install is running in scope",
+    "pid 17579 is proven gone",
+    "1 pending request(s) left UNKNOWN after process loss; they are never resent: 25796a2d-917a-4d1c-8c38-7883a22f6f9e",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 6 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "pid 67404 still names the recorded After Effects (started 2026-11-28T10:58:02.000Z)",
+    "no other instance of the recorded install is running in scope",
+    "graceful terminate request delivered to pid 67404",
+    "pid 67404 with the recorded start time is absent from the process list",
+    "no other instance of the recorded install is running in scope",
+    "pid 67404 is proven gone"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 66043,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T10:58:04.777Z",
+    "heartbeatAt": "2026-11-28T10:59:56.204Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T10:50:46.081Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T10:57:42.221Z",
+      "reason": "the recorded owned After Effects process is proven gone by terminate (pid 17579 still names the recorded After Effects (started 2026-11-28T10:50:43.000Z); no other instance of the recorded install is running in scope; graceful terminate request to pid 17579 failed: Command failed: osascript -e tell application \"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\" to quit\n90:94: execution error: Adobe After Effects 2027でエラーが起きました: ユーザによってキャンセルされました。 (-128)\n; force terminate request delivered to pid 17579; pid 17579 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 17579 is proven gone)"
+    },
+    {
+      "from": "blocked",
+      "to": "recovering",
+      "at": "2026-11-28T10:57:59.385Z",
+      "reason": "verified rebuild: owned pid 17579 proven gone (pid 17579 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope); relaunching"
+    },
+    {
+      "from": "recovering",
+      "to": "blocked",
+      "at": "2026-11-28T11:00:24.439Z",
+      "reason": "verified rebuild failed: After Effects was started (pid 67404, started 2026-11-28T10:58:02.000Z, /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 107074ms; the After Effects process is still running but did not answer; the call took 116926ms in total. Readiness: timeout — the host process is present but never answered within the readiness budget; a modal invisible to the accessibility layer cannot be ruled out. It is still running, and this session cannot prove it may quit it, so it was left running: quit it by hand before running again."
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T11:00:38.481Z",
+      "reason": "the recorded owned After Effects process is proven gone by terminate (pid 67404 still names the recorded After Effects (started 2026-11-28T10:58:02.000Z); no other instance of the recorded install is running in scope; graceful terminate request delivered to pid 67404; pid 67404 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; pid 67404 is proven gone)"
+    }
+  ],
+  "updatedAt": "2026-11-28T11:00:38.481Z"
+}

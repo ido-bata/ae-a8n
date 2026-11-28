@@ -1,0 +1,27 @@
+{
+  "label": "s9-a",
+  "scenarioId": "RC-S9",
+  "verdict": "fail",
+  "steps": [
+    {
+      "stepId": "launch",
+      "startedAt": "2026-11-28T05:36:16.706Z",
+      "durationMs": 181784,
+      "expected": "owned launch",
+      "actual": {
+        "error": "AfterEffectsError",
+        "message": "no After Effects process this run started could be tied to it: app.info (ff55dbf6-beb5-4a50-87b5-5fcbdca1b78e) timed out and no host process was found"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "AfterEffectsError",
+        "message": "no After Effects process this run started could be tied to it: app.info (ff55dbf6-beb5-4a50-87b5-5fcbdca1b78e) timed out and no host process was found"
+      }
+    }
+  ],
+  "cleanup": {
+    "verdict": "unverifiable",
+    "ref": null
+  },
+  "sessionRoot": "/tmp/rc436-sessions/s9-a"
+}

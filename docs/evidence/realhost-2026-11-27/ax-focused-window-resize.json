@@ -1,0 +1,62 @@
+{
+  "schema": "a8n.poc-ax-focused-window-resize/v1",
+  "issue": 357,
+  "recordedAt": "2026-11-27T06:55:00+09:00",
+  "verificationLevel": "verified on real host",
+  "environment": {
+    "host": "macOS arm64, console session uid 501 (rebui), asid 100021",
+    "aeInstall": "/Applications/Adobe After Effects 2027 (27.0x78, build 78)",
+    "ownedPid": 172,
+    "ownedPidNote": "pid 172 was launched by scripts/poc-panel-mutation.mjs's AfterEffects.launch at 2026-11-27T06:48:46Z but the readiness probe timed out (A8N-AE-005, hostCondition=unresponsive) and the session was left running. It was later proven responsive via AfterEffects.attach. Launch provenance was not persisted for the failed launch, so AfterEffects.terminate refused; the instance was quit by a graceful `tell application <bundle path> to quit` AppleEvent — the same mechanism ae.close() uses — after verifying it was the only AE 2027 instance and the one this run started.",
+    "foreignInstance": "AE 2026 pid 84367 (restarted externally during the run; earlier pid 49400) — never touched by any mutation; only read-only AX/census observation"
+  },
+  "axTreeShape": {
+    "summary": "On this host AE vends NO windows through AXChildren / AXWindows / System Events `windows of p` / `UI elements of p` — the collections src/driver/gui-recovery.ts LIST_WINDOWS_SCRIPT walks. The only window reference the AX tree exposes is AXFocusedWindow (and deep content under AXFocusedUIElement).",
+    "evidence": [
+      "AXChildren count=1 [AXMenuBar] (native AXUIElement, /tmp/axprobe.swift equivalent — see axprobe2.swift header comments and session transcript)",
+      "AXWindows count=0",
+      "AXMainWindow err=-25212 (no value)",
+      "System Events probe (axprobe.scpt): windowsClass=0 uiElements=1 windowRoles=0 roles=AXMenuBar — identical for owned AE 2027 (4 launches) and foreign AE 2026",
+      "Control: ChatGPT (frontmost) exposes windowsClass=1, uiElements=3, roles=AXWindow,AXMenuBar,AXMenuBar — AX permission is granted and healthy for normal apps",
+      "AXFocusedWindow on owned AE 2027: AXLayoutArea/AXFloatingWindow 640x504 at 487,241 with children AXPage/AXRadioButton 'ty-plus panel 4' (a CEP panel) — real window content reachable only through this attribute",
+      "AXFocusedWindow on AE 2027 after full init (pid 172): AXLayoutArea/AXDialog '名称未設定プロジェクト' (Untitled Project) 1710x1074 at 0,38 — the main window, with full child tree (project panel, composition tabs, scrollbars)"
+    ]
+  },
+  "resizeVehicle": {
+    "target": "AXFocusedWindow element of owned AE 2027 pid 172 — at test time the MAIN window '名称未設定プロジェクト' (AXLayoutArea/AXDialog), not a floating ScriptUI panel. Honest scope note: the floating 640x504 panels exist in the WindowServer census but are not AX-reachable unless they are the focused window.",
+    "systemEventsSetSize": {
+      "vehicle": "osascript → System Events → `set size of (value of attribute \"AXFocusedWindow\" of p)` (axresize-system-events.scpt)",
+      "result": "FAILED twice with -1712 AppleEvent timeout (default ~120s and explicit `with timeout of 20 seconds`). No size change observed in AX readback or WindowServer census afterwards. The production RESIZE_PANEL_SCRIPT vehicle cannot even enumerate AE windows (`windows of p`/`UI elements of p` are empty), so it would return NOT_FOUND before reaching `set size`.",
+      "verification": "verified on real host"
+    },
+    "directAXSizeSet": {
+      "vehicle": "swift AXUIElementSetAttributeValue(kAXSizeAttribute) on the AXFocusedWindow element (axsetsize.swift)",
+      "observations": [
+        { "op": "grow", "before": "0,38 1710x1074", "setResult": 0, "after": "0,38 1200x800" },
+        { "op": "restore", "before": "0,38 1200x800", "setResult": 0, "after": "0,38 1710x1074" }
+      ],
+      "censusCrossCheck": "WindowServer census (CGWindowList) for pid 172 after restore: {\"x\":0,\"y\":38,\"width\":1710,\"height\":1074} name='名称未設定プロジェクト' — identical to the AX frame",
+      "verification": "verified on real host"
+    }
+  },
+  "coordinateSpace": {
+    "finding": "AX frame (AXPosition/AXSize) and CGWindowList bounds agree exactly — both are global display points with top-left origin (0,38 1710x1074 for the main window; 487,241 640x504 for the floating panel). No DPI/pixel conversion is involved at this layer. PanelCapture.backingScale derivation (PNG IHDR px / point frame) remains the correct way to detect Retina backing and was not exercised because capture() never ran (identify fails upstream).",
+    "verification": "verified on real host"
+  },
+  "activationAttempts": {
+    "note": "All on the OWNED pid only; foreign AE was never activated or mutated.",
+    "results": [
+      "AXManualAccessibility attribute: SET-FAIL (attribute not settable on AE)",
+      "AXEnhancedUserInterface attribute: SET-OK but no change in AX tree",
+      "System Events `set frontmost of p to true`: FRONTMOST-SET returned, but frontmost stayed false and AX unchanged",
+      "`open <owned .app bundle>`: accepted; frontmost still false, AX unchanged",
+      "Conclusion: AE's window AX exposure is not gated by activation or these attributes on this host"
+    ]
+  },
+  "implicationsFor357": [
+    "Unblock (b) 'set size が実際に panel に効く': the underlying AXSize mutation DOES change real AE window geometry (direct AXUIElementSetAttributeValue verified). The production System Events `set size` vehicle timed out (-1712) on the same element, and the window-enumeration layer (`windows`/`UI elements`) sees zero AE windows — so the current implementation cannot reach the element at all.",
+    "Unblock (c) coordinate uniqueness: AX points == CGWindowList points confirmed on real host.",
+    "Candidate path forward (needs A-SAFETY/A-RUNTIME decision, NOT decided here): resolve panel targets census-first by windowNumber, reach the AX element via AXFocusedWindow (or a new enumeration attribute if one exists), and mutate via direct AXUIElementSetAttributeValue — a different vehicle than RESIZE_PANEL_SCRIPT, requiring its own safety review.",
+    "fail-closed stays correct: panelMutationGate() still refuses; ae.panel().identify() cannot resolve any AE window on this host (0 windows observed) — verified in panel-mutation-poc.json."
+  ]
+}

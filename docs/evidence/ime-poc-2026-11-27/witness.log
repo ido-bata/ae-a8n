@@ -1,0 +1,5 @@
+{"t":1795775380936.2988,"kind":"start","pid":70260,"duration":240.0}
+{"t":1795775391280.398,"seq":0,"kind":"keyDown","chars":"a","keyCode":0,"flags":0,"keyWindow":true,"mainWindow":true,"appActive":true,"hasMarkedText":false,"markedText":null}
+{"t":1795775391574.01,"seq":1,"kind":"keyDown","chars":"b","keyCode":0,"flags":0,"keyWindow":true,"mainWindow":true,"appActive":true,"hasMarkedText":false,"markedText":null}
+{"t":1795775391864.761,"seq":2,"kind":"keyDown","chars":"c","keyCode":0,"flags":0,"keyWindow":true,"mainWindow":true,"appActive":true,"hasMarkedText":false,"markedText":null}
+{"kind":"end","t":1795775644936.1912}

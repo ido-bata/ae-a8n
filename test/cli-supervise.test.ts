@@ -11,6 +11,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCli, type CliDependencies } from "../src/cli/run.js";
+import { AfterEffectsError } from "../src/api/errors.js";
+import { TERMINATE_PERMIT, type TerminateOptions, type TerminateReport } from "../src/api/types.js";
 import { applySupervisionEvent, initialSupervisionDoc } from "../src/supervision/machine.js";
 import { supervisionReport, writeSupervisionState } from "../src/supervision/state.js";
 import type { CliEnvelope } from "../src/cli/envelope.js";
@@ -304,5 +306,174 @@ describe("ae-a8n supervise watch", () => {
     );
     expect(code).toBe(2);
     expect(err.join("")).toContain("--interval-ms");
+  });
+});
+
+describe("ae-a8n supervise terminate (#451)", () => {
+  function report(over: Partial<TerminateReport> = {}): TerminateReport {
+    return {
+      outcome: "terminated",
+      pid: 4242,
+      method: "graceful",
+      disappearanceProven: true,
+      supervision: "recorded",
+      phase: "blocked",
+      evidence: ["quit Apple Event acknowledged", "census: pid 4242 gone"],
+      ...over,
+    };
+  }
+
+  it("requires the literal permit — a missing or wrong one is usage, never forwarded", async () => {
+    const dir = sessionRoot();
+    let called = false;
+    for (const args of [
+      ["supervise", "terminate", "--session-root", dir],
+      ["supervise", "terminate", "--session-root", dir, "--permit", "yes"],
+    ]) {
+      const { err, deps } = capture();
+      const code = await runCli(args, {
+        ...deps,
+        superviseTerminate: () => {
+          called = true;
+          return Promise.resolve(report());
+        },
+      });
+      expect(code).toBe(2);
+      expect(err.join("")).toContain(TERMINATE_PERMIT);
+    }
+    expect(called).toBe(false);
+  });
+
+  it("rejects --permit and --force on the read-only commands", async () => {
+    const dir = sessionRoot();
+    const { err, deps } = capture();
+    const code = await runCli(
+      ["supervise", "status", "--session-root", dir, "--permit", TERMINATE_PERMIT],
+      deps,
+    );
+    expect(code).toBe(2);
+    expect(err.join("")).toContain("--permit");
+    const second = capture();
+    const code2 = await runCli(
+      ["supervise", "watch", "--session-root", dir, "--force"],
+      second.deps,
+    );
+    expect(code2).toBe(2);
+    expect(second.err.join("")).toContain("--force");
+  });
+
+  it("runs the terminate seam with the owned-host permit and reports the outcome", async () => {
+    const dir = sessionRoot();
+    const seen: { current?: TerminateOptions } = {};
+    const { out, deps } = capture();
+    const code = await runCli(
+      ["supervise", "terminate", "--session-root", dir, "--permit", TERMINATE_PERMIT, "--force", "--json"],
+      {
+        ...deps,
+        superviseTerminate: (options) => {
+          seen.current = options;
+          return Promise.resolve(report({ method: "forced" }));
+        },
+      },
+    );
+    expect(code).toBe(0);
+    expect(seen.current).toBeDefined();
+    expect(seen.current?.permit).toBe(TERMINATE_PERMIT);
+    expect(seen.current?.force).toBe(true);
+    expect(seen.current?.sessionRoot).toBe(dir);
+    const envelope = JSON.parse(out.join("")) as CliEnvelope;
+    expect(envelope.status).toBe("ok");
+    const facts = envelope.facts as TerminateReport;
+    expect(facts.outcome).toBe("terminated");
+    expect(facts.method).toBe("forced");
+    // Proven disappearance names the permitted rebuild — the designed next step.
+    const rebuild = envelope.nextActions.find((a) => a.code === "session.rebuild");
+    expect(rebuild?.allowed).toBe(true);
+  });
+
+  it("a surviving host exits blocked and withholds rebuild", async () => {
+    const dir = sessionRoot();
+    const { out, deps } = capture();
+    const code = await runCli(
+      ["supervise", "terminate", "--session-root", dir, "--permit", TERMINATE_PERMIT, "--json"],
+      {
+        ...deps,
+        superviseTerminate: () =>
+          Promise.resolve(
+            report({ outcome: "survived", method: "graceful", disappearanceProven: false, supervision: "not-proven", phase: null }),
+          ),
+      },
+    );
+    expect(code).toBe(3);
+    const envelope = JSON.parse(out.join("")) as CliEnvelope;
+    expect(envelope.status).toBe("blocked");
+    const rebuild = envelope.nextActions.find((a) => a.code === "session.rebuild");
+    expect(rebuild?.allowed).toBe(false);
+    expect(rebuild?.reason.code).toBe("session-policy");
+  });
+
+  it("an unproven disappearance exits unknown — never a claimed death", async () => {
+    const dir = sessionRoot();
+    const { out, deps } = capture();
+    const code = await runCli(
+      ["supervise", "terminate", "--session-root", dir, "--permit", TERMINATE_PERMIT, "--json"],
+      {
+        ...deps,
+        superviseTerminate: () =>
+          Promise.resolve(
+            report({ outcome: "unproven", method: "none", disappearanceProven: false, supervision: "not-proven", phase: null }),
+          ),
+      },
+    );
+    expect(code).toBe(6);
+    const envelope = JSON.parse(out.join("")) as CliEnvelope;
+    expect(envelope.status).toBe("unknown");
+    expect(envelope.nextActions.some((a) => a.kind === "human" && a.allowed === false)).toBe(true);
+  });
+
+  it("a refused terminate surfaces the API error's own nextActions", async () => {
+    const dir = sessionRoot();
+    const refused = new AfterEffectsError("no launch provenance for this session root", "session.terminate", {
+      code: "A8N-SES-003",
+      nextActions: [
+        {
+          kind: "automatic",
+          allowed: true,
+          code: "session.launch",
+          action: "Launch a fresh owned session.",
+          reason: { code: "permitted" },
+        },
+      ],
+    });
+    const { out, deps } = capture();
+    const code = await runCli(
+      ["supervise", "terminate", "--session-root", dir, "--permit", TERMINATE_PERMIT, "--json"],
+      {
+        ...deps,
+        superviseTerminate: () => Promise.reject(refused),
+      },
+    );
+    expect(code).toBe(4);
+    const envelope = JSON.parse(out.join("")) as CliEnvelope;
+    expect(envelope.status).toBe("refused");
+    expect(envelope.nextActions.map((a) => a.code)).toContain("session.launch");
+  });
+
+  it("human output names the outcome, method and evidence", async () => {
+    const dir = sessionRoot();
+    const { out, deps } = capture();
+    const code = await runCli(
+      ["supervise", "terminate", "--session-root", dir, "--permit", TERMINATE_PERMIT],
+      {
+        ...deps,
+        superviseTerminate: () =>
+          Promise.resolve(report({ outcome: "already-gone", method: "none" })),
+      },
+    );
+    expect(code).toBe(0);
+    const text = out.join("");
+    expect(text).toContain("already-gone");
+    expect(text).toContain("pid 4242");
+    expect(text).toContain("AfterEffects.rebuild");
   });
 });

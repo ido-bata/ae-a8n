@@ -1,0 +1,29 @@
+{
+  "label": "s4-a",
+  "scenarioId": "RC-S4",
+  "verdict": "fail",
+  "ownedPid": null,
+  "steps": [
+    {
+      "stepId": "launch+extension",
+      "startedAt": "2026-11-28T04:59:57.088Z",
+      "durationMs": 180943,
+      "expected": "owned launch with rc436 extension host script",
+      "actual": {
+        "error": "AfterEffectsError",
+        "message": "no After Effects process this run started could be tied to it: app.info (842bdf19-11f4-4fc4-9bcf-472b1459e404) timed out and no host process was found"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "AfterEffectsError",
+        "message": "no After Effects process this run started could be tied to it: app.info (842bdf19-11f4-4fc4-9bcf-472b1459e404) timed out and no host process was found"
+      }
+    }
+  ],
+  "cleanup": {
+    "verdict": "unverifiable",
+    "ref": null,
+    "note": "session killed with host; teardown evaluated by harness below"
+  },
+  "sessionRoot": "/tmp/rc436-sessions/s4-a"
+}

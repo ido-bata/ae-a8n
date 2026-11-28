@@ -21,10 +21,12 @@ import {
 } from "../driver/mac-session.js";
 import { errorMessage } from "../errors.js";
 import { createHostRecovery, type HostRecovery } from "../driver/host-recovery.js";
+import { ExpectedModalRegistry } from "../driver/expected-modals.js";
 import { measureWindowsSessionId } from "../platform/windows/session.js";
 import {
   SessionSupervision,
   attributeAeByCensus,
+  type SessionSupervisionOptions,
 } from "../driver/supervision-session.js";
 import type { LaunchProvenance } from "../driver/launch-provenance.js";
 import { ScriptInvocationTransport } from "../driver/script-invocation.js";
@@ -40,6 +42,8 @@ import {
 } from "../driver/transport.js";
 import { readExtensionHeader } from "../extensions/manifest.js";
 import { TraceRecorder } from "../trace/trace.js";
+import type { PendingRequest } from "../supervision/types.js";
+import type { SupervisionTraceSink } from "../supervision/session-trace.js";
 import { AfterEffectsError, contextualise } from "./errors.js";
 import {
   grantedScopes,
@@ -300,6 +304,76 @@ export interface OpenedSession {
 }
 
 /**
+ * What a transport can attest about its After Effects target *before* the
+ * first ExtendScript response (#339): the pid its launch census proved and
+ * the login session that pid lives in. `ScriptInvocationTransport` answers
+ * both once `launch()` has run its process census — exactly the window a
+ * startup modal can hold the readiness probe open in.
+ */
+export type BootSupervisionTransport = HostTransport & {
+  recoveryTargetPid(): number | null;
+  readonly targetSession: MacSession | null;
+};
+
+/**
+ * Structural check, not `instanceof`: a caller-supplied transport that can
+ * honestly answer "which process, in which session" gets the same boot
+ * observation the built transport does. Anything that cannot — including
+ * transports whose census only proves a pid after the probe — returns null
+ * and the launch proceeds with post-probe supervision unchanged.
+ */
+export function asBootSupervisionTransport(
+  transport: HostTransport,
+): BootSupervisionTransport | null {
+  const candidate = transport as Partial<BootSupervisionTransport>;
+  if (
+    typeof candidate.recoveryTargetPid !== "function" ||
+    candidate.targetSession === undefined
+  ) {
+    return null;
+  }
+  return candidate as BootSupervisionTransport;
+}
+
+export type StartBootSupervisionOptions = {
+  readonly transport: BootSupervisionTransport;
+  readonly sessionRoot: string;
+  readonly pendingRequests: () => readonly PendingRequest[];
+  readonly trace?: SupervisionTraceSink;
+  /** Test seam: replaces `SessionSupervision.start`. */
+  readonly start?: (options: SessionSupervisionOptions) => SessionSupervision | null;
+};
+
+/**
+ * Start observing the pre-probe target, or return null when the transport
+ * cannot prove one (#339). The pid/session pair comes from the transport's
+ * own census — the spawned pid pinned to its start time, or the single
+ * in-scope instance — and `verifyPid` re-runs that census before every
+ * observation, the same re-proof the post-probe monitor gets from
+ * `recoveryTarget()`. No ExtendScript has answered yet, so this monitor is
+ * observation-only: it can report what it sees, but the driver's recovery
+ * path still refuses to act until the probe proves ownership.
+ */
+export function startBootSupervision(
+  options: StartBootSupervisionOptions,
+): SessionSupervision | null {
+  const pid = options.transport.recoveryTargetPid();
+  const session = options.transport.targetSession;
+  if (pid === null || session === null || session.kind !== "Aqua") {
+    return null;
+  }
+  const begin = options.start ?? ((opts: SessionSupervisionOptions) => SessionSupervision.start(opts));
+  return begin({
+    sessionRoot: options.sessionRoot,
+    pid,
+    target: { platform: "darwin", session },
+    verifyPid: (target) => options.transport.recoveryTargetPid() === target,
+    pendingRequests: options.pendingRequests,
+    ...(options.trace === undefined ? {} : { trace: options.trace }),
+  });
+}
+
+/**
  * Builds the session `AfterEffects.launch`/`resume` return: transport,
  * recovery, driver, probe, and the extension method set the host declares.
  */
@@ -342,21 +416,34 @@ export async function openAfterEffects(
     }
   }
 
-  // The GUI fallback is only wired when the caller asks for it, and it only
-  // ever acts inside the session that owns the After Effects.
+  // Expected-modal registrations (#342) live for the whole session: the
+  // recovery reads them inside every attempt, and `ae.expectModal()` adds
+  // or removes entries while the session runs.
+  const expectedModals = new ExpectedModalRegistry();
+  for (const spec of options.expectedModals ?? []) {
+    expectedModals.register(spec);
+  }
+
+  // The GUI fallback is part of the standard lifecycle (#342): it is wired
+  // whenever the caller has not opted out (`session.recover === false`)
+  // and the transport can honestly name its target. An explicit
+  // `recover: true` keeps the strict contract — a request that cannot be
+  // honoured refuses the launch rather than silently dropping a safety
+  // behaviour the caller asked for; a default-on session that cannot be
+  // wired launches without recovery and records why on the trace, because
+  // the caller never asked for it.
   let recovery: HostRecovery | undefined;
-  if (sessionOption !== undefined && sessionOption.recover === true) {
-    // A caller-supplied transport that is not the script transport has no
-    // pid to look up, so the fallback would be silently absent from a
-    // session the caller asked to be recoverable. A requested safety
-    // behaviour that cannot be provided is refused, not dropped.
-    if (!(transport instanceof ScriptInvocationTransport)) {
-      throw new AfterEffectsError(
-        "session.recover needs the built-in script transport; the supplied transport cannot say which " +
-          "process to recover. Nothing was started.",
-        op,
-      );
+  let expectedModalsActive = false;
+  const recoverOption = sessionOption?.recover;
+  const recoveryUnavailable = (reason: string): void => {
+    if (recoverOption === true) {
+      throw new AfterEffectsError(`${reason} Nothing was started.`, op);
     }
+    trace.record("session.recovery", "error", 0, {
+      error: { name: "RecoveryUnavailable", message: reason },
+    });
+  };
+  if (recoverOption !== false && transport instanceof ScriptInvocationTransport) {
     if (process.platform === "win32") {
       // Windows has no per-user login session to name: `session.uid` is a
       // macOS concept and is not consulted here. The recovery acts in the
@@ -367,44 +454,84 @@ export async function openAfterEffects(
       // only what the measured-class policy allows (today: nothing).
       const sessionId = measureWindowsSessionId();
       if (sessionId === null) {
-        throw new AfterEffectsError(
+        recoveryUnavailable(
           "session.recover: this process's interactive session could not be measured, so " +
-            "there is no proven desktop to recover in. Nothing was started.",
-          op,
+            "there is no proven desktop to recover in.",
         );
+      } else {
+        recovery = createHostRecovery({
+          target: { platform: "win32", session: { sessionId } },
+          pid: () => transport.recoveryTargetPid(),
+          // A pid is not an identity. The same re-check that produced the pid
+          // runs again immediately before every GUI action, so a process
+          // that exited and had its pid reused is never the one pressed.
+          verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
+          screenshotDir: join(sessionRoot, "artifacts"),
+        });
       }
-      recovery = createHostRecovery({
-        target: { platform: "win32", session: { sessionId } },
-        pid: () => transport.recoveryTargetPid(),
-        // A pid is not an identity. The same re-check that produced the pid
-        // runs again immediately before every GUI action, so a process
-        // that exited and had its pid reused is never the one pressed.
-        verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
-        screenshotDir: join(sessionRoot, "artifacts"),
-      });
     } else {
-      const targetSession = requireSession(sessionOption.uid);
-      // The pid comes from the transport, which scopes processes by its own
-      // session uid. Pressing keys in a different session than the one the
-      // pid lives in would automate somebody else's screen.
-      if (transport.targetSession?.uid !== targetSession.uid) {
-        throw new AfterEffectsError(
-          `session.recover: uid ${targetSession.uid} is not the session the transport talks into ` +
-            `(${transport.targetSession?.uid ?? "unknown"}), so the fallback would act in another session. ` +
-            "Nothing was started.",
-          op,
-        );
+      // The recovery session is the one the transport provably talks into.
+      // An explicit `session.uid` is still honoured and cross-checked; with
+      // no session option the transport's own measured target session is
+      // used — the same attestation supervision and `recoveryTarget()` rely
+      // on. A transport that cannot name one gets no recovery, honestly.
+      let targetSession: MacSession | null = null;
+      try {
+        if (sessionOption !== undefined) {
+          targetSession = requireSession(sessionOption.uid);
+          // The pid comes from the transport, which scopes processes by its own
+          // session uid. Pressing keys in a different session than the one the
+          // pid lives in would automate somebody else's screen.
+          if (transport.targetSession?.uid !== targetSession.uid) {
+            throw new AfterEffectsError(
+              `session.recover: uid ${targetSession.uid} is not the session the transport talks into ` +
+                `(${transport.targetSession?.uid ?? "unknown"}), so the fallback would act in another session.`,
+              op,
+            );
+          }
+        } else {
+          targetSession = transport.targetSession;
+          if (targetSession === null || targetSession.kind !== "Aqua") {
+            throw new AfterEffectsError(
+              "session.recover: the transport cannot name the login session its After Effects lives in, " +
+                "so there is no proven desktop to recover in.",
+              op,
+            );
+          }
+        }
+      } catch (error) {
+        recoveryUnavailable(errorMessage(error));
       }
-      recovery = createHostRecovery({
-        target: { platform: "darwin", session: targetSession },
-        pid: () => transport.recoveryTargetPid(),
-        // A pid is not an identity. The same re-check that produced the pid
-        // runs again immediately before every GUI action, so a process
-        // that exited and had its pid reused is never the one pressed.
-        verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
-        screenshotDir: join(sessionRoot, "artifacts"),
-      });
+      if (targetSession !== null) {
+        recovery = createHostRecovery({
+          target: { platform: "darwin", session: targetSession },
+          pid: () => transport.recoveryTargetPid(),
+          // A pid is not an identity. The same re-check that produced the pid
+          // runs again immediately before every GUI action, so a process
+          // that exited and had its pid reused is never the one pressed.
+          verifyProcess: (pid) => transport.recoveryTargetPid() === pid,
+          screenshotDir: join(sessionRoot, "artifacts"),
+          expectedModals,
+          // Dialog perception (#462): the AX-invisible census captures the
+          // recovery already takes get a bounded OCR reading as evidence.
+          // Off the decision path — the recovery verdict is computed
+          // before OCR runs; an absent/slow engine degrades to
+          // `unreadable`, never a hang.
+          dialogOcr: {},
+        });
+        expectedModalsActive = true;
+      }
     }
+  } else if (recoverOption === true) {
+    // A caller-supplied transport that is not the script transport has no
+    // pid to look up, so the fallback would be silently absent from a
+    // session the caller asked to be recoverable. A requested safety
+    // behaviour that cannot be provided is refused, not dropped.
+    throw new AfterEffectsError(
+      "session.recover needs the built-in script transport; the supplied transport cannot say which " +
+        "process to recover. Nothing was started.",
+      op,
+    );
   }
 
   // A host script declares extension methods. It is read here, once: the
@@ -437,12 +564,56 @@ export async function openAfterEffects(
   // Supervision (#285) starts only after the probe proves the session is
   // usable; the driver reads it lazily through this closure, so calls made
   // during `driver.start()` itself simply see "no monitor yet".
+  //
+  // Boot supervision (#339) is the one exception: when the transport can
+  // name its target before the probe — the pid its launch census proved
+  // and the session it lives in — the driver starts observing between
+  // `launch()` and the first ExtendScript response, so a startup modal
+  // that blocks the probe is observed rather than silent. That monitor is
+  // observation-only; the post-probe attestation below still decides what
+  // the session may press, and a boot monitor that could not prove a
+  // target simply leaves `bootSupervision` null.
   let supervision: SessionSupervision | null = null;
+  let bootSupervision: SessionSupervision | null = null;
+  const bootTransport = asBootSupervisionTransport(transport);
   const driver = new AeDriver({
     transport,
     sessionRoot,
     trace,
     supervision: { report: () => supervision?.report() ?? null },
+    ...(bootTransport === null
+      ? {}
+      : {
+          bootSupervision: {
+            start: () => {
+              bootSupervision = startBootSupervision({
+                transport: bootTransport,
+                sessionRoot,
+                pendingRequests: () => {
+                  const pending = driver.pendingRequest();
+                  return pending === null ? [] : [pending];
+                },
+                trace,
+              });
+            },
+            stop: () => {
+              bootSupervision?.stop();
+              bootSupervision = null;
+            },
+            // Readiness classification (#444): the driver reads the boot
+            // monitor's durable report when a launch wait fails, so a
+            // startup modal is named (`modal-blocked:<class>`) instead of
+            // collapsing into an opaque timeout. Read-only — the monitor
+            // itself never presses.
+            report: () => bootSupervision?.report() ?? null,
+            // One bounded read-only observation (#452): the durable
+            // document can be blind while the target sits inside the
+            // probe's startup grace, so readiness classification asks for
+            // a single probe read and attaches its census/AX evidence to
+            // the launch error. Never a restarted monitor.
+            observe: () => bootSupervision?.observeOnce() ?? Promise.resolve(null),
+          },
+        }),
     ...(hostScript === null ? {} : { hostScriptPath: hostScript }),
     ...(options.timeoutMs === undefined ? {} : { defaultTimeoutMs: options.timeoutMs }),
     ...(options.readinessTimeoutMs === undefined
@@ -499,118 +670,138 @@ export async function openAfterEffects(
   session.trace.record("session.authorization", "ok", 0, {
     result: { ownership: session.driver.ownership().kind, granted: [...grantedScopes(session)] },
   });
+  // A monitor that started before the probe already covers this session;
+  // the post-probe attestation below only runs when none exists. A boot
+  // monitor that could not prove a target stayed null and every path here
+  // applies unchanged.
+  supervision = bootSupervision;
   // GUI supervision begins only once the host answered its probe: before
   // that there is no proven pid/session to observe, and a monitor started
   // earlier could only report "unavailable" anyway. `recoveryTarget()` is
   // the same attestation the recovery path uses — an attached or
   // dispatcher session without one simply gets no monitor, and the durable
   // report stays honestly unavailable.
-  const supervisionTarget = driver.recoveryTarget();
-  if (supervisionTarget !== null) {
-    supervision = SessionSupervision.start({
-      sessionRoot,
-      pid: supervisionTarget.pid,
-      target: { platform: "darwin", session: supervisionTarget.session },
-      verifyPid: (pid) => driver.recoveryTarget()?.pid === pid,
-      pendingRequests: () => {
-        const pending = driver.pendingRequest();
-        return pending === null ? [] : [pending];
-      },
-      // Supervision transitions and monitor health land in the same
-      // trace.jsonl every other session operation does (#287).
-      trace,
-    });
-    session.supervision = supervision;
-  } else if (process.platform === "win32" && transport instanceof ScriptInvocationTransport) {
-    // Windows supervision (#316) uses the same attestation the win32
-    // recovery wiring above proved: `recoveryTargetPid()` re-reads the
-    // process census on every call — pid plus the full creation identity,
-    // single in-scope instance — so a reused pid, a second AfterFX.exe or
-    // an unreadable census yields null and no monitor starts. The session
-    // is this process's own measured interactive session: the observer's
-    // PowerShell children land on this desktop by construction, and the
-    // probe additionally refuses an observation whose target reports a
-    // different session id. Observation only — this path holds no press.
-    // A non-script transport (the dispatcher channel, a supplied
-    // HostTransport) cannot name its pid, so it gets no monitor and the
-    // durable report stays honestly unavailable.
-    const pid = transport.recoveryTargetPid();
-    const sessionId = pid === null ? null : measureWindowsSessionId();
-    if (pid !== null && sessionId !== null && sessionId > 0) {
+  if (supervision === null) {
+    const supervisionTarget = driver.recoveryTarget();
+    if (supervisionTarget !== null) {
       supervision = SessionSupervision.start({
         sessionRoot,
-        pid,
-        target: { platform: "win32", session: { sessionId } },
-        verifyPid: (target) => transport.recoveryTargetPid() === target,
+        pid: supervisionTarget.pid,
+        target: { platform: "darwin", session: supervisionTarget.session },
+        verifyPid: (pid) => driver.recoveryTarget()?.pid === pid,
         pendingRequests: () => {
           const pending = driver.pendingRequest();
           return pending === null ? [] : [pending];
         },
+        // Supervision transitions and monitor health land in the same
+        // trace.jsonl every other session operation does (#287).
         trace,
       });
-      session.supervision = supervision;
-    }
-  } else if (process.platform === "darwin" && transport instanceof DispatcherTransport) {
-    // Recorded activation provenance (#294) is the stronger evidence:
-    // an owned `activateDispatcher()` delivery named the exact process
-    // the dispatcher activated in — including when several AE instances
-    // share the machine, where census correlation below must fail
-    // closed. The attested pid is still observation only: the driver's
-    // recovery path keeps its own `recoveryTarget()` attestation, so a
-    // provenance-backed monitor can report blocks but never press a
-    // button. The session is the caller's own — the channel is private
-    // to this OS user, so the attested uid/asid must be it.
-    const attested = driver.hostAttestation();
-    const guiSession = currentSession();
-    if (
-      attested.pid !== null &&
-      attested.sessionUid !== null &&
-      attested.sessionAsid !== null &&
-      guiSession.kind === "Aqua" &&
-      guiSession.uid === attested.sessionUid &&
-      guiSession.asid === attested.sessionAsid
-    ) {
-      supervision = SessionSupervision.start({
-        sessionRoot,
-        pid: attested.pid,
-        target: { platform: "darwin", session: guiSession },
-        verifyPid: (pid) => driver.hostAttestation().pid === pid,
-        pendingRequests: () => {
-          const pending = driver.pendingRequest();
-          return pending === null ? [] : [pending];
-        },
-        trace,
-      });
-      session.supervision = supervision;
-    }
-    if (supervision === null) {
-      // The dispatcher runs inside an After Effects process owned by this
-      // OS user, so OS census correlation (#294) can attribute it — and
-      // only it. A caller-supplied HostTransport may be remote or fake;
-      // attributing a local AE census to it would watch the wrong process,
-      // so the fallback is restricted to the transport that provably
-      // executes inside a local AE instance. The driver's own recovery
-      // path still requires `recoveryTarget()`, so a census-attributed
-      // monitor can report blocks but never press a button. Ambiguity
-      // (zero or several AE instances, session mismatch) yields no
-      // monitor and an honestly `unavailable` report.
-      const attributed = attributeAeByCensus();
-      if (attributed !== null) {
+    } else if (process.platform === "win32" && transport instanceof ScriptInvocationTransport) {
+      // Windows supervision (#316) uses the same attestation the win32
+      // recovery wiring above proved: `recoveryTargetPid()` re-reads the
+      // process census on every call — pid plus the full creation identity,
+      // single in-scope instance — so a reused pid, a second AfterFX.exe or
+      // an unreadable census yields null and no monitor starts. The session
+      // is this process's own measured interactive session: the observer's
+      // PowerShell children land on this desktop by construction, and the
+      // probe additionally refuses an observation whose target reports a
+      // different session id. Observation only — this path holds no press.
+      // A non-script transport (the dispatcher channel, a supplied
+      // HostTransport) cannot name its pid, so it gets no monitor and the
+      // durable report stays honestly unavailable.
+      const pid = transport.recoveryTargetPid();
+      const sessionId = pid === null ? null : measureWindowsSessionId();
+      if (pid !== null && sessionId !== null && sessionId > 0) {
         supervision = SessionSupervision.start({
           sessionRoot,
-          pid: attributed.pid,
-          target: { platform: "darwin", session: attributed.session },
-          verifyPid: attributed.verifyPid,
+          pid,
+          target: { platform: "win32", session: { sessionId } },
+          verifyPid: (target) => transport.recoveryTargetPid() === target,
           pendingRequests: () => {
             const pending = driver.pendingRequest();
             return pending === null ? [] : [pending];
           },
           trace,
         });
-        session.supervision = supervision;
+      }
+    } else if (process.platform === "darwin" && transport instanceof DispatcherTransport) {
+      // Recorded activation provenance (#294) is the stronger evidence:
+      // an owned `activateDispatcher()` delivery named the exact process
+      // the dispatcher activated in — including when several AE instances
+      // share the machine, where census correlation below must fail
+      // closed. The attested pid is still observation only: the driver's
+      // recovery path keeps its own `recoveryTarget()` attestation, so a
+      // provenance-backed monitor can report blocks but never press a
+      // button. The session is the caller's own — the channel is private
+      // to this OS user, so the attested uid/asid must be it.
+      const attested = driver.hostAttestation();
+      const guiSession = currentSession();
+      if (
+        attested.pid !== null &&
+        attested.sessionUid !== null &&
+        attested.sessionAsid !== null &&
+        guiSession.kind === "Aqua" &&
+        guiSession.uid === attested.sessionUid &&
+        guiSession.asid === attested.sessionAsid
+      ) {
+        supervision = SessionSupervision.start({
+          sessionRoot,
+          pid: attested.pid,
+          target: { platform: "darwin", session: guiSession },
+          verifyPid: (pid) => driver.hostAttestation().pid === pid,
+          pendingRequests: () => {
+            const pending = driver.pendingRequest();
+            return pending === null ? [] : [pending];
+          },
+          trace,
+        });
+      }
+      if (supervision === null) {
+        // The dispatcher runs inside an After Effects process owned by this
+        // OS user, so OS census correlation (#294) can attribute it — and
+        // only it. A caller-supplied HostTransport may be remote or fake;
+        // attributing a local AE census to it would watch the wrong process,
+        // so the fallback is restricted to the transport that provably
+        // executes inside a local AE instance. The driver's own recovery
+        // path still requires `recoveryTarget()`, so a census-attributed
+        // monitor can report blocks but never press a button. Ambiguity
+        // (zero or several AE instances, session mismatch) yields no
+        // monitor and an honestly `unavailable` report.
+        const attributed = attributeAeByCensus();
+        if (attributed !== null) {
+          supervision = SessionSupervision.start({
+            sessionRoot,
+            pid: attributed.pid,
+            target: { platform: "darwin", session: attributed.session },
+            verifyPid: attributed.verifyPid,
+            pendingRequests: () => {
+              const pending = driver.pendingRequest();
+              return pending === null ? [] : [pending];
+            },
+            trace,
+          });
+        }
       }
     }
   }
+  session.supervision = supervision;
+  // Expected modals are honoured only where a recovery actually reads the
+  // registry (the macOS path today). Anywhere else `expectModal` refuses
+  // rather than registering into a void — and launch-time specs that can
+  // never be consulted are recorded, not silently dropped.
+  if (!expectedModalsActive && (options.expectedModals?.length ?? 0) > 0) {
+    trace.record("session.expected-modals", "error", 0, {
+      error: {
+        name: "ExpectedModalsUnavailable",
+        message:
+          `${options.expectedModals?.length} expected-modal spec(s) were supplied but this ` +
+          "platform's recovery path cannot consult them; the windows they describe keep " +
+          "their unregistered classification. Nothing was pressed for them.",
+      },
+    });
+  }
+  session.modalExpectations = expectedModalsActive ? expectedModals : null;
   return { session, probe, extensionMethods };
 }
 

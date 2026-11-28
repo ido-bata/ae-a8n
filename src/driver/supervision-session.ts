@@ -29,14 +29,21 @@ import {
   listAppInstances,
   type MacAppInstance,
 } from "./mac-session.js";
-import { MacGuiRecovery } from "./gui-recovery.js";
+import {
+  boundedObservationRunSession,
+  MacGuiRecovery,
+} from "./gui-recovery.js";
 import { MacGuiProbe } from "../platform/darwin/gui-probe.js";
+import { createTesseractOcr } from "../platform/darwin/ocr.js";
+import { readDialogSurfaces } from "../platform/darwin/dialog-perception.js";
+import { join } from "node:path";
 import { WindowsGuiProbe } from "../platform/windows/gui-probe.js";
 import type { WindowsGuiSession } from "./windows-gui-recovery.js";
 import {
   SupervisionMonitor,
   supervisionReport,
   type GuiProbe,
+  type ProbeSnapshot,
   type SupervisionReport,
 } from "../supervision/index.js";
 import type { PendingRequest, SupervisionStateDoc } from "../supervision/types.js";
@@ -205,15 +212,18 @@ export function attributeAeByCensus(
 export class SessionSupervision {
   readonly #sessionRoot: string;
   readonly #monitor: SupervisionMonitor;
+  readonly #probe: GuiProbe;
   readonly #tracer: SupervisionSessionTracer | null;
 
   private constructor(
     sessionRoot: string,
     monitor: SupervisionMonitor,
+    probe: GuiProbe,
     tracer: SupervisionSessionTracer | null,
   ) {
     this.#sessionRoot = sessionRoot;
     this.#monitor = monitor;
+    this.#probe = probe;
     this.#tracer = tracer;
   }
 
@@ -254,7 +264,12 @@ export class SessionSupervision {
     // `run`, and `stop()` releases the lease. The sleep timer is unref'd so
     // a monitor can never hold the process open.
     void started.monitor.run().catch(() => undefined);
-    return new SessionSupervision(options.sessionRoot, started.monitor, tracer);
+    return new SessionSupervision(
+      options.sessionRoot,
+      started.monitor,
+      probe,
+      tracer,
+    );
   }
 
   /**
@@ -289,13 +304,34 @@ export class SessionSupervision {
           // common case a supervised AE lives in. Same allowance as
           // `ae.guiState()`.
           allowConsoleSession: true,
+          // Same bound as the detached supervisor (#450): a session command
+          // that hangs past the monitor TTL would make this live monitor
+          // report `monitor-lost`; bounding it degrades the tick instead.
+          runSession: boundedObservationRunSession(),
         });
       } catch {
         return null;
       }
+      // Dialog perception (#462): pull-based readings over the same
+      // recovery instance — never inside the monitor tick. Captures land
+      // under the session's artifacts dir; OCR is the bounded tesseract
+      // subprocess (absent/slow engine degrades to `unreadable`, never
+      // a hang).
+      const ocr = createTesseractOcr();
+      const evidenceDir = join(options.sessionRoot, "artifacts");
       return new MacGuiProbe(options.pid, {
         listWindows: () => recovery.listWindows(),
         pidAlive: () => verifyPid(options.pid),
+        readings: async () => {
+          const state = recovery.listWindows();
+          const report = await readDialogSurfaces(state, {
+            captureWindow: (path, windowNumber) =>
+              recovery.captureWindowById(path, windowNumber),
+            ocr,
+            evidenceDir,
+          });
+          return report.readings;
+        },
       });
     }
 
@@ -342,6 +378,24 @@ export class SessionSupervision {
         return snapshot;
       },
     };
+  }
+
+  /**
+   * One bounded read-only observation through the same probe the monitor
+   * ticks with (#452). Launch readiness classification uses this when the
+   * durable document is still blind — inside the probe's startup grace —
+   * so the launch error can carry census/AX evidence a `timeout` label
+   * alone cannot. This is a single `observe()` call, never a restarted
+   * monitor, and it cannot press: the probe is observation-only by
+   * contract. Returns null when the probe itself throws; the snapshot's
+   * own `ok:false` is the honest "could not see" answer.
+   */
+  async observeOnce(): Promise<ProbeSnapshot | null> {
+    try {
+      return await this.#probe.observe();
+    } catch {
+      return null;
+    }
   }
 
   /** The current durable report, health re-evaluated at read time. */

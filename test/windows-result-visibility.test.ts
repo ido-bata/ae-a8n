@@ -323,11 +323,15 @@ describe("the controller's view of the result file", () => {
     const result = await submitJob(
       files,
       options({
-        timeoutMs: 20,
+        // The fake clock's units are also the *real* millisecond budget one
+        // read gets (`deadline - now()` bounds the stall timer), so the
+        // final in-deadline poll must leave hundreds of real ms, not 5: a
+        // loaded CI filesystem can take longer than that to answer a stat.
+        timeoutMs: 2_000,
         now: () => new Date(clock),
         sleep: async () => {
-          clock += 5;
-          if (!written && clock >= NOW.getTime() + 15) {
+          clock += 500;
+          if (!written && clock >= NOW.getTime() + 1_500) {
             written = true;
             await files.writeAtomic(RESULT, signedResult("ok", 0));
           }
@@ -344,11 +348,13 @@ describe("the controller's view of the result file", () => {
     const result = await submitJob(
       files,
       options({
-        timeoutMs: 10,
+        // Same fake-clock/real-budget coupling as the test above: keep every
+        // in-deadline read's stall budget far above real filesystem latency.
+        timeoutMs: 1_000,
         now: () => new Date(clock),
         sleep: async () => {
-          clock += 5;
-          if (!written && clock >= NOW.getTime() + 10) {
+          clock += 250;
+          if (!written && clock >= NOW.getTime() + 1_000) {
             written = true;
             await files.writeAtomic(RESULT, signedResult("ok", 0));
           }

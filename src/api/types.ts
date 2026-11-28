@@ -7,7 +7,9 @@
  */
 
 import type { DiagnosticCode } from "../doctor/diagnostics.js";
+import type { ExpectedModalSpec } from "../driver/expected-modals.js";
 import type { GuiAppState } from "../driver/gui-recovery.js";
+import type { DialogReading } from "../platform/dialog-reading.js";
 import type { HostTransport, SessionAuthorization } from "../driver/transport.js";
 
 export type { SessionAuthorization } from "../driver/transport.js";
@@ -68,6 +70,20 @@ export type ProjectInfo = {
   readonly itemCount: number;
 };
 
+/**
+ * The project facts the DOM exposes for readback (#359): item count, the
+ * unsaved-changes flag, and the active item. `activeItem.comp` is true only
+ * for a composition — footage and other items still report their name.
+ */
+export type ProjectState = {
+  readonly itemCount: number;
+  readonly dirty: boolean;
+  readonly activeItem: {
+    readonly name: string;
+    readonly comp: boolean;
+  } | null;
+};
+
 export type CompInfo = {
   readonly name: string;
   readonly width: number;
@@ -75,6 +91,20 @@ export type CompInfo = {
   readonly duration: number;
   readonly frameRate: number;
   readonly layerCount: number;
+};
+
+/**
+ * `CompItem.time` — the current-time indicator (#359). Read-only here:
+ * setting it is a scripting mutation and stays setup-only. `frame` is
+ * `time` in frames and can be fractional while the indicator sits between
+ * frames.
+ */
+export type CompTime = {
+  readonly comp: string;
+  /** Seconds. */
+  readonly time: number;
+  /** `time * frameRate`; fractional mid-scrub. */
+  readonly frame: number;
 };
 
 /** `TextLayer`, `ShapeLayer`, any other `AVLayer`, or a camera/light. */
@@ -227,12 +257,36 @@ export type ValueProperty =
     };
 
 /**
- * One property of an effect. `value` is present exactly when `kind` is
- * `"value"`; narrow on `kind`, then on `valueType`, to read it.
+ * One keyframe of a property, as AE numbers it (#359): `index` is 1-based,
+ * `time` is in seconds of comp time. `value` is carried only in the shapes
+ * this API reads elsewhere (`ParameterValue`) and is `null` when the host
+ * cannot read it — NO_VALUE and CUSTOM_VALUE properties refuse `keyValue`,
+ * as they refuse `value`.
+ */
+export type KeyframeInfo = {
+  readonly index: number;
+  readonly time: number;
+  readonly value: ParameterValue | null;
+};
+
+/**
+ * One property of an effect or layer. `value` is present exactly when
+ * `kind` is `"value"`; narrow on `kind`, then on `valueType`, to read it.
+ *
+ * The readback fields (#359) are present only where the host exposes them:
+ * `selected` is the timeline selection state (`Property.selected`), and
+ * `isTimeVarying`/`keyframes` exist on properties, not groups — a `"group"`
+ * never carries them.
  */
 export type PropertyInfo = {
   readonly name: string;
   readonly matchName?: string;
+  /** `Property.selected`: whether the property row is selected in the timeline. */
+  readonly selected?: boolean;
+  /** Whether the property varies over time; absent on groups. */
+  readonly isTimeVarying?: boolean;
+  /** Every keyframe, in time order; `[]` when the property has none. */
+  readonly keyframes?: readonly KeyframeInfo[];
 } & (
   | ValueProperty
   | { readonly kind: "no-value"; readonly valueType: "NO_VALUE"; readonly value?: undefined }
@@ -370,16 +424,34 @@ export type LaunchOptions = {
     readonly uid: number;
     /**
      * Whether a modal dialog may be closed by GUI automation when it blocks
-     * the host. Off by default: a dialog that asks for a decision belongs to
-     * a human.
+     * the host. **On by default** (#342): the standard lifecycle wires the
+     * recovery whenever the transport can prove its target, because the
+     * only class automation may press is a measured, safe one — every
+     * other blocking window is still reported, never pressed. Pass `false`
+     * to opt out entirely (no GUI inspection, no press, no evidence
+     * images); pass `true` to make the wiring mandatory — a session that
+     * cannot be wired then refuses to launch instead of degrading.
      */
     readonly recover?: boolean;
   };
   /**
+   * Modal dialogs this session expects to raise and knows how to resolve
+   * (#342). Each entry is `{ name, matches(window), resolve? }` — see
+   * `ExpectedModalSpec`. A matching window is classified by the
+   * expectation instead of quarantined as unknown: `press` resolves it
+   * through the same audited GUI path as a measured class, `wait` (the
+   * default) records it as expected evidence and leaves it for its
+   * owner. Windows that match nothing keep the standard classification.
+   * Registration also works while the session runs via
+   * `ae.expectModal(spec)`, which returns an unregister function.
+   */
+  readonly expectedModals?: readonly ExpectedModalSpec[];
+  /**
    * How long a recovered call may then wait for the answer to the request it
    * already sent, in milliseconds. Default 60 000; 0 stops waiting at once.
    *
-   * Only meaningful with `session.recover`. It is *additional* time, on top of
+   * Only meaningful with recovery enabled (the default; `session.recover:
+   * false` disables it). It is *additional* time, on top of
    * `timeoutMs`: `timeoutMs` ends the first wait, then the GUI fallback runs
    * (which can take a while — it observes windows, takes a screenshot and
    * presses the dialog), and only then does this grace start. Set it when the
@@ -468,6 +540,126 @@ export type ResumeOptions = Omit<LaunchOptions, "sessionRoot"> & {
 export type RebuildOptions = ResumeOptions;
 
 /**
+ * The explicit permission `AfterEffects.terminate` requires (#340). It is
+ * a literal, not a boolean, so the consent is greppable at every call
+ * site and cannot be satisfied by accident.
+ */
+export const TERMINATE_PERMIT = "terminate-owned-host" as const;
+
+/**
+ * Options for `AfterEffects.terminate` (#340): the same session shape as
+ * `rebuild` — `sessionRoot` is required and names the directory whose
+ * launch-provenance record identifies the owned host to stop.
+ *
+ * Terminate is the *separate* authorized path for a live host that will
+ * not answer (a hang): rebuild never signals a process, and this path
+ * never launches one. Every gate must hold or nothing is signalled:
+ *
+ *   - `permit` must be `"terminate-owned-host"` — prior, explicit consent;
+ *   - launch provenance must name a host this session's driver spawned —
+ *     `phase: "ready"` (the probe proved ownership) or `phase: "spawned"`
+ *     (the driver spawned it but the probe never answered, #458);
+ *     attached and unknown sessions have none and are never signalled;
+ *   - a fresh census must prove the recorded pid+start identity is still
+ *     that same process and that no other instance of the install runs;
+ *   - an unreadable census refuses — an unknown OS answer is never a
+ *     guess.
+ *
+ * Graceful-first: the OS's own polite request (AE `quit` Apple Event on
+ * macOS, `taskkill` without `/F` on Windows) is sent first and given
+ * `gracefulTimeoutMs` to work — After Effects may still raise its own
+ * save prompt, which is the point. Only `force: true` — explicit
+ * permission for the disposable owned environment — escalates to
+ * `SIGKILL`/`taskkill /F`. The whole operation is bounded by `deadlineMs`;
+ * a host that survives is reported `survived`, never claimed dead.
+ */
+export type TerminateOptions = Omit<ResumeOptions, "session"> & {
+  /**
+   * The OS user whose session the recorded host lives in — the same
+   * scoping `rebuild` applies to the census (default: this process's
+   * uid). `recover` is meaningless here and ignored.
+   */
+  readonly session?: { readonly uid: number };
+  /** Required literal consent; see `TERMINATE_PERMIT`. */
+  readonly permit: typeof TERMINATE_PERMIT;
+  /**
+   * Permit the force kill (`SIGKILL` / `taskkill /F`) when the graceful
+   * request does not end the process within `gracefulTimeoutMs`. Without
+   * it a surviving host is reported `survived` and left running.
+   */
+  readonly force?: boolean;
+  /**
+   * How long the graceful request may take to prove disappearance, in
+   * milliseconds. Default 10 000. The force phase gets whatever remains
+   * of `deadlineMs`.
+   */
+  readonly gracefulTimeoutMs?: number;
+  /**
+   * Total bound for the whole terminate operation, in milliseconds.
+   * Default 30 000. Exceeding it reports `survived` or `unproven`, never
+   * an endless wait.
+   */
+  readonly deadlineMs?: number;
+};
+
+/**
+ * What `AfterEffects.terminate` did (#340). The report is the audit of the
+ * transition itself: which signal was sent, whether disappearance is
+ * *proven* (never assumed), and what happened to the durable supervision
+ * record that `rebuild` will read next.
+ */
+export type TerminateReport = {
+  /**
+   * - `terminated`: a signal was sent and the recorded process's
+   *   disappearance is proven by census.
+   * - `already-gone`: the recorded process was already gone when
+   *   terminate ran; nothing was signalled. Rebuild applies.
+   * - `survived`: the host outlived the bounded wait (graceful only, or
+   *   force permitted and still alive). It was left running; inspect it.
+   * - `unproven`: disappearance could not be proven — the census was
+   *   unreadable or the environment drifted (siblings, ambiguous pid).
+   *   Never reported as dead.
+   */
+  readonly outcome: "terminated" | "already-gone" | "survived" | "unproven";
+  /** The pid the launch-provenance record named. */
+  readonly pid: number;
+  /**
+   * How the host ended: `none` (already gone), `graceful` (the OS polite
+   * request sufficed), `forced` (explicit-permission kill was needed).
+   */
+  readonly method: "none" | "graceful" | "forced";
+  /** Whether census proved the recorded process gone — the rebuild gate. */
+  readonly disappearanceProven: boolean;
+  /**
+   * What happened to the durable supervision record once disappearance
+   * was proven:
+   *
+   * - `recorded`: terminate held the monitor lease briefly (taking over
+   *   an expired one) and published `blocked`/`process-gone` — the state
+   *   `rebuild` requires. `quarantined`/`needs-human` phases are never
+   *   downgraded by this write.
+   * - `deferred-to-monitor`: a live monitor holds the lease; it owns the
+   *   document and will record `process-gone` itself. Terminate does not
+   *   write under it.
+   * - `lease-ambiguous`: the lease file cannot be understood; nothing was
+   *   written and rebuild will refuse until it is resolved.
+   * - `state-unreadable`: the supervision document is absent or corrupt
+   *   in a way terminate will not overwrite; rebuild decides from it.
+   * - `not-proven`: disappearance was not proven, so nothing was written.
+   */
+  readonly supervision:
+    | "recorded"
+    | "deferred-to-monitor"
+    | "lease-ambiguous"
+    | "state-unreadable"
+    | "not-proven";
+  /** The supervision phase after terminate's write, when one exists. */
+  readonly phase: string | null;
+  /** Audit detail: signals sent, census verdicts, lease handoff. */
+  readonly evidence: readonly string[];
+};
+
+/**
  * What re-staging one transport surface of the rebuilt session did (#313).
  *
  * `resumed` describes the GUI-blocking lifecycle only; whether every
@@ -534,6 +726,19 @@ export type SessionRebuildReport = {
    * the old session's delivery paths all came back.
    */
   readonly transports: readonly TransportRestage[];
+  /**
+   * The transport-readiness verdict (#340), kept separate from `phase`:
+   * `resumed` is a GUI-lifecycle claim and says nothing about whether the
+   * delivery surfaces the crashed session used came back.
+   *
+   * - `ready`: every surface that needed staging is `restaged` or
+   *   `not-required`.
+   * - `unproven`: at least one surface is `unproven` and none `failed` —
+   *   availability could not be determined, never assumed.
+   * - `degraded`: at least one surface `failed` to re-stage — that surface
+   *   is NOT available on the rebuilt process.
+   */
+  readonly transportReady: "ready" | "unproven" | "degraded";
 };
 
 /*
@@ -641,6 +846,13 @@ export type GuiStateObservation = {
    */
   readonly axSuspect: boolean;
   /**
+   * Why `axSuspect` fired — the measured shape (empty AX listing vs.
+   * wholly foreign/unmatched listing) plus the census window count.
+   * `null` when `axSuspect` is false. The empty-listing reason names
+   * the After Effects non-vending case (#406) explicitly.
+   */
+  readonly axSuspectReason: string | null;
+  /**
    * On-screen WindowServer windows for this pid that no Accessibility
    * window accounts for (#321): surfaces the screen shows that the AX
    * listing — and therefore `windows` and `assessment` — cannot see. A
@@ -651,6 +863,28 @@ export type GuiStateObservation = {
     readonly layer: number;
     readonly onScreen: boolean;
     readonly name: string;
+    readonly bounds: {
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+    } | null;
+  }[];
+  /**
+   * The superset of `axUnaccountedWindows` (#451): WindowServer census
+   * windows for this pid that no AX window accounts for, on any Space and
+   * whether on-screen or not. Each row is degraded evidence — "possibly
+   * parked/offscreen — not proven blocking" — because an AX-invisible
+   * modal can sit at `onScreen: false` (the AE 2027 BirthPrefs modal,
+   * issue #451) and still be what stopped the host answering. `windowNumber`
+   * is the `screencapture -l` handle when the census carried one. This
+   * list never feeds `assessment` or any blocking verdict.
+   */
+  readonly axUnaccountedCensusWindows: readonly {
+    readonly layer: number;
+    readonly onScreen: boolean;
+    readonly name: string;
+    readonly windowNumber: number | null;
     readonly bounds: {
       readonly x: number;
       readonly y: number;
@@ -672,7 +906,25 @@ export type GuiStateObservation = {
    */
   readonly axUnmatchedWindowCount: number;
   readonly assessment: GuiAssessment;
+  /**
+   * Dialog readings (#462, specs/dialog-perception/spec.md) — present
+   * only when the caller asked for them (`guiState({ readings: true })`).
+   * Absent means "not requested", never "no dialogs"; a surface that
+   * could not be read carries `confidence: "unreadable"` with the reason.
+   */
+  readonly dialogReadings?: readonly DialogReading[];
   readonly observedAt: string;
+};
+
+/** Options for `ae.guiState()`. */
+export type GuiStateOptions = {
+  /**
+   * When true, additionally run the dialog-perception pipeline (window
+   * capture + bounded OCR, spec §3) and attach `dialogReadings`. Off by
+   * default: pixel reads cost seconds-to-tens-of-seconds per surface and
+   * must stay opt-in.
+   */
+  readonly readings?: boolean;
 };
 
 export type GuiStateReport =

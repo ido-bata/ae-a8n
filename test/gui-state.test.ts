@@ -66,7 +66,9 @@ function state(windows: readonly GuiWindowInfo[], over: Partial<GuiAppState> = {
       onScreenCount: windows.length,
     },
     axSuspect: false,
+    axSuspectReason: null,
     axUnaccountedWindows: [],
+    axUnaccountedCensusWindows: [],
     axForeignWindowCount: 0,
     axUnmatchedWindowCount: 0,
     ...over,
@@ -134,16 +136,16 @@ describe("classifyGuiWindow", () => {
 });
 
 describe("guiStateReport", () => {
-  it("is unavailable when no owned target is attested", () => {
-    const report = guiStateReport(null);
+  it("is unavailable when no owned target is attested", async () => {
+    const report = await guiStateReport(null);
     expect(report.status).toBe("unavailable");
     if (report.status === "unavailable") {
       expect(report.reason).toContain("no owned After Effects");
     }
   });
 
-  it("maps a prepared observation into the public report", () => {
-    const report = guiStateReport(TARGET, {
+  it("maps a prepared observation into the public report", async () => {
+    const report = await guiStateReport(TARGET, {
       observed: state([
         window({ title: "Main", subrole: "AXStandardWindow" }),
         dialog(["ae-a8n: hello"], { buttons: [OK_BUTTON] }),
@@ -166,23 +168,64 @@ describe("guiStateReport", () => {
     expect(report.axSuspect).toBe(false);
   });
 
-  it("carries axSuspect and degraded census through honestly", () => {
-    const report = guiStateReport(TARGET, {
+  it("carries axSuspect and degraded census through honestly", async () => {
+    const report = await guiStateReport(TARGET, {
       observed: state([], {
         windowServer: { available: false, reason: "no python", windowCount: 0, onScreenCount: 0 },
         axSuspect: true,
+        axSuspectReason: "fixture: the AX listing is untrusted",
       }),
     });
     expect(report.status).toBe("observed");
     if (report.status === "observed") {
       expect(report.axSuspect).toBe(true);
+      expect(report.axSuspectReason).toBe(
+        "fixture: the AX listing is untrusted",
+      );
       expect(report.windowServer.available).toBe(false);
       expect(report.assessment.action).toBe("none");
     }
   });
 
-  it("turns a session-entry failure into unavailable, not an empty report", () => {
-    const report = guiStateReport(TARGET, undefined, {
+  it("surfaces off-screen census windows as degraded evidence, never blocking (#451)", async () => {
+    // The BirthPrefs shape: AX lists the ordinary window while the census
+    // holds a modal parked at onScreen:false. It must appear in the
+    // degraded list with its window number — and must NOT change the
+    // blocking verdict, which stays measured-class-only.
+    const modal = {
+      pid: TARGET.pid,
+      owner: "After Effects",
+      layer: 0,
+      onScreen: false,
+      name: "BirthPrefs",
+      windowNumber: 424242,
+      bounds: { x: 0, y: 0, width: 480, height: 320 },
+    };
+    const report = await guiStateReport(TARGET, {
+      observed: state([window({ title: "Main", subrole: "AXStandardWindow" })], {
+        windowServer: { available: true, reason: null, windowCount: 2, onScreenCount: 1 },
+        axUnaccountedCensusWindows: [modal],
+      }),
+    });
+    expect(report.status).toBe("observed");
+    if (report.status !== "observed") {
+      return;
+    }
+    expect(report.axUnaccountedCensusWindows).toHaveLength(1);
+    expect(report.axUnaccountedCensusWindows[0]).toMatchObject({
+      onScreen: false,
+      name: "BirthPrefs",
+      windowNumber: 424242,
+    });
+    // The on-screen-only blocking list stays empty and the verdict is
+    // unchanged: degraded evidence never becomes a blocker.
+    expect(report.axUnaccountedWindows).toHaveLength(0);
+    expect(report.assessment.action).toBe("none");
+    expect(report.windows[0]?.blocking).toBe(false);
+  });
+
+  it("turns a session-entry failure into unavailable, not an empty report", async () => {
+    const report = await guiStateReport(TARGET, undefined, {
       readTargetSession: () => SESSION,
       runSession: () => {
         throw new MacSessionError("cannot enter the session");

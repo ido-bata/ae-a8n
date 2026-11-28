@@ -1,0 +1,46 @@
+Tier-2 ScriptUI edittext — real OS input on owned AE 2027 (pid 98744), 2026-11-28 ~06:01-06:12 JST
+=============================================================================================
+Driver: /tmp/ime379/ae-session.mjs (ae-a8n bridge, host script a8n-input-fixture.jsx)
+Fixture: fixtures/input/scriptui/extension.ts -> a8nInputFixture.scriptuiOpen (palette + retained edittext)
+Input channel: input-post key press --tap session --delay-ms 60 (CGEvent session tap, real OS events)
+Input source: com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese (Hiragana) for IME runs;
+              com.apple.keylayout.ABC for ASCII sanity.
+
+Focus procedure that worked:
+  1. window-ops act --op focus on the ScriptUI palette (or real click into the edittext)
+  2. AXFocusedWindow = AXLayoutArea/AXFloatingWindow "ae-a8n input fixture",
+     child AXTextField AXFocused=1  (see ax-read.swift output)
+  3. NOTE: --delay-ms 60 (gap between keyDown and keyUp) is REQUIRED — instant
+     down/up pairs are dropped by AE/ScriptUI (~60-100% loss observed).
+
+Readback progression (a8nInputFixture.scriptuiReadback -> committedValue):
+  rb0  ""                                  (before input)
+  rb1  "eo"                                (hello, partial loss, no delay)
+  rb2  "eo"                                (abcde, all lost, no delay)
+  rb3  "eoz"                               (zz, 1/2)
+  rb4  "eozqq"                             (qq with --delay-ms 60, 2/2)
+  rb5  "eozqq"                             (stale, pre-IME)
+  rbfinal "eozqqこんにちはこんにちはテスト日本"  (ASCII + Kotoeri IME, 06:12:28)
+
+IME sequence (Kotoeri Hiragana, session tap, --delay-ms 60):
+  konnitiha            -> こんにちは committed
+  konni + space + ret  -> こんにちは committed
+  testuto              -> テスト committed
+  nihon + space + ret  -> 日本 committed
+
+Live composition observed via AXValue polls (ax-sel.swift) mid-typing:
+  n    -> "...テストn"      (raw romaji visible)
+  ni   -> "...テストに"     (kana conversion live)
+  nih  -> "...テストにh"
+  niho -> "...テストにほ"
+  nihon-> "...テストにほn"
+  +space+return -> "...テスト日本" committed
+AXSelectedText returned kAXError (-25212) throughout — ScriptUI edittext does
+not expose marked text via AXSelectedText; AXValue DOES expose live
+composition state (uncommitted romaji/kana tail visible).
+
+Verdict: OS-level IME composition reaches and commits inside a real AE
+ScriptUI palette edittext via session-tap CGEvent keys. Tier-2 channel
+"extendscript-readback" verified on real host (AE 2027 27.0x78).
+provesOsIme stays false in fixture records by design; the OS-IME verdict
+is this runbook's audit record, not the fixture's.

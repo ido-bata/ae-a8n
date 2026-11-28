@@ -81,6 +81,27 @@ describe("a host the session owns", () => {
 
     await expect(ae.close({ unsavedChanges: "discard" })).resolves.toMatchObject({ quit: true });
   });
+
+  it("stays usable when the discard close itself cannot close the project (#443)", async () => {
+    // The host's Project.close answering false — a close blocked by a
+    // dialog — must surface as a refusal, not a quit that stalls on AE's
+    // save prompt. The session stays open so the caller can retry.
+    const ae = await launch();
+    await edit(ae);
+    transport.app.project.refuseClose = true;
+
+    await expect(ae.close({ unsavedChanges: "discard" })).rejects.toBeInstanceOf(
+      UnsavedChangesError,
+    );
+    expect(transport.app.quitCount).toBe(0);
+    expect(transport.app.project.dirty).toBe(true);
+    await expect(ae.version()).resolves.toBe("26.0.0");
+
+    transport.app.project.refuseClose = false;
+    await expect(ae.close({ unsavedChanges: "discard" })).resolves.toMatchObject({
+      quit: true,
+    });
+  });
 });
 
 describe.each(["attached", "unknown"] as const)(

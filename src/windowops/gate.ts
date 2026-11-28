@@ -1,0 +1,45 @@
+/**
+ * The A-SAFETY gate for window ops (#366,
+ * `docs/gui-supervision-safety-gates.md` +
+ * `specs/workspace-editing/spec.md` §5/§9/§13).
+ *
+ * Move, resize, minimize/restore, maximize and focus are all
+ * `mutate-gui`, target-scoped: they set real AX attributes on a real
+ * window of the target pid. The audit cleared exactly one GUI mutation
+ * — the macOS `ae-a8n ui.alert` press — and the workspace spec keeps
+ * every `mutate-gui` op behind the lease+audit+gate chain pending
+ * A-SAFETY clearance. The vehicle itself is now real-host proven
+ * (#357, `docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json`):
+ * the helper's direct `AXUIElementSetAttributeValue` ops resized, moved
+ * and restored a real ScriptUI palette on owned AE 2027 — focused via
+ * `AXFocusedWindow` and unfocused via the AX window enumeration —
+ * with census and in-AE readback agreement. What remains is the
+ * A-SAFETY class decision, not vehicle doubt. Until a window-ops class
+ * is cleared, every op refuses — fail-closed, with the refusal naming
+ * the governing documents so the reason is traceable.
+ *
+ * This function is the single flip point, exactly like
+ * `src/workspace/gate.ts`/`src/filedialog/gate.ts`: when the audit
+ * clears a window-op class, the permit is added here — not ad-hoc at
+ * call sites. The observe surface (`state()`) is gate-independent by
+ * design: reading window state mutates nothing.
+ */
+
+import type { WindowOpsMutationGate } from "./types.js";
+
+/**
+ * The production mutation gate for window ops. Always refuses today;
+ * the reason cites the audit and the unverified real-host fidelity.
+ */
+export function windowOpsMutationGate(): WindowOpsMutationGate {
+  return (op) => ({
+    allowed: false,
+    reason:
+      `window ${op} is a mutate-gui class the A-SAFETY audit ` +
+      "(docs/gui-supervision-safety-gates.md) has not enabled and the " +
+      "workspace-editing spec (§13) keeps gated pending that clearance; " +
+      "the helper's AX set vehicle is real-host verified on owned AE " +
+      "(#357) — what is missing is the audit's class decision, not " +
+      "vehicle proof — observe (`state`) remains available",
+  });
+}

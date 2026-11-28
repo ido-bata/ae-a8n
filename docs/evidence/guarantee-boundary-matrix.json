@@ -1,0 +1,3986 @@
+{
+  "schemaVersion": 1,
+  "kind": "ae-a8n.guarantee-boundary/v1",
+  "generatedFrom": "src/api/*Capabilities(), src/*/gate.ts mutation gates, BUILTIN_CAPABILITIES + classifyOperationRetry + assertDispatchAllowed probes, NEXT_ACTION_REASON_CODES",
+  "rows": [
+    {
+      "capability": "builtin",
+      "op": "app.info",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.app.version-info",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "read-only",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "app.quit",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.app.quit",
+      "permissions": [
+        "execute"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "app.setEnvironment",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.app.set-environment",
+      "permissions": [
+        "write"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "comp.addText",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.layer.add-text",
+      "permissions": [
+        "write"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "comp.info",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.comp.info",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "read-only",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "comp.layer",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.comp.get-layer",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "read-only",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "comp.layers",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.comp.list-layers",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "read-only",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "comp.openInViewer",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.comp.open-in-viewer",
+      "permissions": [
+        "write"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "comp.renderFrame",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.render.frame",
+      "permissions": [
+        "write"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "comp.selectLayers",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.layer.select",
+      "permissions": [
+        "write"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "comp.time",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated-fake",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.comp.get-time",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "effect.getParameter",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.effect.get-parameter",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "read-only",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "effect.parameters",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.effect.list-parameters",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "read-only",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "effect.setParameter",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.effect.set-parameter",
+      "permissions": [
+        "write"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "layer.applyEffect",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.effect.apply",
+      "permissions": [
+        "write"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "layer.effects",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.layer.list-effects",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "read-only",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "layer.property",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated-fake",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.tool.get-property",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "layer.setEnabled",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.layer.set-enabled",
+      "permissions": [
+        "write"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "layer.shapePaths",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.layer.get-shape-paths",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "read-only",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "layer.transform",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated-fake",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.layer.get-transform",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "read-only",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "menu.execute",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.menu.execute-command",
+      "permissions": [
+        "execute"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "menu.find",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.menu.find-command",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "read-only",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "project.close",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated-fake",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.project.close",
+      "permissions": [
+        "write"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "project.comps",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated-fake",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.project.list-comps",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "read-only",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "project.createComp",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.comp.create",
+      "permissions": [
+        "write"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "project.info",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.project.info",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "read-only",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "project.items",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.project.list-items",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "read-only",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "project.open",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified-real-host",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.project.open",
+      "permissions": [
+        "write"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "project.state",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated-fake",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.project.snapshot",
+      "permissions": [
+        "read"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "builtin",
+      "op": "ui.alert",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated-fake",
+      "gate": "assertDispatchAllowed",
+      "refuseConditions": [
+        "ownership-unproven"
+      ],
+      "capabilityId": "ae.operation.ui.alert",
+      "permissions": [
+        "execute"
+      ],
+      "retryClass": "unknown-side-effect",
+      "evidenceRef": "src/api/capabilities.ts BUILTIN_CAPABILITIES; docs/verification.md"
+    },
+    {
+      "capability": "compView",
+      "op": "pan",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "compViewMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by compViewMutationGate() per the A-SAFETY audit; additionally the mouse-drag vehicle lands with B-IME and the comp viewer's custom-drawn pan semantics are unverified on a real host (spec §11)",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "comp-view pan/zoom is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the mouse-drag vehicle, the comp viewer's AX fidelity and capture-diff semantics on a real host are all unverified (spec §11)"
+      }
+    },
+    {
+      "capability": "compView",
+      "op": "pan",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "compViewMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "comp-view operations are implemented for macOS only in this slice; no Windows comp-view vehicle exists or is verified",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "comp-view pan/zoom is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the mouse-drag vehicle, the comp viewer's AX fidelity and capture-diff semantics on a real host are all unverified (spec §11)"
+      }
+    },
+    {
+      "capability": "compView",
+      "op": "zoom",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "compViewMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by compViewMutationGate() per the A-SAFETY audit; the dropdown path needs verified AX fidelity of the zoom control (unverified) and the shortcut path needs a session-stream poster plus global-input authorization — neither exists in production yet",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "comp-view pan/zoom is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the mouse-drag vehicle, the comp viewer's AX fidelity and capture-diff semantics on a real host are all unverified (spec §11)"
+      }
+    },
+    {
+      "capability": "compView",
+      "op": "zoom",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "compViewMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "comp-view operations are implemented for macOS only in this slice; no Windows comp-view vehicle exists or is verified",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "comp-view pan/zoom is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the mouse-drag vehicle, the comp viewer's AX fidelity and capture-diff semantics on a real host are all unverified (spec §11)"
+      }
+    },
+    {
+      "capability": "contextMenu",
+      "op": "invokeItem",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "contextMenuMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by contextMenuMutationGate() per the A-SAFETY audit; the press path exists and is contract-tested but refuses until the audit clears it",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "context-menu invoke-item is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; whether the CGEvent right-button post and the context-menu AX surface work on a real After Effects is unverified (spec §11) — observing and classifying remain contract-level only"
+      }
+    },
+    {
+      "capability": "contextMenu",
+      "op": "invokeItem",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "contextMenuMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "the context-menu surface is implemented for macOS only in this slice; the Windows SendInput right-button + UIA context path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "context-menu invoke-item is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; whether the CGEvent right-button post and the context-menu AX surface work on a real After Effects is unverified (spec §11) — observing and classifying remain contract-level only"
+      }
+    },
+    {
+      "capability": "contextMenu",
+      "op": "items",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "observe-class item enumeration over the resolved menu window's button/text listing; whether AE exposes context-menu items through that listing is unverified on a real host",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "contextMenu",
+      "op": "items",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "the context-menu surface is implemented for macOS only in this slice; the Windows SendInput right-button + UIA context path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "contextMenu",
+      "op": "open",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "contextMenuMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by contextMenuMutationGate() per the A-SAFETY audit; additionally the CGEvent right-button post and the context-menu AX surface are unverified on a real host (spec §11)",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "context-menu open is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; whether the CGEvent right-button post and the context-menu AX surface work on a real After Effects is unverified (spec §11) — observing and classifying remain contract-level only"
+      }
+    },
+    {
+      "capability": "contextMenu",
+      "op": "open",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "contextMenuMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "the context-menu surface is implemented for macOS only in this slice; the Windows SendInput right-button + UIA context path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "context-menu open is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; whether the CGEvent right-button post and the context-menu AX surface work on a real After Effects is unverified (spec §11) — observing and classifying remain contract-level only"
+      }
+    },
+    {
+      "capability": "dragDrop",
+      "op": "dropFile",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "dragDropMutationGate",
+      "refuseConditions": [],
+      "reason": "mutate-gui class permitted by dragDropMutationGate() per the A-SAFETY decision in docs/gui-supervision-safety-gates.md, citing the #411 real-host PoC (vend=fileurl NSDraggingSession + CGEvent drop onto AE 2027's Project panel); fixture files only, census-gated drop point, project.items delta oracle, never resent",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": true
+      }
+    },
+    {
+      "capability": "dragDrop",
+      "op": "dropFile",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "dragDropMutationGate",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "the drag-drop surface is implemented for macOS only in this slice; no Windows drag vehicle exists yet",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": true
+      }
+    },
+    {
+      "capability": "dragDrop",
+      "op": "element-drag",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "dragDropMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class permitted by dragDropMutationGate() for the declared real-host-proven targets only (#427 A-SAFETY decision citing the #411 PoC + this ticket's e2e): project-item and timeline-layer drags run the segmented CGEvent vehicle with per-segment census re-checks and a DOM delta oracle; panel-tab dock→float tear-off is permitted with the census window-count oracle; other undeclared in-app drags stay refused — census/attribution/oracle chain and never-resend are unchanged",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "note": "refused element class — stays gated per the A-SAFETY audit",
+      "opClass": "other",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "drag-drop element-drag (other) is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md, #427) keeps refused: only the real-host-proven targets (project-item, timeline-layer, panel-tab dock→float) are permitted — arbitrary in-app drags have no dedicated class decision"
+      }
+    },
+    {
+      "capability": "dragDrop",
+      "op": "element-drag",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "dragDropMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "the drag-drop surface is implemented for macOS only in this slice; no Windows drag vehicle exists yet",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "note": "refused element class — stays gated per the A-SAFETY audit",
+      "opClass": "other",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "drag-drop element-drag (other) is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md, #427) keeps refused: only the real-host-proven targets (project-item, timeline-layer, panel-tab dock→float) are permitted — arbitrary in-app drags have no dedicated class decision"
+      }
+    },
+    {
+      "capability": "dragDrop",
+      "op": "element-drag",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "dragDropMutationGate",
+      "refuseConditions": [],
+      "reason": "mutate-gui class permitted by dragDropMutationGate() for the declared real-host-proven targets only (#427 A-SAFETY decision citing the #411 PoC + this ticket's e2e): project-item and timeline-layer drags run the segmented CGEvent vehicle with per-segment census re-checks and a DOM delta oracle; panel-tab dock→float tear-off is permitted with the census window-count oracle; other undeclared in-app drags stay refused — census/attribution/oracle chain and never-resend are unchanged",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "note": "permitted element class (#427 A-SAFETY decision)",
+      "opClass": "panel-tab",
+      "gateProbe": {
+        "allowed": true
+      }
+    },
+    {
+      "capability": "dragDrop",
+      "op": "element-drag",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "dragDropMutationGate",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "the drag-drop surface is implemented for macOS only in this slice; no Windows drag vehicle exists yet",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "note": "permitted element class (#427 A-SAFETY decision)",
+      "opClass": "panel-tab",
+      "gateProbe": {
+        "allowed": true
+      }
+    },
+    {
+      "capability": "dragDrop",
+      "op": "element-drag",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "dragDropMutationGate",
+      "refuseConditions": [],
+      "reason": "mutate-gui class permitted by dragDropMutationGate() for the declared real-host-proven targets only (#427 A-SAFETY decision citing the #411 PoC + this ticket's e2e): project-item and timeline-layer drags run the segmented CGEvent vehicle with per-segment census re-checks and a DOM delta oracle; panel-tab dock→float tear-off is permitted with the census window-count oracle; other undeclared in-app drags stay refused — census/attribution/oracle chain and never-resend are unchanged",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "note": "permitted element class (#427 A-SAFETY decision)",
+      "opClass": "project-item",
+      "gateProbe": {
+        "allowed": true
+      }
+    },
+    {
+      "capability": "dragDrop",
+      "op": "element-drag",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "dragDropMutationGate",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "the drag-drop surface is implemented for macOS only in this slice; no Windows drag vehicle exists yet",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "note": "permitted element class (#427 A-SAFETY decision)",
+      "opClass": "project-item",
+      "gateProbe": {
+        "allowed": true
+      }
+    },
+    {
+      "capability": "dragDrop",
+      "op": "element-drag",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "dragDropMutationGate",
+      "refuseConditions": [],
+      "reason": "mutate-gui class permitted by dragDropMutationGate() for the declared real-host-proven targets only (#427 A-SAFETY decision citing the #411 PoC + this ticket's e2e): project-item and timeline-layer drags run the segmented CGEvent vehicle with per-segment census re-checks and a DOM delta oracle; panel-tab dock→float tear-off is permitted with the census window-count oracle; other undeclared in-app drags stay refused — census/attribution/oracle chain and never-resend are unchanged",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "note": "permitted element class (#427 A-SAFETY decision)",
+      "opClass": "timeline-layer",
+      "gateProbe": {
+        "allowed": true
+      }
+    },
+    {
+      "capability": "dragDrop",
+      "op": "element-drag",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "dragDropMutationGate",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "the drag-drop surface is implemented for macOS only in this slice; no Windows drag vehicle exists yet",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "note": "permitted element class (#427 A-SAFETY decision)",
+      "opClass": "timeline-layer",
+      "gateProbe": {
+        "allowed": true
+      }
+    },
+    {
+      "capability": "dragDrop",
+      "op": "elementDrag",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "dragDropMutationGate",
+      "refuseConditions": [],
+      "reason": "mutate-gui class permitted by dragDropMutationGate() for the declared real-host-proven targets only (#427 A-SAFETY decision citing the #411 PoC + this ticket's e2e): project-item and timeline-layer drags run the segmented CGEvent vehicle with per-segment census re-checks and a DOM delta oracle; panel-tab dock→float tear-off is permitted with the census window-count oracle; other undeclared in-app drags stay refused — census/attribution/oracle chain and never-resend are unchanged",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "note": "aggregate row; per-class gate decisions are the opClass rows below (project-item/timeline-layer/panel-tab permitted, other refused)"
+    },
+    {
+      "capability": "dragDrop",
+      "op": "elementDrag",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "dragDropMutationGate",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "the drag-drop surface is implemented for macOS only in this slice; no Windows drag vehicle exists yet",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "note": "aggregate row; per-class gate decisions are the opClass rows below (project-item/timeline-layer/panel-tab permitted, other refused)"
+    },
+    {
+      "capability": "effectControls",
+      "op": "setFolded",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "effectControlsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by effectControlsMutationGate() per the A-SAFETY audit; additionally the Effect Controls panel's AX fidelity (disclosure triangles, header rows) is unverified on a real host (spec §11)",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "Effect Controls fold/parameter entry is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the session-stream value-entry vehicle (B-IME poster + focus proof + global-input authorization) and real-host AX fidelity of the Effect Controls panel are all unverified (spec §11)"
+      }
+    },
+    {
+      "capability": "effectControls",
+      "op": "setFolded",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "effectControlsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "Effect Controls operations are implemented for macOS only in this slice; no Windows Effect Controls vehicle exists or is verified",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "Effect Controls fold/parameter entry is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the session-stream value-entry vehicle (B-IME poster + focus proof + global-input authorization) and real-host AX fidelity of the Effect Controls panel are all unverified (spec §11)"
+      }
+    },
+    {
+      "capability": "effectControls",
+      "op": "setParameter",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "effectControlsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by effectControlsMutationGate() per the A-SAFETY audit; additionally value entry is session-stream input requiring a B-IME poster, focus proof and a GlobalInputAuthorization grant — none exists in production yet — and the value-field geometry is unverified",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "Effect Controls fold/parameter entry is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the session-stream value-entry vehicle (B-IME poster + focus proof + global-input authorization) and real-host AX fidelity of the Effect Controls panel are all unverified (spec §11)"
+      }
+    },
+    {
+      "capability": "effectControls",
+      "op": "setParameter",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "effectControlsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "Effect Controls operations are implemented for macOS only in this slice; no Windows Effect Controls vehicle exists or is verified",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "Effect Controls fold/parameter entry is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the session-stream value-entry vehicle (B-IME poster + focus proof + global-input authorization) and real-host AX fidelity of the Effect Controls panel are all unverified (spec §11)"
+      }
+    },
+    {
+      "capability": "fileDialog",
+      "op": "awaitDialog",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "bounded wait + title-matched dialog classification are contracted; AE's native-picker AX fidelity (button titles, sheet shape) is unverified on a real host — callers must declare localized titles",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "fileDialog",
+      "op": "awaitDialog",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "the file-dialog surface is implemented for macOS only in this slice; the Windows dialog census + UIA edit path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "fileDialog",
+      "op": "cancel",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "fileDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "same mutate-gui gate as confirm; cancel presses nothing dangerous but the gate does not distinguish — it clears as a class",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "file-dialog cancel is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; no real-host run has yet proven After Effects' native picker AX fidelity either — awaiting and classifying the dialog remain available"
+      }
+    },
+    {
+      "capability": "fileDialog",
+      "op": "cancel",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "fileDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "the file-dialog surface is implemented for macOS only in this slice; the Windows dialog census + UIA edit path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "file-dialog cancel is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; no real-host run has yet proven After Effects' native picker AX fidelity either — awaiting and classifying the dialog remain available"
+      }
+    },
+    {
+      "capability": "fileDialog",
+      "op": "confirm",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "fileDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by fileDialogMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the press path exists and is contract-tested but refuses until the audit clears it",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "file-dialog confirm is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; no real-host run has yet proven After Effects' native picker AX fidelity either — awaiting and classifying the dialog remain available"
+      }
+    },
+    {
+      "capability": "fileDialog",
+      "op": "confirm",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "fileDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "the file-dialog surface is implemented for macOS only in this slice; the Windows dialog census + UIA edit path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "file-dialog confirm is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; no real-host run has yet proven After Effects' native picker AX fidelity either — awaiting and classifying the dialog remain available"
+      }
+    },
+    {
+      "capability": "fileDialog",
+      "op": "enterFilename",
+      "platforms": [
+        "macos"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "fileDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:macos"
+      ],
+      "reason": "filename entry is mutate-gui shared-state and needs the B-IME OS text-input posters (#372 macOS / #373 Windows), which have not landed on any platform; the contract and gates exist, the vehicle does not",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "filename entry is a mutate-gui shared-state class: the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled it, and the B-IME OS text-input posters it requires have not landed on any platform (#372 macOS / #373 Windows)"
+      }
+    },
+    {
+      "capability": "fileDialog",
+      "op": "enterFilename",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "fileDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "the file-dialog surface is implemented for macOS only in this slice; the Windows dialog census + UIA edit path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "filename entry is a mutate-gui shared-state class: the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled it, and the B-IME OS text-input posters it requires have not landed on any platform (#372 macOS / #373 Windows)"
+      }
+    },
+    {
+      "capability": "guiEvidence",
+      "op": "index",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "evidenceRef": "specs/gui-evidence/spec.md"
+    },
+    {
+      "capability": "guiEvidence",
+      "op": "index",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "evidenceRef": "specs/gui-evidence/spec.md"
+    },
+    {
+      "capability": "guiEvidence",
+      "op": "renderEvidence",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "comp.renderFrame binds its PNG into the index as a render-frame artifact with requestId/segment join and coverage accounting (#385); artifactsDir discovery covers the renderFrame naming pattern only — arbitrary render-queue outputs are not guessed, and real-host render verification is still pending",
+      "evidenceRef": "specs/gui-evidence/spec.md"
+    },
+    {
+      "capability": "guiEvidence",
+      "op": "renderEvidence",
+      "platforms": [
+        "windows"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "comp.renderFrame binds its PNG into the index as a render-frame artifact with requestId/segment join and coverage accounting (#385); artifactsDir discovery covers the renderFrame naming pattern only — arbitrary render-queue outputs are not guessed, and real-host render verification is still pending",
+      "evidenceRef": "specs/gui-evidence/spec.md"
+    },
+    {
+      "capability": "guiEvidence",
+      "op": "screenRecording",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "the record.start/stop lifecycle (#381) is backed on darwin by the #382 recorder: screen-record.swift (ScreenCaptureKit SCStream → .mov) with a screencapture -V fallback tier, always inside the attested target session. SCStream delivery under runInSession, TCC prompts, fps and finalize-on-signal are unverified on a real host; display/session scopes and every scope on a non-isolated session start only with an explicit recording-authorization grant (spec §5.7, #383)",
+      "evidenceRef": "specs/gui-evidence/spec.md"
+    },
+    {
+      "capability": "guiEvidence",
+      "op": "screenRecording",
+      "platforms": [
+        "windows"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "the WGC backend is implemented (#384): a PowerShell+C# Windows.Graphics.Capture → MediaFoundation helper records window (HWND) and display/monitor scopes to H.264 .mp4, with a declared ffmpeg gdigrab fallback for session scope. Region scope has no vehicle, every Windows row stays unverified (no real-host lane), and window capture can still be refused per-window (protected content / UIPI) as window-not-capturable",
+      "evidenceRef": "specs/gui-evidence/spec.md"
+    },
+    {
+      "capability": "guiEvidence",
+      "op": "screenStill",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "panel.capture binds capture/captureRegion/captureWindowById output into screen-still EvidenceArtifact records (#380); display/session scopes and direct (non-panel) capture ops are not exposed, and real-host capture verification is still pending",
+      "evidenceRef": "specs/gui-evidence/spec.md"
+    },
+    {
+      "capability": "guiEvidence",
+      "op": "screenStill",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "no screen capture or recording vehicle is implemented on this platform; the evidence index contract is platform-neutral but cannot be populated with screen artifacts here",
+      "evidenceRef": "specs/gui-evidence/spec.md"
+    },
+    {
+      "capability": "input",
+      "op": "clipboard",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "NSPasteboard snapshot/write/restore implemented with promised-flavor capture and private stash restore; shared-state gate applies — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "clipboard",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "Win32 clipboard read/write exists in src/platform/windows/input-clipboard-script.ts with save/restore records; only the text flavor is restorable and shared-state authorization still gates it",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "clipboard",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "NSPasteboard snapshot/write/restore implemented with promised-flavor capture and private stash restore; shared-state gate applies — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "clipboard",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "Win32 clipboard read/write exists in src/platform/windows/input-clipboard-script.ts with save/restore records; only the text flavor is restorable and shared-state authorization still gates it",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "clipboard",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "NSPasteboard snapshot/write/restore implemented with promised-flavor capture and private stash restore; shared-state gate applies — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "clipboard",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "Win32 clipboard read/write exists in src/platform/windows/input-clipboard-script.ts with save/restore records; only the text flavor is restorable and shared-state authorization still gates it",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "compositionObserve",
+      "platforms": [
+        "macos"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed",
+        "unsupported:macos"
+      ],
+      "reason": "the Tier-1a contract exists (fixture self-report primary, CDP feasibility unverified, AX marked-text best-effort); no fixture panel or CDP investigation has run yet — real-host only",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "compositionObserve",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed",
+        "unsupported:windows"
+      ],
+      "reason": "the Tier-1a contract exists (fixture self-report primary, CDP feasibility unverified, AX marked-text best-effort); no fixture panel or CDP investigation has run yet — real-host only",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "compositionObserve",
+      "platforms": [
+        "macos"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed",
+        "unsupported:macos"
+      ],
+      "reason": "the Tier-1a contract exists (fixture self-report primary, CDP feasibility unverified, AX marked-text best-effort); no fixture panel or CDP investigation has run yet — real-host only",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "compositionObserve",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed",
+        "unsupported:windows"
+      ],
+      "reason": "the Tier-1a contract exists (fixture self-report primary, CDP feasibility unverified, AX marked-text best-effort); no fixture panel or CDP investigation has run yet — real-host only",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "compositionObserve",
+      "platforms": [
+        "macos"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed",
+        "unsupported:macos"
+      ],
+      "reason": "the Tier-1a contract exists (fixture self-report primary, CDP feasibility unverified, AX marked-text best-effort); no fixture panel or CDP investigation has run yet — real-host only",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "compositionObserve",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed",
+        "unsupported:windows"
+      ],
+      "reason": "the Tier-1a contract exists (fixture self-report primary, CDP feasibility unverified, AX marked-text best-effort); no fixture panel or CDP investigation has run yet — real-host only",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "directText",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "NSPasteboard write + bulk unicode post implemented; labelled direct-entry and never IME evidence (spec §4.2) — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "directText",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "KEYEVENTF_UNICODE bulk posting exists and is explicitly the IME-bypassing direct-entry channel — labelled, never Tier-1b evidence (spec §4.2); delivery unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "directText",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "NSPasteboard write + bulk unicode post implemented; labelled direct-entry and never IME evidence (spec §4.2) — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "directText",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "KEYEVENTF_UNICODE bulk posting exists and is explicitly the IME-bypassing direct-entry channel — labelled, never Tier-1b evidence (spec §4.2); delivery unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "directText",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "NSPasteboard write + bulk unicode post implemented; labelled direct-entry and never IME evidence (spec §4.2) — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "directText",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "KEYEVENTF_UNICODE bulk posting exists and is explicitly the IME-bypassing direct-entry channel — labelled, never Tier-1b evidence (spec §4.2); delivery unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "focus",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "focus readback helper implemented (input-focus.swift: AXFocusedUIElement/AXFocusedWindow/kAXFocused path) plus the fake-tested three-step proof; focus *request* is not implemented, so session-stream ops still refuse focus-unproven — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "focus",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "GetGUIThreadInfo + UIA FocusedElement readback and a UIA SetFocus/SetForegroundWindow request exist in src/platform/windows/input-focus-script.ts, fake-channel tested; delivery and UIPI/foreground-lock behavior are unverified — no Windows host lane",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "focus",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "focus readback helper implemented (input-focus.swift: AXFocusedUIElement/AXFocusedWindow/kAXFocused path) plus the fake-tested three-step proof; focus *request* is not implemented, so session-stream ops still refuse focus-unproven — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "focus",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "GetGUIThreadInfo + UIA FocusedElement readback and a UIA SetFocus/SetForegroundWindow request exist in src/platform/windows/input-focus-script.ts, fake-channel tested; delivery and UIPI/foreground-lock behavior are unverified — no Windows host lane",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "focus",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "focus readback helper implemented (input-focus.swift: AXFocusedUIElement/AXFocusedWindow/kAXFocused path) plus the fake-tested three-step proof; focus *request* is not implemented, so session-stream ops still refuse focus-unproven — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "focus",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "GetGUIThreadInfo + UIA FocusedElement readback and a UIA SetFocus/SetForegroundWindow request exist in src/platform/windows/input-focus-script.ts, fake-channel tested; delivery and UIPI/foreground-lock behavior are unverified — no Windows host lane",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "globalInputAuthorization",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "shared console session: session-stream and shared-state input can land in a foreign app if focus proof is wrong; requires an explicit target-scoped grant plus the A-SAFETY input gate — the A-SAFETY input gate (docs/gui-supervision-safety-gates.md) has cleared no input class and global-input authorization has no grant path; platform helpers exist at implemented/automated-test level at best and nothing is verified on a real host; the contract and gate logic are implemented and fake-tested, delivery is not proven",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "globalInputAuthorization",
+      "platforms": [
+        "windows"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "shared console session: session-stream and shared-state input can land in a foreign app if focus proof is wrong; requires an explicit target-scoped grant plus the A-SAFETY input gate — the A-SAFETY input gate (docs/gui-supervision-safety-gates.md) has cleared no input class and global-input authorization has no grant path; platform helpers exist at implemented/automated-test level at best and nothing is verified on a real host; the contract and gate logic are implemented and fake-tested, delivery is not proven",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "globalInputAuthorization",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "requiresGlobalInputAuthorization is enforced by inputAuthorizationVerdict (token/scope required, unavailable-not-silent-noop) and inputMutationGate() refuses all classes today — the A-SAFETY input gate (docs/gui-supervision-safety-gates.md) has cleared no input class and global-input authorization has no grant path; platform helpers exist at implemented/automated-test level at best and nothing is verified on a real host; the contract and gate logic are implemented and fake-tested, delivery is not proven",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "globalInputAuthorization",
+      "platforms": [
+        "windows"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "requiresGlobalInputAuthorization is enforced by inputAuthorizationVerdict (token/scope required, unavailable-not-silent-noop) and inputMutationGate() refuses all classes today — the A-SAFETY input gate (docs/gui-supervision-safety-gates.md) has cleared no input class and global-input authorization has no grant path; platform helpers exist at implemented/automated-test level at best and nothing is verified on a real host; the contract and gate logic are implemented and fake-tested, delivery is not proven",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "globalInputAuthorization",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "requiresGlobalInputAuthorization is enforced by inputAuthorizationVerdict (token/scope required, unavailable-not-silent-noop) and inputMutationGate() refuses all classes today — the A-SAFETY input gate (docs/gui-supervision-safety-gates.md) has cleared no input class and global-input authorization has no grant path; platform helpers exist at implemented/automated-test level at best and nothing is verified on a real host; the contract and gate logic are implemented and fake-tested, delivery is not proven",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "globalInputAuthorization",
+      "platforms": [
+        "windows"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "requiresGlobalInputAuthorization is enforced by inputAuthorizationVerdict (token/scope required, unavailable-not-silent-noop) and inputMutationGate() refuses all classes today — the A-SAFETY input gate (docs/gui-supervision-safety-gates.md) has cleared no input class and global-input authorization has no grant path; platform helpers exist at implemented/automated-test level at best and nothing is verified on a real host; the contract and gate logic are implemented and fake-tested, delivery is not proven",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "imeMode",
+      "platforms": [
+        "macos"
+      ],
+      "support": "unsupported",
+      "supportRaw": "needs-human",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "TIS input-source helpers implemented (input-source.swift: current/list/select); selecting needs an installed Japanese input source — a machine without one reports unavailable, a valid answer — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "imeMode",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "TSF ITfInputProcessorProfileMgr query/list/activate/deactivate exists in src/platform/windows/input-ime-script.ts (COM interop, GUIDs per msctf.idl); a machine without a Japanese IME reports unavailable — needs-human until a real host answers, and activation behavior is unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "imeMode",
+      "platforms": [
+        "macos"
+      ],
+      "support": "unsupported",
+      "supportRaw": "needs-human",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "TIS input-source helpers implemented (input-source.swift: current/list/select); selecting needs an installed Japanese input source — a machine without one reports unavailable, a valid answer — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "imeMode",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "TSF ITfInputProcessorProfileMgr query/list/activate/deactivate exists in src/platform/windows/input-ime-script.ts (COM interop, GUIDs per msctf.idl); a machine without a Japanese IME reports unavailable — needs-human until a real host answers, and activation behavior is unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "imeMode",
+      "platforms": [
+        "macos"
+      ],
+      "support": "unsupported",
+      "supportRaw": "needs-human",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "TIS input-source helpers implemented (input-source.swift: current/list/select); selecting needs an installed Japanese input source — a machine without one reports unavailable, a valid answer — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "imeMode",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "TSF ITfInputProcessorProfileMgr query/list/activate/deactivate exists in src/platform/windows/input-ime-script.ts (COM interop, GUIDs per msctf.idl); a machine without a Japanese IME reports unavailable — needs-human until a real host answers, and activation behavior is unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "keyPosting",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "CGEventCreateKeyboardEvent/CGEventPost helpers implemented (input-post.swift, kCGHIDEventTap/kCGSessionEventTap) with modifier-flag tracking; whether posting traverses the input-method stack is the unverified Tier-1b question — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "keyPosting",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "SendInput VK/scan/KEYEVENTF posting exists in src/platform/windows/input-send-script.ts with modifier readback; UIPI/integrity interaction and real delivery are unverified — no Windows host lane",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "keyPosting",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "CGEventCreateKeyboardEvent/CGEventPost helpers implemented (input-post.swift, kCGHIDEventTap/kCGSessionEventTap) with modifier-flag tracking; whether posting traverses the input-method stack is the unverified Tier-1b question — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "keyPosting",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "SendInput VK/scan/KEYEVENTF posting exists in src/platform/windows/input-send-script.ts with modifier readback; UIPI/integrity interaction and real delivery are unverified — no Windows host lane",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "keyPosting",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "CGEventCreateKeyboardEvent/CGEventPost helpers implemented (input-post.swift, kCGHIDEventTap/kCGSessionEventTap) with modifier-flag tracking; whether posting traverses the input-method stack is the unverified Tier-1b question — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "keyPosting",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "SendInput VK/scan/KEYEVENTF posting exists in src/platform/windows/input-send-script.ts with modifier readback; UIPI/integrity interaction and real delivery are unverified — no Windows host lane",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "mouseExtended",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "click delivery exists for dialog recovery but drag/scroll/hover are new and unverified; coordinates must come from the re-verified element frame, never remembered positions",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "mouseExtended",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "SendInput mouse move/down/up/wheel exists for click/drag/scroll/hover; coordinates must come from the re-verified element frame and multi-monitor absolute posting is unimplemented — delivery unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "mouseExtended",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "click delivery exists for dialog recovery but drag/scroll/hover are new and unverified; coordinates must come from the re-verified element frame, never remembered positions",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "mouseExtended",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "SendInput mouse move/down/up/wheel exists for click/drag/scroll/hover; coordinates must come from the re-verified element frame and multi-monitor absolute posting is unimplemented — delivery unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "mouseExtended",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "click delivery exists for dialog recovery but drag/scroll/hover are new and unverified; coordinates must come from the re-verified element frame, never remembered positions",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "mouseExtended",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "SendInput mouse move/down/up/wheel exists for click/drag/scroll/hover; coordinates must come from the re-verified element frame and multi-monitor absolute posting is unimplemented — delivery unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "osImeEndToEnd",
+      "platforms": [
+        "macos"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "unverified",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "needs-human",
+        "unsupported:macos"
+      ],
+      "reason": "the Tier-1b OS-IME end-to-end claim requires a real host with a Japanese IME; blocked the same class as #339 until an owned AE launch is possible — CDP/DOM-value shortcuts are forbidden evidence (spec §4.2)",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "osImeEndToEnd",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "unverified",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "needs-human",
+        "unsupported:windows"
+      ],
+      "reason": "the Tier-1b OS-IME end-to-end claim requires a real host with a Japanese IME; blocked the same class as #339 until an owned AE launch is possible — CDP/DOM-value shortcuts are forbidden evidence (spec §4.2)",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "osImeEndToEnd",
+      "platforms": [
+        "macos"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "unverified",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "needs-human",
+        "unsupported:macos"
+      ],
+      "reason": "the Tier-1b OS-IME end-to-end claim requires a real host with a Japanese IME; blocked the same class as #339 until an owned AE launch is possible — CDP/DOM-value shortcuts are forbidden evidence (spec §4.2)",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "osImeEndToEnd",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "unverified",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "needs-human",
+        "unsupported:windows"
+      ],
+      "reason": "the Tier-1b OS-IME end-to-end claim requires a real host with a Japanese IME; blocked the same class as #339 until an owned AE launch is possible — CDP/DOM-value shortcuts are forbidden evidence (spec §4.2)",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "osImeEndToEnd",
+      "platforms": [
+        "macos"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "unverified",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "needs-human",
+        "unsupported:macos"
+      ],
+      "reason": "the Tier-1b OS-IME end-to-end claim requires a real host with a Japanese IME; blocked the same class as #339 until an owned AE launch is possible — CDP/DOM-value shortcuts are forbidden evidence (spec §4.2)",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "osImeEndToEnd",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "unverified",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "needs-human",
+        "unsupported:windows"
+      ],
+      "reason": "the Tier-1b OS-IME end-to-end claim requires a real host with a Japanese IME; blocked the same class as #339 until an owned AE launch is possible — CDP/DOM-value shortcuts are forbidden evidence (spec §4.2)",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "selectionOps",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "modifier+key combos ride the key poster; selection readback (AXSelectedTextRange) is not implemented — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "selectionOps",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "select/replace/delete are modifier+key combos over the same SendInput poster; selection readback coverage per control is unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "selectionOps",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "modifier+key combos ride the key poster; selection readback (AXSelectedTextRange) is not implemented — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "selectionOps",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "select/replace/delete are modifier+key combos over the same SendInput poster; selection readback coverage per control is unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "selectionOps",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "modifier+key combos ride the key poster; selection readback (AXSelectedTextRange) is not implemented — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "selectionOps",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "select/replace/delete are modifier+key combos over the same SendInput poster; selection readback coverage per control is unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "sequentialText",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "per-character unicode posting implemented (input-post type); IME-path delivery unverified — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "sequentialText",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "per-char VK events through the same SendInput helper are the Tier-1b candidate; characters without a VK mapping refuse honestly; pacing is unimplemented and real-IME pass-through is unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "shared"
+    },
+    {
+      "capability": "input",
+      "op": "sequentialText",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "per-character unicode posting implemented (input-post type); IME-path delivery unverified — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "sequentialText",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "per-char VK events through the same SendInput helper are the Tier-1b candidate; characters without a VK mapping refuse honestly; pacing is unimplemented and real-IME pass-through is unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "dedicated"
+    },
+    {
+      "capability": "input",
+      "op": "sequentialText",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "per-character unicode posting implemented (input-post type); IME-path delivery unverified — macOS helpers implemented (#372): scripts/isolated-session/input-*.swift + src/input/darwin.ts over runInSession — compile/validation tested, real delivery unverified, gate closed",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "input",
+      "op": "sequentialText",
+      "platforms": [
+        "windows"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "inputMutationGate + inputAuthorizationVerdict",
+      "refuseConditions": [
+        "safety-gate-closed"
+      ],
+      "reason": "per-char VK events through the same SendInput helper are the Tier-1b candidate; characters without a VK mapping refuse honestly; pacing is unimplemented and real-IME pass-through is unverified",
+      "evidenceRef": "specs/ime-input/spec.md",
+      "sessionKind": "unknown"
+    },
+    {
+      "capability": "menuBar",
+      "op": "checkState",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "AXMenuItemMarkChar readback is contracted; whether AE exposes checkmarks through it is unverified on a real host — \"unknown\" is a real answer, not a guessed unchecked",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "menuBar",
+      "op": "checkState",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "the menu-bar surface is implemented for macOS only in this slice; the Windows UIA MenuBar/MenuItem path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "menuBar",
+      "op": "enumerate",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "System Events menu-bar walk is wired but AE's menu AX fidelity (subroles, checkmark exposure) is unverified on a real host",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "menuBar",
+      "op": "enumerate",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "the menu-bar surface is implemented for macOS only in this slice; the Windows UIA MenuBar/MenuItem path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "menuBar",
+      "op": "invoke",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "menuInvokeGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by menuInvokeGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists and is contract-tested but refuses until the audit clears it",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "menu invoke is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; no real-host run has yet proven After Effects menu AX fidelity either — enumeration and checkmark readback remain available"
+      }
+    },
+    {
+      "capability": "menuBar",
+      "op": "invoke",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "menuInvokeGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "the menu-bar surface is implemented for macOS only in this slice; the Windows UIA MenuBar/MenuItem path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "menu invoke is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; no real-host run has yet proven After Effects menu AX fidelity either — enumeration and checkmark readback remain available"
+      }
+    },
+    {
+      "capability": "nextActions",
+      "op": "reason-codes",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "automated test",
+      "gate": "none",
+      "refuseConditions": [
+        "requires-human",
+        "requires-permission",
+        "bounded-wait",
+        "unknown-outcome",
+        "not-sent",
+        "unsafe-to-automate",
+        "evidence-unavailable",
+        "monitor-lost",
+        "session-policy"
+      ],
+      "evidenceRef": "src/supervision/next-actions.ts; specs/release-acceptance/spec.md §11"
+    },
+    {
+      "capability": "panel",
+      "op": "captureRegion",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "screencapture -R is wired but unverified on a real host; point-vs-pixel scale is recorded per artifact",
+      "evidenceRef": "specs/panel-interaction/spec.md"
+    },
+    {
+      "capability": "panel",
+      "op": "captureRegion",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "panel operations are implemented for macOS only in this slice; the Windows census/UIA substrate exists but no panel vehicle is implemented or verified",
+      "evidenceRef": "specs/panel-interaction/spec.md"
+    },
+    {
+      "capability": "panel",
+      "op": "captureWindow",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "screencapture -l by CGWindowID is wired but unverified on a real host",
+      "evidenceRef": "specs/panel-interaction/spec.md"
+    },
+    {
+      "capability": "panel",
+      "op": "captureWindow",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "panel operations are implemented for macOS only in this slice; the Windows census/UIA substrate exists but no panel vehicle is implemented or verified",
+      "evidenceRef": "specs/panel-interaction/spec.md"
+    },
+    {
+      "capability": "panel",
+      "op": "dockedRegion",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "observe-class pane walk is implemented for macOS (#361, ae.dockedPane): bounded AX subtree walk, axPath re-resolution and row enumeration. What AE's AX tree actually exposes for docked panes is unverified on a real host; resize/capture of a docked region remain unsupported because it is not a window",
+      "evidenceRef": "specs/panel-interaction/spec.md"
+    },
+    {
+      "capability": "panel",
+      "op": "dockedRegion",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "panel operations are implemented for macOS only in this slice; the Windows census/UIA substrate exists but no panel vehicle is implemented or verified",
+      "evidenceRef": "specs/panel-interaction/spec.md"
+    },
+    {
+      "capability": "panel",
+      "op": "identify",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified on real host",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "resolves through the window-ops AXUIElement enumeration (AXWindows/AXChildren + census attribution), the path #357 proved reaches real AE panels — the System Events enumeration this replaced returned almost nothing on AE. Requires the app to have been frontmost at least once for AX windows to vend (#406); a never-activated instance honestly reports not-found",
+      "evidenceRef": "specs/panel-interaction/spec.md"
+    },
+    {
+      "capability": "panel",
+      "op": "identify",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "panel operations are implemented for macOS only in this slice; the Windows census/UIA substrate exists but no panel vehicle is implemented or verified",
+      "evidenceRef": "specs/panel-interaction/spec.md"
+    },
+    {
+      "capability": "panel",
+      "op": "inAeReadback",
+      "platforms": [
+        "macos"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:macos"
+      ],
+      "reason": "requires a host-side script extension (e.g. ScriptUI Window.size); measure() reports readbackSource honestly until then",
+      "evidenceRef": "specs/panel-interaction/spec.md"
+    },
+    {
+      "capability": "panel",
+      "op": "inAeReadback",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "panel operations are implemented for macOS only in this slice; the Windows census/UIA substrate exists but no panel vehicle is implemented or verified",
+      "evidenceRef": "specs/panel-interaction/spec.md"
+    },
+    {
+      "capability": "panel",
+      "op": "measure",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified on real host",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "OS geometry readback verified on real host (#358); the in-AE channel (ScriptUI Window.size) needs a host-side extension and is not wired yet — readbackSource reports that honestly",
+      "evidenceRef": "specs/panel-interaction/spec.md"
+    },
+    {
+      "capability": "panel",
+      "op": "measure",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "panel operations are implemented for macOS only in this slice; the Windows census/UIA substrate exists but no panel vehicle is implemented or verified",
+      "evidenceRef": "specs/panel-interaction/spec.md"
+    },
+    {
+      "capability": "panel",
+      "op": "resize",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified on real host",
+      "gate": "panelMutationGate",
+      "refuseConditions": [],
+      "reason": "mutate-gui class permitted by panelMutationGate() under the #358 A-SAFETY class decision (docs/gui-supervision-safety-gates.md §panel mutation): the direct-AX `AXUIElementSetAttributeValue` vehicle via the window-ops `act` path, behind owned attribution + GUI lease + in-session identity re-verify. Verified end-to-end on owned AE 2027 (docs/evidence/realhost-2026-11-27/): resize → measure → restore on a real ScriptUI palette. Requires the AX window enumeration, which AE only vends after the app has been frontmost at least once (#406/#357)",
+      "evidenceRef": "specs/panel-interaction/spec.md",
+      "gateProbe": {
+        "allowed": true
+      }
+    },
+    {
+      "capability": "panel",
+      "op": "resize",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "panelMutationGate",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "panel operations are implemented for macOS only in this slice; the Windows census/UIA substrate exists but no panel vehicle is implemented or verified",
+      "evidenceRef": "specs/panel-interaction/spec.md",
+      "gateProbe": {
+        "allowed": true
+      }
+    },
+    {
+      "capability": "panel",
+      "op": "restore",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified on real host",
+      "gate": "panelMutationGate",
+      "refuseConditions": [],
+      "reason": "same mutate-gui class and vehicle as resize: permitted by panelMutationGate() under the #358 A-SAFETY class decision (docs/gui-supervision-safety-gates.md §panel mutation) — the direct-AX `AXUIElementSetAttributeValue` set back to the frame first resolved by the handle, behind owned attribution + GUI lease + in-session identity re-verify. Verified end-to-end on owned AE 2027 (docs/evidence/realhost-2026-11-27/): resize → measure → restore on a real ScriptUI palette",
+      "evidenceRef": "specs/panel-interaction/spec.md",
+      "gateProbe": {
+        "allowed": true
+      }
+    },
+    {
+      "capability": "panel",
+      "op": "restore",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "panelMutationGate",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "panel operations are implemented for macOS only in this slice; the Windows census/UIA substrate exists but no panel vehicle is implemented or verified",
+      "evidenceRef": "specs/panel-interaction/spec.md",
+      "gateProbe": {
+        "allowed": true
+      }
+    },
+    {
+      "capability": "projectDialog",
+      "op": "cancelDialog",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "projectDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by projectDialogMutationGate() per the A-SAFETY audit; the cancel path is contract-tested but refuses until the audit clears it — and filename entry additionally needs the B-IME OS text-input posters (#372/#373), not yet landed",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "project-dialog cancel is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the composed surfaces' own gates (menu invoke, dialog acts, B-IME filename entry #372/#373) refuse independently — the filename-entry vehicle has not landed on any platform"
+      }
+    },
+    {
+      "capability": "projectDialog",
+      "op": "cancelDialog",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "projectDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "the project-dialog round-trip is implemented for macOS only in this slice; the Windows dialog census + UIA edit path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "project-dialog cancel is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the composed surfaces' own gates (menu invoke, dialog acts, B-IME filename entry #372/#373) refuse independently — the filename-entry vehicle has not landed on any platform"
+      }
+    },
+    {
+      "capability": "projectDialog",
+      "op": "openProject",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "projectDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by projectDialogMutationGate() per the A-SAFETY audit; the open path is contract-tested but refuses until the audit clears it — and filename entry additionally needs the B-IME OS text-input posters (#372/#373), not yet landed",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "project-dialog open is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the composed surfaces' own gates (menu invoke, dialog acts, B-IME filename entry #372/#373) refuse independently — the filename-entry vehicle has not landed on any platform"
+      }
+    },
+    {
+      "capability": "projectDialog",
+      "op": "openProject",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "projectDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "the project-dialog round-trip is implemented for macOS only in this slice; the Windows dialog census + UIA edit path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "project-dialog open is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the composed surfaces' own gates (menu invoke, dialog acts, B-IME filename entry #372/#373) refuse independently — the filename-entry vehicle has not landed on any platform"
+      }
+    },
+    {
+      "capability": "projectDialog",
+      "op": "roundTrip",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "projectDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by projectDialogMutationGate() per the A-SAFETY audit; the round-trip path is contract-tested but refuses until the audit clears it — and filename entry additionally needs the B-IME OS text-input posters (#372/#373), not yet landed",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "project-dialog round-trip is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the composed surfaces' own gates (menu invoke, dialog acts, B-IME filename entry #372/#373) refuse independently — the filename-entry vehicle has not landed on any platform"
+      }
+    },
+    {
+      "capability": "projectDialog",
+      "op": "roundTrip",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "projectDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "the project-dialog round-trip is implemented for macOS only in this slice; the Windows dialog census + UIA edit path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "project-dialog round-trip is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the composed surfaces' own gates (menu invoke, dialog acts, B-IME filename entry #372/#373) refuse independently — the filename-entry vehicle has not landed on any platform"
+      }
+    },
+    {
+      "capability": "projectDialog",
+      "op": "saveProjectAs",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "projectDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by projectDialogMutationGate() per the A-SAFETY audit; the save-as path is contract-tested but refuses until the audit clears it — and filename entry additionally needs the B-IME OS text-input posters (#372/#373), not yet landed",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "project-dialog save is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the composed surfaces' own gates (menu invoke, dialog acts, B-IME filename entry #372/#373) refuse independently — the filename-entry vehicle has not landed on any platform"
+      }
+    },
+    {
+      "capability": "projectDialog",
+      "op": "saveProjectAs",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "projectDialogMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "the project-dialog round-trip is implemented for macOS only in this slice; the Windows dialog census + UIA edit path is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "project-dialog save is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the composed surfaces' own gates (menu invoke, dialog acts, B-IME filename entry #372/#373) refuse independently — the filename-entry vehicle has not landed on any platform"
+      }
+    },
+    {
+      "capability": "renderQueue",
+      "op": "addViaMenu",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "menuInvokeGate (delegated via menu invoke)",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "menu invoke is mutate-gui and gated off by menuInvokeGate() per the A-SAFETY audit; the orchestration exists and is contract-tested but refuses until the audit clears it",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "menu invoke is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; no real-host run has yet proven After Effects menu AX fidelity either — enumeration and checkmark readback remain available"
+      }
+    },
+    {
+      "capability": "renderQueue",
+      "op": "addViaMenu",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "menuInvokeGate (delegated via menu invoke)",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "the render-queue surface is implemented for macOS only in this slice; the Windows RQ pane walk is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "menu invoke is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; no real-host run has yet proven After Effects menu AX fidelity either — enumeration and checkmark readback remain available"
+      }
+    },
+    {
+      "capability": "renderQueue",
+      "op": "observe",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "the bounded docked-pane AX walk is contracted (#361) but no DOM readback exists for the render queue — the oracle is \"limited\" and AE's RQ pane AX fidelity is unverified on a real host",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "renderQueue",
+      "op": "observe",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "the render-queue surface is implemented for macOS only in this slice; the Windows RQ pane walk is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "supervision",
+      "op": "monitor",
+      "platforms": [
+        "macos",
+        "windows"
+      ],
+      "support": "supported",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated-fake",
+      "gate": "monitor lease + durable supervision state TTL",
+      "refuseConditions": [
+        "requires-human",
+        "requires-permission",
+        "bounded-wait",
+        "unknown-outcome",
+        "not-sent",
+        "unsafe-to-automate",
+        "evidence-unavailable",
+        "monitor-lost",
+        "session-policy"
+      ],
+      "evidenceRef": "specs/gui-supervision/spec.md; docs/adr/0005-session-supervision.md",
+      "note": "observation-only on every platform; no probe presses anything and no Windows dialog class is registered as pressable"
+    },
+    {
+      "capability": "timeline",
+      "op": "navigateKeyframe",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "timelineMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by timelineMutationGate() per the A-SAFETY audit; keyframe diamond/navigator AX fidelity is unverified on a real host",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "timeline scrub/selection/keyframe navigation is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the B-IME mouse-drag vehicle and real-host proof that comp.time tracks a GUI scrub are still outstanding (spec §11)"
+      }
+    },
+    {
+      "capability": "timeline",
+      "op": "navigateKeyframe",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "timelineMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "timeline operations are implemented for macOS only in this slice; no Windows timeline vehicle exists or is verified",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "timeline scrub/selection/keyframe navigation is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the B-IME mouse-drag vehicle and real-host proof that comp.time tracks a GUI scrub are still outstanding (spec §11)"
+      }
+    },
+    {
+      "capability": "timeline",
+      "op": "rows",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "observe-class pane row enumeration via the #361 bounded AX walk; real-host AX fidelity of timeline rows is unverified (spec §11)",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "timeline",
+      "op": "rows",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "timeline operations are implemented for macOS only in this slice; no Windows timeline vehicle exists or is verified",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "timeline",
+      "op": "scrub",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "timelineMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by timelineMutationGate() per the A-SAFETY audit; additionally the mouse-drag vehicle lands with B-IME (#372/#373) and comp.time tracking a real GUI scrub is an unverified real-host assumption (spec §11)",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "timeline scrub/selection/keyframe navigation is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the B-IME mouse-drag vehicle and real-host proof that comp.time tracks a GUI scrub are still outstanding (spec §11)"
+      }
+    },
+    {
+      "capability": "timeline",
+      "op": "scrub",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "timelineMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "timeline operations are implemented for macOS only in this slice; no Windows timeline vehicle exists or is verified",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "timeline scrub/selection/keyframe navigation is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the B-IME mouse-drag vehicle and real-host proof that comp.time tracks a GUI scrub are still outstanding (spec §11)"
+      }
+    },
+    {
+      "capability": "timeline",
+      "op": "selectRow",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "timelineMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by timelineMutationGate() per the A-SAFETY audit; the click vehicle exists (MacGuiRecovery.clickAt) but row geometry fidelity on AE's timeline is unverified",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "timeline scrub/selection/keyframe navigation is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the B-IME mouse-drag vehicle and real-host proof that comp.time tracks a GUI scrub are still outstanding (spec §11)"
+      }
+    },
+    {
+      "capability": "timeline",
+      "op": "selectRow",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "timelineMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "timeline operations are implemented for macOS only in this slice; no Windows timeline vehicle exists or is verified",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "timeline scrub/selection/keyframe navigation is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; additionally the B-IME mouse-drag vehicle and real-host proof that comp.time tracks a GUI scrub are still outstanding (spec §11)"
+      }
+    },
+    {
+      "capability": "windowOps",
+      "op": "focus",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "windowOpsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by windowOpsMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists, is contract-tested and is real-host verified on owned AE (#357) but refuses until the audit clears the class — window focus: the helper's direct AXUIElementSetAttributeValue vehicle resized, moved and restored a real ScriptUI palette on owned AE 2027 (docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json)",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "window focus is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the helper's AX set vehicle is real-host verified on owned AE (#357) — what is missing is the audit's class decision, not vehicle proof — observe (`state`) remains available"
+      }
+    },
+    {
+      "capability": "windowOps",
+      "op": "focus",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "windowOpsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "window ops are implemented for macOS only in this slice; the Windows window-management vehicle is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "window focus is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the helper's AX set vehicle is real-host verified on owned AE (#357) — what is missing is the audit's class decision, not vehicle proof — observe (`state`) remains available"
+      }
+    },
+    {
+      "capability": "windowOps",
+      "op": "focusedObserve",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "partial",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified on real host",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "AXFocusedWindow resolution against the WindowServer census (#406): only the FOCUSED window is reachable — unfocused windows are AX-unreachable on AE by construction, and no mutation vehicle exists for this path (observe-class only, mutations refuse regardless of the gate). Verified on real host: resolved the focused ScriptUI palette to census windowNumber 2790 (docs/evidence/realhost-2026-11-27/)",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "windowOps",
+      "op": "focusedObserve",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "window ops are implemented for macOS only in this slice; the Windows window-management vehicle is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "windowOps",
+      "op": "maximize",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "windowOpsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by windowOpsMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists, is contract-tested and is real-host verified on owned AE (#357) but refuses until the audit clears the class — window maximize: the helper's direct AXUIElementSetAttributeValue vehicle resized, moved and restored a real ScriptUI palette on owned AE 2027 (docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json)",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "window maximize is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the helper's AX set vehicle is real-host verified on owned AE (#357) — what is missing is the audit's class decision, not vehicle proof — observe (`state`) remains available"
+      }
+    },
+    {
+      "capability": "windowOps",
+      "op": "maximize",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "windowOpsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "window ops are implemented for macOS only in this slice; the Windows window-management vehicle is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "window maximize is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the helper's AX set vehicle is real-host verified on owned AE (#357) — what is missing is the audit's class decision, not vehicle proof — observe (`state`) remains available"
+      }
+    },
+    {
+      "capability": "windowOps",
+      "op": "minimize",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "windowOpsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by windowOpsMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists, is contract-tested and is real-host verified on owned AE (#357) but refuses until the audit clears the class — window minimize: the helper's direct AXUIElementSetAttributeValue vehicle resized, moved and restored a real ScriptUI palette on owned AE 2027 (docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json)",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "window minimize is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the helper's AX set vehicle is real-host verified on owned AE (#357) — what is missing is the audit's class decision, not vehicle proof — observe (`state`) remains available"
+      }
+    },
+    {
+      "capability": "windowOps",
+      "op": "minimize",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "windowOpsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "window ops are implemented for macOS only in this slice; the Windows window-management vehicle is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "window minimize is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the helper's AX set vehicle is real-host verified on owned AE (#357) — what is missing is the audit's class decision, not vehicle proof — observe (`state`) remains available"
+      }
+    },
+    {
+      "capability": "windowOps",
+      "op": "move",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "windowOpsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by windowOpsMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists, is contract-tested and is real-host verified on owned AE (#357) but refuses until the audit clears the class — window move: the helper's direct AXUIElementSetAttributeValue vehicle resized, moved and restored a real ScriptUI palette on owned AE 2027 (docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json)",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "window move is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the helper's AX set vehicle is real-host verified on owned AE (#357) — what is missing is the audit's class decision, not vehicle proof — observe (`state`) remains available"
+      }
+    },
+    {
+      "capability": "windowOps",
+      "op": "move",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "windowOpsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "window ops are implemented for macOS only in this slice; the Windows window-management vehicle is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "window move is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the helper's AX set vehicle is real-host verified on owned AE (#357) — what is missing is the audit's class decision, not vehicle proof — observe (`state`) remains available"
+      }
+    },
+    {
+      "capability": "windowOps",
+      "op": "observe",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "verified on real host",
+      "verificationRaw": "verified on real host",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "AX window listing (frame/miniaturized/main/focused) plus the WindowServer census attribution resolved a real ScriptUI palette on owned AE 2027 (#357) — but ONLY after the app had been frontmost; AE vends zero AX windows while it has never been active, so observe can still legitimately return an empty listing on a never-activated instance (use focusedObserve for the only AX-reachable surface there)",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "windowOps",
+      "op": "observe",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "window ops are implemented for macOS only in this slice; the Windows window-management vehicle is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "windowOps",
+      "op": "resize",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "windowOpsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by windowOpsMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists, is contract-tested and is real-host verified on owned AE (#357) but refuses until the audit clears the class — window resize: the helper's direct AXUIElementSetAttributeValue vehicle resized, moved and restored a real ScriptUI palette on owned AE 2027 (docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json)",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "window resize is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the helper's AX set vehicle is real-host verified on owned AE (#357) — what is missing is the audit's class decision, not vehicle proof — observe (`state`) remains available"
+      }
+    },
+    {
+      "capability": "windowOps",
+      "op": "resize",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "windowOpsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "window ops are implemented for macOS only in this slice; the Windows window-management vehicle is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "window resize is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the helper's AX set vehicle is real-host verified on owned AE (#357) — what is missing is the audit's class decision, not vehicle proof — observe (`state`) remains available"
+      }
+    },
+    {
+      "capability": "windowOps",
+      "op": "restore",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "windowOpsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by windowOpsMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists, is contract-tested and is real-host verified on owned AE (#357) but refuses until the audit clears the class — window restore: the helper's direct AXUIElementSetAttributeValue vehicle resized, moved and restored a real ScriptUI palette on owned AE 2027 (docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json)",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "window restore is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the helper's AX set vehicle is real-host verified on owned AE (#357) — what is missing is the audit's class decision, not vehicle proof — observe (`state`) remains available"
+      }
+    },
+    {
+      "capability": "windowOps",
+      "op": "restore",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "windowOpsMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "window ops are implemented for macOS only in this slice; the Windows window-management vehicle is a separate ticket",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "window restore is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; the helper's AX set vehicle is real-host verified on owned AE (#357) — what is missing is the audit's class decision, not vehicle proof — observe (`state`) remains available"
+      }
+    },
+    {
+      "capability": "workspace",
+      "op": "arrange",
+      "platforms": [
+        "macos"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "workspaceMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:macos"
+      ],
+      "reason": "no drag vehicle exists yet — the B-IME mouse-drag poster (specs/ime-input/spec.md §6, #372) is unimplemented, so arrange refuses unsupported even where the mutation gate would allow",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "workspace switch/arrange is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; no real-host run has yet proven AE menu checkmarks, CGEvent drags or workspace XML write timing either — observe, listWorkspaces and verifyRestore remain available"
+      }
+    },
+    {
+      "capability": "workspace",
+      "op": "arrange",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "workspaceMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "workspace editing is implemented for macOS only in this slice; the Windows menu/pane/drag vehicles are separate tickets",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "workspace switch/arrange is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; no real-host run has yet proven AE menu checkmarks, CGEvent drags or workspace XML write timing either — observe, listWorkspaces and verifyRestore remain available"
+      }
+    },
+    {
+      "capability": "workspace",
+      "op": "monitors",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "display census (CGGetActiveDisplayList bounds/pixels/backingScale) + per-frame display membership and mixed-DPI flags are observe-class evidence; single-display hosts report topology \"single\" honestly, and per-monitor restore fidelity stays unverified on a real host (spec §11)",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "workspace",
+      "op": "monitors",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "multi-monitor/DPI restore is design + contract only on Windows: the census is physical px and needs GetDpiForWindow / an awareness context (spec §9); no real-host claim is made",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "workspace",
+      "op": "observe",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "menu checkmark identity + panel frames + read-only workspace XML are wired but AE's menu AX fidelity and the XML layout are unverified on a real host",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "workspace",
+      "op": "observe",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "workspace editing is implemented for macOS only in this slice; the Windows menu/pane/drag vehicles are separate tickets",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "workspace",
+      "op": "switchWorkspace",
+      "platforms": [
+        "macos"
+      ],
+      "support": "partial",
+      "supportRaw": "unavailable",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "workspaceMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused"
+      ],
+      "reason": "mutate-gui class gated off by workspaceMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists and is contract-tested but refuses until the audit clears it",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "workspace switch/arrange is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; no real-host run has yet proven AE menu checkmarks, CGEvent drags or workspace XML write timing either — observe, listWorkspaces and verifyRestore remain available"
+      }
+    },
+    {
+      "capability": "workspace",
+      "op": "switchWorkspace",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "workspaceMutationGate",
+      "refuseConditions": [
+        "mutation-gate-refused",
+        "unsupported:windows"
+      ],
+      "reason": "workspace editing is implemented for macOS only in this slice; the Windows menu/pane/drag vehicles are separate tickets",
+      "evidenceRef": "specs/workspace-editing/spec.md",
+      "gateProbe": {
+        "allowed": false,
+        "reason": "workspace switch/arrange is a mutate-gui class the A-SAFETY audit (docs/gui-supervision-safety-gates.md) has not enabled and the workspace-editing spec (§13) keeps gated pending that clearance; no real-host run has yet proven AE menu checkmarks, CGEvent drags or workspace XML write timing either — observe, listWorkspaces and verifyRestore remain available"
+      }
+    },
+    {
+      "capability": "workspace",
+      "op": "verifyRestore",
+      "platforms": [
+        "macos"
+      ],
+      "support": "supported",
+      "supportRaw": "implemented",
+      "verificationLevel": "automated test",
+      "verificationRaw": "automated test",
+      "gate": "none",
+      "refuseConditions": [],
+      "reason": "frame-equality + XML-record comparison is observe-class and runs wherever an owned target is attested; what it proves about a real AE restore is unverified on a real host",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    },
+    {
+      "capability": "workspace",
+      "op": "verifyRestore",
+      "platforms": [
+        "windows"
+      ],
+      "support": "unsupported",
+      "supportRaw": "unsupported",
+      "verificationLevel": "implemented",
+      "verificationRaw": "implemented",
+      "gate": "none",
+      "refuseConditions": [
+        "unsupported:windows"
+      ],
+      "reason": "workspace editing is implemented for macOS only in this slice; the Windows menu/pane/drag vehicles are separate tickets",
+      "evidenceRef": "specs/workspace-editing/spec.md"
+    }
+  ]
+}

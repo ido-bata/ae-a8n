@@ -1,0 +1,11 @@
+{"t":1795775721790.3562,"kind":"start","pid":94568,"duration":1800.0}
+{"t":1795775799145.622,"seq":0,"kind":"flagsChanged","keyCode":56,"flags":131072,"keyWindow":false,"mainWindow":false,"appActive":false,"hasMarkedText":false,"markedText":null}
+{"t":1795775799219.58,"seq":1,"kind":"flagsChanged","keyCode":56,"flags":0,"keyWindow":false,"mainWindow":false,"appActive":false,"hasMarkedText":false,"markedText":null}
+{"t":1795775875594.51,"seq":2,"kind":"keyDown","chars":"d","keyCode":0,"flags":0,"keyWindow":true,"mainWindow":true,"appActive":true,"hasMarkedText":false,"markedText":null}
+{"t":1795775875610.501,"seq":3,"kind":"keyDown","chars":"e","keyCode":0,"flags":0,"keyWindow":true,"mainWindow":true,"appActive":true,"hasMarkedText":false,"markedText":null}
+{"t":1795775954594.482,"seq":4,"kind":"keyDown","chars":"n","keyCode":0,"flags":0,"keyWindow":true,"mainWindow":true,"appActive":true,"hasMarkedText":false,"markedText":null}
+{"t":1795775954927.173,"seq":5,"kind":"keyDown","chars":"i","keyCode":0,"flags":0,"keyWindow":true,"mainWindow":true,"appActive":true,"hasMarkedText":false,"markedText":null}
+{"t":1795776033614.9512,"seq":6,"kind":"keyDown","chars":"a","keyCode":0,"flags":0,"keyWindow":true,"mainWindow":true,"appActive":true,"hasMarkedText":false,"markedText":null}
+{"t":1795776034041.125,"seq":7,"kind":"keyDown","chars":"k","keyCode":0,"flags":0,"keyWindow":true,"mainWindow":true,"appActive":true,"hasMarkedText":false,"markedText":null}
+{"t":1795776034356.025,"seq":8,"kind":"keyDown","chars":"a","keyCode":0,"flags":0,"keyWindow":true,"mainWindow":true,"appActive":true,"hasMarkedText":false,"markedText":null}
+{"t":1795776035115.7842,"seq":9,"kind":"keyDown","chars":"\u001b","keyCode":53,"flags":0,"keyWindow":true,"mainWindow":true,"appActive":true,"hasMarkedText":false,"markedText":null}

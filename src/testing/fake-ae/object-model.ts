@@ -197,8 +197,11 @@ export class FakeProperty {
   readonly name: string;
   readonly matchName: string;
   readonly propertyType = PropertyType.PROPERTY;
+  /** The timeline selection state `Property.selected` reports (#359). */
+  selected = false;
   readonly #valueType: FakeValueType;
   #value: FakeValue;
+  #keyframes: Array<{ time: number; value: FakeValue }> = [];
   /** @internal */
   _touch: Touch = untouched;
 
@@ -221,6 +224,45 @@ export class FakeProperty {
   /** A single number (OneD), as the fake renderer uses. */
   get isScalar(): boolean {
     return this.#valueType === "OneD";
+  }
+
+  /* -------------------------------------------------- keyframes (#359) -- */
+
+  get isTimeVarying(): boolean {
+    return this.#keyframes.length > 0;
+  }
+
+  get numKeys(): number {
+    return this.#keyframes.length;
+  }
+
+  keyTime(index: number): number {
+    const key = this.#keyframes[index - 1];
+    if (key === undefined) {
+      throw aeError(5024, `key index ${index} is out of range (numKeys is ${this.#keyframes.length})`);
+    }
+    return key.time;
+  }
+
+  keyValue(index: number): FakeValue {
+    if (!this.scriptable) {
+      throw unscriptableValue(this.matchName, this.#valueType);
+    }
+    const key = this.#keyframes[index - 1];
+    if (key === undefined) {
+      throw aeError(5024, `key index ${index} is out of range (numKeys is ${this.#keyframes.length})`);
+    }
+    return cloneValue(key.value);
+  }
+
+  /**
+   * Test seam: adds a keyframe, as scripting setup would. The host script
+   * itself never writes keyframes — this ticket is readback only.
+   */
+  _addKeyframe(time: number, value: FakeValue): void {
+    this.#keyframes.push({ time, value: cloneValue(value) });
+    this.#keyframes.sort((a, b) => a.time - b.time);
+    this._touch();
   }
 
   get value(): FakeValue {
@@ -586,6 +628,21 @@ export class FakeComp {
     return 1 / this.frameRate;
   }
 
+  /**
+   * `CompItem.time`: the current-time indicator in seconds (#359). Setting
+   * it is a mutation — it marks the project dirty, as in AE.
+   */
+  #time = 0;
+
+  get time(): number {
+    return this.#time;
+  }
+
+  set time(value: number) {
+    this.#time = value;
+    this.#touch();
+  }
+
   layer(selector: string | number): FakeLayer | undefined {
     if (typeof selector === "number") {
       return this.#layers[selector - 1];
@@ -730,7 +787,18 @@ export class FakeProject {
     return this.#items[index - 1];
   }
 
-  close(closeOptions: number): void {
+  /**
+   * Test hook: when true, `close` answers `false` and leaves the project —
+   * including `dirty` — untouched, the way a close blocked by a dialog does
+   * on a real host (#443).
+   */
+  refuseClose = false;
+
+  /** As `Project.close(closeOptions)`: false when the close did not happen. */
+  close(closeOptions: number): boolean {
+    if (this.refuseClose) {
+      return false;
+    }
     if (closeOptions !== CloseOptions.DO_NOT_SAVE_CHANGES && this.file !== null) {
       throw new Error("fake projects cannot be saved");
     }
@@ -738,6 +806,7 @@ export class FakeProject {
     this.activeItem = null;
     this.file = null;
     this.dirty = false;
+    return true;
   }
 }
 

@@ -420,6 +420,7 @@ describe("verifyRebuildHost on Windows scopes the census by install (#323)", () 
     recordedAt: "2026-11-01T00:00:00.000Z",
     a8nVersion: "0.0.0-test",
     transport: "script-invocation",
+    phase: "ready",
     host: {
       pid: OLD_PID,
       startedAt: OLD_STARTED_AT,

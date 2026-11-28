@@ -1,0 +1,945 @@
+{
+  "schema": "a8n.poc-drag-alt/v1",
+  "issue": 411,
+  "recordedAt": "2026-11-27T16:01:16.094Z",
+  "install": "/Applications/Adobe After Effects 2027",
+  "plan": "/tmp/poc411/plan-files.json",
+  "steps": [
+    {
+      "name": "preflight",
+      "at": "2026-11-27T16:01:18.573Z",
+      "install": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+      "preexisting": [],
+      "aeCensus": [
+        {
+          "pid": 43160,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects"
+        },
+        {
+          "pid": 43203,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/crashpad_handler"
+        },
+        {
+          "pid": 58376,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+        },
+        {
+          "pid": 58544,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/crashpad_handler"
+        },
+        {
+          "pid": 61219,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/dynamiclinkmanager"
+        },
+        {
+          "pid": 61226,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/TeamProjectsLocalHub.app/Contents/MacOS/TeamProjectsLocalHub"
+        }
+      ],
+      "foreignBaseline": [
+        {
+          "pid": 58376,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+        }
+      ]
+    },
+    {
+      "name": "extension-build",
+      "at": "2026-11-27T16:01:21.016Z",
+      "hostScript": "/tmp/poc411/helpers/a8n-drag-alt-host.jsx"
+    },
+    {
+      "name": "helper-build",
+      "at": "2026-11-27T16:01:21.017Z",
+      "dragBin": "/tmp/poc411/helpers/poc-drag",
+      "axwalkBin": "/tmp/poc411/helpers/poc-axwalk",
+      "compiled": []
+    },
+    {
+      "name": "fixture",
+      "at": "2026-11-27T16:01:21.020Z",
+      "path": "/tmp/poc411/helpers/a8n-poc-fixture.png"
+    },
+    {
+      "name": "attach",
+      "at": "2026-11-27T16:01:25.415Z",
+      "pid": 43160,
+      "info": {
+        "version": "27.0x78",
+        "build": "78"
+      }
+    },
+    {
+      "name": "recovery-target",
+      "at": "2026-11-27T16:01:25.416Z",
+      "pid": 43160
+    },
+    {
+      "name": "ensure-project",
+      "at": "2026-11-27T16:01:28.372Z",
+      "inAe": {
+        "file": null,
+        "items": 0
+      }
+    },
+    {
+      "name": "ensure-comp",
+      "at": "2026-11-27T16:01:30.530Z",
+      "inAe": {
+        "comp": "PoC Comp",
+        "id": 1,
+        "layers": [
+          {
+            "index": 1,
+            "name": "PoC Solid C"
+          },
+          {
+            "index": 2,
+            "name": "PoC Solid B"
+          },
+          {
+            "index": 3,
+            "name": "PoC Solid A"
+          }
+        ]
+      }
+    },
+    {
+      "name": "open-comp-viewer",
+      "at": "2026-11-27T16:01:32.909Z",
+      "inAe": {
+        "opened": "PoC Comp",
+        "id": 1
+      }
+    },
+    {
+      "name": "snapshot-initial",
+      "at": "2026-11-27T16:01:42.605Z",
+      "items": [
+        "PoC Comp",
+        "平面",
+        "PoC Solid A",
+        "PoC Solid B",
+        "PoC Solid C"
+      ],
+      "layers": [
+        "PoC Solid C",
+        "PoC Solid B",
+        "PoC Solid A"
+      ]
+    },
+    {
+      "name": "op-0",
+      "at": "2026-11-27T16:01:44.454Z",
+      "op": "activate",
+      "ok": true,
+      "output": "FRONTMOST-SET"
+    },
+    {
+      "name": "op-1",
+      "at": "2026-11-27T16:01:51.295Z",
+      "op": "wait-visible",
+      "visible": true,
+      "last": {
+        "ownedCount": 6,
+        "mainOnScreen": true,
+        "mainBounds": {
+          "x": 0,
+          "y": 38,
+          "width": 1710,
+          "height": 1074
+        }
+      },
+      "waitedMs": 2873
+    },
+    {
+      "name": "op-2",
+      "at": "2026-11-27T16:01:53.903Z",
+      "op": "sleep",
+      "slept": 2000
+    },
+    {
+      "name": "op-3",
+      "at": "2026-11-27T16:01:54.548Z",
+      "op": "census",
+      "available": true,
+      "reason": null,
+      "onScreen": [
+        {
+          "pid": 43160,
+          "owner": "After Effects",
+          "windowNumber": 5506,
+          "bounds": {
+            "x": 0,
+            "y": 38,
+            "width": 1710,
+            "height": 1074
+          },
+          "layer": 0
+        },
+        {
+          "pid": 58376,
+          "owner": "After Effects",
+          "windowNumber": 5504,
+          "bounds": {
+            "x": 22,
+            "y": 754,
+            "width": 476,
+            "height": 251
+          },
+          "layer": 0
+        },
+        {
+          "pid": 58376,
+          "owner": "After Effects",
+          "windowNumber": 5495,
+          "bounds": {
+            "x": 592,
+            "y": 367,
+            "width": 525,
+            "height": 377
+          },
+          "layer": 0
+        },
+        {
+          "pid": 1961,
+          "owner": "UserNotificationCenter",
+          "windowNumber": 5485,
+          "bounds": {
+            "x": 650,
+            "y": 151,
+            "width": 410,
+            "height": 529
+          },
+          "layer": 8
+        },
+        {
+          "pid": 680,
+          "owner": "壁紙",
+          "windowNumber": 278,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 1112
+          },
+          "layer": -2147483625
+        },
+        {
+          "pid": 734,
+          "owner": "Finder",
+          "windowNumber": 72,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 1112
+          },
+          "layer": -2147483603
+        },
+        {
+          "pid": 654,
+          "owner": "WindowManager",
+          "windowNumber": 20,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 1112
+          },
+          "layer": -2147483624
+        },
+        {
+          "pid": 423,
+          "owner": "Window Server",
+          "windowNumber": 6,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          },
+          "layer": 24
+        },
+        {
+          "pid": 423,
+          "owner": "Window Server",
+          "windowNumber": 3,
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 1112
+          },
+          "layer": -2147483626
+        }
+      ],
+      "ownedAll": [
+        {
+          "windowNumber": 5506,
+          "owner": "After Effects",
+          "bounds": {
+            "x": 0,
+            "y": 38,
+            "width": 1710,
+            "height": 1074
+          },
+          "onScreen": true,
+          "layer": 0
+        },
+        {
+          "windowNumber": 5488,
+          "owner": "After Effects",
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          },
+          "onScreen": false,
+          "layer": 0
+        },
+        {
+          "windowNumber": 5487,
+          "owner": "After Effects",
+          "bounds": {
+            "x": 0,
+            "y": 612,
+            "width": 500,
+            "height": 500
+          },
+          "onScreen": false,
+          "layer": 0
+        },
+        {
+          "windowNumber": 5490,
+          "owner": "After Effects",
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          },
+          "onScreen": false,
+          "layer": 0
+        },
+        {
+          "windowNumber": 5491,
+          "owner": "After Effects",
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          },
+          "onScreen": false,
+          "layer": 0
+        },
+        {
+          "windowNumber": 5489,
+          "owner": "After Effects",
+          "bounds": {
+            "x": 0,
+            "y": 0,
+            "width": 1710,
+            "height": 38
+          },
+          "onScreen": false,
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "name": "f0-layout.png",
+      "at": "2026-11-27T16:01:56.462Z",
+      "op": "screenshot:f0-layout.png",
+      "ok": true,
+      "path": "/tmp/poc411/f0-layout.png"
+    },
+    {
+      "name": "op-5",
+      "at": "2026-11-27T16:02:02.424Z",
+      "op": "readback:baseline",
+      "items": [
+        {
+          "id": 1,
+          "name": "PoC Comp",
+          "type": "undefined"
+        },
+        {
+          "id": 13,
+          "name": "平面",
+          "type": "undefined"
+        },
+        {
+          "id": 14,
+          "name": "PoC Solid A",
+          "type": "undefined"
+        },
+        {
+          "id": 16,
+          "name": "PoC Solid B",
+          "type": "undefined"
+        },
+        {
+          "id": 18,
+          "name": "PoC Solid C",
+          "type": "undefined"
+        }
+      ],
+      "layers": null,
+      "itemNames": [
+        "PoC Comp",
+        "平面",
+        "PoC Solid A",
+        "PoC Solid B",
+        "PoC Solid C"
+      ],
+      "layerNames": [
+        "PoC Solid C",
+        "PoC Solid B",
+        "PoC Solid A"
+      ]
+    },
+    {
+      "name": "op-6",
+      "at": "2026-11-27T16:02:17.588Z",
+      "op": "filedrag:file-vend-fileurl-nodwell",
+      "raw": {
+        "op": "filedrag",
+        "name": "file-vend-fileurl-nodwell",
+        "vend": "fileurl",
+        "from": "150,250",
+        "to": "150,400",
+        "oracle": "project",
+        "settleMs": 1500
+      },
+      "ensureFront": "ok",
+      "gate": {
+        "points": [
+          {
+            "label": "to",
+            "point": {
+              "x": 150,
+              "y": 400
+            },
+            "topmost": {
+              "pid": 43160,
+              "owner": "After Effects",
+              "windowNumber": 5506,
+              "layer": 0
+            },
+            "allMatches": [
+              {
+                "pid": 43160,
+                "owner": "After Effects",
+                "windowNumber": 5506,
+                "layer": 0
+              }
+            ]
+          }
+        ],
+        "pass": true,
+        "fail": null
+      },
+      "argv": [
+        "filedrag",
+        "--file",
+        "/tmp/poc411/helpers/a8n-poc-fixture.png",
+        "--vend",
+        "fileurl",
+        "--from",
+        "150,250",
+        "--to",
+        "150,400",
+        "--steps",
+        "24",
+        "--step-delay-ms",
+        "16",
+        "--dwell-ms",
+        "0"
+      ],
+      "exit": 0,
+      "stdout": "{\"ok\":true,\"mode\":\"filedrag\",\"endedAt\":[150.0,712.0],\"operation\":\"copy\",\"durationMs\":1378,\"vend\":\"fileurl\"}",
+      "stderr": "poc-drag: filedrag starting, file=/tmp/poc411/helpers/a8n-poc-fixture.png from=150.0,250.0 to=150.0,400.0\npoc-drag: window frame=(126.0, 838.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 150.0,250.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 150.0,400.0 dwellMs=0",
+      "receipt": {
+        "ok": true,
+        "mode": "filedrag",
+        "endedAt": [
+          150,
+          712
+        ],
+        "operation": "copy",
+        "durationMs": 1378,
+        "vend": "fileurl"
+      },
+      "oracle": {
+        "projectOrderChanged": true,
+        "projectCountChanged": true,
+        "layerOrderChanged": false,
+        "layerCountChanged": false,
+        "fixturePresent": true,
+        "beforeItems": [
+          "PoC Comp",
+          "平面",
+          "PoC Solid A",
+          "PoC Solid B",
+          "PoC Solid C"
+        ],
+        "afterItems": [
+          "a8n-poc-fixture.png",
+          "PoC Comp",
+          "平面",
+          "PoC Solid A",
+          "PoC Solid B",
+          "PoC Solid C"
+        ],
+        "beforeLayers": [
+          "PoC Solid C",
+          "PoC Solid B",
+          "PoC Solid A"
+        ],
+        "afterLayers": [
+          "PoC Solid C",
+          "PoC Solid B",
+          "PoC Solid A"
+        ]
+      },
+      "oracleWanted": "project"
+    },
+    {
+      "name": "f1-after-fileurl-nodwell.png",
+      "at": "2026-11-27T16:02:19.409Z",
+      "op": "screenshot:f1-after-fileurl-nodwell.png",
+      "ok": true,
+      "path": "/tmp/poc411/f1-after-fileurl-nodwell.png"
+    },
+    {
+      "name": "op-8",
+      "at": "2026-11-27T16:02:35.651Z",
+      "op": "filedrag:file-vend-legacy-nodwell",
+      "raw": {
+        "op": "filedrag",
+        "name": "file-vend-legacy-nodwell",
+        "vend": "legacy",
+        "from": "150,250",
+        "to": "150,400",
+        "oracle": "project",
+        "settleMs": 1500
+      },
+      "ensureFront": "ok",
+      "gate": {
+        "points": [
+          {
+            "label": "to",
+            "point": {
+              "x": 150,
+              "y": 400
+            },
+            "topmost": {
+              "pid": 43160,
+              "owner": "After Effects",
+              "windowNumber": 5506,
+              "layer": 0
+            },
+            "allMatches": [
+              {
+                "pid": 43160,
+                "owner": "After Effects",
+                "windowNumber": 5506,
+                "layer": 0
+              }
+            ]
+          }
+        ],
+        "pass": true,
+        "fail": null
+      },
+      "argv": [
+        "filedrag",
+        "--file",
+        "/tmp/poc411/helpers/a8n-poc-fixture.png",
+        "--vend",
+        "legacy",
+        "--from",
+        "150,250",
+        "--to",
+        "150,400",
+        "--steps",
+        "24",
+        "--step-delay-ms",
+        "16",
+        "--dwell-ms",
+        "0"
+      ],
+      "exit": 0,
+      "stdout": "{\"ok\":true,\"mode\":\"filedrag\",\"endedAt\":[150.0,712.0],\"operation\":\"move\",\"durationMs\":1111,\"vend\":\"legacy\"}",
+      "stderr": "poc-drag: filedrag starting, file=/tmp/poc411/helpers/a8n-poc-fixture.png from=150.0,250.0 to=150.0,400.0\npoc-drag: window frame=(126.0, 838.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 150.0,250.0\npoc-drag: mouseDown received at (24.0, 24.0)\n2026-11-28 01:02:29.750 poc-drag[75498:11949012] 'NSFilenamesPboardType' is not a valid UTI string.  Cannot use an invalid UTI as a type returned from -writeableTypesForPasteboard: in class main.BoardWriter.\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 150.0,400.0 dwellMs=0",
+      "receipt": {
+        "ok": true,
+        "mode": "filedrag",
+        "endedAt": [
+          150,
+          712
+        ],
+        "operation": "move",
+        "durationMs": 1111,
+        "vend": "legacy"
+      },
+      "oracle": {
+        "projectOrderChanged": false,
+        "projectCountChanged": false,
+        "layerOrderChanged": false,
+        "layerCountChanged": false,
+        "fixturePresent": true,
+        "beforeItems": [
+          "a8n-poc-fixture.png",
+          "PoC Comp",
+          "平面",
+          "PoC Solid A",
+          "PoC Solid B",
+          "PoC Solid C"
+        ],
+        "afterItems": [
+          "a8n-poc-fixture.png",
+          "PoC Comp",
+          "平面",
+          "PoC Solid A",
+          "PoC Solid B",
+          "PoC Solid C"
+        ],
+        "beforeLayers": [
+          "PoC Solid C",
+          "PoC Solid B",
+          "PoC Solid A"
+        ],
+        "afterLayers": [
+          "PoC Solid C",
+          "PoC Solid B",
+          "PoC Solid A"
+        ]
+      },
+      "oracleWanted": "project"
+    },
+    {
+      "name": "f2-after-legacy-nodwell.png",
+      "at": "2026-11-27T16:02:39.027Z",
+      "op": "screenshot:f2-after-legacy-nodwell.png",
+      "ok": true,
+      "path": "/tmp/poc411/f2-after-legacy-nodwell.png"
+    },
+    {
+      "name": "op-10",
+      "at": "2026-11-27T16:02:58.286Z",
+      "op": "filedrag:file-vend-fileurl-dwell",
+      "raw": {
+        "op": "filedrag",
+        "name": "file-vend-fileurl-dwell",
+        "vend": "fileurl",
+        "from": "150,250",
+        "to": "150,400",
+        "dwellMs": 1500,
+        "oracle": "project",
+        "settleMs": 1500
+      },
+      "ensureFront": "ok",
+      "gate": {
+        "points": [
+          {
+            "label": "to",
+            "point": {
+              "x": 150,
+              "y": 400
+            },
+            "topmost": {
+              "pid": 43160,
+              "owner": "After Effects",
+              "windowNumber": 5506,
+              "layer": 0
+            },
+            "allMatches": [
+              {
+                "pid": 43160,
+                "owner": "After Effects",
+                "windowNumber": 5506,
+                "layer": 0
+              }
+            ]
+          }
+        ],
+        "pass": true,
+        "fail": null
+      },
+      "argv": [
+        "filedrag",
+        "--file",
+        "/tmp/poc411/helpers/a8n-poc-fixture.png",
+        "--vend",
+        "fileurl",
+        "--from",
+        "150,250",
+        "--to",
+        "150,400",
+        "--steps",
+        "24",
+        "--step-delay-ms",
+        "16",
+        "--dwell-ms",
+        "1500"
+      ],
+      "exit": 0,
+      "stdout": "{\"ok\":true,\"mode\":\"filedrag\",\"endedAt\":[150.0,712.0],\"operation\":\"move\",\"durationMs\":2979,\"vend\":\"fileurl\"}",
+      "stderr": "poc-drag: filedrag starting, file=/tmp/poc411/helpers/a8n-poc-fixture.png from=150.0,250.0 to=150.0,400.0\npoc-drag: window frame=(126.0, 838.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 150.0,250.0\npoc-drag: mouseDown received at (24.0, 24.0)\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 150.0,400.0 dwellMs=1500",
+      "receipt": {
+        "ok": true,
+        "mode": "filedrag",
+        "endedAt": [
+          150,
+          712
+        ],
+        "operation": "move",
+        "durationMs": 2979,
+        "vend": "fileurl"
+      },
+      "oracle": {
+        "projectOrderChanged": false,
+        "projectCountChanged": false,
+        "layerOrderChanged": false,
+        "layerCountChanged": false,
+        "fixturePresent": true,
+        "beforeItems": [
+          "a8n-poc-fixture.png",
+          "PoC Comp",
+          "平面",
+          "PoC Solid A",
+          "PoC Solid B",
+          "PoC Solid C"
+        ],
+        "afterItems": [
+          "a8n-poc-fixture.png",
+          "PoC Comp",
+          "平面",
+          "PoC Solid A",
+          "PoC Solid B",
+          "PoC Solid C"
+        ],
+        "beforeLayers": [
+          "PoC Solid C",
+          "PoC Solid B",
+          "PoC Solid A"
+        ],
+        "afterLayers": [
+          "PoC Solid C",
+          "PoC Solid B",
+          "PoC Solid A"
+        ]
+      },
+      "oracleWanted": "project"
+    },
+    {
+      "name": "f3-after-fileurl-dwell.png",
+      "at": "2026-11-27T16:03:00.335Z",
+      "op": "screenshot:f3-after-fileurl-dwell.png",
+      "ok": true,
+      "path": "/tmp/poc411/f3-after-fileurl-dwell.png"
+    },
+    {
+      "name": "op-12",
+      "at": "2026-11-27T16:03:24.425Z",
+      "op": "filedrag:file-vend-legacy-dwell",
+      "raw": {
+        "op": "filedrag",
+        "name": "file-vend-legacy-dwell",
+        "vend": "legacy",
+        "from": "150,250",
+        "to": "150,400",
+        "dwellMs": 1500,
+        "oracle": "project",
+        "settleMs": 2500
+      },
+      "ensureFront": "ok",
+      "gate": {
+        "points": [
+          {
+            "label": "to",
+            "point": {
+              "x": 150,
+              "y": 400
+            },
+            "topmost": {
+              "pid": 43160,
+              "owner": "After Effects",
+              "windowNumber": 5506,
+              "layer": 0
+            },
+            "allMatches": [
+              {
+                "pid": 43160,
+                "owner": "After Effects",
+                "windowNumber": 5506,
+                "layer": 0
+              }
+            ]
+          }
+        ],
+        "pass": true,
+        "fail": null
+      },
+      "argv": [
+        "filedrag",
+        "--file",
+        "/tmp/poc411/helpers/a8n-poc-fixture.png",
+        "--vend",
+        "legacy",
+        "--from",
+        "150,250",
+        "--to",
+        "150,400",
+        "--steps",
+        "24",
+        "--step-delay-ms",
+        "16",
+        "--dwell-ms",
+        "1500"
+      ],
+      "exit": 0,
+      "stdout": "{\"ok\":true,\"mode\":\"filedrag\",\"endedAt\":[150.0,712.0],\"operation\":\"move\",\"durationMs\":2633,\"vend\":\"legacy\"}",
+      "stderr": "poc-drag: filedrag starting, file=/tmp/poc411/helpers/a8n-poc-fixture.png from=150.0,250.0 to=150.0,400.0\npoc-drag: window frame=(126.0, 838.0, 48.0, 48.0) screen=(0.0, 0.0, 1710.0, 1112.0) visible=true\npoc-drag: posted mouseMoved+leftMouseDown at 150.0,250.0\npoc-drag: mouseDown received at (24.0, 24.0)\n2026-11-28 01:03:10.044 poc-drag[80540:11960662] 'NSFilenamesPboardType' is not a valid UTI string.  Cannot use an invalid UTI as a type returned from -writeableTypesForPasteboard: in class main.BoardWriter.\npoc-drag: beginDraggingSession returned session=true\npoc-drag: posted leftMouseUp at 150.0,400.0 dwellMs=1500",
+      "receipt": {
+        "ok": true,
+        "mode": "filedrag",
+        "endedAt": [
+          150,
+          712
+        ],
+        "operation": "move",
+        "durationMs": 2633,
+        "vend": "legacy"
+      },
+      "oracle": {
+        "projectOrderChanged": false,
+        "projectCountChanged": false,
+        "layerOrderChanged": false,
+        "layerCountChanged": false,
+        "fixturePresent": true,
+        "beforeItems": [
+          "a8n-poc-fixture.png",
+          "PoC Comp",
+          "平面",
+          "PoC Solid A",
+          "PoC Solid B",
+          "PoC Solid C"
+        ],
+        "afterItems": [
+          "a8n-poc-fixture.png",
+          "PoC Comp",
+          "平面",
+          "PoC Solid A",
+          "PoC Solid B",
+          "PoC Solid C"
+        ],
+        "beforeLayers": [
+          "PoC Solid C",
+          "PoC Solid B",
+          "PoC Solid A"
+        ],
+        "afterLayers": [
+          "PoC Solid C",
+          "PoC Solid B",
+          "PoC Solid A"
+        ]
+      },
+      "oracleWanted": "project"
+    },
+    {
+      "name": "f4-after-legacy-dwell.png",
+      "at": "2026-11-27T16:03:59.018Z",
+      "op": "screenshot:f4-after-legacy-dwell.png",
+      "ok": true,
+      "path": "/tmp/poc411/f4-after-legacy-dwell.png"
+    },
+    {
+      "name": "f-final.png",
+      "at": "2026-11-27T16:04:19.516Z",
+      "op": "screenshot:f-final.png",
+      "ok": true,
+      "path": "/tmp/poc411/f-final.png"
+    },
+    {
+      "name": "screenshot-final",
+      "at": "2026-11-27T16:04:22.668Z",
+      "ok": true,
+      "path": "/tmp/poc411/drag-alt-final.png"
+    },
+    {
+      "name": "window-capture-5506",
+      "at": "2026-11-27T16:04:24.517Z",
+      "ok": true,
+      "path": "/tmp/poc411/alt-window-5506.png",
+      "windowNumber": 5506
+    },
+    {
+      "name": "close",
+      "at": "2026-11-27T16:04:24.518Z",
+      "closed": {
+        "quit": false,
+        "ownership": {
+          "kind": "attached",
+          "evidence": "attached to pid 43160 (the process running since 2026-11-27T15:56:12.000Z); it was already running and is not this session's to quit in the session of rebui (uid 501, asid 100021)"
+        },
+        "reason": "not quitting a host this session does not own (attached to pid 43160 (the process running since 2026-11-27T15:56:12.000Z); it was already running and is not this session's to quit in the session of rebui (uid 501, asid 100021))"
+      }
+    },
+    {
+      "name": "attach-quit",
+      "at": "2026-11-27T16:04:39.551Z",
+      "pid": 43160,
+      "sigterm": true
+    },
+    {
+      "name": "postflight-census",
+      "at": "2026-11-27T16:04:40.393Z",
+      "remainingInScope": [],
+      "aeCensus": [
+        {
+          "pid": 43203,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/crashpad_handler"
+        },
+        {
+          "pid": 58376,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+        },
+        {
+          "pid": 58544,
+          "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/crashpad_handler"
+        },
+        {
+          "pid": 61219,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/dynamiclinkmanager"
+        },
+        {
+          "pid": 61226,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/TeamProjectsLocalHub.app/Contents/MacOS/TeamProjectsLocalHub"
+        }
+      ]
+    }
+  ],
+  "finalSnapshot": {
+    "items": [
+      "a8n-poc-fixture.png",
+      "PoC Comp",
+      "平面",
+      "PoC Solid A",
+      "PoC Solid B",
+      "PoC Solid C"
+    ],
+    "layers": [
+      "PoC Solid C",
+      "PoC Solid B",
+      "PoC Solid A"
+    ]
+  },
+  "aborted": null,
+  "halted": null,
+  "outcome": "completed"
+}

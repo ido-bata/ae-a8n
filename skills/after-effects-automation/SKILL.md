@@ -37,7 +37,9 @@ equivalent — see `docs/isolated-testing.md`.
    scripts that launch it concurrently.
 6. **Do not leave long-running work inside AE.** A script that runs for
    seconds lets other installed extensions run inside it; one has been seen to
-   raise a modal alert that blocks AE until a person clicks it.
+   raise a modal alert that blocks AE until a person clicks it. If your own
+   flow raises a dialog on purpose, declare it with `ae.expectModal(...)`
+   (below) instead of letting the standard recovery quarantine it.
 
 ## macOS: UIフォーカスとモーダルダイアログ
 
@@ -193,7 +195,9 @@ timed out (AE blocked, often by a dialog).
 with `op`, `status` (`ok`/`error`/`timeout`), `durationMs`, `args`, `result`
 or `error`. `ae.traceEvents` is the same in memory. The session directory
 (`dirname(ae.tracePath)`) also holds every request and result envelope
-(`inbox/`, `outbox/`) and renders (`artifacts/`). Read these before
+(`inbox/`, `outbox/`) and renders (`artifacts/`). A GUI recovery attempt
+adds `artifacts/recovery-<id>.evidence.json` (the manifest described
+below) plus its screenshots. Read these before
 re-running anything. A failed operation currently appears twice in the trace
 (#20); count failures by `seq` pairs, not rows.
 
@@ -221,9 +225,22 @@ work:
   project it is. Do not call `openProject` again for this; after edits that
   raises `UnsavedChangesError`, and passing `discard` to get past it throws
   your work away.
-- If calls keep timing out, AE is probably blocked by a modal dialog. Scripts
-  cannot dismiss it. Stop, tell the human what you saw (trace + the last
-  error), and do not kill AE.
+- If calls keep timing out, AE is probably blocked by a modal dialog. The
+  standard path already tried: after a timeout the built-in recovery
+  inspects the blocking window, presses only a measured safe class
+  (`ae-a8n ui.alert`), and otherwise refuses or quarantines — it never
+  clicks sign-in/licence or unmeasured windows, and it never resends your
+  request. Check `ae.traceEvents` for the `session.recover` row and the
+  op's `result.hostCondition` / `result.anomaly`, and the evidence
+  manifest at `artifacts/recovery-<id>.evidence.json` in the session
+  directory (before/after screenshots, the window seen, what could not be
+  captured). If your own test raised the dialog, register it up front with
+  `ae.expectModal({ name, matches, resolve? })` — `resolve` may press one
+  declared button or `wait` (default) — or launch with
+  `expectedModals: [...]`. `session.recover: false` opts the whole
+  recovery out; it is on by default for the built-in transport. Only when
+  the modal still needs a person: stop, tell the human what you saw
+  (trace + manifest + last error), and do not kill AE.
 
 ## Not covered
 

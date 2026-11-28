@@ -1,0 +1,27 @@
+{
+  "label": "s8-a",
+  "scenarioId": "RC-S8",
+  "verdict": "fail",
+  "steps": [
+    {
+      "stepId": "launch+extension",
+      "startedAt": "2026-11-28T05:32:32.613Z",
+      "durationMs": 216620,
+      "expected": "owned launch AE 2027 + extension",
+      "actual": {
+        "error": "AfterEffectsError",
+        "message": "After Effects was started (pid 54250, started 2026-11-28T05:32:39.000Z, /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 146412ms; the After Effects process is still running but did not answer; the call took 178510ms in total. It is still running, and this session cannot prove it may quit it, so it was left running: q"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "AfterEffectsError",
+        "message": "After Effects was started (pid 54250, started 2026-11-28T05:32:39.000Z, /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 146412ms; the After Effects process is still running but did not answer; the call took 178510ms in total. It is still running, and this session cannot prove it may quit it, so it was left running: q"
+      }
+    }
+  ],
+  "cleanup": {
+    "verdict": "unverifiable",
+    "ref": null
+  },
+  "sessionRoot": "/tmp/rc436-sessions/s8-a"
+}

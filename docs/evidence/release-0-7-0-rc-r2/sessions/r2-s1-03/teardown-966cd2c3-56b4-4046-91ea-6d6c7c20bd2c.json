@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "kind": "ae-a8n.teardown/v1",
+  "sessionId": "966cd2c3-56b4-4046-91ea-6d6c7c20bd2c",
+  "sessionRoot": "/tmp/rc436r2-sessions/r2-s1-03",
+  "evaluatedAt": "2026-11-28T07:15:27.234Z",
+  "verdict": "residue",
+  "items": [
+    {
+      "area": "process",
+      "verdict": "residue",
+      "safetyRelevant": true,
+      "detail": "session close failed: After Effects did not exit within 60000 ms of app.quit; it was left running; the process still owns window(s): \"プロジェクトを開く\", \"名称未設定プロジェクト\"; the recorded After Effects (pid 40093, started 2026-11-28T07:08:03.000Z) is still running at teardown — an owned host was left running after app.quit. Recover through the ownership-proven path: AfterEffects.attach + rebuild, or AfterEffects.terminate with permit \"terminate-owned-host\"; never signal the pid directly."
+    },
+    {
+      "area": "input",
+      "verdict": "clean",
+      "detail": "no input operations ran this session"
+    },
+    {
+      "area": "leases",
+      "verdict": "clean",
+      "detail": "0 audit row(s) for pid 40093: 0 acquire, 0 release/reap"
+    },
+    {
+      "area": "recorder",
+      "verdict": "clean",
+      "detail": "0 segment(s); no recorder residue reported"
+    },
+    {
+      "area": "supervision",
+      "verdict": "clean",
+      "detail": "monitor lease free; supervision.json retained as durable state (phase=running) — it expires per its TTL and is required by resume/rebuild, not session residue"
+    },
+    {
+      "area": "artifacts",
+      "verdict": "clean",
+      "detail": "artifacts retained at /tmp/rc436r2-sessions/r2-s1-03/artifacts (evidence, not residue)"
+    }
+  ],
+  "reportPath": null
+}

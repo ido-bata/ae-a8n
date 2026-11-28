@@ -11,8 +11,14 @@
  * `status` prints one report; `watch` polls the same durable document and
  * prints a line each time the phase or the evaluated observation health
  * changes — `running → blocked → recovering → resumed`, a slide into
- * `needs-human`/`quarantined`, or the monitor going lost. It is still
- * read-only: watching writes nothing.
+ * `needs-human`/`quarantined`, or the monitor going lost.
+ *
+ * `terminate` (#451) is the ONE mutating command in this group: it wraps
+ * the public `AfterEffects.terminate` path (`terminateSessionHost`)
+ * for the session root it is given, under the same explicit
+ * `permit: "terminate-owned-host"` consent the API requires — passed as
+ * `--permit terminate-owned-host`, never defaulted. Everything else here
+ * stays read-only.
  *
  * Honesty is the contract: absent, corrupt and stale-monitor states are
  * reported as `unavailable`/`monitor-lost`, never as a clean bill, and
@@ -28,7 +34,21 @@ import {
   type SupervisionPhase,
   type SupervisionReport,
 } from "../supervision/index.js";
-import { buildEnvelope, type CliEnvelope, type NextAction } from "./envelope.js";
+import { terminateSessionHost } from "../api/terminate.js";
+import { AfterEffectsError } from "../api/errors.js";
+import {
+  TERMINATE_PERMIT,
+  type TerminateOptions,
+  type TerminateReport,
+} from "../api/types.js";
+import {
+  humanAction,
+  inspectAction,
+  nextAction,
+  type NextAction,
+} from "../supervision/next-actions.js";
+import { errorMessage } from "../errors.js";
+import { buildEnvelope, type CliEnvelope } from "./envelope.js";
 import { EXIT, type ExitCode } from "./exit-code.js";
 
 const PLATFORM = {
@@ -41,28 +61,38 @@ const PLATFORM = {
 const LOCAL_TARGET = { name: "local", isolation: "session" } as const;
 
 export const SUPERVISE_HELP = [
-  "Usage: ae-a8n supervise <status|watch> --session-root <dir> [--json] [options]",
+  "Usage: ae-a8n supervise <status|watch|terminate> --session-root <dir> [--json] [options]",
   "",
   "Commands:",
-  "  status    Print the durable supervision report for a session directory",
-  "  watch     Poll the report and print each phase/health transition",
+  "  status     Print the durable supervision report for a session directory",
+  "  watch      Poll the report and print each phase/health transition",
+  "  terminate  Signal the recorded owned After Effects host to end",
   "",
   "Options:",
   "  --session-root <dir>   Session directory containing supervision.json",
   "  --interval-ms <ms>     watch poll interval (default 2000, minimum 50)",
+  "  --permit <permit>      terminate: must be \"terminate-owned-host\"",
+  "  --force                terminate: also permit the force kill when the",
+  "                         graceful request does not end the process",
   "  --json                 status: one JSON envelope; watch: NDJSON, one",
   "                         event per line, printed only on change",
   "  --help, -h             Show this help",
   "",
-  "Both commands are read-only: they never start a monitor, never touch",
-  "After Effects, and never mutate the session they report on.",
+  "status and watch are read-only: they never start a monitor, never touch",
+  "After Effects, and never mutate the session they report on. `terminate`",
+  "is the exception — it is the CLI surface of `AfterEffects.terminate` and",
+  "signals the process the session's launch provenance recorded, graceful-",
+  "first, only after every ownership proof holds. It still refuses without",
+  "--permit terminate-owned-host, and rebuild is the separate next step.",
   "`unavailable` means no trustworthy state exists; it is not a healthy",
   "answer. `monitor-lost` means the observer stopped — the target's GUI",
   "state is unknown, not fine.",
   "",
-  "Exit codes: 0 running/resumed; 3 blocked/recovering/needs-human;",
-  "4 quarantined; 6 unknown (state absent, corrupt, or monitor-lost).",
-  "watch exits with the last observed report's code when interrupted.",
+  "Exit codes: 0 running/resumed (or host proven gone); 3 blocked/",
+  "recovering/needs-human or a surviving host; 4 quarantined or a refused",
+  "terminate; 6 unknown (state absent, corrupt, monitor-lost, or an",
+  "unproven disappearance). watch exits with the last observed report's",
+  "code when interrupted.",
 ].join("\n");
 
 export type SuperviseCommandResult = { readonly exitCode: number };
@@ -75,6 +105,14 @@ type Deps = {
   readonly sleep?: (ms: number) => Promise<void>;
   /** Test seam: bounds the watch loop; production watches until SIGINT. */
   readonly maxWatchTicks?: number;
+  /**
+   * Test seam: replaces the terminate call `supervise terminate` makes.
+   * Production uses `terminateSessionHost` — the same body
+   * `AfterEffects.terminate` runs.
+   */
+  readonly terminate?: (
+    options: TerminateOptions,
+  ) => Promise<TerminateReport>;
 };
 
 type Parsed =
@@ -84,6 +122,13 @@ type Parsed =
       readonly sessionRoot: string;
       readonly json: boolean;
       readonly intervalMs: number;
+    }
+  | {
+      readonly ok: true;
+      readonly command: "terminate";
+      readonly sessionRoot: string;
+      readonly json: boolean;
+      readonly force: boolean;
     }
   | { readonly ok: false; readonly error: string; readonly json: boolean };
 
@@ -101,7 +146,7 @@ function parsePositiveInt(raw: string): number | null {
 function parseSuperviseArgs(argv: readonly string[]): Parsed {
   const wantsJson = argv.includes("--json");
   const [head, ...rest] = argv;
-  if (head !== "status" && head !== "watch") {
+  if (head !== "status" && head !== "watch" && head !== "terminate") {
     return {
       ok: false,
       error:
@@ -114,11 +159,20 @@ function parseSuperviseArgs(argv: readonly string[]): Parsed {
   let sessionRoot: string | null = null;
   let json = wantsJson;
   let intervalMs = DEFAULT_WATCH_INTERVAL_MS;
+  let force = false;
+  let permit: string | null = null;
   for (let index = 0; index < rest.length; index += 1) {
     const raw = rest[index];
     if (raw === undefined) break;
     if (raw === "--json") {
       json = true;
+      continue;
+    }
+    if (raw === "--force") {
+      if (head !== "terminate") {
+        return { ok: false, error: "--force is only valid for terminate", json };
+      }
+      force = true;
       continue;
     }
     const equals = raw.indexOf("=");
@@ -138,6 +192,18 @@ function parseSuperviseArgs(argv: readonly string[]): Parsed {
       intervalMs = parsed;
       continue;
     }
+    if (name === "--permit") {
+      if (head !== "terminate") {
+        return { ok: false, error: "--permit is only valid for terminate", json };
+      }
+      const value = inline ?? rest[index + 1];
+      if (value === undefined || value.length === 0 || (inline === undefined && value.startsWith("--"))) {
+        return { ok: false, error: "--permit needs a value", json };
+      }
+      if (inline === undefined) index += 1;
+      permit = value;
+      continue;
+    }
     if (name !== "--session-root") {
       return { ok: false, error: `unknown option ${name}`, json };
     }
@@ -150,6 +216,19 @@ function parseSuperviseArgs(argv: readonly string[]): Parsed {
   }
   if (sessionRoot === null) {
     return { ok: false, error: `${head} needs --session-root <dir>`, json };
+  }
+  if (head === "terminate") {
+    // The consent is a literal, checked at the boundary: a missing or
+    // wrong permit is a usage error, never silently forwarded to an API
+    // that would refuse it anyway.
+    if (permit !== TERMINATE_PERMIT) {
+      return {
+        ok: false,
+        error: `terminate needs --permit ${TERMINATE_PERMIT}`,
+        json,
+      };
+    }
+    return { ok: true, command: "terminate", sessionRoot, json, force };
   }
   return { ok: true, command: head, sessionRoot, json, intervalMs };
 }
@@ -178,50 +257,6 @@ function exitFor(report: SupervisionReport): { status: CliEnvelope["status"]; ex
     case "quarantined":
       return { status: "refused", exitCode: EXIT.refused };
   }
-}
-
-function nextActionsFor(report: SupervisionReport): NextAction[] {
-  if (report.status !== "observed") {
-    return [
-      {
-        kind: "human",
-        code: "supervision.unavailable",
-        action:
-          "No trustworthy supervision state exists for this session root. " +
-          "Confirm the directory is the session's own sessionRoot; if a session is live, its monitor may not have started.",
-      },
-    ];
-  }
-  const doc = report.doc;
-  if (doc.phase === "needs-human" || doc.phase === "quarantined") {
-    const windows = doc.blocking?.windows ?? [];
-    const detail =
-      windows.length > 0
-        ? windows.map((w) => w.title || w.dialogClass || w.role).join(", ")
-        : (doc.blocking?.detail ?? doc.phase);
-    return [
-      {
-        kind: "human",
-        code: `supervision.${doc.phase}`,
-        action:
-          `After Effects needs a human: ${detail}. ` +
-          "Resolve it in the After Effects window, then re-run `ae-a8n supervise status` — " +
-          "automation never presses unmeasured dialogs.",
-      },
-    ];
-  }
-  if (doc.phase === "blocked" || doc.phase === "recovering") {
-    return [
-      {
-        kind: "human",
-        code: "supervision.blocked",
-        action:
-          `After Effects is ${doc.phase}: ${doc.blocking?.detail ?? "blocking state observed"}. ` +
-          "Wait for recovery or inspect `ae-a8n supervise status` again; the wait is bounded by the phase deadline.",
-      },
-    ];
-  }
-  return [];
 }
 
 function renderHuman(envelope: CliEnvelope): string {
@@ -397,6 +432,209 @@ async function watchSupervision(
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* terminate                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The exit code is the terminate report's honesty, not the command's:
+ * a proven-gone host is `ok` (rebuild may proceed), a survivor is
+ * `blocked` (the host is still alive — nothing was claimed), and an
+ * unproven disappearance is `unknown`.
+ */
+function terminateExitFor(
+  report: TerminateReport,
+): { status: CliEnvelope["status"]; exitCode: ExitCode } {
+  switch (report.outcome) {
+    case "terminated":
+    case "already-gone":
+      return { status: "ok", exitCode: EXIT.ok };
+    case "survived":
+      return { status: "blocked", exitCode: EXIT.blocked };
+    case "unproven":
+      return { status: "unknown", exitCode: EXIT.unknown };
+  }
+}
+
+/**
+ * The machine-readable guidance a terminate report implies (#341/#451):
+ * proven disappearance names the permitted rebuild; a survivor and an
+ * unproven disappearance name inspection and a human answer instead —
+ * never a resend or an assumed death.
+ */
+function terminateNextActions(report: TerminateReport): readonly NextAction[] {
+  const OP = "session.terminate";
+  if (report.outcome === "terminated" || report.outcome === "already-gone") {
+    return [
+      nextAction({
+        kind: "automatic",
+        allowed: true,
+        code: "session.rebuild",
+        reason: { code: "permitted" },
+        action:
+          "The recorded host's disappearance is proven: continue with " +
+          "`AfterEffects.rebuild({ sessionRoot })` to bring the session " +
+          "back on a new generation.",
+      }),
+    ];
+  }
+  if (report.outcome === "survived") {
+    return [
+      inspectAction(
+        OP,
+        "Inspect the surviving After Effects process and the session's supervision document before deciding whether to re-run terminate (optionally with --force) or resolve it by hand.",
+      ),
+      nextAction({
+        kind: "automatic",
+        allowed: false,
+        code: "session.rebuild",
+        reason: { code: "session-policy" },
+        action:
+          "Rebuild is refused while the recorded host is proven alive; " +
+          "resolve the surviving process first — terminate never claims " +
+          "a death the census did not prove.",
+      }),
+    ];
+  }
+  return [
+    inspectAction(
+      OP,
+      "Read the launch-provenance record and the supervision document in the session root; the process census could not prove the recorded host is gone.",
+    ),
+    humanAction(
+      OP,
+      "evidence-unavailable",
+      "Disappearance could not be proven (the census was unreadable or the environment drifted); a human decides whether the host is really gone before any rebuild.",
+    ),
+  ];
+}
+
+function renderTerminateHuman(envelope: CliEnvelope): string {
+  const lines: string[] = [];
+  lines.push(`ae-a8n supervise terminate: ${envelope.status} (exit ${envelope.exitCode})`);
+  const facts = envelope.facts as TerminateReport | undefined;
+  if (facts !== undefined && "outcome" in facts) {
+    lines.push(`  outcome: ${facts.outcome} (pid ${facts.pid}, method ${facts.method})`);
+    lines.push(`  disappearance proven: ${facts.disappearanceProven}`);
+    lines.push(`  supervision: ${facts.supervision}${facts.phase === null ? "" : ` (phase ${facts.phase})`}`);
+    for (const entry of facts.evidence) {
+      lines.push(`    - ${entry}`);
+    }
+  }
+  if (envelope.nextActions.length > 0) {
+    lines.push("next:");
+    for (const action of envelope.nextActions) {
+      lines.push(`  - [${action.kind}${action.allowed ? "" : ", withheld"}] ${action.action}`);
+    }
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+async function runSuperviseTerminate(
+  sessionRoot: string,
+  options: { readonly json: boolean; readonly force: boolean },
+  deps: Deps,
+  writeOut: (text: string) => void,
+  writeErr: (text: string) => void,
+  now: () => Date,
+  startedAt: Date,
+): Promise<SuperviseCommandResult> {
+  const terminate = deps.terminate ?? terminateSessionHost;
+  const emitTerminate = (
+    status: CliEnvelope["status"],
+    exitCode: ExitCode,
+    facts: unknown,
+    nextActions: readonly NextAction[],
+    notice?: string,
+  ): SuperviseCommandResult => {
+    const envelope = buildEnvelope({
+      command: "supervise",
+      status,
+      exitCode,
+      startedAt,
+      finishedAt: now(),
+      platform: PLATFORM,
+      target: LOCAL_TARGET,
+      checks: [],
+      facts,
+      nextActions,
+      ...(notice === undefined ? {} : { notice }),
+    });
+    if (options.json) {
+      writeOut(`${JSON.stringify(envelope, null, 2)}\n`);
+    } else {
+      writeOut(renderTerminateHuman(envelope));
+    }
+    return { exitCode };
+  };
+
+  let report: TerminateReport;
+  try {
+    report = await terminate({
+      sessionRoot: resolve(sessionRoot),
+      permit: TERMINATE_PERMIT,
+      ...(options.force ? { force: true } : {}),
+    });
+  } catch (error) {
+    if (error instanceof AfterEffectsError) {
+      // Every terminate gate refusal is an AfterEffectsError carrying its
+      // own nextActions: surface them verbatim, never re-worded.
+      const actions = error.nextActions ?? [];
+      if (options.json) {
+        writeOut(
+          `${JSON.stringify(
+            buildEnvelope({
+              command: "supervise",
+              status: "refused",
+              exitCode: EXIT.refused,
+              startedAt,
+              finishedAt: now(),
+              platform: PLATFORM,
+              target: LOCAL_TARGET,
+              checks: [],
+              facts: { error: error.message, code: error.code ?? null },
+              nextActions: actions,
+            }),
+            null,
+            2,
+          )}\n`,
+        );
+      } else {
+        writeErr(`ae-a8n supervise terminate: refused — ${error.message}\n`);
+      }
+      return { exitCode: EXIT.refused };
+    }
+    const message = errorMessage(error);
+    if (options.json) {
+      writeOut(
+        `${JSON.stringify(
+          buildEnvelope({
+            command: "supervise",
+            status: "failed",
+            exitCode: EXIT.failed,
+            startedAt,
+            finishedAt: now(),
+            platform: PLATFORM,
+            target: LOCAL_TARGET,
+            checks: [],
+            facts: { error: message },
+            nextActions: [],
+            notice: message,
+          }),
+          null,
+          2,
+        )}\n`,
+      );
+    } else {
+      writeErr(`ae-a8n supervise terminate: failed — ${message}\n`);
+    }
+    return { exitCode: EXIT.failed };
+  }
+
+  const verdict = terminateExitFor(report);
+  return emitTerminate(verdict.status, verdict.exitCode, report, terminateNextActions(report));
+}
+
 function usageFailure(
   error: string,
   json: boolean,
@@ -465,6 +703,18 @@ export async function runSuperviseCommand(
     );
   }
 
+  if (parsed.command === "terminate") {
+    return runSuperviseTerminate(
+      parsed.sessionRoot,
+      { json: parsed.json, force: parsed.force },
+      deps,
+      writeOut,
+      writeErr,
+      now,
+      startedAt,
+    );
+  }
+
   const report = supervisionReport(resolve(parsed.sessionRoot), { now: now() });
   const verdict = exitFor(report);
   const envelope = buildEnvelope({
@@ -477,7 +727,9 @@ export async function runSuperviseCommand(
     target: LOCAL_TARGET,
     checks: [],
     facts: report,
-    nextActions: nextActionsFor(report),
+    // The envelope's nextActions are the report's own (#341): the same
+    // machine-readable guidance `ae.supervisionState()` returns.
+    nextActions: report.nextActions,
   });
   if (parsed.json) {
     writeOut(`${JSON.stringify(envelope, null, 2)}\n`);

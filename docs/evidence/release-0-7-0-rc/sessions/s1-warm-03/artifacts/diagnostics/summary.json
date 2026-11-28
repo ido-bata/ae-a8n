@@ -1,0 +1,98 @@
+{
+  "collectedAt": "2026-11-28T04:49:05.196Z",
+  "sessionRoot": "/tmp/rc436-sessions/s1-warm-03",
+  "artifactsDir": "/tmp/rc436-sessions/s1-warm-03/artifacts",
+  "bundleDir": "/tmp/rc436-sessions/s1-warm-03/artifacts/diagnostics",
+  "host": {
+    "state": "alive",
+    "ownership": {
+      "kind": "owned",
+      "evidence": "pid 39328 is still the only instance"
+    },
+    "pid": 39328,
+    "transport": "script-invocation"
+  },
+  "crashReports": [],
+  "logs": [
+    {
+      "bundlePath": "/tmp/rc436-sessions/s1-warm-03/artifacts/diagnostics/logs/After_Effects_2026-11-28.log",
+      "sourcePath": "/Users/rebui/Library/Logs/Adobe/GrowthSDK/Production/After Effects_2026-11-28.log",
+      "bytes": 262144,
+      "truncated": true,
+      "attribution": "app"
+    },
+    {
+      "bundlePath": "/tmp/rc436-sessions/s1-warm-03/artifacts/diagnostics/logs/b9feb0c5-900b-4478-3791-37112e44af81.envelope",
+      "sourcePath": "/Users/rebui/Library/Caches/Adobe/After Effects/27.0/SentryIO-db/external/b9feb0c5-900b-4478-3791-37112e44af81.envelope",
+      "bytes": 311,
+      "truncated": false,
+      "attribution": "app"
+    },
+    {
+      "bundlePath": "/tmp/rc436-sessions/s1-warm-03/artifacts/diagnostics/logs/__sentry-event",
+      "sourcePath": "/Users/rebui/Library/Caches/Adobe/After Effects/27.0/SentryIO-db/bb7eec4e-c4cd-4c40-6439-0d190d448c0b.run/__sentry-event",
+      "bytes": 1701,
+      "truncated": false,
+      "attribution": "app"
+    },
+    {
+      "bundlePath": "/tmp/rc436-sessions/s1-warm-03/artifacts/diagnostics/logs/__sentry-breadcrumb1",
+      "sourcePath": "/Users/rebui/Library/Caches/Adobe/After Effects/27.0/SentryIO-db/bb7eec4e-c4cd-4c40-6439-0d190d448c0b.run/__sentry-breadcrumb1",
+      "bytes": 8781,
+      "truncated": false,
+      "attribution": "app"
+    },
+    {
+      "bundlePath": "/tmp/rc436-sessions/s1-warm-03/artifacts/diagnostics/logs/UXPLogs_2026-11-28_13-45-16_301733.log",
+      "sourcePath": "/Users/rebui/Library/Logs/Adobe/Adobe After Effects 2027/UXPLogs_2026-11-28_13-45-16_301733.log",
+      "bytes": 33228,
+      "truncated": false,
+      "attribution": "app"
+    },
+    {
+      "bundlePath": "/tmp/rc436-sessions/s1-warm-03/artifacts/diagnostics/logs/session.json",
+      "sourcePath": "/Users/rebui/Library/Caches/Adobe/After Effects/27.0/SentryIO-db/bb7eec4e-c4cd-4c40-6439-0d190d448c0b.run/session.json",
+      "bytes": 225,
+      "truncated": false,
+      "attribution": "app"
+    },
+    {
+      "bundlePath": "/tmp/rc436-sessions/s1-warm-03/artifacts/diagnostics/logs/Adobe_PDFLFonts.lst",
+      "sourcePath": "/Users/rebui/Library/Caches/Adobe/After Effects/27.0/Typesupport/Adobe_PDFLFonts.lst",
+      "bytes": 14238,
+      "truncated": false,
+      "attribution": "app"
+    },
+    {
+      "bundlePath": "/tmp/rc436-sessions/s1-warm-03/artifacts/diagnostics/logs/bb7eec4e-c4cd-4c40-6439-0d190d448c0b.run.lock",
+      "sourcePath": "/Users/rebui/Library/Caches/Adobe/After Effects/27.0/SentryIO-db/bb7eec4e-c4cd-4c40-6439-0d190d448c0b.run.lock",
+      "bytes": 0,
+      "truncated": false,
+      "attribution": "app"
+    },
+    {
+      "bundlePath": "/tmp/rc436-sessions/s1-warm-03/artifacts/diagnostics/logs/settings.dat",
+      "sourcePath": "/Users/rebui/Library/Caches/Adobe/After Effects/27.0/SentryIO-db/settings.dat",
+      "bytes": 40,
+      "truncated": false,
+      "attribution": "app"
+    },
+    {
+      "bundlePath": "/tmp/rc436-sessions/s1-warm-03/artifacts/diagnostics/logs/__sentry-breadcrumb2",
+      "sourcePath": "/Users/rebui/Library/Caches/Adobe/After Effects/27.0/SentryIO-db/bb7eec4e-c4cd-4c40-6439-0d190d448c0b.run/__sentry-breadcrumb2",
+      "bytes": 0,
+      "truncated": false,
+      "attribution": "app"
+    }
+  ],
+  "trace": {
+    "sourcePath": "/tmp/rc436-sessions/s1-warm-03/trace.jsonl",
+    "bundlePath": "/tmp/rc436-sessions/s1-warm-03/artifacts/diagnostics/trace.jsonl",
+    "events": 15,
+    "truncated": false
+  },
+  "notes": [
+    "the diagnostics bundle is unsanitised: collected files can contain user names, absolute paths, project names and serial numbers. It is written only under this session's artifact directory and is never uploaded — review it before sharing.",
+    "no crash reports matched the After Effects binaries and the session window; a kill or a clean quit leaves none either, so an empty list is not evidence of how the host ended"
+  ]
+}

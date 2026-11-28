@@ -366,28 +366,45 @@ export function startInSession(
   target: MacSession,
   command: string,
   args: readonly string[],
-  options: { readonly cwd?: string } = {},
+  options: {
+    readonly cwd?: string;
+    /**
+     * Receives stderr chunks when given; without it stderr is discarded.
+     * The recording backend (#382) needs helper diagnostics for honest
+     * failure reports — stdout stays ignored either way.
+     */
+    readonly onStderr?: (chunk: string) => void;
+  } = {},
 ): ChildProcess {
+  const stdio: ["ignore", "ignore", "pipe"] | "ignore" = options.onStderr === undefined
+    ? "ignore"
+    : ["ignore", "ignore", "pipe"];
+  let child: ChildProcess;
   if (isInsideSession(target)) {
-    return spawn(command, [...args], {
+    child = spawn(command, [...args], {
       cwd: options.cwd ?? "/",
       detached: true,
-      stdio: "ignore",
+      stdio,
     });
-  }
-  if (isRoot()) {
-    return spawn("launchctl", ["asuser", String(target.uid), command, ...args], {
+  } else if (isRoot()) {
+    child = spawn("launchctl", ["asuser", String(target.uid), command, ...args], {
       cwd: options.cwd ?? "/",
       detached: true,
-      stdio: "ignore",
+      stdio,
     });
+  } else {
+    throw new MacSessionError(
+      `cannot start ${command} in the session of ${target.username} (uid ${target.uid}): this process runs as ` +
+        `uid ${currentSession().uid} and is not root, so it cannot enter another user's session. ` +
+        "Run the test from inside that user's session, or as root with launchctl asuser. " +
+        "Nothing was started in the console session.",
+    );
   }
-  throw new MacSessionError(
-    `cannot start ${command} in the session of ${target.username} (uid ${target.uid}): this process runs as ` +
-      `uid ${currentSession().uid} and is not root, so it cannot enter another user's session. ` +
-      "Run the test from inside that user's session, or as root with launchctl asuser. " +
-      "Nothing was started in the console session.",
-  );
+  if (options.onStderr !== undefined) {
+    child.stderr?.setEncoding("utf-8");
+    child.stderr?.on("data", (chunk: string) => options.onStderr?.(chunk));
+  }
+  return child;
 }
 
 function run(

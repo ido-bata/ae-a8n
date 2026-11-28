@@ -1,0 +1,48 @@
+{
+  "ok": false,
+  "error": {
+    "name": "AfterEffectsError",
+    "message": "After Effects was started (pid 37622, started 2026-11-28T10:08:43.000Z, /Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 159908ms; the After Effects process is still running but did not answer; the call took 166613ms in total. Readiness: timeout — the host process is present but never answered within the readiness budget; the window census reports 6 window(s) for the pid (0 on-screen) that the accessibility listing ",
+    "readiness": null
+  },
+  "provenance": null,
+  "supervision": {
+    "schemaVersion": "ae-a8n.supervision/v1",
+    "sessionId": null,
+    "phase": "running",
+    "observationHealth": "degraded",
+    "blocking": null,
+    "pendingRequests": [
+      {
+        "id": "033a1ed8-068e-4ff2-8de3-fa70fc3baee8",
+        "method": "app.info",
+        "since": "2026-11-28T10:08:59.179Z",
+        "state": "in-flight",
+        "transport": "script-invocation"
+      }
+    ],
+    "enteredAt": "2026-11-28T10:08:45.935Z",
+    "deadline": null,
+    "evidence": [
+      "probe-degraded: AX tree unserviceable: WindowServer reports 1 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+      "probe-degraded: AX tree unserviceable: WindowServer reports 2 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+      "probe-degraded: AX tree unserviceable: WindowServer reports 6 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred"
+    ],
+    "monitor": {
+      "ownerId": "ae-a8n-session",
+      "pid": 27560,
+      "pidStart": null,
+      "acquiredAt": "2026-11-28T10:08:45.922Z",
+      "heartbeatAt": "2026-11-28T10:11:32.530Z"
+    },
+    "history": [
+      {
+        "from": "init",
+        "to": "running",
+        "at": "2026-11-28T10:08:45.935Z",
+        "reason": "supervision started"
+      }
+    ],
+    "updatedAt": "2026-11-28T10:11:42.810Z"
+  }
+}

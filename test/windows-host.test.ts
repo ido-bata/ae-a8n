@@ -467,11 +467,15 @@ describe("Windows session start", () => {
     expect(asked).toEqual([EXE]);
   });
 
+  // The check is a real PowerShell CIM query whose own budget is 15 s
+  // (windowsMainWindowVisible); vitest's 5 s default is shorter than that,
+  // so a loaded Windows runner timed out while the query was still working.
   it.skipIf(process.platform !== "win32")(
     "the real window check is false for an executable that owns no AE window",
     () => {
       expect(windowsMainWindowVisible("C:\\definitely\\not\\AfterFX.exe")).toBe(false);
     },
+    30_000,
   );
 
   it("sends nothing and says why when the main window never appears", async () => {

@@ -1,0 +1,29 @@
+{
+  "label": "r2-s1-19",
+  "scenarioId": "RC-S1",
+  "verdict": "fail",
+  "steps": [
+    {
+      "stepId": "launch+handshake-readiness",
+      "startedAt": "2026-11-28T07:28:56.978Z",
+      "durationMs": 180682,
+      "expected": "AfterEffects.launch resolves within readinessTimeoutMs (180000) with owned session",
+      "actual": {
+        "error": "AfterEffectsError",
+        "message": "no After Effects process this run started could be tied to it: app.info (736d4251-0260-4f50-99bd-60b81a09f43f) timed out and no host process was found"
+      },
+      "evidenceRefs": [
+        "trace:session.launch"
+      ],
+      "error": {
+        "name": "AfterEffectsError",
+        "message": "no After Effects process this run started could be tied to it: app.info (736d4251-0260-4f50-99bd-60b81a09f43f) timed out and no host process was found"
+      }
+    }
+  ],
+  "cleanup": {
+    "verdict": "unverifiable",
+    "ref": null
+  },
+  "sessionRoot": "/tmp/rc436r2-sessions/r2-s1-19"
+}

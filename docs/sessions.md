@@ -77,10 +77,15 @@ that case there is `AfterEffects.attach(options)`:
 ## Resuming a session
 
 `AfterEffects.launch()` writes `launch-provenance.json` into the session
-directory once the readiness probe has proven ownership — the pid, the
-process start time, the Windows creation identity when there is one, the
-executable, the transport kind, and the ae-a8n version. It is evidence, not
-authority: a file alone never makes a host ours.
+directory in two phases (#458): `phase: "spawned"` as soon as the transport
+reports the process it started — before the readiness probe — and
+`phase: "ready"` once the probe has proven ownership. Both name the pid,
+the process start time, the Windows creation identity when there is one,
+the executable, the transport kind, and the ae-a8n version. It is evidence,
+not authority: a file alone never makes a host ours, and every consumer
+re-proves the recorded identity against a live census before acting on it.
+Records written before `phase` existed carry no field and read as
+`"ready"` — they could only be written after the probe.
 
 `AfterEffects.resume({ sessionRoot })` rebinds to that host after the calling
 process restarted. It re-checks everything live: the recorded pid must still
@@ -104,6 +109,70 @@ Ownership after a successful resume is `owned`, so owned-only operations —
 `close()` quitting AE, `hostEnvironment` — work as they did in the original
 session. A resume that cannot prove identity leaves the host `unknown` or
 `attached`, and `close()` still refuses to quit it.
+
+## Terminating a live owned host (#340)
+
+`AfterEffects.rebuild()` only ever runs *after* loss is proven — it refuses
+a session whose host is still alive. Stopping that live host is a separate,
+explicitly authorized contract: `AfterEffects.terminate(options)`.
+
+The contract, in order:
+
+- `options.permit` must be the literal `TERMINATE_PERMIT`
+  (`"terminate-owned-host"`). There is no default and no implicit grant.
+- The session must carry launch provenance naming a host this session's
+  driver spawned — `phase: "ready"` (probe proven) or `phase: "spawned"`
+  (spawned but the probe never answered, #458). `attached` and `unknown`
+  sessions are refused — nothing is signalled, and nothing about their
+  host is mutated.
+- A fresh process-census re-proof runs immediately before any signal:
+  the recorded pid must still be the recorded process (pid *and* start
+  time), it must be the only instance of its install in scope, and a pid
+  that cannot be told apart from the record is never signalled. If the
+  census itself cannot be read, terminate refuses — an OS query that
+  cannot be answered is never a guess.
+- Signalling is graceful-first: the platform's polite quit (an Apple
+  Event `quit` on macOS, `taskkill` without `/F` on Windows) within
+  `gracefulTimeoutMs`, bounded by `deadlineMs`. Escalation to a forced
+  kill requires `force: true` — an explicit second permission, not a
+  default. A host that survives reports `survived`; one whose census can
+  no longer be read reports `unproven`. Neither claims death.
+- Disappearance is proven by the census, not by the signal returning.
+  Only then does terminate write supervision state — `blocking-observed`
+  with `host: "process-gone"` — under the monitor lease (taking over an
+  expired lease, deferring to a live monitor). `quarantined` and
+  `needs-human` phases are never downgraded; UNKNOWN pending requests
+  are left untouched and are never resent by the rebuild that follows.
+
+Every refusal throws `AfterEffectsError` (`op === "session.terminate"`)
+before anything is signalled, and — like every typed API error since
+#341 — carries machine-readable `nextActions`: an always-permitted
+inspect step plus the situation-specific answer (`session-policy` for a
+missing permit or unproven ownership, `evidence-unavailable` /
+`unsafe-to-automate` / `requires-human` for unreadable or ambiguous
+evidence).
+
+The report (`TerminateReport`) carries `outcome`
+(`terminated` / `already-gone` / `survived` / `unproven`), the `method`
+(`none` / `graceful` / `forced`), `disappearanceProven`, the supervision
+write status (`recorded` / `deferred-to-monitor` / `not-proven`), and
+the evidence trail. `already-gone` means the recorded host was already
+proven absent — including when its pid was recycled by an unrelated
+process — and still records `process-gone` so rebuild's gate is met.
+
+The handoff to rebuild is deliberately asymmetric: terminate's report is
+evidence for the caller, never authority for rebuild. `openRebuiltSession`
+re-proves every precondition itself — supervision document, monitor
+lease, census, provenance, Aqua session — so a terminate that deferred
+to a live monitor simply leaves rebuild refused until that monitor
+records the state.
+
+Current coverage gaps (per the #338 audit): graceful quit is an Apple
+Event on macOS and `taskkill` on Windows — there is no auto-safe dialog
+class involved and no Windows `auto-safe` class exists at all; a graceful
+quit that hits a modal save/discard prompt will simply time out into
+`survived` (or `forced` under `force: true`), and unsaved-change policy
+for terminate is the caller's decision, not the driver's.
 
 ## Authorization is a separate grant (#145)
 
@@ -144,10 +213,22 @@ isolated `test` runner reports it as `unknown`, records the identity in the
 check's `evidence`, and quarantines the target so the next run does not treat
 the leftover as a fresh, unoccupied After Effects.)
 
-Recovery is a human's: find that pid in that session, quit After Effects, then
-clear the quarantine (`ae-a8n recover`) before running again. Repeating the
-probe from the same driver is refused — the same Apple Event that was denied
-would just be denied again.
+Recovery has a public path (#458): because the driver records
+`phase: "spawned"` provenance as soon as it knows the pid it started,
+`AfterEffects.terminate({ sessionRoot, permit: "terminate-owned-host",
+force: true })` — or `ae-a8n supervise terminate` with the same permit —
+can end that exact process. Every safety gate still applies: the live
+census must re-prove pid+start identity with no sibling instance before
+any signal, graceful is tried first, and disappearance must be proven by
+census. Once `process-gone` is recorded, `AfterEffects.rebuild` relaunches
+through the ordinary path. `stop()` still never quits it — ownership was
+never proven — and repeating the probe from the same driver is still
+refused.
+
+Hosts spawned *before* this record existed — or by anything other than a
+driver launch (an AppleScript `open`, a hand-started AE) — carry no
+provenance and remain outside every public exit path; those are a human's
+to resolve, exactly as before.
 
 ## Unsaved changes
 
@@ -165,6 +246,20 @@ A session that edits a project it opened (applying effects, setting
 parameters, rendering — `saveFrameToPng` changes the viewer resolution and
 restores it, which AE counts as an edit) must pass `"discard"` to close: the
 edits are its own, and saying so is the point.
+
+Two details observed on real AE 2027 during the RC acceptance run (#443):
+
+- A project opened through `app.open` can report `project.dirty === true`
+  even with no edits — the open itself, or AE's own bookkeeping, marks it.
+  `close()` with the default `"refuse"` will then reject with
+  `UnsavedChangesError`; that is the guard working, not a bug. Pass
+  `"discard"` when the session is done with the project.
+- `"discard"` is verified, not assumed: the host closes the project with
+  `CloseOptions.DO_NOT_SAVE_CHANGES` and re-checks that no dirty project
+  remains *before* calling `app.quit()`. If the close is refused or a dirty
+  project survives, the call rejects with `UnsavedChangesError` and AE is
+  left running — quitting anyway would stall on AE's own save prompt
+  (observed: `app.quit` returned, the process never exited).
 
 ## Timeouts
 
@@ -202,6 +297,16 @@ an ExtendScript cannot be interrupted from outside. So a timeout ends the
 - **`close()`** sends `app.quit` the same way: it waits for a script still
   running, within the quit's 10 s budget. If that runs out, `close()` rejects
   with `TimeoutError`, AE is left running, and the quit was never sent.
+- **A quit that does not take effect is classified, not just reported.**
+  When `app.quit` is delivered but the owned process does not exit within
+  the exit budget, `close()` rejects and the teardown verdict re-checks the
+  recorded launch identity against a live process census (#443): the host
+  still running is recorded as `residue` (safety-relevant — an owned AE
+  left running), a host that has since exited is `clean` (the quit landed
+  after its budget), and an unprovable answer stays `unverifiable`. The
+  residue detail names the recovery path: `AfterEffects.attach` +
+  `rebuild`, or `AfterEffects.terminate` under
+  `permit: "terminate-owned-host"` — never a bare kill of the pid.
 - **A timeout is classified, not just reported.** When a call times out the
   driver asks what the host looked like and the failure carries
   `hostCondition`: `"gone"` (the process is proven absent — a crash or a
@@ -210,7 +315,33 @@ an ExtendScript cannot be interrupted from outside. So a timeout ends the
   (neither could be determined — never guessed). Through the public API it
   surfaces as `hostCondition` on the thrown `AfterEffectsError` (the
   `TimeoutError` stays the `cause`); the same classification is recorded
-  in the trace.
+  in the trace. The trace `result` also carries `anomaly` — the kind the
+  recovery classified (`expected-modal`, `human-required-modal`,
+  `unknown-modal`, `process-gone`, …) — and `retryClass`, the operation's
+  side-effect class (`read-only` / `verified-retry` /
+  `unknown-side-effect`) a consumer branches on for resend decisions.
+- **Recovery is part of the standard path.** On the built-in script
+  transport a GUI recovery runs after a timeout by default — no dedicated
+  call is needed. `session.recover: false` opts out; `true` keeps the
+  strict contract (an unwirable session refuses to launch, while a
+  default-on session that cannot be wired launches and records
+  `session.recovery` on the trace). Only measured `auto-safe` dialog
+  classes are ever pressed; sign-in/licence and unmeasured windows are
+  refused or quarantined (`A8N-SEC-001`), never clicked through.
+- **Expected modals can be declared.** `expectedModals` at launch or
+  `ae.expectModal(spec)` registers a window the test itself raises — an
+  unsaved-changes prompt, a script-error sheet — so the recovery
+  classifies it as expected instead of quarantining it. `resolve` may
+  press one declared button through the same audited path, or `wait`
+  (default) to leave the modal for its owner. It cannot make a
+  human-only window pressable, and on Windows registrations are refused
+  (recorded as `session.expected-modals` on the trace).
+- **Every recovery attempt writes an evidence manifest** to
+  `artifacts/recovery-<requestId>.evidence.json`: the operation, outcome,
+  blocking window, expectation name, before/after screenshots (or the
+  recorded reason none exists in `uncapturable`), and pointers to
+  `ae.diagnostics()` for host logs and crash reports. See
+  [ADR-0006](adr/0006-standard-path-anomaly-recovery.md).
 - **`ae.diagnostics()`** collects host-side evidence into
   `<artifactsDir>/diagnostics/`: OS crash reports for the After Effects
   binaries modified during the session, After Effects host logs touched in

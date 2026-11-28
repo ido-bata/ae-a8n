@@ -1,0 +1,30 @@
+{
+  "phase": "C",
+  "verdict": "fail",
+  "notes": [
+    "supervisor(37622) pid=79492",
+    "supervise status(37622): phase=blocked health=degraded detail=null",
+    "nextActions: [{\"kind\":\"automatic\",\"allowed\":true,\"code\":\"supervision.health\",\"reason\":{\"code\":\"permitted\"},\"action\":\"Observation is degraded. Read the evidence before relying on the phase.\"},{\"kind\":\"automatic\",\"allowed\":true,\"code\":\"supervision.blocked\",\"reason\":{\"code\":\"bounded-wait\"},\"action\":\"After Effects is blocked: 1 blocking window(s): <unobservable window>. Blocking windows: <unobservable window>. Wait within the phase deadline 2026-11-28T10:30:08.879Z; automation is already recovering or the monitor will classify further.\"},{\"kind\":\"automatic\",\"allowed\":true,\"code\":\"supervision.state\",\"reason\":{\"code\":\"permitted\"},\"action\":\"Read the supervision report (`ae.supervisionState()` or `ae-a8n supervise status --session-root <dir>`) for the structured blocking evidence before deciding anything else.",
+    "supervise terminate(37622) exit=4",
+    "supervise terminate --force(37622) exit=4",
+    "AfterEffects.terminate(37622): AfterEffectsError: no launch provenance in /Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-b-launch-2026: this session never proved it owned an After Effects process, so there is no owned host to terminate. Attached and unknown sessions are",
+    "AfterEffects.rebuild(37622): AfterEffectsError: rebuild requires proven process loss, but supervision reports phase \"blocked\" with host state \"none\"",
+    "AfterEffects.resume(37622): AfterEffectsError: no launch provenance in /Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-b-launch-2026: nothing this tooling owned was recorded there, so there is no host to resume. Use launch() for a new session.",
+    "observe(37622): axSuspect=true census=6 onScreen=0 unaccounted=6",
+    "supervisor(18577) pid=83994",
+    "supervise status(18577): phase=blocked health=degraded detail=null",
+    "final census: [{\"pid\":18577,\"uid\":501,\"executable\":\"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects\"},{\"pid\":37622,\"uid\":501,\"executable\":\"/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects\"}]",
+    "RC-S17 verdict: FAIL — detection and fail-closed refusals demonstrated, but no public safe-exit exists for a host that never passed its readiness probe: launch provenance is written only after the probe, so terminate/rebuild/resume all refuse and the modal-blocked process is unstoppable through public paths. readiness→follow-up ops→teardown unreachable. Product gap filed separately."
+  ],
+  "exits": {
+    "cliTerminate": {
+      "exitCode": 4
+    },
+    "cliTerminateForce": {
+      "exitCode": 4
+    },
+    "apiTerminate": {},
+    "apiRebuild": {},
+    "apiResume": {}
+  }
+}

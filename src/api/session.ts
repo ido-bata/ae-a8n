@@ -9,6 +9,8 @@
  */
 
 import type { AeDriver } from "../driver/driver.js";
+import type { ExpectedModalRegistry } from "../driver/expected-modals.js";
+import { requireExpectedModal, type ExpectedModalSpec } from "../driver/expected-modals.js";
 import type { SessionSupervision } from "../driver/supervision-session.js";
 import {
   AUTHORIZATION_SCOPES,
@@ -16,6 +18,7 @@ import {
   type SessionAuthorization,
 } from "../driver/transport.js";
 import type { TraceRecorder, TraceEvent } from "../trace/trace.js";
+import { OpTelemetry } from "../observability/telemetry.js";
 import { HostNotOwnedError, contextualise } from "./errors.js";
 import type { OperationOptions } from "./types.js";
 
@@ -37,14 +40,52 @@ export class Session {
    * `unavailable`, never a fabricated clean state.
    */
   supervision: SessionSupervision | null = null;
+  /**
+   * The session's expected-modal registry (#342), when a GUI recovery path
+   * is wired. `null` means expectations cannot be honoured — registering
+   * one is refused rather than silently ignored, because an expected
+   * modal that nothing watches would quarantine exactly like an
+   * unexpected one while claiming otherwise.
+   */
+  modalExpectations: ExpectedModalRegistry | null = null;
+  /**
+   * Uniform op observability for this session (#434): trace rows plus the
+   * append-only attempt ledger (`<sessionRoot>/attempt-ledger.jsonl`),
+   * projected from the same `TraceRecorder` every driver call already
+   * writes. Public GUI surfaces wrap their entries in `telemetry.run`.
+   */
+  readonly telemetry: OpTelemetry;
 
   constructor(driver: AeDriver, trace: TraceRecorder, authorization: SessionAuthorization = {}) {
     this.driver = driver;
     this.trace = trace;
     this.authorization = authorization;
+    this.telemetry = new OpTelemetry({
+      trace,
+      sessionRoot: driver.sessionRoot,
+      sessionId: driver.sessionId,
+    });
     trace.subscribe((event) => {
       this.events.push(event);
     });
+  }
+
+  /**
+   * Registers an expected modal for this session (#342). Returns the
+   * unregister function. Throws when no GUI recovery path is wired —
+   * the expectation would otherwise be recorded nowhere.
+   */
+  expectModal(spec: ExpectedModalSpec): () => void {
+    const registry = this.modalExpectations;
+    if (registry === null) {
+      throw new HostNotOwnedError(
+        "session.expectModal",
+        this.driver.ownership().kind,
+        "this session has no GUI recovery path (the built-in script transport " +
+          "with recovery enabled is required), so an expected modal could never be resolved",
+      );
+    }
+    return registry.register(requireExpectedModal(spec));
   }
 
   async call<T>(

@@ -12,6 +12,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AeDriver, HostUnavailableError } from "../src/driver/driver.js";
+import { readLaunchProvenance } from "../src/driver/launch-provenance.js";
+import type { PendingLaunch } from "../src/driver/transport.js";
 import { HostError, ProtocolError, parseRequestEnvelope, parseResultEnvelope } from "../src/protocol/envelope.js";
 import { TraceRecorder, type TraceEvent } from "../src/trace/trace.js";
 import { FakeAfterEffectsTransport } from "../src/testing/fake-transport.js";
@@ -100,7 +102,16 @@ describe("driver against the fake host", () => {
       parameter: "Amount",
       value: 50,
     });
-    expect(set).toEqual({ name: "Amount", kind: "value", matchName: "ADBE Fake Gaussian Blur-0001", valueType: "OneD", value: 50 });
+    expect(set).toEqual({
+      name: "Amount",
+      kind: "value",
+      matchName: "ADBE Fake Gaussian Blur-0001",
+      valueType: "OneD",
+      value: 50,
+      selected: false,
+      isTimeVarying: false,
+      keyframes: [],
+    });
 
     const read = await driver.call<{ value: number }>("effect.getParameter", {
       comp: "Main",
@@ -243,6 +254,51 @@ describe("driver against the fake host", () => {
     const driver = makeDriver();
     await driver.start();
     await expect(driver.start()).rejects.toThrow(/already started/);
+  });
+});
+
+describe("launch provenance phases (#458)", () => {
+  it("upgrades the spawn-phase record to ready once the probe proves ownership", async () => {
+    const spawned: PendingLaunch = {
+      pid: 4242,
+      startedAt: 1_700_000_000_000,
+      executable: "/fake/Adobe After Effects.app/Contents/MacOS/After Effects",
+      presentAtLastLookup: true,
+      session: null,
+    };
+    // A transport that reports the process it started until the probe
+    // proves it — the shape ScriptInvocationTransport has in production.
+    class SpawningFake extends FakeAfterEffectsTransport {
+      #proven = false;
+      pendingLaunch(): PendingLaunch | null {
+        return this.#proven ? null : spawned;
+      }
+      confirmLaunched(): void {
+        this.#proven = true;
+      }
+    }
+    const spawner = new SpawningFake();
+    spawner.ownedProcessValue = {
+      pid: spawned.pid,
+      startedAt: spawned.startedAt ?? 0,
+      executable: spawned.executable,
+    };
+    const driver = new AeDriver({
+      transport: spawner,
+      sessionRoot,
+      trace: new TraceRecorder({ file: traceFile }),
+    });
+
+    await driver.start();
+
+    // The spawn write ran first (traced), then the proven write replaced
+    // it: the surviving record is the ready-phase one.
+    const trace = readFileSync(traceFile, "utf-8");
+    expect(trace).toContain('"phase":"spawned"');
+    const provenance = readLaunchProvenance(sessionRoot);
+    expect(provenance?.phase).toBe("ready");
+    expect(provenance?.host.pid).toBe(spawned.pid);
+    expect(provenance?.host.startedAt).toBe(spawned.startedAt);
   });
 });
 

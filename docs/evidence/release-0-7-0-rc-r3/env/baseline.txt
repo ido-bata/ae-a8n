@@ -1,0 +1,13 @@
+(
+        {
+        "Bundle ID" = "com.apple.PressAndHold";
+        InputSourceKind = "Non Keyboard Input Method";
+    },
+        {
+        InputSourceKind = "Keyboard Layout";
+        "KeyboardLayout ID" = 252;
+        "KeyboardLayout Name" = ABC;
+    }
+)
+eda66ad64c61f4658c7f156378ba416ba9186053ce0434e7b8a087086091e1b6  -
+Sat Nov 28 20:19:25 JST 2026

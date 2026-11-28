@@ -39,7 +39,7 @@ doctor が blocker を出した
 | `was never parseable` / readiness probe timeout、結果ファイルが 0 byte | AE の「スクリプトによるファイルの読み書きとネットワークアクセス」が off（`Pref_SCRIPTING_FILE_NETWORK_SECURITY="0"`。AE 26.5/27.0 で確認、#188） | `doctor` の A8N-PERM-003、または対象ユーザーの AE 設定 → スクリプトと式 | 対象ユーザーの AE で同設定を許可。`AfterEffects.launch` は blocked が証明できれば AE 起動前に `ScriptingPermissionError` で止まる。結果ファイルが 0 byte のまま deadline に達した場合も同じ設定を疑う |
 | OS アップデート後に全部拒否 | TCC grant の無効化・AE バージョン変更 | doctor 全項目 | permissions.md のマトリクスに沿って再許可。版差は verification.md |
 | ユーザーが logout した | GUI セッション消失 | `A8N-SESSION-002` | 再ログイン。実行中 job は stale になるのでやり直し |
-| AE のモーダルで test が hang | 対象 session の modal | `ae-a8n recover` / doctor | 人間が対象画面で解消。timeout script は再送されない（UNKNOWN） |
+| AE のモーダルで test が hang | 対象 session の modal | trace の `session.recover` 行と `artifacts/recovery-*.evidence.json` / doctor | 標準経路の recovery が測定済み safe class のみ press。人間判断が必要な modal（sign-in/licence/未測定）は人間が対象画面で解消。timeout script は再送されない（UNKNOWN） |
 | doctor は通るが test が失敗 | session 分離ではなくコマンド側 | run の report.json | `ae-a8n report --run <id>` で結果を読む |
 | stale job / orphan helper が残る | 中断した run | `ae-a8n recover --run <id>`（まず `--dry-run`） | recover が解放できるものだけ解放。unowned AE は kill しない |
 

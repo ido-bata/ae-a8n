@@ -19,8 +19,14 @@
  * the wrong desktop.
  */
 
+import type { ExpectedModalRegistry } from "./expected-modals.js";
 import type { MacSession } from "./mac-session.js";
-import { MacHostRecovery, type HostRecovery } from "./recovery.js";
+import {
+  MacHostRecovery,
+  type DialogOcrOptions,
+  type GuiRecoverySurface,
+  type HostRecovery,
+} from "./recovery.js";
 import { WindowsHostRecovery, type WindowsHostRecoveryOptions } from "./windows-host-recovery.js";
 import type { WindowsGuiSession } from "./windows-gui-recovery.js";
 
@@ -48,6 +54,24 @@ export type CreateHostRecoveryOptions = {
   /** The buttons that may be pressed. */
   readonly buttons?: readonly string[];
   /**
+   * Session-registered expected modals (#342), forwarded to the macOS
+   * recovery only: Windows has no authorized press path for unmeasured
+   * classes, so an expectation there could only ever `wait` — and the
+   * unregistered classification already reports the window honestly.
+   */
+  readonly expectedModals?: ExpectedModalRegistry | undefined;
+  /**
+   * Dialog-perception OCR for census-window captures (#462), forwarded
+   * to `MacHostRecovery` only — the evidence path that reads AX-invisible
+   * surfaces after the recovery decision. Absent keeps capture-only.
+   */
+  readonly dialogOcr?: DialogOcrOptions | undefined;
+  /**
+   * Test seam forwarded to `MacHostRecovery` only: replaces the
+   * `MacGuiRecovery` the attempt builds. Never set in production wiring.
+   */
+  readonly macGui?: GuiRecoverySurface | undefined;
+  /**
    * Seams forwarded to `WindowsGuiRecovery` only — the command runner,
    * the session re-proof readers, the console-session reader, the
    * attached marker and the lease/audit controller. Ignored for a darwin
@@ -73,6 +97,9 @@ export function createHostRecovery(options: CreateHostRecoveryOptions): HostReco
       ...(options.verifyProcess === undefined ? {} : { verifyProcess: options.verifyProcess }),
       screenshotDir: options.screenshotDir,
       ...(options.buttons === undefined ? {} : { buttons: options.buttons }),
+      ...(options.expectedModals === undefined ? {} : { expectedModals: options.expectedModals }),
+      ...(options.dialogOcr === undefined ? {} : { dialogOcr: options.dialogOcr }),
+      ...(options.macGui === undefined ? {} : { gui: options.macGui }),
     });
   }
   return new WindowsHostRecovery({

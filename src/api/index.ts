@@ -19,7 +19,7 @@
 
 import { join, resolve } from "node:path";
 
-import type { MacSession } from "../driver/mac-session.js";
+import { consoleSessionUid, type MacSession } from "../driver/mac-session.js";
 import {
   readLaunchProvenance,
   type LaunchProvenance,
@@ -32,7 +32,110 @@ import {
   type HandshakeResponse,
 } from "./capabilities.js";
 import { guiStateReport } from "./gui-state.js";
+import {
+  type Panel,
+  panelCapabilities,
+  panelForTarget,
+  type PanelCapabilities,
+  type PanelLocator,
+} from "./panels.js";
+import {
+  type MenuBar,
+  menuBarForTarget,
+  menuCapabilities,
+  type MenuCapabilities,
+} from "./menus.js";
+import {
+  type DockedPane,
+  dockedPaneForTarget,
+  type DockedPaneLocator,
+} from "./docked-pane.js";
+import {
+  type Input,
+  inputCapabilities,
+  inputForTarget,
+  inputSessionKind,
+} from "./input.js";
+import type { InputCapabilities } from "../input/capabilities.js";
+import {
+  type FileDialog,
+  fileDialogCapabilities,
+  fileDialogForTarget,
+  type FileDialogCapabilities,
+} from "./file-dialog.js";
+import {
+  type ContextMenu,
+  contextMenuCapabilities,
+  contextMenuForTarget,
+  type ContextMenuCapabilities,
+} from "./context-menu.js";
+import {
+  type ProjectDialog,
+  projectDialogCapabilities,
+  projectDialogForTarget,
+  type ProjectDialogCapabilities,
+} from "./project-dialog.js";
+import {
+  dragDropCapabilities,
+  dragDropForTarget,
+  type DragDrop,
+  type DragDropCapabilities,
+} from "./drag-drop.js";
+import {
+  type RenderQueue,
+  renderQueueCapabilities,
+  renderQueueForTarget,
+  type RenderQueueCapabilities,
+} from "./render-queue.js";
+import {
+  createRecordingController,
+  recordingApiForController,
+  type RecordingApi,
+} from "./record.js";
+import {
+  evidenceApiFor,
+  type EvidenceApi,
+} from "./render-evidence.js";
+import type { RecordingController } from "../evidence/recording.js";
+import {
+  type Timeline,
+  timelineCapabilities,
+  timelineForTarget,
+  type TimelineCapabilities,
+} from "./timeline.js";
+import {
+  type Workspace,
+  workspaceCapabilities,
+  workspaceForTarget,
+  type WorkspaceCapabilities,
+} from "./workspace.js";
+import {
+  type WindowOps,
+  windowOpsCapabilities,
+  windowOpsForTarget,
+  type WindowOpsCapabilities,
+  type WindowOpsOptions,
+} from "./window-ops.js";
+import {
+  type CompView,
+  compViewCapabilities,
+  compViewForTarget,
+  type CompViewCapabilities,
+} from "./comp-view.js";
+import {
+  type EffectControls,
+  effectControlsCapabilities,
+  effectControlsForTarget,
+  type EffectControlsCapabilities,
+} from "./effect-controls.js";
 import { supervisionReport, type SupervisionReport } from "../supervision/index.js";
+import { writeTeardownVerdict } from "../observability/teardown.js";
+import { observeOp } from "../observability/telemetry.js";
+import type { StillEvidenceContext } from "../evidence/stills.js";
+import type {
+  EvidenceIndexSession,
+  EvidenceSessionKind,
+} from "../evidence/types.js";
 import {
   AfterEffectsError,
   EntityNotFoundError,
@@ -42,10 +145,12 @@ import {
 } from "./errors.js";
 import type { StopResult } from "../driver/driver.js";
 import type { HostOwnership } from "../driver/transport.js";
+import { HostQuitTimeoutError } from "../driver/script-invocation.js";
 import { activateDispatcherForSession } from "./dispatcher-activation.js";
 import { attachAfterEffects } from "./attach.js";
 import { openAfterEffects } from "./launch.js";
 import { openRebuiltSession } from "./rebuild.js";
+import { terminateSessionHost } from "./terminate.js";
 import {
   grantedScopes,
   requireAuthorized,
@@ -55,6 +160,7 @@ import {
 /** What `AfterEffects.close` did. */
 export type CloseResult = StopResult;
 export type { HostOwnership };
+import type { ExpectedModalSpec } from "../driver/expected-modals.js";
 import type {
   ActivateDispatcherOptions,
   ApplicationInfo,
@@ -63,19 +169,41 @@ import type {
   CompInfo,
   DiagnosticsOptions,
   DispatcherActivation,
+  GuiStateOptions,
   GuiStateReport,
   LaunchOptions,
   OpenProjectOptions,
   OperationOptions,
   RebuildOptions,
   ResumeOptions,
+  TerminateOptions,
+  TerminateReport,
   ProjectInfo,
   SessionDiagnostics,
 } from "./types.js";
 
 export * from "./errors.js";
 export type * from "./types.js";
+export type {
+  ExpectedModalResolution,
+  ExpectedModalSpec,
+  ExpectedModalWindow,
+} from "../driver/expected-modals.js";
 export { grantedScopes } from "./session.js";
+export { TERMINATE_PERMIT } from "./types.js";
+export type { EvidenceApi } from "./render-evidence.js";
+export {
+  consumerArtifactKind,
+  consumerArtifacts,
+  consumerRefs,
+  joinOperationEvidence,
+} from "../evidence/consumer.js";
+export type {
+  ConsumerArtifact,
+  ConsumerArtifactKind,
+  OperationEvidenceCheck,
+  OperationEvidenceJoin,
+} from "../evidence/consumer.js";
 import {
   Comp,
   Effect,
@@ -87,6 +215,373 @@ import {
   requireString,
 } from "./entities.js";
 export { Comp, Effect, Effects, Layer, MenuCommand, Parameter, Project };
+export {
+  Panel,
+  panelCapabilities,
+  PanelError,
+  type PanelCapabilities,
+  type PanelCapture,
+  type PanelLocator,
+  type PanelMeasurement,
+  type PanelTarget,
+} from "./panels.js";
+export {
+  MenuBar,
+  MenuError,
+  menuBarForTarget,
+  menuCapabilities,
+  type MenuBarItemInfo,
+  type MenuBarSnapshot,
+  type MenuCapabilities,
+  type MenuCapability,
+  type MenuCheckReading,
+  type MenuCheckState,
+  type MenuErrorCode,
+  type MenuInvokeResult,
+  type MenuItemLocator,
+  type MenuItemNode,
+  type ResolvedMenuItem,
+} from "./menus.js";
+export {
+  DockedPane,
+  DockedPaneObserver,
+  dockedPaneForTarget,
+  type DockedPaneBounds,
+  type DockedPaneLocator,
+  type DockedPaneOps,
+  type DockedPaneResolution,
+  type DockedPaneRow,
+  type DockedPaneSeams,
+  type DockedPaneTree,
+} from "./docked-pane.js";
+export {
+  Input,
+  inputCapabilities,
+  inputForTarget,
+  inputSessionKind,
+  type InputOps,
+  type InputOpsContext,
+  type InputOpsFactory,
+  type InputSeams,
+  type InputSessionKind,
+  type InputSurfaceOps,
+} from "./input.js";
+export {
+  INPUT_OPERATION_GATES,
+  INPUT_OPERATION_KINDS,
+  InputError,
+  type ClipboardSnapshot,
+  type ExpectedFocus,
+  type FocusHolder,
+  type GlobalInputAuthorization,
+  type ImeModeSnapshot,
+  type InputAuditRecord,
+  type InputAuthorizationRequest,
+  type InputAuthorizationVerdict,
+  type InputCleanupAction,
+  type InputCleanupReport,
+  type InputCleanupResult,
+  type InputErrorCode,
+  type InputFocusEvidence,
+  type InputMouseEvent,
+  type InputOperationClass,
+  type InputOperationGate,
+  type InputOperationKind,
+  type InputOperationScope,
+  type InputPlan,
+  type InputPlatform,
+  type InputPoster,
+  type InputStep,
+  type InputStepKind,
+  type InputStepRecord,
+  type InputVerdict,
+} from "../input/types.js";
+export {
+  inputCapabilities as inputCapabilityReport,
+  type InputCapabilities,
+  type InputCapability,
+  type InputGateState,
+  type InputVerification,
+} from "../input/capabilities.js";
+export {
+  FileDialog,
+  FileDialogError,
+  fileDialogCapabilities,
+  fileDialogForTarget,
+  matchFileDialog,
+  type AwaitFileDialogOptions,
+  type FileDialogActResult,
+  type FileDialogCapabilities,
+  type FileDialogCapability,
+  type FileDialogErrorCode,
+  type FileDialogMatch,
+  type FileDialogMutationGate,
+  type FileDialogOps,
+  type FileDialogResolution,
+  type FileDialogTitles,
+  type FilenameEntryVerdict,
+} from "./file-dialog.js";
+export {
+  ContextMenu,
+  ContextMenuError,
+  contextMenuCapabilities,
+  contextMenuForTarget,
+  contextMenuExposedTitles,
+  contextMenuItems,
+  contextMenuMutationGate,
+  contextMenuWindowKey,
+  matchContextMenu,
+  type ContextMenuActResult,
+  type ContextMenuCapabilities,
+  type ContextMenuCapability,
+  type ContextMenuControllerOptions,
+  type ContextMenuErrorCode,
+  type ContextMenuItem,
+  type ContextMenuMatch,
+  type ContextMenuMutationGate,
+  type ContextMenuMutationOp,
+  type ContextMenuOps,
+  type ContextMenuPostVerdict,
+  type ContextMenuResolution,
+  type ContextMenuSurface,
+  type ContextMenuTargetLocator,
+  type ContextMenuTitles,
+  type OpenContextMenuOptions,
+} from "./context-menu.js";
+export {
+  DragDrop,
+  DragDropError,
+  dragDropCapabilities,
+  dragDropForTarget,
+  dragDropMutationGate,
+  type DragDropCapabilities,
+  type DragDropCapability,
+  type DragDropControllerOptions,
+  type DragDropDelta,
+  type DragDropElementRequest,
+  type DragDropElementTarget,
+  type DragDropErrorCode,
+  type DragDropFilePayload,
+  type DragDropFileProbe,
+  type DragDropFileRequest,
+  type DragDropMutationGate,
+  type DragDropMutationOp,
+  type DragDropOps,
+  type DragDropPoint,
+  type DragDropPollOptions,
+  type DragDropProjectItem,
+  type DragDropRequest,
+  type DragDropResult,
+  type DragDropSegmentCheck,
+  type DragDropSnapshot,
+  type DragDropSurfaceLocator,
+  type DragDropTopmost,
+  type DragDropVerdict,
+  type GuiAppStateLike,
+} from "./drag-drop.js";
+export {
+  ProjectDialog,
+  ProjectDialogError,
+  projectDialogCapabilities,
+  projectDialogForTarget,
+  projectDialogMutationGate,
+  type CancelProjectDialogRequest,
+  type OpenProjectDialogRequest,
+  type ProjectDialogCapabilities,
+  type ProjectDialogCapability,
+  type ProjectDialogChannel,
+  type ProjectDialogControllerOptions,
+  type ProjectDialogErrorCode,
+  type ProjectDialogEvidence,
+  type ProjectDialogFileStat,
+  type ProjectDialogLegResult,
+  type ProjectDialogMutationGate,
+  type ProjectDialogMutationOp,
+  type ProjectDialogOps,
+  type ProjectDialogProjectInfo,
+  type ProjectDialogRoundTripResult,
+  type SaveProjectDialogRequest,
+} from "./project-dialog.js";
+export {
+  RenderQueue,
+  RenderQueueError,
+  renderQueueCapabilities,
+  renderQueueForTarget,
+  RENDER_QUEUE_ORACLE,
+  type AddToRenderQueueOptions,
+  type RenderQueueAddResult,
+  type RenderQueueCapabilities,
+  type RenderQueueCapability,
+  type RenderQueueErrorCode,
+  type RenderQueueItem,
+  type RenderQueueOracle,
+  type RenderQueueSnapshot,
+  type RenderQueueWalkInfo,
+} from "./render-queue.js";
+export {
+  Timeline,
+  TimelineError,
+  timelineCapabilities,
+  timelineForTarget,
+  type NavigateKeyframeRequest,
+  type NavigateKeyframeResult,
+  type ScrubRequest,
+  type ScrubResult,
+  type SelectRowRequest,
+  type SelectRowResult,
+  type TimelineCapabilities,
+  type TimelineCapability,
+  type TimelineErrorCode,
+  type TimelineKeyTarget,
+  type TimelineKeyframeVia,
+  type TimelineMouseOps,
+  type TimelineOpRecord,
+  type TimelinePoint,
+  type TimelinePostcondition,
+  type TimelineRulerGeometry,
+  type TimelineRowLocator,
+  type TimelineRowVerify,
+  type TimelineSeams,
+  type TimelineVerdict,
+} from "./timeline.js";
+export {
+  Workspace,
+  WorkspaceError,
+  workspaceCapabilities,
+  workspaceForTarget,
+  DEFAULT_WORKSPACE_MENU_PATH,
+  compareWorkspaceFrames,
+  workspaceFramesMatch,
+  WorkspaceXmlError,
+  discoverWorkspaceXml,
+  inspectWorkspaceXml,
+  resolveWorkspacePreferencesDir,
+  snapshotWorkspaceStore,
+  workspaceXmlRef,
+  extractWorkspaceNames,
+  compareVersionDirNames,
+  WORKSPACE_STORE_NAMES,
+  assessFrameMonitors,
+  classifyTopology,
+  displaysForFrame,
+  monitorEvidence,
+  toMonitorDisplay,
+  DISPLAY_CENSUS_SCRIPT,
+  displayCensus,
+  parseDisplayCensus,
+  type WorkspaceArrangeDestination,
+  type WorkspaceArrangeExpectation,
+  type WorkspaceArrangeRequest,
+  type WorkspaceArrangeResult,
+  type WorkspaceCapability,
+  type WorkspaceCapabilities,
+  type WorkspaceDragRequest,
+  type WorkspaceDragVerdict,
+  type WorkspaceErrorCode,
+  type WorkspaceIdentity,
+  type WorkspaceMenuEntry,
+  type WorkspaceMenuPath,
+  type WorkspaceMonitorReport,
+  type WorkspaceObservation,
+  type WorkspaceObservationFailure,
+  type WorkspacePanelFrame,
+  type WorkspacePollOptions,
+  type WorkspaceRestoreReport,
+  type WorkspaceSeams,
+  type WorkspaceSurfaceOps,
+  type WorkspaceSwitchResult,
+  type WorkspaceTarget,
+  type WorkspaceXmlComparison,
+  type WorkspaceXmlEvidence,
+  type FrameMonitorInfo,
+  type MonitorCensus,
+  type MonitorDisplay,
+  type MonitorEvidence,
+  type MonitorTopology,
+  type DisplayCensus,
+  type DisplayInfo,
+  type DiscoverOptions,
+  type InspectedWorkspaceXml,
+  type MissingWorkspaceStore,
+  type ResolvePreferencesOptions,
+  type WorkspaceDiscovery,
+  type WorkspaceLayout,
+  type WorkspaceStoreKind,
+  type WorkspaceStoreSnapshot,
+  type WorkspaceXmlErrorCode,
+  type WorkspaceXmlFile,
+  type WorkspaceXmlInspection,
+  type WorkspaceXmlRef,
+} from "./workspace.js";
+export {
+  WindowOps,
+  WindowOpsError,
+  windowOpsCapabilities,
+  windowOpsForTarget,
+  windowOpsFramesMatch,
+  windowOpsMutationGate,
+  DEFAULT_WINDOW_OPS_POLL,
+  type WindowOpsActRequest,
+  type WindowOpsActResult,
+  type WindowOpsActVerdict,
+  type WindowOpsCapabilities,
+  type WindowOpsCapability,
+  type WindowOpsCensusView,
+  type WindowOpsErrorCode,
+  type WindowOpsListing,
+  type WindowOpsMutationGate,
+  type WindowOpsOp,
+  type WindowOpsOpsContext,
+  type WindowOpsOpsFactory,
+  type WindowOpsOptions,
+  type WindowOpsPollOptions,
+  type WindowOpsSeams,
+  type WindowOpsState,
+  type WindowOpsSurfaceOps,
+  type WindowOpsWindowInfo,
+  type WindowOpResult,
+} from "./window-ops.js";
+export {
+  CompView,
+  CompViewError,
+  compViewCapabilities,
+  compViewForTarget,
+  type CompViewAxLocator,
+  type CompViewCapabilities,
+  type CompViewCapability,
+  type CompViewCapture,
+  type CompViewCaptureDelta,
+  type CompViewErrorCode,
+  type CompViewMouseOps,
+  type CompViewOpRecord,
+  type CompViewPanRequest,
+  type CompViewSeams,
+  type CompViewVerdict,
+  type CompViewZoomRequest,
+  type PanResult,
+  type ZoomResult,
+} from "./comp-view.js";
+export {
+  EffectControls,
+  EffectControlsError,
+  effectControlsCapabilities,
+  effectControlsForTarget,
+  formatParameterValue,
+  parameterValueMatches,
+  type EffectControlsCapabilities,
+  type EffectControlsCapability,
+  type EffectControlsErrorCode,
+  type EffectControlsMouseOps,
+  type EffectControlsOpRecord,
+  type EffectControlsReadback,
+  type EffectControlsRowLocator,
+  type EffectControlsSeams,
+  type EffectControlsVerdict,
+  type SetFoldedRequest,
+  type SetFoldedResult,
+  type SetParameterRequest,
+  type SetParameterResult,
+} from "./effect-controls.js";
 // The capability-handshake surface is exported once, from the package
 // entry point (src/index.ts → ./api/capabilities.js); re-exporting it here
 // too would duplicate the list and leak test-only symbols twice.
@@ -128,6 +623,12 @@ export class AfterEffects {
   /** Fallback `hostId` when the transport cannot attest a process identity. */
   readonly #hostNonce = newCapabilityHostNonce();
   #closed = false;
+  /**
+   * The session's recording lifecycle (#381), created lazily on first
+   * `ae.record` use and finalized by `close()` — the `finally` stop the
+   * spec requires on session teardown.
+   */
+  #recordingController: RecordingController | null = null;
 
   constructor(session: Session, probe: ApplicationInfo, extensionMethods: readonly string[] = []) {
     this.#session = session;
@@ -228,8 +729,9 @@ export class AfterEffects {
    *   - the durable supervision document shows `blocked` with host
    *     `process-gone` (a quarantined or needs-human session refuses);
    *   - no live monitor still observes the dead pid;
-   *   - launch provenance proves an earlier session *owned* the host —
-   *     attached and unknown sessions have none and are never restarted;
+   *   - launch provenance names a host an earlier session spawned or
+   *     proved (`phase: "spawned"` or `"ready"`, #458) — attached and
+   *     unknown sessions have none and are never restarted;
    *   - a fresh process census proves the recorded pid+start identity is
    *     gone and that no other instance of the install is running;
    *   - on macOS the target uid still has an Aqua login session.
@@ -250,6 +752,33 @@ export class AfterEffects {
   static async rebuild(options: RebuildOptions): Promise<AfterEffects> {
     const rebuilt = await openRebuiltSession(options);
     return new AfterEffects(rebuilt.session, rebuilt.probe, rebuilt.extensionMethods);
+  }
+
+  /**
+   * Terminates the owned After Effects `options.sessionRoot` names — the
+   * *separate* authorized path for a live host that will not answer
+   * (#340). Rebuild never signals a process; this path never launches one.
+   *
+   * Every gate must hold or nothing is signalled: explicit
+   * `permit: "terminate-owned-host"` consent, launch provenance naming a
+   * host an earlier session spawned or proved — `phase: "spawned"` covers
+   * a host whose readiness probe never answered (#458), so a
+   * modal-blocked launch is not unkillable (attached and unknown sessions
+   * refuse), and a fresh census re-proving the recorded pid+start
+   * identity with no sibling instance in scope. Graceful-first — the OS's polite request
+   * (AE `quit` Apple Event on macOS, `taskkill` on Windows) — and the
+   * force kill only under explicit `force: true`. Disappearance must be
+   * *proven* by census; `survived`/`unproven` are honest outcomes.
+   *
+   * Once proven, the durable supervision record moves to
+   * `blocked`/`process-gone` under the monitor lease — the state
+   * `AfterEffects.rebuild` requires — so the sequence
+   * `terminate → rebuild` continues a session on a new generation.
+   * Pending requests stay `unknown` and are never resent; quarantined and
+   * needs-human phases are never downgraded.
+   */
+  static async terminate(options: TerminateOptions): Promise<TerminateReport> {
+    return terminateSessionHost(options);
   }
 
   /**
@@ -339,6 +868,27 @@ export class AfterEffects {
         generatedAt: new Date().toISOString(),
       }),
     );
+  }
+
+  /**
+   * Registers an expected modal for this session (#342) and returns its
+   * unregister function.
+   *
+   * Use this when the test itself raises a dialog it intends to resolve —
+   * an unsaved-changes prompt, a script-error sheet — so the standard
+   * recovery path classifies it as expected instead of quarantining it as
+   * unknown. `resolve` may press one declared button through the same
+   * audited GUI path a measured class uses, or `wait` (the default) to
+   * leave the modal for its owner while the original request keeps its
+   * bounded wait. Nothing is pressed for windows that match no
+   * registration, and Adobe account/licence windows are never pressable
+   * through an expectation.
+   *
+   * Throws when the session has no GUI recovery path (a non-script
+   * transport, or `session.recover: false`).
+   */
+  expectModal(spec: ExpectedModalSpec): () => void {
+    return this.#session.expectModal(spec);
   }
 
   /**
@@ -510,15 +1060,524 @@ export class AfterEffects {
    * attested — an attached or unknown host has no proven pid/session, so
    * there is no honest window list to report.
    *
+   * `options.readings: true` additionally runs the dialog-perception
+   * pipeline (#462): every AX∪census surface gets a `DialogReading`,
+   * including honest `unreadable` answers for surfaces no channel can
+   * read. Pixel capture + bounded OCR make this the slow variant — it is
+   * opt-in and never part of the default observation.
+   *
    * On macOS the first observation in a session may raise the standard
    * Accessibility consent prompt; that is the OS asking a human, not this
    * API bypassing it.
    */
-  guiState(): Promise<GuiStateReport> {
-    // The observation itself is synchronous (one Accessibility query inside
-    // the target session); `.then` keeps even a synchronous failure a
-    // rejection rather than a throw from a Promise-typed method.
-    return Promise.resolve().then(() => guiStateReport(this.recoveryTarget()));
+  guiState(options?: GuiStateOptions): Promise<GuiStateReport> {
+    // The observation itself is one Accessibility query inside the target
+    // session; `readings: true` adds the bounded dialog-perception pass
+    // (window capture + OCR, #462) — still one traced op, still read-only.
+    return observeOp(this.#session.telemetry, "guiState", undefined, () =>
+      guiStateReport(this.recoveryTarget(), undefined, {}, options ?? {}),
+    );
+  }
+
+  /**
+   * What this build can do with After Effects panels on this platform
+   * (#343, `specs/panel-interaction/spec.md`): per-capability support,
+   * verification level and gate status. Unsupported combinations are
+   * explicit answers — macOS-only in this slice; `resize`/`restore`
+   * report `implemented` + `verified on real host` on darwin under the
+   * #358 A-SAFETY class decision and `unsupported` elsewhere.
+   */
+  panelCapabilities(): PanelCapabilities {
+    return panelCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to one panel surface of the owned After Effects instance
+   * (#343): `identify`/`measure`/`capture` are observe-class;
+   * `resize`/`restore` are mutate-gui and gated — see
+   * `panelCapabilities()` for what is currently allowed.
+   *
+   * `locator` names the surface by title/role/subrole or OS window
+   * number; resolution re-proves pid attribution through the window
+   * census on every operation, so a stale or foreign surface is refused,
+   * never guessed. Throws `PanelError` when no owned target is attested
+   * or the platform is unsupported.
+   */
+  panel(locator: PanelLocator): Panel {
+    const target = this.recoveryTarget();
+    return panelForTarget(
+      target,
+      locator,
+      this.artifactsDir,
+      {},
+      target === null ? undefined : this.#stillEvidenceContext(target),
+      this.#session.telemetry,
+    );
+  }
+
+  /**
+   * What this build can do with OS-level input on this platform and
+   * session kind (#374, `specs/ime-input/spec.md` §7): per-capability
+   * support, verification level and gate status. Session-stream and
+   * shared-state input additionally report `unavailable` until an
+   * explicit `GlobalInputAuthorization` exists — see `input()`.
+   */
+  inputCapabilities(): InputCapabilities {
+    const target = this.recoveryTarget();
+    const sessionKind =
+      target === null ? "unknown" : inputSessionKind(target.session);
+    return inputCapabilities(process.platform, sessionKind);
+  }
+
+  /**
+   * A handle to one input surface of the owned After Effects instance
+   * (#374): `identify`/`imeModeQuery`/`clipboardRead` are observe-class;
+   * every other operation is a mutation routed through `runInputPlan` —
+   * PanelTarget re-resolution, owned-attribution check, GUI lease,
+   * global-input authorization, `inputMutationGate()`, the three-step
+   * focus proof for session-stream ops, and the §5.5 cleanup contract.
+   *
+   * Mutations return the `InputAuditRecord` (spec §5.6) whose `verdict`
+   * is `performed`/`refused`/`indeterminate`/`failed` — a refusal is
+   * evidence, not an exception. Today every mutation class is gated
+   * closed, so the honest production answer is a `refused` (or
+   * `unavailable` for session-stream/shared-state without an
+   * authorization grant) audit record. Throws `InputError` when no
+   * owned target is attested or the platform cannot resolve targets.
+   *
+   * `locator` names the surface exactly as `ae.panel(locator)` does.
+   */
+  input(locator: PanelLocator): Input {
+    return inputForTarget(this.recoveryTarget(), locator, {}, this.#session.telemetry);
+  }
+
+  /**
+   * The evidence-index context `panel().capture()` binds stills into
+   * (#380, spec §5.5). Every field is proven or honestly null: the host
+   * start identity comes from launch provenance when it exists, and the
+   * session kind is derived from the console-owner check — a target in
+   * the console user's session is `"console"`, a GUI session of another
+   * user is `"isolated"` (the dedicated automation lane), and anything
+   * unprovable stays `"unknown"` rather than being upgraded.
+   */
+  #stillEvidenceContext(target: {
+    pid: number;
+    session: MacSession;
+  }): StillEvidenceContext {
+    const driver = this.#session.driver;
+    let processStartIdentity: string | null = null;
+    try {
+      const provenance = readLaunchProvenance(driver.sessionRoot);
+      processStartIdentity =
+        provenance?.host.identity ??
+        (provenance?.host.startedAt != null
+          ? `startedAt=${provenance.host.startedAt}`
+          : null);
+    } catch {
+      processStartIdentity = null;
+    }
+    // `consoleSessionUid()` answers -1 when unreadable — never throws.
+    const consoleUid = consoleSessionUid();
+    let sessionKind: EvidenceSessionKind = "unknown";
+    if (consoleUid >= 0 && target.session.uid === consoleUid) {
+      sessionKind = "console";
+    } else if (target.session.kind === "Aqua") {
+      sessionKind = "isolated";
+    }
+    const session: EvidenceIndexSession = {
+      sessionRoot: driver.sessionRoot,
+      adapter: driver.transportKind,
+      pid: target.pid,
+      processStartIdentity,
+      sessionId: driver.sessionId,
+      sessionKind,
+    };
+    return {
+      artifactsDir: driver.artifactsDir,
+      session,
+      trace: this.#session.trace,
+    };
+  }
+
+  /**
+   * What this build can do with the macOS menu-bar surface on this
+   * platform (#360, `specs/workspace-editing/spec.md`): per-capability
+   * support, verification level and gate status. `enumerate` and
+   * `checkState` are observe-class; `invoke` is mutate-gui and reports
+   * `unavailable` while the A-SAFETY gate keeps it refused.
+   */
+  menuBarCapabilities(): MenuCapabilities {
+    return menuCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's menu bar (#360):
+   * `list`/`find`/`checkState` are observe-class; `invoke` is
+   * mutate-gui and gated — see `menuBarCapabilities()` for what is
+   * currently allowed.
+   *
+   * Items are addressed by `(menuPath, itemTitle)` — the localized
+   * titles AE shows, resolved against a fresh Accessibility observation
+   * on every call. An absent expected path refuses `unsupported-locale`;
+   * there is no coordinate fallback. Throws `MenuError` when no owned
+   * target is attested or the platform is unsupported.
+   */
+  menuBar(): MenuBar {
+    return menuBarForTarget(this.recoveryTarget(), {}, this.#session.telemetry);
+  }
+
+  /**
+   * A handle to one docked-region pane of the owned After Effects
+   * instance (#361, `specs/workspace-editing/spec.md` §6/§7): the Timeline,
+   * Comp or Render Queue area inside the main window's AX tree — a surface
+   * with no window of its own, resolved through a bounded, depth/node/
+   * time-limited subtree walk.
+   *
+   * `identify`/`tree`/`rows` are observe-class: they re-run the AX listing,
+   * the window census and the bounded walk on every call, and re-resolve
+   * the pane each time. A recorded `axPath` that drifted is refused as
+   * `stale-locator` — never remapped by guesswork, and there is no
+   * coordinate fallback. Real-host AX fidelity of docked panes is
+   * unverified; see `panelCapabilities().dockedRegion`.
+   *
+   * Throws `PanelError` when no owned target is attested, the platform is
+   * unsupported, or the pane cannot be resolved.
+   */
+  dockedPane(locator: DockedPaneLocator): DockedPane {
+    return dockedPaneForTarget(this.recoveryTarget(), locator, {}, this.#session.telemetry);
+  }
+
+  /**
+   * What this build can do with the Render Queue surface on this
+   * platform (#365, `specs/workspace-editing/spec.md` §3 W3):
+   * `observe` is observe-class AX rows (`oracle: "limited"` — no DOM
+   * readback exists); `addViaMenu` is mutate-gui and reports
+   * `unavailable` while the A-SAFETY gate keeps menu invoke refused.
+   */
+  renderQueueCapabilities(): RenderQueueCapabilities {
+    return renderQueueCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's Render Queue pane
+   * (#365): `items` re-walks the pane's bounded AX subtree on every
+   * call — the only honest channel, since the DOM exposes no render
+   * queue. `addViaMenu` drives the real Composition menu and waits,
+   * bounded, for new rows; it never resends and never substitutes
+   * `menu.execute` for the GUI path. Throws `RenderQueueError` when no
+   * owned target is attested or the platform is unsupported.
+   */
+  renderQueue(locator: DockedPaneLocator): RenderQueue {
+    return renderQueueForTarget(this.recoveryTarget(), locator, {}, this.#session.telemetry);
+  }
+
+  /**
+   * What this build can do with native file dialogs on this platform
+   * (#365): `awaitDialog` is observe-class; `confirm`/`cancel` are
+   * mutate-gui and gated; `enterFilename` is additionally unsupported
+   * until the B-IME OS text-input posters land (#372/#373).
+   */
+  fileDialogCapabilities(): FileDialogCapabilities {
+    return fileDialogCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's native file
+   * dialogs (#365): `awaitDialog` bounded-waits for the declared
+   * picker class; `confirm`/`cancel`/`enterFilename` are mutate-gui
+   * and gated — see `fileDialogCapabilities()` for what is currently
+   * allowed. Throws `FileDialogError` when no owned target is attested
+   * or the platform is unsupported.
+   */
+  fileDialog(): FileDialog {
+    return fileDialogForTarget(this.recoveryTarget(), {}, this.#session.telemetry);
+  }
+
+  /**
+   * What this build can do with context menus on this platform
+   * (#368, `specs/workspace-editing/spec.md` §3 W4+): `items` is
+   * observe-class; `open`/`invokeItem` are mutate-gui and report
+   * `unavailable` while the A-SAFETY gate keeps them refused — and the
+   * CGEvent right-button post + context-menu AX surface are unverified
+   * on a real host.
+   */
+  contextMenuCapabilities(): ContextMenuCapabilities {
+    return contextMenuCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's context menus
+   * (#368): `open` posts ONE gated right-click inside a re-verified
+   * frame and bounded-waits for the new menu surface; `items`
+   * enumerates the observed candidates; `invokeItem` presses a declared
+   * title — mutate-gui, gated, never resent. Throws `ContextMenuError`
+   * when no owned target is attested or the platform is unsupported.
+   */
+  contextMenu(): ContextMenu {
+    return contextMenuForTarget(this.recoveryTarget(), {}, this.#session.telemetry);
+  }
+
+  /**
+   * What this build can do with drag-drop on this platform (#422,
+   * `specs/workspace-editing/spec.md` §9 "File/element drag-drop"):
+   * `drop-file` is implemented under the A-SAFETY decision in
+   * `docs/gui-supervision-safety-gates.md` (#411 vehicle evidence);
+   * `element-drag` is implemented for the declared proven targets
+   * (`project-item`/`timeline-layer` reorder, `panel-tab` dock→float —
+   * #427) while `other` stays gate-refused.
+   */
+  dragDropCapabilities(): DragDropCapabilities {
+    return dragDropCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's drag-drop surface
+   * (#422): `dropFile` vends a fixture file in an NSDraggingSession and
+   * drops it on a re-verified, census-proven owned surface;
+   * `dragElement` runs the segmented press→move→release with per-segment
+   * census re-checks for the declared proven element classes. Both are
+   * mutate-gui, lease-held for the whole sequence, oracle-verified via
+   * `project.items` (or `comp.layers` order for `timeline-layer`),
+   * never resent.
+   * Throws `DragDropError` when no owned target is attested or the
+   * platform is unsupported.
+   */
+  dragDrop(): DragDrop {
+    return dragDropForTarget(this.recoveryTarget(), this.#session);
+  }
+
+  /**
+   * What this build can do with project Open/Save dialogs on this
+   * platform (#368): every leg is mutate-gui and reports `unavailable`
+   * while the gates keep them refused — the composed menu invoke, the
+   * dialog acts, and the shared-state filename entry each keep their
+   * own gate.
+   */
+  projectDialogCapabilities(): ProjectDialogCapabilities {
+    return projectDialogCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's project Open/Save
+   * dialogs (#368): `openProject`/`saveProjectAs`/`cancelDialog`/
+   * `roundTrip` drive the real menu → native picker → filename entry →
+   * confirm path with bounded waits and recorded oracles
+   * (`project.info` for open, read-only file stat for save). The GUI
+   * path is the asserted path; scripting mutations are never used as
+   * evidence. Throws `ProjectDialogError` when no owned target is
+   * attested or the platform is unsupported.
+   */
+  projectDialog(): ProjectDialog {
+    return projectDialogForTarget(this.recoveryTarget(), this.#session);
+  }
+
+  /**
+   * Screen recording lifecycle (#381, `specs/gui-evidence/spec.md` §5.4):
+   * `record.start(scope, { maxDurationMs?, fps?, audio?, authorization? })`
+   * opens a bounded segment (`seg-001`, …) and `record.stop(id)`
+   * finalizes it — container probe, `coversOperations`, recorder
+   * residue — into the session's `ae-a8n.gui-evidence/v1` index under
+   * `artifacts/`.
+   *
+   * `window`/`region` scopes need the `PanelTarget` from
+   * `panel(locator).identify()` (attribution must be `"owned"`) and
+   * serialize on the GUI lease for the segment's duration.
+   * `display`/`session` scopes — and every scope on a session whose kind
+   * is not proven `"isolated"` — require an explicit
+   * `RecordingAuthorization` grant (spec §5.7, #383) naming both the
+   * scope kind and the session kind; without it the start refuses
+   * `unauthorized` and the refusal is recorded in the index gaps, with
+   * it the grant is recorded verbatim on the segment. On darwin the
+   * #382 backend (ScreenCaptureKit helper + `screencapture -V`
+   * fallback) can serve `window`/`region`/`display` scopes inside the
+   * attested target session; other platforms have no backend and refuse
+   * `unsupported`.
+   * SCStream delivery is unverified on a real host — see
+   * `guiEvidenceCapabilities().screenRecording`.
+   *
+   * `close()` finalizes every open segment before the host is stopped.
+   */
+  get record(): RecordingApi {
+    this.#recordingController ??= createRecordingController(this.#session);
+    return recordingApiForController(this.#recordingController, this.#session.telemetry);
+  }
+
+  /**
+   * The session's GUI-evidence index surface (#385,
+   * `specs/gui-evidence/spec.md` §5.5; E4 of program #337): read the
+   * `ae-a8n.gui-evidence/v1` document at
+   * `<sessionRoot>/artifacts/evidence-index.json`, echo
+   * `consumerRefs` (`testId`/`runId`/`suite` — caller-supplied, never
+   * invented), project artifacts into the ae-test `Artifact` shape,
+   * run the same-run join for one `requestId`, and discover render
+   * outputs under `session.artifactsDir`.
+   *
+   * `comp.renderFrame` binds its PNG into the index automatically
+   * (Channel R); `panel().capture()` binds stills (Channel S) and
+   * `record.start/stop` binds screen segments. This surface is the
+   * consumer handoff — ae-test#145 / ae-devtools#426 read the same
+   * file; nothing here copies evidence into a new tree.
+   */
+  get evidence(): EvidenceApi {
+    return evidenceApiFor(this.#session);
+  }
+
+  /**
+   * What this build can do with the Timeline pane on this platform
+   * (#364, `specs/workspace-editing/spec.md` §3 W2): per-op support,
+   * verification level and gate status. `rows` is observe-class;
+   * `scrub`/`selectRow`/`navigateKeyframe` are mutate-gui and report
+   * `unavailable` while the A-SAFETY gate keeps them refused — see
+   * `timelineCapabilities()`.
+   */
+  timelineCapabilities(): TimelineCapabilities {
+    return timelineCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the Timeline docked pane of the owned After Effects
+   * instance (#364): `rows` is observe-class; `scrub`, `selectRow` and
+   * `navigateToKeyframe` are mutate-gui — GUI act + DOM readback oracle,
+   * gated and bounded (no resend). Throws `TimelineError` when no owned
+   * target is attested or the platform is unsupported.
+   *
+   * `locator` names the pane inside the main window's AX tree — the same
+   * `DockedPaneLocator` `ae.dockedPane()` takes. Real-host fidelity of
+   * timeline rows, the current-time indicator and keyframe diamonds is
+   * unverified (spec §11); see `timelineCapabilities()`.
+   */
+  timeline(locator: DockedPaneLocator): Timeline {
+    return timelineForTarget(this.recoveryTarget(), this.#session, locator);
+  }
+
+  /**
+   * What this build can do with After Effects workspaces on this
+   * platform (#363, W1 of `specs/workspace-editing/spec.md`):
+   * per-capability support, verification level and gate status.
+   * `observe`/`verifyRestore` are observe-class; `switchWorkspace` is
+   * mutate-gui and `arrange` additionally needs the unimplemented
+   * drag vehicle — see `workspaceCapabilities()` for the current
+   * answers.
+   */
+  workspaceCapabilities(): WorkspaceCapabilities {
+    return workspaceCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the owned After Effects instance's workspace (#363):
+   * `observe`/`listWorkspaces`/`verifyRestore` are observe-class —
+   * active-workspace identity re-read from the Window > Workspace menu
+   * checkmark, panel frames, and the read-only workspace-XML store.
+   * `switchTo`/`arrange` are mutate-gui and gated — see
+   * `workspaceCapabilities()` for what is currently allowed.
+   *
+   * Every method re-observes: a workspace is a layout predicate
+   * verified per observation, never a cached handle (spec §5). Throws
+   * `WorkspaceError` when no owned target is attested or the platform
+   * is unsupported.
+   */
+  workspace(): Workspace {
+    return workspaceForTarget(this.recoveryTarget(), {}, this.#session.telemetry);
+  }
+
+  /**
+   * What this build can do with OS windows on this platform (#366,
+   * W4+ of `specs/workspace-editing/spec.md` §9): per-op support,
+   * verification level and gate status. `state` is observe-class;
+   * `move`/`resize`/`minimize`/`restore`/`maximize`/`focus` are
+   * mutate-gui and report `unavailable` while the A-SAFETY gate keeps
+   * them refused — see `windowOpsCapabilities()`.
+   */
+  windowOpsCapabilities(): WindowOpsCapabilities {
+    return windowOpsCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to one OS window of the owned After Effects instance
+   * (#366): `state` is observe-class; `move`, `resize`, `minimize`,
+   * `restore`, `maximize` and `focus` are mutate-gui — AX position/
+   * size/miniaturized sets plus a focus-proofed activate, gated and
+   * bounded (no resend, `indeterminate` on an unproven postcondition).
+   * Throws `WindowOpsError` when no owned target is attested or the
+   * platform is unsupported.
+   *
+   * `locator` names the window exactly as `ae.panel(locator)` does —
+   * title/role/subrole or OS window number, re-resolved on every call.
+   * Real-host fidelity of the AX sets (and of a miniaturized window's
+   * frame) is unverified; see `windowOpsCapabilities()`.
+   *
+   * `options.focusedOnly` (#406) resolves through the app's
+   * AXFocusedWindow instead of the window enumeration — the only
+   * AX-reachable surface on hosts where AE vends no AX windows.
+   * Observe-class only: `state()` works, every mutation refuses.
+   */
+  windowOps(locator: PanelLocator, options?: WindowOpsOptions): WindowOps {
+    return windowOpsForTarget(this.recoveryTarget(), locator, {}, options, this.#session.telemetry);
+  }
+
+  /**
+   * What this build can do with the comp viewer on this platform
+   * (#367, `specs/workspace-editing/spec.md` §12 W4+): per-op support,
+   * verification level and gate status. `pan`/`zoom` are mutate-gui and
+   * report `unavailable` while the A-SAFETY gate keeps them refused —
+   * see `compViewCapabilities()`.
+   */
+  compViewCapabilities(): CompViewCapabilities {
+    return compViewCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the Comp viewer docked pane of the owned After Effects
+   * instance (#367): `pan` and `zoom` are mutate-gui — GUI act +
+   * capture-diff/geometry oracle, gated and bounded (no resend).
+   * Throws `CompViewError` when no owned target is attested or the
+   * platform is unsupported.
+   *
+   * `locator` names the pane inside the main window's AX tree — the
+   * same `DockedPaneLocator` `ae.dockedPane()` takes. Real-host fidelity
+   * of the comp viewer's AX surface and its pan/zoom semantics is
+   * unverified (spec §11); see `compViewCapabilities()`.
+   */
+  compView(locator: DockedPaneLocator): CompView {
+    return compViewForTarget(
+      this.recoveryTarget(),
+      locator,
+      this.artifactsDir,
+      {},
+      this.#session.telemetry,
+    );
+  }
+
+  /**
+   * What this build can do with the Effect Controls pane on this
+   * platform (#367, `specs/workspace-editing/spec.md` §12 W4+): per-op
+   * support, verification level and gate status. `setFolded`/
+   * `setParameter` are mutate-gui and report `unavailable` while the
+   * A-SAFETY gate keeps them refused — see `effectControlsCapabilities()`.
+   */
+  effectControlsCapabilities(): EffectControlsCapabilities {
+    return effectControlsCapabilities(process.platform);
+  }
+
+  /**
+   * A handle to the Effect Controls docked pane of the owned After
+   * Effects instance (#367): `setFolded` is mutate-gui verified by the
+   * pane's row delta; `setParameter` is mutate-gui verified by the DOM
+   * `effect.getParameter` readback — both gated and bounded (no resend).
+   * Throws `EffectControlsError` when no owned target is attested or
+   * the platform is unsupported.
+   *
+   * `locator` names the pane inside the main window's AX tree — the
+   * same `DockedPaneLocator` `ae.dockedPane()` takes. Real-host AX
+   * fidelity of the Effect Controls panel is unverified (spec §11);
+   * see `effectControlsCapabilities()`.
+   */
+  effectControls(locator: DockedPaneLocator): EffectControls {
+    return effectControlsForTarget(
+      this.recoveryTarget(),
+      this.#session,
+      locator,
+    );
   }
 
   /**
@@ -615,19 +1674,61 @@ export class AfterEffects {
       return { quit: false, ownership: this.ownership(), reason: "already closed" };
     }
     try {
+      // The pid the GUI lease audit is scoped by, captured while the
+      // target is still attestable — after stop() the host is gone and
+      // `recoveryTarget()` answers null (#434 teardown verdict).
+      this.#teardownPid = this.#session.driver.recoveryTarget()?.pid ?? null;
+      // `finally` finalize (spec §5.4): every open recording segment gets
+      // a stop attempt — and a residue sweep — before the host stops.
+      // finalizeAll never throws; the catch is belt-and-braces so a
+      // recording problem can never block the session close it belongs to.
+      try {
+        await this.#recordingController?.finalizeAll();
+      } catch {
+        // recorded on the index gaps by the controller itself
+      }
       const result = await this.#session.driver.stop(options);
       this.#closed = true;
       // The monitor outlives the quit attempt on purpose: `app.quit` can
       // raise the unsaved-changes dialog supervision exists to see. It is
       // released only once the session is actually closed.
       this.#session.supervision?.stop();
+      this.#teardownVerdict(result);
       return result;
     } catch (error) {
       if (!(error instanceof HostError && error.name === "UnsavedChangesError")) {
         this.#closed = true;
         this.#session.supervision?.stop();
+        // The session is gone even though close failed: still leave the
+        // teardown verdict, evaluated against what actually happened. A
+        // quit that timed out is marked so the verdict can re-check the
+        // recorded host instead of reporting an unproven failure (#443).
+        this.#teardownVerdict({
+          error: error instanceof Error ? error.message : String(error),
+          quitTimedOut: error instanceof HostQuitTimeoutError,
+        });
       }
       contextualise("session.close", error);
+    }
+  }
+
+  #teardownPid: number | null | undefined;
+
+  /**
+   * Persist the teardown verdict (#434, spec §10) for a session that is
+   * actually ending. Best-effort: a verdict write failure must never
+   * mask the close outcome it describes.
+   */
+  #teardownVerdict(
+    close: CloseResult | { readonly error: string; readonly quitTimedOut?: boolean },
+  ): void {
+    try {
+      this.#teardownPid ??= this.#session.driver.recoveryTarget()?.pid ?? null;
+      writeTeardownVerdict(this.#session, close, {
+        targetPid: this.#teardownPid,
+      });
+    } catch {
+      // The verdict is evidence; losing it cannot fail the close.
     }
   }
 

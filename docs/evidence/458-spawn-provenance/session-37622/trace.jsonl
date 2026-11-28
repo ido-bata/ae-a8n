@@ -1,0 +1,1 @@
+{"seq":0,"ts":"2026-11-28T10:49:32.449Z","op":"session.terminate","status":"ok","durationMs":1188,"result":{"outcome":"already-gone","method":"none","disappearanceProven":true,"supervision":"recorded","phase":"blocked"}}

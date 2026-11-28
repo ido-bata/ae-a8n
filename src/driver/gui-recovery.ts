@@ -24,7 +24,7 @@
 
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
   censusForPid,
@@ -175,6 +175,17 @@ export type GuiAppState = {
    */
   readonly axSuspect: boolean;
   /**
+   * Why `axSuspect` fired, in one sentence — which of the two shapes
+   * was measured (empty AX listing vs. a wholly foreign/unmatched
+   * listing) and what the WindowServer census counted. `null` whenever
+   * `axSuspect` is false. After Effects 2026/2027 is the canonical
+   * empty-listing case (#406): the app vends no AX windows at all, so
+   * `windows` is empty while the census lists real windows — the
+   * reason names that possibility so callers do not read it as a
+   * transient glitch.
+   */
+  readonly axSuspectReason: string | null;
+  /**
    * On-screen WindowServer windows for this pid that no Accessibility
    * window accounts for (#321). AX can list the ordinary project windows
    * while a modal dialog stays completely invisible — AE 2027 `ui.alert`
@@ -184,8 +195,29 @@ export type GuiAppState = {
    * shows that AX-derived conclusions cannot see. Empty when the census
    * is unavailable (already degraded) or every on-screen window is
    * accounted for.
+   *
+   * This is the blocking-evidence subset: `onScreen` is required because
+   * only what the visible screen shows can block the host right now.
+   * The superset — the same unaccounted rows regardless of `onScreen` —
+   * is `axUnaccountedCensusWindows` below.
    */
   readonly axUnaccountedWindows: readonly WindowServerWindow[];
+  /**
+   * WindowServer census windows attributed to this pid that no
+   * Accessibility window accounts for, on ANY Space and whether on-screen
+   * or not (#451). `axUnaccountedWindows` is the on-screen subset used
+   * for blocking evidence; this field is degraded observation only —
+   * each row is a surface AX cannot see, honestly labelled "possibly
+   * parked/offscreen — not proven blocking". It exists because an
+   * AX-invisible modal can be parked (`onScreen: false`, layer 0) and
+   * still be the thing that stopped the host answering: measured on the
+   * AE 2027 BirthPrefs modal (pid 18577, issue #451), where the census
+   * showed the modal off-screen while AX reported zero windows. Rows
+   * carry `windowNumber` so a read-only `captureWindowById` can still
+   * image them. Empty when the census is unavailable or every census
+   * window is accounted for. This field NEVER feeds a blocking verdict.
+   */
+  readonly axUnaccountedCensusWindows: readonly WindowServerWindow[];
   /**
    * AX-listed windows the census attributes to OTHER pids (#330): the
    * bundle-confused listing of issue #330, where `windows of process`
@@ -224,19 +256,20 @@ export function framesMatch(ax: GuiFrame, ws: GuiFrame): boolean {
 }
 
 /**
- * Whether one census window is an on-screen surface no AX window accounts
- * for. Only on-screen windows with real bounds count: the census also
- * lists windows parked on other Spaces and minimized ones, which are not
- * evidence about what is blocking the screen right now (a healthy AE owns
- * several of those while AX shows only the visible window — measured
- * 2026-11-23, #321).
+ * Whether one census window is a surface no AX window accounts for,
+ * regardless of `onScreen`. Only rows with real bounds count: a census
+ * row without geometry cannot be matched or captured, so it is skipped
+ * rather than guessed at. Parked, off-Space and minimized windows ARE
+ * admitted here on purpose — they are degraded evidence (#451), never
+ * proof of a blocker: a healthy AE owns several while AX shows only the
+ * visible window (measured 2026-11-23, #321).
  */
-function isAxUnaccountedWindow(
+function isAxUnaccountedCensusWindow(
   ws: WindowServerWindow,
   pid: number,
   windows: readonly GuiWindowInfo[],
 ): boolean {
-  if (ws.pid !== pid || !ws.onScreen) {
+  if (ws.pid !== pid) {
     return false;
   }
   const bounds = ws.bounds;
@@ -246,6 +279,20 @@ function isAxUnaccountedWindow(
   return !windows.some(
     (ax) => ax.frame != null && framesMatch(ax.frame, bounds),
   );
+}
+
+/**
+ * Whether one census window is an on-screen surface no AX window accounts
+ * for. On-screen is the blocking-evidence bar (#321); the off-screen rows
+ * the same predicate admits are `axUnaccountedCensusWindows`' degraded
+ * evidence instead (#451).
+ */
+function isAxUnaccountedWindow(
+  ws: WindowServerWindow,
+  pid: number,
+  windows: readonly GuiWindowInfo[],
+): boolean {
+  return ws.onScreen && isAxUnaccountedCensusWindow(ws, pid, windows);
 }
 
 /**
@@ -306,6 +353,9 @@ export function assessGuiObservation(
   census: WindowCensus,
 ): GuiAppState {
   const mine = censusForPid(census, pid);
+  const axUnaccountedCensusWindows = census.available
+    ? census.windows.filter((ws) => isAxUnaccountedCensusWindow(ws, pid, windows))
+    : [];
   const axUnaccountedWindows = census.available
     ? census.windows.filter((ws) => isAxUnaccountedWindow(ws, pid, windows))
     : [];
@@ -319,6 +369,9 @@ export function assessGuiObservation(
       ? window
       : { ...window, censusAttribution: attribution };
   });
+  const axSuspect =
+    mine.windowCount > 0 &&
+    observed.every((window) => window.censusAttribution !== "owned");
   return {
     pid,
     frontmost,
@@ -334,10 +387,20 @@ export function assessGuiObservation(
     // AX-invisible, the same unobservable-surface evidence one listing at
     // a time (#330). With the census unavailable `windowCount` is 0 and
     // this stays false exactly as before.
-    axSuspect:
-      mine.windowCount > 0 &&
-      observed.every((window) => window.censusAttribution !== "owned"),
+    axSuspect,
+    axSuspectReason: axSuspect
+      ? observed.length === 0
+        ? `the AX window listing is empty while the WindowServer census ` +
+          `lists ${mine.windowCount} window(s) for pid ${pid} — the app ` +
+          "may not vend AX windows at all (After Effects, #406) or the " +
+          "listing is untrusted; only AXFocusedWindow is reachable"
+        : `all ${observed.length} AX-listed window(s) are attributed to ` +
+          `other pids or to nothing while the census lists ` +
+          `${mine.windowCount} window(s) for pid ${pid} — the pid's real ` +
+          "windows are AX-invisible (#330)"
+      : null,
     axUnaccountedWindows,
+    axUnaccountedCensusWindows,
     axForeignWindowCount: observed.filter(
       (window) => window.censusAttribution === "foreign",
     ).length,
@@ -833,6 +896,15 @@ export type GuiRecoveryOptions = {
   /** Lease/audit seam — mainly a test seam. */
   readonly lease?: GuiLeaseController;
   /**
+   * Directory containing the compiled `scripts/isolated-session/`
+   * helpers — specifically `window-ops`, the direct-AX mutation vehicle
+   * `resizePanelWindow` uses since #358 (the System Events `set size`
+   * vehicle was disproved on real After Effects, #357: AppleEvent
+   * -1712 timeout, and System Events enumeration sees almost nothing on
+   * AE). Absent means panel resize refuses before the lease is taken.
+   */
+  readonly windowOpsHelpersDir?: string;
+  /**
    * Session-command seam — mainly a test seam. Production runs
    * `runInSession`; tests inject a stub so mutation error paths can be
    * exercised without a real GUI session.
@@ -931,6 +1003,7 @@ export class MacGuiRecovery {
   readonly #census: (() => WindowCensus) | undefined;
   readonly #lease: GuiLeaseController;
   readonly #runSession: typeof runInSession;
+  readonly #windowOpsHelpersDir: string | undefined;
   readonly #verifyProcess: ((pid: number) => boolean) | undefined;
   readonly #readTargetSession: () => MacSession | null;
   readonly #consoleUid: () => number;
@@ -975,6 +1048,7 @@ export class MacGuiRecovery {
         ownerId: options.ownerId ?? "ae-a8n",
       });
     this.#runSession = options.runSession ?? runInSession;
+    this.#windowOpsHelpersDir = options.windowOpsHelpersDir;
     this.#verifyProcess = options.verifyProcess;
     this.#readTargetSession =
       options.readTargetSession ?? (() => readGuiSession(options.session.uid));
@@ -1182,6 +1256,265 @@ export class MacGuiRecovery {
       );
     }
     return path;
+  }
+
+  /**
+   * The WindowServer census rows attributed to this pid, across all
+   * Spaces — the pid-accurate half of panel identification (#343). Read
+   * -only and audited as observation; an unavailable census returns
+   * `available: false` with the reason, never an empty list that could be
+   * mistaken for "no windows".
+   */
+  windowServerWindows(): {
+    readonly available: boolean;
+    readonly reason: string | null;
+    readonly windows: readonly WindowServerWindow[];
+  } {
+    this.#observe("windowServerWindows");
+    try {
+      const census =
+        this.#census !== undefined
+          ? this.#census()
+          : { available: false as const, reason: "no census configured" };
+      if (!census.available) {
+        return { available: false, reason: census.reason, windows: [] };
+      }
+      return {
+        available: true,
+        reason: null,
+        windows: census.windows.filter((w) => w.pid === this.#pid),
+      };
+    } catch (error) {
+      return {
+        available: false,
+        reason: `window census failed: ${errorMessage(error)}`,
+        windows: [],
+      };
+    }
+  }
+
+  /**
+   * Runs a caller-supplied read-only Accessibility AppleScript inside the
+   * target session and returns its stdout (#361 docked-pane walk; the
+   * menu-bar surface is the sibling consumer).
+   *
+   * The script arrives as `argv`-driven source — nothing from the outside
+   * is spliced into it — is audited as `observe` under `op`, and gets the
+   * same process-identity and session-proof re-checks every session
+   * command gets. It is for observation only: a script that mutates must
+   * go through `#mutate` instead, which this method deliberately is not.
+   */
+  accessibilityQuery(
+    script: readonly string[],
+    args: readonly string[],
+    op: string,
+  ): string {
+    this.#observe(op);
+    return this.#osascript(script, args).stdout;
+  }
+
+  /**
+   * A screenshot of one rectangular region of the target session's
+   * screen (#343 panel capture). `frame` is in the same points,
+   * top-left-origin space the census and AX frames use. Read-only
+   * observation — audited, never leased — but the file it writes is
+   * evidence, so callers own where it lands.
+   *
+   * `-R` takes the rect in points; whether screencapture honours that on
+   * every macOS version is a T002 real-host question — the capture
+   * artifact records the pixel size so a scale mismatch is visible rather
+   * than silent.
+   */
+  captureRegion(path: string, frame: GuiFrame): string {
+    this.#observe("captureRegion");
+    if (this.#screenshotDir !== undefined) {
+      mkdirSync(this.#screenshotDir, { recursive: true });
+    }
+    mkdirSync(dirname(path), { recursive: true });
+    this.#assertSameProcess();
+    this.#assertSessionProof();
+    const rect = [frame.x, frame.y, frame.width, frame.height]
+      .map((value) => String(Math.round(value)))
+      .join(",");
+    const result = this.#runSession(
+      this.#session,
+      "/usr/sbin/screencapture",
+      ["-x", "-o", "-R", rect, path],
+      { timeoutMs: 30_000 },
+    );
+    if (result.status !== 0) {
+      throw new GuiRecoveryError(
+        `could not capture the region of ${this.#session.username}'s session: ${result.stderr.trim()}`,
+      );
+    }
+    return path;
+  }
+
+  /**
+   * A screenshot of one window of the target session, addressed by its
+   * WindowServer window number — the capture that does not leak the rest
+   * of the screen (#343). Read-only observation, same audit rule as
+   * `captureRegion`.
+   */
+  captureWindowById(path: string, windowNumber: number): string {
+    this.#observe("captureWindowById");
+    if (this.#screenshotDir !== undefined) {
+      mkdirSync(this.#screenshotDir, { recursive: true });
+    }
+    mkdirSync(dirname(path), { recursive: true });
+    this.#assertSameProcess();
+    this.#assertSessionProof();
+    const result = this.#runSession(
+      this.#session,
+      "/usr/sbin/screencapture",
+      ["-x", "-o", "-l", String(windowNumber), path],
+      { timeoutMs: 30_000 },
+    );
+    if (result.status !== 0) {
+      throw new GuiRecoveryError(
+        `could not capture window ${windowNumber} of ${this.#session.username}'s session: ${result.stderr.trim()}`,
+      );
+    }
+    return path;
+  }
+
+  /**
+   * Resizes the panel window `expected` resolved to (#343/#358), under
+   * the same lease + audit + pid-attribution proof a press requires.
+   *
+   * `expected` must carry `"owned"` census attribution and a frame —
+   * the same fail-closed gate `pressButton` applies (#330). The vehicle
+   * is the compiled `scripts/isolated-session/window-ops` helper's
+   * `act --op resize`: it re-lists the pid's AX windows inside the
+   * session (`AXUIElementCreateApplication(pid)` — it can never see
+   * another process's windows), re-verifies the expected
+   * frame+title+subrole identity within 4pt immediately before
+   * `AXUIElementSetAttributeValue(kAXSizeAttribute)`, and reads the same
+   * element back afterwards. This replaced the System Events `set size`
+   * vehicle (`RESIZE_PANEL_SCRIPT`), which real After Effects disproved
+   * (#357: AppleEvent -1712 timeout; System Events enumeration returns
+   * almost nothing for AE, so the element was unreachable). The helper
+   * requires `windowOpsHelpersDir`; without it the call refuses before
+   * the lease is taken.
+   *
+   * Verdict mapping (helper JSON → this contract):
+   *
+   *   - `performed` → true.
+   *   - `not-found` / `ambiguous` → false: the in-session identity
+   *     re-check refused, provably nothing was resized.
+   *   - `missing` → `MacSessionError`: the target process/session was
+   *     never entered — a pre-mutation refusal (`unavailable`), not an
+   *     unknown outcome.
+   *   - `failed`, a non-zero exit, or an unusable receipt → error
+   *     inside `#mutate`, audited `unknown` and surfaced as
+   *     `GuiMutationError`: the outcome is unknown — re-observe before
+   *     any retry, never resend.
+   */
+  resizePanelWindow(
+    expected: GuiWindowInfo & { frame: GuiFrame },
+    size: { readonly width: number; readonly height: number },
+  ): boolean {
+    this.#assertPressAttribution(expected);
+    const helpersDir = this.#windowOpsHelpersDir;
+    if (helpersDir === undefined) {
+      throw new GuiRecoveryError(
+        "panel resize needs the compiled window-ops helpers " +
+          "(scripts/isolated-session/window-ops); none are configured " +
+          "for this recovery — nothing was resized",
+      );
+    }
+    return this.#mutate("resizePanelWindow", () => {
+      // Same identity/session re-checks every session command gets —
+      // the pid in the argv is only meaningful while it still names the
+      // process this run started.
+      this.#assertSameProcess();
+      this.#assertSessionProof();
+      const frameArg = [
+        expected.frame.x,
+        expected.frame.y,
+        expected.frame.width,
+        expected.frame.height,
+      ]
+        .map((value) => String(value))
+        .join(",");
+      const result = this.#runSession(
+        this.#session,
+        join(helpersDir, "window-ops"),
+        [
+          "act",
+          "--pid",
+          String(this.#pid),
+          "--op",
+          "resize",
+          "--title",
+          expected.title,
+          "--subrole",
+          expected.subrole ?? "-",
+          "--frame",
+          frameArg,
+          "--width",
+          String(size.width),
+          "--height",
+          String(size.height),
+        ],
+        { timeoutMs: 30_000 },
+      );
+      if (result.status !== 0) {
+        // The helper may have applied the AX set before dying — the
+        // outcome is unknown, which `#mutate` audits as `unknown`.
+        throw new GuiRecoveryError(
+          `the window-ops resize vehicle failed (exit ${result.status}): ` +
+            `${result.stderr.trim() || result.stdout.trim() || "no diagnostic"}`,
+        );
+      }
+      let verdict: string | null = null;
+      let detail: string | null = null;
+      try {
+        const parsed = JSON.parse(result.stdout) as {
+          verdict?: unknown;
+          detail?: unknown;
+        };
+        verdict = typeof parsed.verdict === "string" ? parsed.verdict : null;
+        detail = typeof parsed.detail === "string" ? parsed.detail : null;
+      } catch {
+        verdict = null;
+      }
+      switch (verdict) {
+        case "performed":
+          return true;
+        case "not-found":
+        case "ambiguous":
+          // The helper re-verified identity inside the session and
+          // refused: provably nothing was resized.
+          return false;
+        case "missing":
+          // The target process/session was never entered — provable
+          // non-mutation, surfaced as unavailable rather than a clean
+          // refusal so the caller re-observes instead of retrying blind.
+          throw new MacSessionError(
+            `the window-ops resize vehicle could not reach pid ${this.#pid}'s ` +
+              "process or session" +
+              (detail === null ? "" : ` (${detail})`) +
+              "; nothing was resized",
+          );
+        case "failed":
+          // The AX set was attempted and errored: the mutation may have
+          // partially applied. Unknown outcome — never "not-performed".
+          throw new Error(
+            "the panel resize was attempted but the window-ops vehicle " +
+              `reported failure${detail === null ? "" : ` (${detail})`}; ` +
+              "the window state must be re-observed before any retry",
+          );
+        default:
+          throw new Error(
+            "the window-ops vehicle returned an unusable receipt" +
+              (result.stdout.trim() === ""
+                ? " (empty stdout)"
+                : `: ${result.stdout.trim().slice(0, 200)}`) +
+              "; the resize outcome is unknown — re-observe before any retry",
+          );
+      }
+    });
   }
 
   /**
@@ -1572,6 +1905,45 @@ export function censusRunnerInSession(
     }
     return result.stdout;
   };
+}
+
+/**
+ * Session-command timeout for read-only observation paths (#450).
+ *
+ * The supervision monitor heartbeats its lease and publishes the durable
+ * document once per tick, and a tick cannot complete while a session
+ * command is still running — `runInSession` is a blocking
+ * `execFileSync`. The mutation-path commands legitimately allow 60s, but
+ * an observation that hangs longer than the monitor lease TTL (30s)
+ * makes a live monitor look dead: readers see `monitor-lost` while the
+ * process is alive and heartbeating. Observation paths therefore bound
+ * every session command to {@link OBSERVATION_SESSION_COMMAND_TIMEOUT_MS}
+ * so the worst-case tick — the AX listing plus the WindowServer census —
+ * still finishes inside the freshness window, and a genuinely hung query
+ * degrades to `probe-degraded` evidence instead of a false `monitor-lost`.
+ * Measured on RC run-2: a foreign AE exit+restart mid-run stalled the AX
+ * query to its 60s timeout, the tick could not complete, and the durable
+ * heartbeat went stale while the lease kept beating.
+ */
+export const OBSERVATION_SESSION_COMMAND_TIMEOUT_MS = 10_000;
+
+/**
+ * A `runInSession` wrapper that clamps every command's timeout to
+ * {@link OBSERVATION_SESSION_COMMAND_TIMEOUT_MS}. For observation-only
+ * consumers (the detached supervisor, session supervision) — never for
+ * the mutation path, whose presses may legitimately wait longer.
+ */
+export function boundedObservationRunSession(
+  runSession: typeof runInSession = runInSession,
+): typeof runInSession {
+  return (session, command, args, options) =>
+    runSession(session, command, args, {
+      ...options,
+      timeoutMs: Math.min(
+        options?.timeoutMs ?? OBSERVATION_SESSION_COMMAND_TIMEOUT_MS,
+        OBSERVATION_SESSION_COMMAND_TIMEOUT_MS,
+      ),
+    });
 }
 
 /** Whether a screenshot file was written and is not empty. Mainly a test seam. */

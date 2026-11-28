@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "kind": "ae-a8n.teardown/v1",
+  "sessionId": "dadbc347-5ac4-4f04-8856-0db0fb57b41e",
+  "sessionRoot": "/tmp/rc436-sessions/s1-warm-03",
+  "evaluatedAt": "2026-11-28T04:49:06.538Z",
+  "verdict": "unverifiable",
+  "items": [
+    {
+      "area": "process",
+      "verdict": "unverifiable",
+      "detail": "session close failed: After Effects did not exit within 60000 ms of app.quit; it was left running; the process still owns window(s): \"名称未設定プロジェクト\"; whether the host was left running is unproven"
+    },
+    {
+      "area": "input",
+      "verdict": "clean",
+      "detail": "no input operations ran this session"
+    },
+    {
+      "area": "leases",
+      "verdict": "clean",
+      "detail": "0 audit row(s) for pid 39328: 0 acquire, 0 release/reap"
+    },
+    {
+      "area": "recorder",
+      "verdict": "clean",
+      "detail": "0 segment(s); no recorder residue reported"
+    },
+    {
+      "area": "supervision",
+      "verdict": "clean",
+      "detail": "monitor lease free; supervision.json retained as durable state (phase=running) — it expires per its TTL and is required by resume/rebuild, not session residue"
+    },
+    {
+      "area": "artifacts",
+      "verdict": "clean",
+      "detail": "artifacts retained at /tmp/rc436-sessions/s1-warm-03/artifacts (evidence, not residue)"
+    }
+  ],
+  "reportPath": null
+}

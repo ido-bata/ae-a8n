@@ -1,0 +1,29 @@
+{
+  "label": "s1-repro-01",
+  "scenarioId": "RC-S1",
+  "verdict": "fail",
+  "steps": [
+    {
+      "stepId": "launch+handshake-readiness",
+      "startedAt": "2026-11-28T05:24:03.810Z",
+      "durationMs": 194268,
+      "expected": "AfterEffects.launch resolves within readinessTimeoutMs (180000) with owned session",
+      "actual": {
+        "error": "AfterEffectsError",
+        "message": "After Effects was started (pid 4502, started 2026-11-28T05:24:06.000Z, /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 169364ms; the After Effects process is still running but did not answer; the call took 181620ms in total. It is still running, and this session cannot prove it may quit it, so it was left running: qu"
+      },
+      "evidenceRefs": [
+        "trace:session.launch"
+      ],
+      "error": {
+        "name": "AfterEffectsError",
+        "message": "After Effects was started (pid 4502, started 2026-11-28T05:24:06.000Z, /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 169364ms; the After Effects process is still running but did not answer; the call took 181620ms in total. It is still running, and this session cannot prove it may quit it, so it was left running: qu"
+      }
+    }
+  ],
+  "cleanup": {
+    "verdict": "unverifiable",
+    "ref": null
+  },
+  "sessionRoot": "/tmp/rc436-sessions/s1-repro-01"
+}

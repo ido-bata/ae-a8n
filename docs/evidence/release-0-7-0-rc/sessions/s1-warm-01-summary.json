@@ -1,0 +1,103 @@
+{
+  "label": "s1-warm-01",
+  "scenarioId": "RC-S1",
+  "verdict": "fail",
+  "steps": [
+    {
+      "stepId": "launch+handshake-readiness",
+      "startedAt": "2026-11-28T04:35:37.308Z",
+      "durationMs": 19244,
+      "expected": "AfterEffects.launch resolves within readinessTimeoutMs (180000) with owned session",
+      "actual": {},
+      "evidenceRefs": [
+        "trace:session.launch"
+      ]
+    },
+    {
+      "stepId": "capabilities",
+      "startedAt": "2026-11-28T04:35:56.552Z",
+      "durationMs": 1795,
+      "expected": "ae.capabilities() returns handshake",
+      "actual": {
+        "contractVersion": {
+          "major": 1,
+          "minor": 0
+        },
+        "ownership": "owned",
+        "caps": 30
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "version",
+      "startedAt": "2026-11-28T04:35:58.347Z",
+      "durationMs": 6700,
+      "expected": "ae.version() returns 27.0x78",
+      "actual": {
+        "version": "27.0x78",
+        "info": {
+          "version": "27.0x78",
+          "build": "78"
+        }
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "openProject+info",
+      "startedAt": "2026-11-28T04:36:05.047Z",
+      "durationMs": 20220,
+      "expected": "ae.openProject(fixture.aep) succeeds; project.info reports the fixture",
+      "actual": {
+        "file": null,
+        "name": null,
+        "itemCount": 1
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "comps",
+      "startedAt": "2026-11-28T04:36:25.267Z",
+      "durationMs": 11284,
+      "expected": "fixture comp list contains 'A8N Acceptance'",
+      "actual": [
+        "A8N Acceptance"
+      ],
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "renderFrame",
+      "startedAt": "2026-11-28T04:36:36.551Z",
+      "durationMs": 31492,
+      "expected": "comp.renderFrame(0) writes a PNG artifact",
+      "actual": {
+        "path": "/tmp/rc436-sessions/s1-warm-01/artifacts/s1-warm-01-frame.00000.png",
+        "frame": 0,
+        "width": 640,
+        "height": 480
+      },
+      "evidenceRefs": [
+        "artifacts:*.png"
+      ]
+    },
+    {
+      "stepId": "close",
+      "startedAt": "2026-11-28T04:37:08.043Z",
+      "durationMs": 11837,
+      "expected": "ae.close() quits the owned host (quit=true)",
+      "actual": {
+        "error": "UnsavedChangesError",
+        "message": "session.close refused: the open project has unsaved changes"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "UnsavedChangesError",
+        "message": "session.close refused: the open project has unsaved changes"
+      }
+    }
+  ],
+  "cleanup": {
+    "verdict": "clean",
+    "ref": "/tmp/rc436-sessions/s1-warm-01/teardown-13407daf-19a3-4c8a-9cd9-29028e07cd16.json"
+  },
+  "artifacts": "/tmp/rc436-sessions/s1-warm-01"
+}

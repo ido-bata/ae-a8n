@@ -12,6 +12,7 @@ import { homedir, arch as osArch, platform as osPlatform, release as osRelease }
 import { join, resolve } from "node:path";
 
 import { A8N_VERSION } from "../index.js";
+import type { TerminateOptions, TerminateReport } from "../api/types.js";
 import { runDoctor } from "../doctor/index.js";
 import { aggregateDiagnosticStatus } from "../doctor/diagnostics.js";
 import { supervisionChecks } from "../doctor/supervision.js";
@@ -48,6 +49,7 @@ import {
   type SetupStepReport,
   type TargetInfo,
 } from "./envelope.js";
+import { humanAction } from "../supervision/next-actions.js";
 import { runAgentCommand } from "./agent.js";
 import { runDispatcherCommand } from "./dispatcher.js";
 import { runSuperviseCommand } from "./supervise.js";
@@ -76,6 +78,13 @@ export type CliDependencies = {
     readonly sleep?: (ms: number) => Promise<void>;
     readonly maxTicks?: number;
   };
+  /**
+   * Test seam: replaces the terminate call `supervise terminate` makes
+   * (#451). Production runs `terminateSessionHost`.
+   */
+  readonly superviseTerminate?: (
+    options: TerminateOptions,
+  ) => Promise<TerminateReport>;
 };
 
 type RequiredDependencies = {
@@ -636,7 +645,9 @@ function recoveryActions(result: RecoverResult): NextAction[] {
     if (finding.remedy === undefined || finding.remedy.length === 0) {
       continue;
     }
-    actions.push({ kind: "human", code: finding.code, action: finding.remedy });
+    actions.push(
+      humanAction(finding.code, "requires-human", finding.remedy),
+    );
   }
   return actions;
 }
@@ -877,6 +888,9 @@ export async function runCli(
       ...(input.superviseWatch?.maxTicks === undefined
         ? {}
         : { maxWatchTicks: input.superviseWatch.maxTicks }),
+      ...(input.superviseTerminate === undefined
+        ? {}
+        : { terminate: input.superviseTerminate }),
     });
     return result.exitCode as ExitCode;
   }

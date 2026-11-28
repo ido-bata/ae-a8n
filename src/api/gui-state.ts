@@ -27,6 +27,9 @@ import {
   type GuiWindowInfo,
 } from "../driver/gui-recovery.js";
 import { MacSessionError, type MacSession } from "../driver/mac-session.js";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import {
   chooseRecoveryWindow,
   classifyDialog,
@@ -34,10 +37,18 @@ import {
   describeWindow,
   isHumanOnlyWindow,
 } from "../driver/recovery.js";
+import { createTesseractOcr, type OcrRunner } from "../platform/darwin/ocr.js";
+import {
+  enumerateDialogSurfaces,
+  readDialogSurfaces,
+  type DialogPerceptionDeps,
+} from "../platform/darwin/dialog-perception.js";
+import type { DialogReading } from "../platform/dialog-reading.js";
 import type {
   GuiAssessment,
   GuiSessionInfo,
   GuiStateObservation,
+  GuiStateOptions,
   GuiStateReport,
   GuiWindowClassification,
   GuiWindowReport,
@@ -54,7 +65,19 @@ export type GuiObservationSeams = Pick<
   GuiRecoveryOptions,
   "census" | "censusRun" | "stateRoot" | "ownerId" | "lease" | "runSession" |
   "readTargetSession" | "consoleUid"
->;
+> & {
+  /**
+   * Dialog-perception seams (#462), used only when `readings` is
+   * requested: a substitute window capture and/or OCR runner for tests.
+   * Production leaves both unset — the real `captureWindowById` and the
+   * bounded tesseract runner apply.
+   */
+  readonly captureWindow?: DialogPerceptionDeps["captureWindow"];
+  readonly ocr?: OcrRunner;
+  /** Where perception capture PNGs land; defaults under stateRoot/tmpdir. */
+  readonly evidenceDir?: string;
+  readonly maxPixelReads?: number;
+};
 
 /**
  * The per-window verdict, in the same precedence `chooseRecoveryWindow`
@@ -168,6 +191,7 @@ export function guiStateObservation(
   target: GuiObservationTarget,
   state: GuiAppState,
   observedAt: string,
+  dialogReadings?: readonly DialogReading[],
 ): GuiStateObservation {
   return {
     pid: state.pid,
@@ -176,15 +200,24 @@ export function guiStateObservation(
     windows: state.windows.map((window, index) => toWindowReport(window, index + 1)),
     windowServer: state.windowServer,
     axSuspect: state.axSuspect,
+    axSuspectReason: state.axSuspectReason,
     axUnaccountedWindows: state.axUnaccountedWindows.map((ws) => ({
       layer: ws.layer,
       onScreen: ws.onScreen,
       name: ws.name,
       bounds: ws.bounds,
     })),
+    axUnaccountedCensusWindows: state.axUnaccountedCensusWindows.map((ws) => ({
+      layer: ws.layer,
+      onScreen: ws.onScreen,
+      name: ws.name,
+      windowNumber: ws.windowNumber ?? null,
+      bounds: ws.bounds,
+    })),
     axForeignWindowCount: state.axForeignWindowCount,
     axUnmatchedWindowCount: state.axUnmatchedWindowCount,
     assessment: assessGuiWindows(state.windows),
+    ...(dialogReadings === undefined ? {} : { dialogReadings }),
     observedAt,
   };
 }
@@ -199,7 +232,19 @@ export function observeGuiAppState(
   target: GuiObservationTarget,
   seams: GuiObservationSeams = {},
 ): GuiAppState {
-  const gui = new MacGuiRecovery({
+  return buildObservationGui(target, seams).listWindows();
+}
+
+/**
+ * The read-only `MacGuiRecovery` behind `observeGuiAppState`, factored
+ * out so the readings path (#462) can reuse the same instance for
+ * `captureWindowById` — one session entry, one observation.
+ */
+function buildObservationGui(
+  target: GuiObservationTarget,
+  seams: GuiObservationSeams,
+): MacGuiRecovery {
+  return new MacGuiRecovery({
     session: target.session,
     pid: target.pid,
     // Observation is read-only: the console-session refusal exists to keep
@@ -208,7 +253,40 @@ export function observeGuiAppState(
     allowConsoleSession: true,
     ...seams,
   });
-  return gui.listWindows();
+}
+
+/**
+ * Dialog readings for an already-observed state (#462). The pixel
+ * channel binds to the observation's own `MacGuiRecovery` when one is
+ * available (the live path); a fixture or a seam-supplied capture is
+ * used otherwise, and a surface that cannot be captured records
+ * `unreadable` — never a guess.
+ */
+async function perceiveDialogReadings(
+  state: GuiAppState,
+  seams: GuiObservationSeams,
+  gui: MacGuiRecovery | null,
+): Promise<readonly DialogReading[]> {
+  const evidenceDir =
+    seams.evidenceDir ??
+    (seams.stateRoot !== undefined
+      ? join(seams.stateRoot, "dialog-readings")
+      : join(tmpdir(), "ae-a8n-dialog-perception"));
+  const captureWindow =
+    seams.captureWindow ??
+    (gui === null
+      ? undefined
+      : (path: string, windowNumber: number) =>
+          gui.captureWindowById(path, windowNumber));
+  const report = await readDialogSurfaces(state, {
+    ...(captureWindow === undefined ? {} : { captureWindow }),
+    ocr: seams.ocr ?? createTesseractOcr(),
+    evidenceDir,
+    ...(seams.maxPixelReads === undefined
+      ? {}
+      : { maxPixelReads: seams.maxPixelReads }),
+  });
+  return report.readings;
 }
 
 /** Test seam: a prepared observation, skipping the session query. */
@@ -222,11 +300,12 @@ export type GuiStateFixture = {
  * `unavailable` with the reason — a report that cannot see the screen must
  * never look like a clean one.
  */
-export function guiStateReport(
+export async function guiStateReport(
   target: GuiObservationTarget | null,
   fixture?: GuiStateFixture,
   seams: GuiObservationSeams = {},
-): GuiStateReport {
+  options: GuiStateOptions = {},
+): Promise<GuiStateReport> {
   const observedAt = new Date().toISOString();
   if (target === null) {
     return {
@@ -239,8 +318,41 @@ export function guiStateReport(
     };
   }
   try {
-    const state = fixture?.observed ?? observeGuiAppState(target, seams);
-    return { status: "observed", ...guiStateObservation(target, state, observedAt) };
+    // One observation feeds both halves: the window report and, when
+    // requested, the dialog readings (#462) — so `dialogReadings` can
+    // never describe a different instant than `windows`.
+    const wantReadings = options.readings === true;
+    let state: GuiAppState;
+    let gui: MacGuiRecovery | null = null;
+    if (fixture !== undefined) {
+      state = fixture.observed;
+    } else {
+      gui = buildObservationGui(target, seams);
+      state = gui.listWindows();
+    }
+    let dialogReadings: readonly DialogReading[] | undefined;
+    if (wantReadings) {
+      try {
+        dialogReadings = await perceiveDialogReadings(state, seams, gui);
+      } catch (error) {
+        // A perception failure must not sink the window observation —
+        // every surface still gets an honest `unreadable` reading.
+        const reason = `dialog perception failed: ${error instanceof Error ? error.message : String(error)}`;
+        dialogReadings = enumerateDialogSurfaces(state).map((surface) => ({
+          pid: state.pid,
+          surfaceId: surface.surfaceId,
+          source: "none" as const,
+          buttons: [],
+          modality: "unknown" as const,
+          confidence: "unreadable" as const,
+          unreadableReason: reason,
+        }));
+      }
+    }
+    return {
+      status: "observed",
+      ...guiStateObservation(target, state, observedAt, dialogReadings),
+    };
   } catch (error) {
     if (error instanceof GuiRecoveryError || error instanceof MacSessionError) {
       return {

@@ -1,0 +1,19 @@
+{
+  "phase": "A",
+  "subject": 18577,
+  "verdict": "indeterminate",
+  "sessionRoot": "/Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-a-attach-18577",
+  "attachArtifacts": {
+    "provenance": null,
+    "supervision": false,
+    "trace": "/Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-a-attach-18577/trace.jsonl"
+  },
+  "notes": [
+    "attach: AfterEffectsError: no After Effects process this run started could be tied to it: app.info (bc1cb992-1ec4-418c-83f7-90c000f69b36) timed out and no host process was found",
+    "supervise status exit=6 stdout={ |   \"schemaVersion\": \"1.0\", |   \"command\": \"supervise\", |   \"status\": \"unknown\", |   \"exitCode\": 6, |   \"startedAt\": \"2026-11-28T09:59:48.965Z\", |   \"finishedAt\": \"2026-11-28T09:59:48.982Z\", |   \"platform\": { |     \"os\": \"darwin\", |     \"release\": \"27.2.0\", |     \"arch\": \"arm64\", |     \"backend\": \"none\" |   }, |   \"package",
+    "AfterEffects.terminate: AfterEffectsError: no launch provenance in /Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-a-attach-18577: this session never proved it owned an After Effects process, so there is no owned host to terminate. Attached and unknown sessions are never signalled.",
+    "supervise terminate exit=4 { |   \"schemaVersion\": \"1.0\", |   \"command\": \"supervise\", |   \"status\": \"refused\", |   \"exitCode\": 4, |   \"startedAt\": \"2026-11-28T09:59:52.142Z\", |   \"finishedAt\": \"2026-11-28T09:59:52.215Z\", |   \"platform\": { |     \"os\": \"darwin\", |     \"release\": \"27.2.0\", |     \"arch\": \"arm64\", |     \"backend\": \"none\" |   }, |   \"package",
+    "supervise terminate --force exit=4",
+    "phase-A scope complete: AX-invisible anomaly detected via public observation surface; terminate correctly refused (no launch provenance — AppleScript-launched host). Full detect→exit→readiness→ops→teardown chain continues in the Phase B attempt."
+  ]
+}

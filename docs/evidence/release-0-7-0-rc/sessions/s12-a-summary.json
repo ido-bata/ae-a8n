@@ -1,0 +1,69 @@
+{
+  "label": "s12-a",
+  "scenarioId": "RC-S12",
+  "verdict": "fail",
+  "steps": [
+    {
+      "stepId": "foreign-target",
+      "expected": "foreign AE 2026 pid present",
+      "actual": {
+        "pid": 7966,
+        "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+      },
+      "ok": true
+    },
+    {
+      "stepId": "gui-session",
+      "expected": "Aqua session resolvable",
+      "actual": {
+        "uid": 501,
+        "username": "rebui",
+        "asid": 100021,
+        "kind": "Aqua"
+      },
+      "ok": true
+    },
+    {
+      "stepId": "spawn-supervisor",
+      "expected": "detached supervisor pid returned",
+      "actual": {
+        "pid": 94152
+      },
+      "ok": true
+    },
+    {
+      "stepId": "fresh-heartbeat",
+      "expected": "report health ok/degraded with fresh monitor",
+      "actual": {
+        "status": "observed",
+        "health": "unavailable",
+        "phase": "running"
+      },
+      "ok": true
+    },
+    {
+      "stepId": "kill-supervisor",
+      "expected": "SIGKILL supervisor pid 94152",
+      "actual": {
+        "killed": 94152
+      },
+      "ok": true
+    },
+    {
+      "stepId": "post-kill-report",
+      "expected": "health=monitor-lost within TTL+margin",
+      "actual": {
+        "status": "observed",
+        "health": "unavailable",
+        "detail": ""
+      },
+      "ok": true
+    }
+  ],
+  "notes": [
+    "pre-kill: {\"status\":\"observed\",\"health\":\"unavailable\"}",
+    "post-kill: {\"status\":\"observed\",\"health\":\"unavailable\"}",
+    "post-kill report did NOT honestly report monitor loss"
+  ],
+  "sessionDir": "/tmp/rc436-sessions/s12-a/supervisor"
+}

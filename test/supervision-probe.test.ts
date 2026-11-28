@@ -76,7 +76,9 @@ describe("MacGuiProbe", () => {
     windows: [],
     windowServer: { available: true, reason: null, windowCount: 0, onScreenCount: 0 },
     axSuspect: false,
+    axSuspectReason: null,
     axUnaccountedWindows: [],
+    axUnaccountedCensusWindows: [],
     axForeignWindowCount: 0,
     axUnmatchedWindowCount: 0,
     ...overrides,
@@ -111,6 +113,7 @@ describe("MacGuiProbe", () => {
       listWindows: () =>
         appState({
           axSuspect: true,
+          axSuspectReason: "fixture: the AX listing is untrusted",
           windowServer: { available: true, reason: null, windowCount: 2, onScreenCount: 1 },
         }),
       pidAlive: () => true,
@@ -160,6 +163,7 @@ describe("MacGuiProbe", () => {
         layer: 8,
         onScreen: true,
         name: "",
+        windowNumber: null,
         bounds: { x: 650, y: 185, width: 410, height: 342 },
       },
     ];
@@ -168,6 +172,7 @@ describe("MacGuiProbe", () => {
       listWindows: () =>
         appState({
           axUnaccountedWindows: present ? unaccounted : [],
+          axUnaccountedCensusWindows: [],
         }),
       pidAlive: () => true,
     });
@@ -254,6 +259,7 @@ describe("MacGuiProbe", () => {
       listWindows: () =>
         appState({
           axSuspect: true,
+          axSuspectReason: "fixture: the AX listing is untrusted",
           windowServer: { available: true, reason: null, windowCount: 3, onScreenCount: 2 },
           axUnaccountedWindows: [
             {
@@ -262,9 +268,11 @@ describe("MacGuiProbe", () => {
               layer: 8,
               onScreen: true,
               name: "",
+              windowNumber: null,
               bounds: { x: 1, y: 2, width: 3, height: 4 },
             },
           ],
+          axUnaccountedCensusWindows: [],
         }),
       pidAlive: () => true,
       processAgeMs: () => null,
@@ -287,6 +295,7 @@ describe("MacGuiProbe", () => {
       listWindows: () =>
         appState({
           axSuspect: true,
+          axSuspectReason: "fixture: the AX listing is untrusted",
           windowServer: { available: true, reason: null, windowCount: 7, onScreenCount: 3 },
         }),
       pidAlive: () => true,
@@ -321,6 +330,7 @@ describe("MacGuiProbe", () => {
         axEmpty
           ? appState({
               axSuspect: true,
+              axSuspectReason: "fixture: the AX listing is untrusted",
               windowServer: { available: true, reason: null, windowCount: 6, onScreenCount: 4 },
             })
           : appState({
@@ -362,6 +372,7 @@ describe("MacGuiProbe", () => {
         layer: 8,
         onScreen: true,
         name: "",
+        windowNumber: null,
         bounds: { x: 650, y: 185, width: 410, height: 342 },
       },
     ];
@@ -379,6 +390,7 @@ describe("MacGuiProbe", () => {
             },
           ],
           axUnaccountedWindows: unaccounted,
+          axUnaccountedCensusWindows: [],
         }),
       pidAlive: () => true,
       processAgeMs: () => 10_000,
@@ -424,7 +436,9 @@ describe("SupervisionMonitor", () => {
         windows: [],
         windowServer: { available: true, reason: null, windowCount: 7, onScreenCount: 3 },
         axSuspect: true,
+        axSuspectReason: "fixture: the AX listing is untrusted",
         axUnaccountedWindows: [],
+        axUnaccountedCensusWindows: [],
         axForeignWindowCount: 0,
         axUnmatchedWindowCount: 0,
       };
@@ -443,7 +457,9 @@ describe("SupervisionMonitor", () => {
         ],
         windowServer: { available: true, reason: null, windowCount: 1, onScreenCount: 1 },
         axSuspect: false,
+        axSuspectReason: null,
         axUnaccountedWindows: [],
+        axUnaccountedCensusWindows: [],
         axForeignWindowCount: 0,
         axUnmatchedWindowCount: 0,
       };
