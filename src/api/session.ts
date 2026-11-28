@@ -18,6 +18,7 @@ import {
   type SessionAuthorization,
 } from "../driver/transport.js";
 import type { TraceRecorder, TraceEvent } from "../trace/trace.js";
+import { OpTelemetry } from "../observability/telemetry.js";
 import { HostNotOwnedError, contextualise } from "./errors.js";
 import type { OperationOptions } from "./types.js";
 
@@ -47,11 +48,23 @@ export class Session {
    * unexpected one while claiming otherwise.
    */
   modalExpectations: ExpectedModalRegistry | null = null;
+  /**
+   * Uniform op observability for this session (#434): trace rows plus the
+   * append-only attempt ledger (`<sessionRoot>/attempt-ledger.jsonl`),
+   * projected from the same `TraceRecorder` every driver call already
+   * writes. Public GUI surfaces wrap their entries in `telemetry.run`.
+   */
+  readonly telemetry: OpTelemetry;
 
   constructor(driver: AeDriver, trace: TraceRecorder, authorization: SessionAuthorization = {}) {
     this.driver = driver;
     this.trace = trace;
     this.authorization = authorization;
+    this.telemetry = new OpTelemetry({
+      trace,
+      sessionRoot: driver.sessionRoot,
+      sessionId: driver.sessionId,
+    });
     trace.subscribe((event) => {
       this.events.push(event);
     });

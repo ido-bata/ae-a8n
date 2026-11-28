@@ -52,6 +52,7 @@ import type { PropertyInfo } from "./types.js";
 import type { GuiObservationTarget } from "./gui-state.js";
 import { MacGuiRecovery, type GuiRecoveryOptions } from "../driver/gui-recovery.js";
 import type { Session } from "./session.js";
+import { observeOp, type OpTelemetry } from "../observability/telemetry.js";
 import {
   macDockedPaneOps,
   type DockedPaneSeams,
@@ -236,9 +237,11 @@ function macEffectControlsOps(
  */
 export class EffectControls {
   readonly #controller: EffectControlsController;
+  readonly #telemetry: OpTelemetry | undefined;
 
-  constructor(controller: EffectControlsController) {
+  constructor(controller: EffectControlsController, telemetry?: OpTelemetry) {
     this.#controller = controller;
+    this.#telemetry = telemetry;
   }
 
   /**
@@ -246,7 +249,9 @@ export class EffectControls {
    * the oracle is the pane's visible-row delta.
    */
   setFolded(request: SetFoldedRequest): Promise<SetFoldedResult> {
-    return this.#controller.setFolded(request);
+    return observeOp(this.#telemetry, "effectControls.setFolded", { request }, () =>
+      this.#controller.setFolded(request),
+    );
   }
 
   /**
@@ -255,7 +260,9 @@ export class EffectControls {
    * + gated; the oracle is `effect.getParameter`.
    */
   setParameter(request: SetParameterRequest): Promise<SetParameterResult> {
-    return this.#controller.setParameter(request);
+    return observeOp(this.#telemetry, "effectControls.setParameter", { request }, () =>
+      this.#controller.setParameter(request),
+    );
   }
 }
 
@@ -306,5 +313,5 @@ export function effectControlsForTarget(
       ? {}
       : { newOperationId: seams.newOperationId }),
   };
-  return new EffectControls(new EffectControlsController(options));
+  return new EffectControls(new EffectControlsController(options), session.telemetry);
 }

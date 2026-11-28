@@ -70,6 +70,7 @@ import {
 } from "../dragdrop/index.js";
 import type { GuiObservationTarget, GuiObservationSeams } from "./gui-state.js";
 import type { Session } from "./session.js";
+import { observeOp } from "../observability/telemetry.js";
 import {
   darwinDragChannels,
   sessionInputExec,
@@ -514,13 +515,16 @@ function auditOutcome(error: unknown): string {
 export class DragDrop {
   readonly #controller: DragDropController;
   readonly #leaseController: ReturnType<typeof defaultLeaseController>;
+  readonly #telemetry: Session["telemetry"];
 
   constructor(
     controller: DragDropController,
     leaseController: ReturnType<typeof defaultLeaseController>,
+    telemetry: Session["telemetry"],
   ) {
     this.#controller = controller;
     this.#leaseController = leaseController;
+    this.#telemetry = telemetry;
   }
 
   /**
@@ -531,6 +535,44 @@ export class DragDrop {
    */
   async run(request: DragDropRequest): Promise<DragDropResult> {
     const op = `dragdrop:${request.kind}`;
+    return observeOp(
+      this.#telemetry,
+      `dragDrop.${request.kind}`,
+      { request },
+      () => this.#runLeased(request, op),
+      {
+        expected: { verified: true },
+        actual: ({ result }: { result?: DragDropResult | undefined; error?: unknown }) =>
+          result === undefined
+            ? undefined
+            : {
+                verified: result.verified,
+                vehicle: result.vehicle,
+                delta: result.delta,
+                segments: result.segments.length,
+              },
+        outcome: ({ result }: { result?: DragDropResult | undefined; error?: unknown }) => {
+          if (result !== undefined) {
+            if (result.verified) {
+              return "ok";
+            }
+            // Posted but unproven is indeterminate; a vehicle that
+            // reports the sequence did not land is an honest error.
+            return result.vehicle === "performed" ? "indeterminate" : "error";
+          }
+          return "error";
+        },
+        summarize: (result) => ({
+          kind: result.kind,
+          verified: result.verified,
+          vehicle: result.vehicle,
+        }),
+      },
+    );
+  }
+
+  /** The lease-held body of `run` — see `run` for the contract. */
+  async #runLeased(request: DragDropRequest, op: string): Promise<DragDropResult> {
     let lease: GuiLease;
     try {
       lease = this.#leaseController.acquire(op);
@@ -804,5 +846,5 @@ export function dragDropForTarget(
     ...(seams.poll !== undefined ? { poll: seams.poll } : {}),
   };
   const controller = new DragDropController(controllerOptions);
-  return new DragDrop(controller, leaseController);
+  return new DragDrop(controller, leaseController, session.telemetry);
 }

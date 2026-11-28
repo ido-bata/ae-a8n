@@ -37,6 +37,7 @@ import {
   type FileDialogTitles,
 } from "../filedialog/index.js";
 import type { GuiObservationTarget, GuiObservationSeams } from "./gui-state.js";
+import { observeOp, type OpTelemetry } from "../observability/telemetry.js";
 
 export type {
   FileDialogActResult,
@@ -174,9 +175,11 @@ function guiOptions(
  */
 export class FileDialog {
   readonly #controller: FileDialogController;
+  readonly #telemetry: OpTelemetry | undefined;
 
-  constructor(controller: FileDialogController) {
+  constructor(controller: FileDialogController, telemetry?: OpTelemetry) {
     this.#controller = controller;
+    this.#telemetry = telemetry;
   }
 
   /**
@@ -189,8 +192,10 @@ export class FileDialog {
     titles: FileDialogTitles,
     options?: { timeoutMs?: number; pollIntervalMs?: number },
   ): Promise<FileDialogResolution> {
-    return Promise.resolve().then(() =>
-      this.#controller.awaitFileDialog({ titles, ...(options ?? {}) }),
+    return observeOp(this.#telemetry, "fileDialog.awaitDialog", { titles }, () =>
+      Promise.resolve().then(() =>
+        this.#controller.awaitFileDialog({ titles, ...(options ?? {}) }),
+      ),
     );
   }
 
@@ -204,7 +209,9 @@ export class FileDialog {
     resolution: FileDialogResolution,
     titles: FileDialogTitles,
   ): Promise<FileDialogActResult> {
-    return Promise.resolve().then(() => this.#controller.confirm(resolution, titles));
+    return observeOp(this.#telemetry, "fileDialog.confirm", undefined, () =>
+      Promise.resolve().then(() => this.#controller.confirm(resolution, titles)),
+    );
   }
 
   /** Press the resolved dialog's cancel button. Same mutate-gui gate. */
@@ -212,7 +219,9 @@ export class FileDialog {
     resolution: FileDialogResolution,
     titles: FileDialogTitles,
   ): Promise<FileDialogActResult> {
-    return Promise.resolve().then(() => this.#controller.cancel(resolution, titles));
+    return observeOp(this.#telemetry, "fileDialog.cancel", undefined, () =>
+      Promise.resolve().then(() => this.#controller.cancel(resolution, titles)),
+    );
   }
 
   /**
@@ -224,7 +233,9 @@ export class FileDialog {
     resolution: FileDialogResolution,
     text: string,
   ): Promise<FileDialogActResult> {
-    return this.#controller.enterFilename(resolution, text);
+    return observeOp(this.#telemetry, "fileDialog.enterFilename", { length: text.length }, () =>
+      this.#controller.enterFilename(resolution, text),
+    );
   }
 }
 
@@ -237,6 +248,7 @@ export class FileDialog {
 export function fileDialogForTarget(
   target: GuiObservationTarget | null,
   seams: FileDialogSeams = {},
+  telemetry?: OpTelemetry,
 ): FileDialog {
   if (target === null) {
     throw new FileDialogError(
@@ -281,5 +293,5 @@ export function fileDialogForTarget(
     // policy source and src/filedialog/gate.ts its single code flip point.
     authorizeMutation: seams.authorizeMutation ?? fileDialogMutationGate(),
   });
-  return new FileDialog(controller);
+  return new FileDialog(controller, telemetry);
 }

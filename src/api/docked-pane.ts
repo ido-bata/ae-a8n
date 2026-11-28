@@ -33,6 +33,7 @@ import {
 import { PanelError } from "../panels/types.js";
 import type { GuiObservationTarget, GuiObservationSeams } from "./gui-state.js";
 import { MacGuiRecovery, type GuiRecoveryOptions } from "../driver/gui-recovery.js";
+import { observeOp, type OpTelemetry } from "../observability/telemetry.js";
 
 export type {
   DockedPaneBounds,
@@ -112,10 +113,16 @@ export function macDockedPaneOps(
 export class DockedPane {
   readonly #observer: DockedPaneObserver;
   readonly #locator: DockedPaneLocator;
+  readonly #telemetry: OpTelemetry | undefined;
 
-  constructor(observer: DockedPaneObserver, locator: DockedPaneLocator) {
+  constructor(
+    observer: DockedPaneObserver,
+    locator: DockedPaneLocator,
+    telemetry?: OpTelemetry,
+  ) {
     this.#observer = observer;
     this.#locator = locator;
+    this.#telemetry = telemetry;
   }
 
   /**
@@ -125,12 +132,16 @@ export class DockedPane {
    * to record for later re-resolution.
    */
   identify(): Promise<DockedPaneResolution> {
-    return Promise.resolve().then(() => this.#observer.identify(this.#locator));
+    return observeOp(this.#telemetry, "dockedPane.identify", { locator: this.#locator }, () =>
+      Promise.resolve().then(() => this.#observer.identify(this.#locator)),
+    );
   }
 
   /** The bounded walked subtree the pane was resolved in — walk evidence. */
   tree(): Promise<DockedPaneTree> {
-    return Promise.resolve().then(() => this.#observer.tree(this.#locator));
+    return observeOp(this.#telemetry, "dockedPane.tree", { locator: this.#locator }, () =>
+      Promise.resolve().then(() => this.#observer.tree(this.#locator)),
+    );
   }
 
   /**
@@ -139,7 +150,9 @@ export class DockedPane {
    * surface W2/W3 build row locators on.
    */
   rows(): Promise<DockedPaneRow[]> {
-    return Promise.resolve().then(() => this.#observer.rows(this.#locator));
+    return observeOp(this.#telemetry, "dockedPane.rows", { locator: this.#locator }, () =>
+      Promise.resolve().then(() => this.#observer.rows(this.#locator)),
+    );
   }
 }
 
@@ -152,6 +165,7 @@ export function dockedPaneForTarget(
   target: GuiObservationTarget | null,
   locator: DockedPaneLocator,
   seams: DockedPaneSeams = {},
+  telemetry?: OpTelemetry,
 ): DockedPane {
   if (target === null) {
     throw new PanelError(
@@ -173,5 +187,5 @@ export function dockedPaneForTarget(
     ops,
     ...(seams.bounds === undefined ? {} : { bounds: seams.bounds }),
   });
-  return new DockedPane(observer, locator);
+  return new DockedPane(observer, locator, telemetry);
 }

@@ -41,6 +41,7 @@ import {
   type DockedPaneOps,
 } from "../panels/docked/index.js";
 import { MacGuiRecovery, type GuiRecoveryOptions } from "../driver/gui-recovery.js";
+import { observeOp, type OpTelemetry } from "../observability/telemetry.js";
 
 export type {
   RenderQueueAddResult,
@@ -185,15 +186,18 @@ export class RenderQueue {
   readonly #observer: RenderQueueObserver;
   readonly #pane: DockedPaneLocator;
   readonly #menuBar: () => MenuBar;
+  readonly #telemetry: OpTelemetry | undefined;
 
   constructor(
     observer: RenderQueueObserver,
     pane: DockedPaneLocator,
     menuBar: () => MenuBar,
+    telemetry?: OpTelemetry,
   ) {
     this.#observer = observer;
     this.#pane = pane;
     this.#menuBar = menuBar;
+    this.#telemetry = telemetry;
   }
 
   /**
@@ -202,7 +206,9 @@ export class RenderQueue {
    * these rows are the only honest channel.
    */
   items(): Promise<RenderQueueSnapshot> {
-    return Promise.resolve().then(() => this.#observer.snapshot(this.#pane));
+    return observeOp(this.#telemetry, "renderQueue.items", { pane: this.#pane }, () =>
+      Promise.resolve().then(() => this.#observer.snapshot(this.#pane)),
+    );
   }
 
   /**
@@ -217,13 +223,15 @@ export class RenderQueue {
    */
   addViaMenu(options: AddToRenderQueueOptions): Promise<RenderQueueAddResult> {
     const menuBar = this.#menuBar();
-    return addCompositionToRenderQueue(
-      {
-        observer: this.#observer,
-        pane: this.#pane,
-        invokeMenu: (locator: MenuItemLocator) => menuBar.invoke(locator),
-      },
-      options,
+    return observeOp(this.#telemetry, "renderQueue.addViaMenu", { options }, () =>
+      addCompositionToRenderQueue(
+        {
+          observer: this.#observer,
+          pane: this.#pane,
+          invokeMenu: (locator: MenuItemLocator) => menuBar.invoke(locator),
+        },
+        options,
+      ),
     );
   }
 }
@@ -238,6 +246,7 @@ export function renderQueueForTarget(
   target: GuiObservationTarget | null,
   locator: DockedPaneLocator,
   seams: RenderQueueSeams = {},
+  telemetry?: OpTelemetry,
 ): RenderQueue {
   if (target === null) {
     throw new RenderQueueError(
@@ -277,6 +286,6 @@ export function renderQueueForTarget(
         ? {}
         : { authorizeMutation: seams.authorizeMutation }),
     });
-  return new RenderQueue(observer, locator, menuBar);
+  return new RenderQueue(observer, locator, menuBar, telemetry);
 }
 

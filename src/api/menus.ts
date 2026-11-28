@@ -36,6 +36,7 @@ import {
 } from "../menus/types.js";
 import type { GuiObservationTarget, GuiObservationSeams } from "./gui-state.js";
 import type { GuiRecoveryOptions } from "../driver/gui-recovery.js";
+import { observeOp, type OpTelemetry } from "../observability/telemetry.js";
 
 export type {
   MenuBarItemInfo,
@@ -140,19 +141,25 @@ function surfaceOptions(
  */
 export class MenuBar {
   readonly #controller: MenuController;
+  readonly #telemetry: OpTelemetry | undefined;
 
-  constructor(controller: MenuController) {
+  constructor(controller: MenuController, telemetry?: OpTelemetry) {
     this.#controller = controller;
+    this.#telemetry = telemetry;
   }
 
   /** Enumerate the menu-bar tree. Observe-class. */
   list(): Promise<MenuBarSnapshot> {
-    return Promise.resolve().then(() => this.#controller.listMenuBar());
+    return observeOp(this.#telemetry, "menuBar.list", undefined, () =>
+      Promise.resolve().then(() => this.#controller.listMenuBar()),
+    );
   }
 
   /** Resolve a locator against the live menu bar. Observe-class. */
   find(locator: MenuItemLocator): Promise<ResolvedMenuItem & { observedAt: string }> {
-    return Promise.resolve().then(() => this.#controller.findMenuItem(locator));
+    return observeOp(this.#telemetry, "menuBar.find", { locator }, () =>
+      Promise.resolve().then(() => this.#controller.findMenuItem(locator)),
+    );
   }
 
   /**
@@ -161,7 +168,9 @@ export class MenuBar {
    * "unchecked".
    */
   checkState(locator: MenuItemLocator): Promise<MenuCheckReading & { observedAt: string }> {
-    return Promise.resolve().then(() => this.#controller.readCheckState(locator));
+    return observeOp(this.#telemetry, "menuBar.checkState", { locator }, () =>
+      Promise.resolve().then(() => this.#controller.readCheckState(locator)),
+    );
   }
 
   /**
@@ -171,7 +180,9 @@ export class MenuBar {
    * re-verifies every title inside the session.
    */
   invoke(locator: MenuItemLocator): Promise<MenuInvokeResult> {
-    return this.#controller.invoke(locator);
+    return observeOp(this.#telemetry, "menuBar.invoke", { locator }, () =>
+      this.#controller.invoke(locator),
+    );
   }
 }
 
@@ -183,6 +194,7 @@ export class MenuBar {
 export function menuBarForTarget(
   target: GuiObservationTarget | null,
   seams: MenuSeams = {},
+  telemetry?: OpTelemetry,
 ): MenuBar {
   if (target === null) {
     throw new MenuError(
@@ -224,5 +236,5 @@ export function menuBarForTarget(
     // policy source and src/menus/gate.ts its single code flip point.
     authorizeMutation: seams.authorizeMutation ?? menuInvokeGate(),
   });
-  return new MenuBar(controller);
+  return new MenuBar(controller, telemetry);
 }

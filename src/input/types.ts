@@ -317,6 +317,8 @@ export type InputStepRecord = {
     | undefined;
   readonly outcome: "posted" | "skipped" | "refused" | "failed";
   readonly detail: string | null;
+  /** Wall-clock post duration in ms (#434 attempt-ledger step timing). */
+  readonly durationMs?: number;
 };
 
 /**

@@ -48,6 +48,7 @@ import {
   type WorkspaceSwitchResult,
 } from "../workspace/types.js";
 import type { GuiObservationTarget, GuiObservationSeams } from "./gui-state.js";
+import { observeOp, type OpTelemetry } from "../observability/telemetry.js";
 import { macDockedPaneOps } from "./docked-pane.js";
 import type { DockedPaneSeams } from "./docked-pane.js";
 import {
@@ -369,9 +370,11 @@ function macWorkspaceOps(
  */
 export class Workspace {
   readonly #controller: WorkspaceController;
+  readonly #telemetry: OpTelemetry | undefined;
 
-  constructor(controller: WorkspaceController) {
+  constructor(controller: WorkspaceController, telemetry?: OpTelemetry) {
     this.#controller = controller;
+    this.#telemetry = telemetry;
   }
 
   /**
@@ -382,7 +385,9 @@ export class Workspace {
   observe(options?: {
     readonly dockedPanes?: readonly DockedPaneLocator[];
   }): Promise<WorkspaceObservation> {
-    return Promise.resolve().then(() => this.#controller.observe(options));
+    return observeOp(this.#telemetry, "workspace.observe", options, () =>
+      Promise.resolve().then(() => this.#controller.observe(options)),
+    );
   }
 
   /**
@@ -391,7 +396,9 @@ export class Workspace {
    * Observe-class.
    */
   listWorkspaces(): Promise<WorkspaceMenuEntry[]> {
-    return Promise.resolve().then(() => this.#controller.listWorkspaces());
+    return observeOp(this.#telemetry, "workspace.listWorkspaces", undefined, () =>
+      Promise.resolve().then(() => this.#controller.listWorkspaces()),
+    );
   }
 
   /**
@@ -401,7 +408,9 @@ export class Workspace {
    * never resent.
    */
   switchTo(name: string): Promise<WorkspaceSwitchResult> {
-    return this.#controller.switchTo(name);
+    return observeOp(this.#telemetry, "workspace.switchTo", { name }, () =>
+      this.#controller.switchTo(name),
+    );
   }
 
   /**
@@ -410,7 +419,9 @@ export class Workspace {
    * B-IME drag poster lands, `refused` while the A-SAFETY gate holds.
    */
   arrange(request: WorkspaceArrangeRequest): Promise<WorkspaceArrangeResult> {
-    return this.#controller.arrange(request);
+    return observeOp(this.#telemetry, "workspace.arrange", { request }, () =>
+      this.#controller.arrange(request),
+    );
   }
 
   /**
@@ -423,8 +434,10 @@ export class Workspace {
     expected: WorkspaceObservation,
     options?: { readonly tolerance?: number },
   ): Promise<WorkspaceRestoreReport> {
-    return Promise.resolve().then(() =>
-      this.#controller.verifyRestore(expected, options),
+    return observeOp(this.#telemetry, "workspace.verifyRestore", options, () =>
+      Promise.resolve().then(() =>
+        this.#controller.verifyRestore(expected, options),
+      ),
     );
   }
 
@@ -441,7 +454,9 @@ export class Workspace {
   monitorReport(options?: {
     readonly dockedPanes?: readonly DockedPaneLocator[];
   }): Promise<WorkspaceMonitorReport> {
-    return Promise.resolve().then(() => this.#controller.monitorReport(options));
+    return observeOp(this.#telemetry, "workspace.monitorReport", options, () =>
+      Promise.resolve().then(() => this.#controller.monitorReport(options)),
+    );
   }
 }
 
@@ -454,6 +469,7 @@ export class Workspace {
 export function workspaceForTarget(
   target: GuiObservationTarget | null,
   seams: WorkspaceSeams = {},
+  telemetry?: OpTelemetry,
 ): Workspace {
   if (target === null) {
     throw new WorkspaceError(
@@ -481,5 +497,5 @@ export function workspaceForTarget(
     ...(seams.poll === undefined ? {} : { poll: seams.poll }),
     ...(seams.dockedPanes === undefined ? {} : { dockedPanes: seams.dockedPanes }),
   });
-  return new Workspace(controller);
+  return new Workspace(controller, telemetry);
 }
