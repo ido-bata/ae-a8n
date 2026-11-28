@@ -695,6 +695,7 @@ export type {
   GuiAssessment,
   GuiSessionInfo,
   GuiStateObservation,
+  GuiStateOptions,
   GuiStateReport,
   GuiWindowClassification,
   GuiWindowReport,
@@ -920,6 +921,25 @@ export {
   type WindowCensus,
   type WindowServerWindow,
 } from "./platform/darwin/window-census.js";
+
+/*
+ * Dialog perception substrate (#462, specs/dialog-perception/spec.md,
+ * ADR-0009): the AX∪census surface union and the honest `DialogReading`
+ * every surface produces. Evidence-only — nothing here presses.
+ */
+export type {
+  DialogButtonReading,
+  DialogModality,
+  DialogReadingsReport,
+  DialogReading,
+  DialogReadingConfidence,
+  DialogReadingSource,
+  DialogRect,
+  DialogSurface,
+  DialogSurfaceCensus,
+  DialogSurfaceKind,
+  OcrSummary,
+} from "./platform/dialog-reading.js";
 
 /*
  * GUI supervision contract (#278–#288, specs/gui-supervision/spec.md).

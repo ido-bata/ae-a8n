@@ -136,16 +136,16 @@ describe("classifyGuiWindow", () => {
 });
 
 describe("guiStateReport", () => {
-  it("is unavailable when no owned target is attested", () => {
-    const report = guiStateReport(null);
+  it("is unavailable when no owned target is attested", async () => {
+    const report = await guiStateReport(null);
     expect(report.status).toBe("unavailable");
     if (report.status === "unavailable") {
       expect(report.reason).toContain("no owned After Effects");
     }
   });
 
-  it("maps a prepared observation into the public report", () => {
-    const report = guiStateReport(TARGET, {
+  it("maps a prepared observation into the public report", async () => {
+    const report = await guiStateReport(TARGET, {
       observed: state([
         window({ title: "Main", subrole: "AXStandardWindow" }),
         dialog(["ae-a8n: hello"], { buttons: [OK_BUTTON] }),
@@ -168,8 +168,8 @@ describe("guiStateReport", () => {
     expect(report.axSuspect).toBe(false);
   });
 
-  it("carries axSuspect and degraded census through honestly", () => {
-    const report = guiStateReport(TARGET, {
+  it("carries axSuspect and degraded census through honestly", async () => {
+    const report = await guiStateReport(TARGET, {
       observed: state([], {
         windowServer: { available: false, reason: "no python", windowCount: 0, onScreenCount: 0 },
         axSuspect: true,
@@ -187,7 +187,7 @@ describe("guiStateReport", () => {
     }
   });
 
-  it("surfaces off-screen census windows as degraded evidence, never blocking (#451)", () => {
+  it("surfaces off-screen census windows as degraded evidence, never blocking (#451)", async () => {
     // The BirthPrefs shape: AX lists the ordinary window while the census
     // holds a modal parked at onScreen:false. It must appear in the
     // degraded list with its window number — and must NOT change the
@@ -201,7 +201,7 @@ describe("guiStateReport", () => {
       windowNumber: 424242,
       bounds: { x: 0, y: 0, width: 480, height: 320 },
     };
-    const report = guiStateReport(TARGET, {
+    const report = await guiStateReport(TARGET, {
       observed: state([window({ title: "Main", subrole: "AXStandardWindow" })], {
         windowServer: { available: true, reason: null, windowCount: 2, onScreenCount: 1 },
         axUnaccountedCensusWindows: [modal],
@@ -224,8 +224,8 @@ describe("guiStateReport", () => {
     expect(report.windows[0]?.blocking).toBe(false);
   });
 
-  it("turns a session-entry failure into unavailable, not an empty report", () => {
-    const report = guiStateReport(TARGET, undefined, {
+  it("turns a session-entry failure into unavailable, not an empty report", async () => {
+    const report = await guiStateReport(TARGET, undefined, {
       readTargetSession: () => SESSION,
       runSession: () => {
         throw new MacSessionError("cannot enter the session");

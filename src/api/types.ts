@@ -9,6 +9,7 @@
 import type { DiagnosticCode } from "../doctor/diagnostics.js";
 import type { ExpectedModalSpec } from "../driver/expected-modals.js";
 import type { GuiAppState } from "../driver/gui-recovery.js";
+import type { DialogReading } from "../platform/dialog-reading.js";
 import type { HostTransport, SessionAuthorization } from "../driver/transport.js";
 
 export type { SessionAuthorization } from "../driver/transport.js";
@@ -905,7 +906,25 @@ export type GuiStateObservation = {
    */
   readonly axUnmatchedWindowCount: number;
   readonly assessment: GuiAssessment;
+  /**
+   * Dialog readings (#462, specs/dialog-perception/spec.md) — present
+   * only when the caller asked for them (`guiState({ readings: true })`).
+   * Absent means "not requested", never "no dialogs"; a surface that
+   * could not be read carries `confidence: "unreadable"` with the reason.
+   */
+  readonly dialogReadings?: readonly DialogReading[];
   readonly observedAt: string;
+};
+
+/** Options for `ae.guiState()`. */
+export type GuiStateOptions = {
+  /**
+   * When true, additionally run the dialog-perception pipeline (window
+   * capture + bounded OCR, spec §3) and attach `dialogReadings`. Off by
+   * default: pixel reads cost seconds-to-tens-of-seconds per surface and
+   * must stay opt-in.
+   */
+  readonly readings?: boolean;
 };
 
 export type GuiStateReport =
