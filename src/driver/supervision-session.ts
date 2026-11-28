@@ -37,6 +37,7 @@ import {
   SupervisionMonitor,
   supervisionReport,
   type GuiProbe,
+  type ProbeSnapshot,
   type SupervisionReport,
 } from "../supervision/index.js";
 import type { PendingRequest, SupervisionStateDoc } from "../supervision/types.js";
@@ -205,15 +206,18 @@ export function attributeAeByCensus(
 export class SessionSupervision {
   readonly #sessionRoot: string;
   readonly #monitor: SupervisionMonitor;
+  readonly #probe: GuiProbe;
   readonly #tracer: SupervisionSessionTracer | null;
 
   private constructor(
     sessionRoot: string,
     monitor: SupervisionMonitor,
+    probe: GuiProbe,
     tracer: SupervisionSessionTracer | null,
   ) {
     this.#sessionRoot = sessionRoot;
     this.#monitor = monitor;
+    this.#probe = probe;
     this.#tracer = tracer;
   }
 
@@ -254,7 +258,12 @@ export class SessionSupervision {
     // `run`, and `stop()` releases the lease. The sleep timer is unref'd so
     // a monitor can never hold the process open.
     void started.monitor.run().catch(() => undefined);
-    return new SessionSupervision(options.sessionRoot, started.monitor, tracer);
+    return new SessionSupervision(
+      options.sessionRoot,
+      started.monitor,
+      probe,
+      tracer,
+    );
   }
 
   /**
@@ -342,6 +351,24 @@ export class SessionSupervision {
         return snapshot;
       },
     };
+  }
+
+  /**
+   * One bounded read-only observation through the same probe the monitor
+   * ticks with (#452). Launch readiness classification uses this when the
+   * durable document is still blind — inside the probe's startup grace —
+   * so the launch error can carry census/AX evidence a `timeout` label
+   * alone cannot. This is a single `observe()` call, never a restarted
+   * monitor, and it cannot press: the probe is observation-only by
+   * contract. Returns null when the probe itself throws; the snapshot's
+   * own `ok:false` is the honest "could not see" answer.
+   */
+  async observeOnce(): Promise<ProbeSnapshot | null> {
+    try {
+      return await this.#probe.observe();
+    } catch {
+      return null;
+    }
   }
 
   /** The current durable report, health re-evaluated at read time. */

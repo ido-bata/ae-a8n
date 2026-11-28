@@ -20,6 +20,7 @@ import type { LaunchPhaseTiming, PendingLaunch } from "../src/driver/transport.j
 import { FakeAfterEffectsTransport } from "../src/testing/fake-transport.js";
 import { TraceRecorder, type TraceEvent } from "../src/trace/trace.js";
 import type { SupervisionReport, SupervisionWindow } from "../src/supervision/types.js";
+import type { ProbeSnapshot } from "../src/supervision/probe.js";
 
 let sessionRoot: string;
 let traceFile: string;
@@ -71,6 +72,7 @@ function makeDriver(
   options: {
     report?: () => SupervisionReport | null;
     supervision?: { report(): SupervisionReport | null };
+    observe?: () => ProbeSnapshot | Promise<ProbeSnapshot> | null;
   } = {},
 ): AeDriver {
   const trace = new TraceRecorder({ file: traceFile });
@@ -79,13 +81,14 @@ function makeDriver(
     transport,
     sessionRoot,
     trace,
-    ...(options.report === undefined
+    ...(options.report === undefined && options.observe === undefined
       ? {}
       : {
           bootSupervision: {
             start: () => {},
             stop: () => {},
-            report: options.report,
+            ...(options.report === undefined ? {} : { report: options.report }),
+            ...(options.observe === undefined ? {} : { observe: options.observe }),
           },
         }),
     ...(options.supervision === undefined ? {} : { supervision: options.supervision }),
@@ -372,6 +375,142 @@ describe("readiness classification (#444)", () => {
 
     const error = (await driver.start().catch((thrown: unknown) => thrown)) as HostUnavailableError;
     expect(error.readiness?.code).toBe("modal-blocked:script-error");
+  });
+});
+
+describe("readiness failure observation (#452)", () => {
+  /**
+   * The #436 BirthPrefs shape: the WindowServer census lists windows for
+   * the pid while the AX listing is empty — inside the probe's startup
+   * grace this is degraded evidence, never a blocking window, so the
+   * durable document stays blind and the wait classifies `timeout`.
+   */
+  const axEmptyCensusSnapshot: ProbeSnapshot = {
+    ok: true,
+    windows: [],
+    host: "none",
+    degraded: [
+      "AX tree unserviceable: WindowServer reports 6 window(s) for this pid " +
+        "while AX listed none attributable to it",
+    ],
+    census: {
+      available: true,
+      windowCount: 6,
+      onScreenCount: 4,
+      unaccountedWindowCount: 4,
+      attributedWindowCount: 0,
+      listingSuspect: true,
+    },
+  };
+
+  it("attaches census evidence to a timeout so AX-invisible stays distinguishable", async () => {
+    const transport = new ScriptableWaitTransport(false);
+    transport.hostStateKind = "alive";
+    let observes = 0;
+    const driver = makeDriver(transport, {
+      report: () => cleanReport(),
+      observe: () => {
+        observes += 1;
+        return axEmptyCensusSnapshot;
+      },
+    });
+
+    const error = (await driver.start().catch((thrown: unknown) => thrown)) as HostUnavailableError;
+    const readiness = error.readiness as ReadinessFailure;
+    // Still `timeout`: census-positive + AX-empty inside grace is suspect
+    // evidence, not a blocking verdict — the probe's own rules decided.
+    expect(readiness.reason).toBe("timeout");
+    expect(readiness.code).toBe("timeout");
+    // Exactly one bounded read-only observation — never a restarted monitor.
+    expect(observes).toBe(1);
+    expect(readiness.observation).toMatchObject({
+      unobservableModalSuspect: true,
+      blockingWindowCount: 0,
+      census: {
+        available: true,
+        windowCount: 6,
+        onScreenCount: 4,
+        unaccountedWindowCount: 4,
+        attributedWindowCount: 0,
+        listingSuspect: true,
+      },
+    });
+    expect(readiness.observation?.degraded).toHaveLength(1);
+    expect(readiness.detail).toContain("6 window(s)");
+    expect(readiness.detail).toContain("consistent with an AX-invisible modal");
+  });
+
+  it("keeps the plain timeout wording when the census shows nothing suspect", async () => {
+    const transport = new ScriptableWaitTransport(false);
+    transport.hostStateKind = "alive";
+    const driver = makeDriver(transport, {
+      report: () => cleanReport(),
+      observe: () => ({
+        ok: true,
+        windows: [],
+        host: "none",
+        census: {
+          available: true,
+          windowCount: 1,
+          onScreenCount: 1,
+          unaccountedWindowCount: 0,
+          attributedWindowCount: 1,
+          listingSuspect: false,
+        },
+      }),
+    });
+
+    const error = (await driver.start().catch((thrown: unknown) => thrown)) as HostUnavailableError;
+    const readiness = error.readiness as ReadinessFailure;
+    expect(readiness.reason).toBe("timeout");
+    expect(readiness.observation?.unobservableModalSuspect).toBe(false);
+    expect(readiness.detail).toContain("cannot be ruled out");
+    expect(readiness.detail).not.toContain("consistent with an AX-invisible modal");
+  });
+
+  it("records a probe that cannot observe as probeError, never a clean screen", async () => {
+    const transport = new ScriptableWaitTransport(false);
+    transport.hostStateKind = "alive";
+    const driver = makeDriver(transport, {
+      report: () => cleanReport(),
+      observe: () => ({ ok: false, reason: "System Events lost the pid" }),
+    });
+
+    const error = (await driver.start().catch((thrown: unknown) => thrown)) as HostUnavailableError;
+    const readiness = error.readiness as ReadinessFailure;
+    expect(readiness.reason).toBe("timeout");
+    expect(readiness.observation).toMatchObject({
+      probeError: "System Events lost the pid",
+      census: null,
+      unobservableModalSuspect: false,
+    });
+    expect(readiness.detail).toContain("cannot be ruled out");
+  });
+
+  it("carries no observation when the hook cannot answer", async () => {
+    const transport = new ScriptableWaitTransport(false);
+    transport.hostStateKind = "alive";
+    const driver = makeDriver(transport, {
+      report: () => cleanReport(),
+      observe: () => null,
+    });
+
+    const error = (await driver.start().catch((thrown: unknown) => thrown)) as HostUnavailableError;
+    expect(error.readiness?.reason).toBe("timeout");
+    expect(error.readiness?.observation).toBeUndefined();
+  });
+
+  it("attaches the observation to modal-blocked too — evidence, not a new verdict", async () => {
+    const transport = new ScriptableWaitTransport(false);
+    const driver = makeDriver(transport, {
+      report: () => reportWith([blockingWindow()]),
+      observe: () => axEmptyCensusSnapshot,
+    });
+
+    const error = (await driver.start().catch((thrown: unknown) => thrown)) as HostUnavailableError;
+    const readiness = error.readiness as ReadinessFailure;
+    expect(readiness.code).toBe("modal-blocked:script-error");
+    expect(readiness.observation?.unobservableModalSuspect).toBe(true);
   });
 });
 

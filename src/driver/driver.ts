@@ -76,6 +76,7 @@ import type {
   SupervisionReport,
   SupervisionWindow,
 } from "../supervision/types.js";
+import type { ProbeCensus, ProbeSnapshot } from "../supervision/probe.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -180,6 +181,36 @@ export type ReadinessModal = {
   readonly host: string;
 };
 
+/**
+ * What one direct read-only probe observation saw at the moment a
+ * readiness wait failed (#452). The durable supervision document can be
+ * blind while the target sits inside the probe's startup grace, so the
+ * failure carries the census/AX evidence a single `probe.observe()` could
+ * prove — `timeout` (the host is alive but silent) and "alive, but the
+ * screen is unusable to the accessibility layer" stop collapsing into
+ * the same answer. Absent when no observation could run at all:
+ * unproven, never a guessed clean state.
+ */
+export type ReadinessObservation = {
+  /** The probe's own failure reason, when observation itself failed. */
+  readonly probeError?: string;
+  /** Census counts; null when the probe has no census to report. */
+  readonly census: ProbeCensus | null;
+  /**
+   * The census lists windows the listing cannot account for — an empty
+   * or wholly unattributed listing (`listingSuspect`), or on-screen
+   * census windows no listed window matches. Suspect *evidence*, not a
+   * blocking verdict: the probe's own grace and confirmation rules
+   * already decided whether it may block, and this flag never upgrades
+   * the answer on its own.
+   */
+  readonly unobservableModalSuspect: boolean;
+  /** Windows the observation itself marked blocking. */
+  readonly blockingWindowCount: number;
+  /** Degradation notes the probe attached to the snapshot. */
+  readonly degraded: readonly string[];
+};
+
 /** Structured classification of a failed readiness wait (#444). */
 export type ReadinessFailure = {
   /** The readiness phase the wait was in when it failed. */
@@ -191,6 +222,12 @@ export type ReadinessFailure = {
   readonly detail: string;
   /** Present only for `modal-blocked`. */
   readonly modal?: ReadinessModal;
+  /**
+   * One bounded read-only probe observation taken at failure time
+   * (#452), when the supervision hook could answer. Carries the census
+   * counts the durable document may still be blind to.
+   */
+  readonly observation?: ReadinessObservation;
 };
 
 export class HostUnavailableError extends Error {
@@ -320,6 +357,13 @@ export type DriverOptions = {
      * wait. Absent means "no observation", never a guessed clean state.
      */
     report?(): SupervisionReport | null;
+    /**
+     * One bounded read-only probe observation (#452): the driver runs a
+     * single `observe()` when a readiness wait fails, because the durable
+     * document can be blind inside the probe's startup grace. Never a
+     * restarted monitor; absent means "no observation available".
+     */
+    observe?(): ProbeSnapshot | Promise<ProbeSnapshot | null> | null;
   };
 };
 
@@ -397,7 +441,12 @@ export class AeDriver {
   readonly #recoveryGraceMs: number;
   readonly #supervision: { report(): SupervisionReport | null } | undefined;
   readonly #bootSupervision:
-    | { start(): void; stop(): void; report?(): SupervisionReport | null }
+    | {
+        start(): void;
+        stop(): void;
+        report?(): SupervisionReport | null;
+        observe?(): ProbeSnapshot | Promise<ProbeSnapshot | null> | null;
+      }
     | undefined;
   /** The request currently inside `#settle`, for supervision's pending list. */
   #inFlight: { readonly id: string; readonly method: string; readonly since: string } | null = null;
@@ -571,7 +620,7 @@ export class AeDriver {
           awaitScriptable(this.#readinessTimeoutMs),
         );
         if (!scriptable) {
-          const failure = this.#classifyReadiness(readinessPhase, null, true);
+          const failure = await this.#classifyReadiness(readinessPhase, null, true);
           throw new HostUnavailableError(
             `After Effects did not become ready to run scripts within ${this.#readinessTimeoutMs}ms ` +
               `— readiness ${failure.code}: ${failure.detail}; no script was sent`,
@@ -643,7 +692,7 @@ export class AeDriver {
       const readinessFailure =
         error instanceof HostUnavailableError && error.readiness !== undefined
           ? error.readiness
-          : this.#classifyReadiness(
+          : await this.#classifyReadiness(
               readinessPhase,
               error,
               error instanceof TimeoutError,
@@ -709,16 +758,30 @@ export class AeDriver {
    * The report consulted is the boot monitor's when one is running — it is
    * the observer that exists during `start()`; the post-probe monitor is
    * the fallback. A report that cannot answer (absent, unavailable,
-   * corrupt) is skipped, never treated as a clean screen. An AX-invisible
-   * modal — the BirthPrefs shape from the #436 RC run — produces no
-   * blocking window here, so it classifies as `timeout` with the honest
-   * note that an invisible modal cannot be ruled out; it is never guessed
-   * into a class the taxonomy did not measure.
+   * corrupt) is skipped, never treated as a clean screen.
+   *
+   * The durable document can be blind during the probe's startup grace
+   * (#452): an AX-invisible modal — the BirthPrefs shape from the #436 RC
+   * run — produces no blocking window there, so the wait classified as a
+   * bare `timeout`. When the boot hook can answer, ONE bounded read-only
+   * `observe()` runs here and its census/AX evidence rides the failure
+   * as `observation`, so "alive but screen-unusable" is structurally
+   * distinguishable from a plain silent host. The observation is
+   * evidence, never a new verdict: a census-positive/AX-empty snapshot
+   * inside grace stays `timeout` with the suspect flagged, exactly the
+   * degraded-not-blocking posture the probe itself takes.
    */
-  #classifyReadiness(phase: string, cause: unknown, timedOut: boolean): ReadinessFailure {
+  async #classifyReadiness(
+    phase: string,
+    cause: unknown,
+    timedOut: boolean,
+  ): Promise<ReadinessFailure> {
     try {
       const report =
         this.#bootSupervision?.report?.() ?? this.#supervision?.report() ?? null;
+      const observation = await this.#readinessObservation();
+      const attach = (failure: ReadinessFailure): ReadinessFailure =>
+        observation === undefined ? failure : { ...failure, observation };
       if (report?.status === "observed") {
         const blocking = (report.doc.blocking?.windows ?? []).filter(
           (window) => window.blocking,
@@ -727,7 +790,7 @@ export class AeDriver {
           const modal = this.#primaryBlockingWindow(blocking);
           const dialogClass = modal.dialogClass ?? "unclassified";
           const summary = modal.content?.summary ?? "";
-          return {
+          return attach({
             phase,
             reason: "modal-blocked",
             code: `modal-blocked:${dialogClass}`,
@@ -745,7 +808,7 @@ export class AeDriver {
               title: modal.title,
               host: report.doc.blocking?.host ?? "unknown",
             },
-          };
+          });
         }
       }
       const state = this.#transport.hostState?.();
@@ -754,7 +817,7 @@ export class AeDriver {
         state === "gone" || (pending !== null && !pending.presentAtLastLookup);
       const present = state === "alive" || pending?.presentAtLastLookup === true;
       if (gone) {
-        return {
+        return attach({
           phase,
           reason: "probe-failure",
           code: "probe-failure",
@@ -762,28 +825,31 @@ export class AeDriver {
             "the After Effects process is gone" +
             (pending === null ? "" : ` (pid ${String(pending.pid)})`) +
             " before it became ready",
-        };
+        });
       }
       if (timedOut) {
-        return present
-          ? {
-              phase,
-              reason: "timeout",
-              code: "timeout",
-              detail:
-                "the host process is present but never answered within the readiness " +
-                "budget; a modal invisible to the accessibility layer cannot be ruled out",
-            }
-          : {
-              phase,
-              reason: "still-launching",
-              code: "still-launching",
-              detail:
-                "no After Effects process could be proven within the readiness " +
-                `budget (host state: ${state ?? "unknown"})`,
-            };
+        return attach(
+          present
+            ? {
+                phase,
+                reason: "timeout",
+                code: "timeout",
+                detail:
+                  "the host process is present but never answered within the readiness " +
+                  "budget" +
+                  this.#timeoutSuspectNote(observation),
+              }
+            : {
+                phase,
+                reason: "still-launching",
+                code: "still-launching",
+                detail:
+                  "no After Effects process could be proven within the readiness " +
+                  `budget (host state: ${state ?? "unknown"})`,
+              },
+        );
       }
-      return {
+      return attach({
         phase,
         reason: "probe-failure",
         code: "probe-failure",
@@ -791,7 +857,7 @@ export class AeDriver {
           cause === null || cause === undefined
             ? "the readiness probe failed"
             : errorMessage(cause),
-      };
+      });
     } catch {
       // Classification is evidence, never a new failure mode: if even the
       // observation path breaks, the wait's own outcome still stands.
@@ -802,6 +868,73 @@ export class AeDriver {
         detail: "readiness classification itself failed; the wait outcome stands",
       };
     }
+  }
+
+  /**
+   * The one bounded read-only observation a failed readiness wait is
+   * allowed (#452): a single `observe()` through the boot supervision
+   * hook — the same probe the monitor ticks with, never a restarted
+   * monitor. Returns undefined when no hook exists or it cannot answer;
+   * the failure then simply carries no `observation`, which is the
+   * honest "unproven".
+   */
+  async #readinessObservation(): Promise<ReadinessObservation | undefined> {
+    const hook = this.#bootSupervision;
+    if (hook?.observe === undefined) {
+      return undefined;
+    }
+    let snapshot: ProbeSnapshot | null;
+    try {
+      snapshot = await hook.observe();
+    } catch {
+      return undefined;
+    }
+    if (snapshot === null) {
+      return undefined;
+    }
+    if (!snapshot.ok) {
+      return {
+        probeError: snapshot.reason,
+        census: null,
+        unobservableModalSuspect: false,
+        blockingWindowCount: 0,
+        degraded: [],
+      };
+    }
+    const census = snapshot.census ?? null;
+    return {
+      census,
+      unobservableModalSuspect:
+        census !== null &&
+        census.available &&
+        (census.listingSuspect || census.unaccountedWindowCount > 0),
+      blockingWindowCount: snapshot.windows.filter((window) => window.blocking).length,
+      degraded: snapshot.degraded ?? [],
+    };
+  }
+
+  /**
+   * The `timeout` detail's census clause (#452): when the one-shot
+   * observation saw windows the accessibility listing cannot account
+   * for, the detail names the counts — the difference between "alive
+   * but silent" and "alive, screen unusable to AX" is now in the error,
+   * not just implied. Suspect evidence stays suspect: the note says
+   * "consistent with", never "is".
+   */
+  #timeoutSuspectNote(observation: ReadinessObservation | undefined): string {
+    const census = observation?.census ?? null;
+    if (
+      observation?.unobservableModalSuspect !== true ||
+      census === null ||
+      !census.available
+    ) {
+      return "; a modal invisible to the accessibility layer cannot be ruled out";
+    }
+    return (
+      `; the window census reports ${census.windowCount} window(s) for the pid ` +
+      `(${census.onScreenCount} on-screen) that the accessibility listing cannot ` +
+      "account for — consistent with an AX-invisible modal, still unproven"
+    );
   }
 
   /**

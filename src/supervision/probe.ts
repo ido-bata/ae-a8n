@@ -28,6 +28,43 @@ import type {
   SupervisionWindow,
 } from "./types.js";
 
+/**
+ * Structured census counts behind the `degraded[]` strings (#452). The
+ * numbers a consumer needs to tell "the host is alive but its screen is
+ * unusable to the accessibility layer" from an ordinary silent host,
+ * without parsing prose. Optional on the snapshot: a probe with no
+ * second census — or a platform whose observation is single-source —
+ * omits it, and a consumer reading `undefined` must treat the census as
+ * unproven, never as "no windows".
+ */
+export type ProbeCensus = {
+  /** Whether the OS window census ran at all. */
+  readonly available: boolean;
+  /** Windows the census attributes to the target pid. */
+  readonly windowCount: number;
+  /** Of those, the ones currently on screen. */
+  readonly onScreenCount: number;
+  /**
+   * On-screen census windows no listed window accounts for (#321):
+   * surfaces the OS shows that the listing cannot see.
+   */
+  readonly unaccountedWindowCount: number;
+  /**
+   * Listing windows the census attributes to the target pid — the count
+   * behind `windows` before any synthetic blocking entries the probe
+   * added for unobservable surfaces.
+   */
+  readonly attributedWindowCount: number;
+  /**
+   * The listing reported zero attributable windows while the census
+   * lists some for the pid (the `axSuspect` shape, #322/#330): an
+   * unobservable or untrusted listing. Suspect *evidence*, not a
+   * verdict — the probe's own grace and confirmation rules already
+   * decided whether it may block, and consumers must not upgrade it.
+   */
+  readonly listingSuspect: boolean;
+};
+
 /** What one probe observation produced. */
 export type ProbeSnapshot =
   | {
@@ -40,6 +77,12 @@ export type ProbeSnapshot =
       readonly frontmost?: boolean;
       /** Degradation notes (e.g. census unavailable, AX suspect). */
       readonly degraded?: readonly string[];
+      /**
+       * The census/AX counts behind `degraded[]` and `windows` (#452),
+       * when the probe has a second census to report. Absent means
+       * unproven — never "zero windows".
+       */
+      readonly census?: ProbeCensus;
     }
   | {
       readonly ok: false;
