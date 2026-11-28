@@ -850,6 +850,34 @@ export class ScriptInvocationTransport implements HostTransport {
   }
 
   /**
+   * Times one synchronous `launch()` sub-phase. Kept separate from
+   * `#timeLaunchPhase` because `await`ing even a resolved value yields a
+   * microtask — and `launch()` must reach `#startWindows` without yielding:
+   * its `spawn` listener has to be attached before anything else queued can
+   * emit (issue #444 regression caught by the win32 launch test).
+   */
+  #timeSyncLaunchPhase<T>(stepId: string, fn: () => T): T {
+    const started = Date.now();
+    const startedAt = new Date(started).toISOString();
+    try {
+      const value = fn();
+      this.#launchPhaseRows.push({
+        stepId: `spawn.${stepId}`,
+        startedAt,
+        durationMs: Date.now() - started,
+      });
+      return value;
+    } catch (error) {
+      this.#launchPhaseRows.push({
+        stepId: `spawn.${stepId}`,
+        startedAt,
+        durationMs: Date.now() - started,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Times one `launch()` sub-phase into `#launchPhaseRows` (#444). The
    * wrapped call's value or error passes through untouched — this is
    * measurement, never control flow.
@@ -894,7 +922,7 @@ export class ScriptInvocationTransport implements HostTransport {
       // disabled the host can open a result file but never fill it, so the
       // readiness probe could only ever time out (issue #188). A proven
       // "blocked" fails here with the remedy; anything unevaluated proceeds.
-      const permission = await this.#timeLaunchPhase("permission-check", () =>
+      const permission = this.#timeSyncLaunchPhase("permission-check", () =>
         this.#macScriptingPermission(),
       );
       if (permission?.state === "blocked") {
@@ -914,7 +942,7 @@ export class ScriptInvocationTransport implements HostTransport {
       // branches below are unreachable from here — there is no code path
       // from this branch to `open`/`AfterFX.exe`.
       try {
-        await this.#timeLaunchPhase("attach-select", () => this.#selectAttachTarget());
+        this.#timeSyncLaunchPhase("attach-select", () => this.#selectAttachTarget());
       } catch (error) {
         // A refused attach must not leave the transport "launched": a retry
         // would return early above and the driver would go on to invoke(),
@@ -927,7 +955,7 @@ export class ScriptInvocationTransport implements HostTransport {
     }
     if (this.#adopt !== null) {
       try {
-        await this.#timeLaunchPhase("adopt-validate", () => this.#adoptProcess());
+        this.#timeSyncLaunchPhase("adopt-validate", () => this.#adoptProcess());
       } catch (error) {
         // Same rule as attach: a refused adoption is not a launch.
         this.#launched = false;
@@ -940,7 +968,7 @@ export class ScriptInvocationTransport implements HostTransport {
       // Before anything is started: whatever is running now is not ours. A
       // list that cannot be read leaves ownership unproven, never assumed.
       try {
-        this.#preexisting = await this.#timeLaunchPhase("process-census", () =>
+        this.#preexisting = this.#timeSyncLaunchPhase("process-census", () =>
           this.#hostProcesses(),
         );
       } catch {
@@ -953,7 +981,7 @@ export class ScriptInvocationTransport implements HostTransport {
       // the same rule the Windows branch follows: the readiness probe below
       // is what decides whether the host answers.
       try {
-        this.#preexisting = await this.#timeLaunchPhase("process-census", () =>
+        this.#preexisting = this.#timeSyncLaunchPhase("process-census", () =>
           this.#hostProcesses(),
         );
       } catch {
