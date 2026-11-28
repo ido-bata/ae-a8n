@@ -1,0 +1,2 @@
+{"seq":0,"ts":"2026-11-28T15:17:32.455Z","op":"session.provenance","status":"ok","durationMs":0,"result":{"phase":"spawned","pid":58673}}
+{"seq":1,"ts":"2026-11-28T15:17:33.967Z","op":"supervision.transition","status":"ok","durationMs":0,"result":{"from":"init","to":"running","reason":"supervision started","enteredAt":"2026-11-28T15:17:33.962Z"}}

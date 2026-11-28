@@ -1,0 +1,25 @@
+{
+  "kind": "ae-a8n.recovery-evidence/v1",
+  "requestId": "fbb46c7f-080b-4ed3-8647-98fe123e340c",
+  "method": "app.info",
+  "timeoutMs": 160888,
+  "recovered": false,
+  "outcome": "refused",
+  "code": null,
+  "window": null,
+  "expectedModal": null,
+  "evidence": "no GUI recovery is possible: the target session (uid 501) is the console session, the screen the user is looking at. Recovering there would move their cursor and take their focus, so no GUI action was taken. Recover in an isolated session instead.",
+  "screenshot": {
+    "before": null,
+    "after": null,
+    "note": null
+  },
+  "uncapturable": [],
+  "censusCaptures": [],
+  "hostLogs": {
+    "collector": "ae.diagnostics()",
+    "cepCsxs": "not collected: CEPHtmlEngine/CSXS sources are #336's scope"
+  },
+  "supervision": null,
+  "capturedAt": "2026-11-28T15:11:29.589Z"
+}
