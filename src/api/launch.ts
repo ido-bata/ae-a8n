@@ -600,6 +600,12 @@ export async function openAfterEffects(
             // collapsing into an opaque timeout. Read-only — the monitor
             // itself never presses.
             report: () => bootSupervision?.report() ?? null,
+            // One bounded read-only observation (#452): the durable
+            // document can be blind while the target sits inside the
+            // probe's startup grace, so readiness classification asks for
+            // a single probe read and attaches its census/AX evidence to
+            // the launch error. Never a restarted monitor.
+            observe: () => bootSupervision?.observeOnce() ?? Promise.resolve(null),
           },
         }),
     ...(hostScript === null ? {} : { hostScriptPath: hostScript }),

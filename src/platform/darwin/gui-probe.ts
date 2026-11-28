@@ -48,7 +48,7 @@ import type { GuiAppState, GuiWindowInfo } from "../../driver/gui-recovery.js";
 import { isBlockingWindow, isPidAttributedWindow } from "../../driver/gui-recovery.js";
 import type { WindowServerWindow } from "./window-census.js";
 import type { DialogWindow } from "../recovery-policy.js";
-import type { GuiProbe, ProbeSnapshot } from "../../supervision/probe.js";
+import type { GuiProbe, ProbeCensus, ProbeSnapshot } from "../../supervision/probe.js";
 import type { HostLevelState } from "../../supervision/types.js";
 
 export type MacGuiProbeDeps = {
@@ -254,6 +254,10 @@ export class MacGuiProbe implements GuiProbe {
     const windows = state.windows
       .filter(isPidAttributedWindow)
       .map(toDialogWindow);
+    // The census counts behind `degraded[]`, captured before the branches
+    // below append synthetic blocking windows: `attributedWindowCount`
+    // counts what AX itself listed, not what this probe concluded (#452).
+    const attributedWindowCount = windows.length;
     if (state.axSuspect) {
       if (this.#axSuspectInStartupGrace()) {
         // Launch-transient AX emptiness (#322): the process is young enough
@@ -320,11 +324,26 @@ export class MacGuiProbe implements GuiProbe {
       degraded.push("no AX windows and no WindowServer census: clean state unproven");
     }
 
+    // The structured census rides the snapshot (#452) so a consumer —
+    // launch readiness classification above all — can tell "alive but
+    // screen-unusable to AX" from a plain silent host without parsing
+    // the degraded strings. `listingSuspect` is evidence, not a verdict:
+    // the grace and confirmation rules above already ran.
+    const census: ProbeCensus = {
+      available: state.windowServer.available,
+      windowCount: state.windowServer.windowCount,
+      onScreenCount: state.windowServer.onScreenCount,
+      unaccountedWindowCount: state.axUnaccountedWindows.length,
+      attributedWindowCount,
+      listingSuspect: state.axSuspect,
+    };
+
     return {
       ok: true,
       windows,
       host,
       frontmost: state.frontmost,
+      census,
       ...(degraded.length > 0 ? { degraded } : {}),
     };
   }

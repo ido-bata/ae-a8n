@@ -55,7 +55,7 @@ export {
   snapshotToBlocking,
   windowTier,
 } from "./probe.js";
-export type { GuiProbe, ProbeSnapshot } from "./probe.js";
+export type { GuiProbe, ProbeCensus, ProbeSnapshot } from "./probe.js";
 export {
   SupervisionMonitor,
   DEFAULT_MONITOR_INTERVAL_MS,
