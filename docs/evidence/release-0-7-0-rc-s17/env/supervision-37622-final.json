@@ -1,0 +1,258 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "degraded",
+  "blocking": {
+    "host": "none",
+    "windows": [
+      {
+        "title": "<unobservable window>",
+        "role": "AXWindow",
+        "subrole": null,
+        "texts": [
+          "WindowServer reports 6 window(s) not visible to AX"
+        ],
+        "buttons": [],
+        "blocking": true,
+        "tier": "unknown",
+        "dialogClass": null,
+        "code": "A8N-SEC-001",
+        "content": {
+          "dialogClass": null,
+          "tier": "unknown",
+          "code": "A8N-SEC-001",
+          "evidenceLevel": null,
+          "fields": {},
+          "summary": "unclassified AXWindow \"<unobservable window>\" — WindowServer reports 6 window(s) not visible to AX"
+        }
+      }
+    ],
+    "detail": "1 blocking window(s): <unobservable window>"
+  },
+  "pendingRequests": [
+    {
+      "id": "033a1ed8-068e-4ff2-8de3-fa70fc3baee8",
+      "method": "app.info",
+      "since": "2026-11-28T10:08:59.179Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T10:18:18.054Z",
+  "deadline": "2026-11-28T10:33:18.054Z",
+  "evidence": [
+    "probe-degraded: AX tree unserviceable: WindowServer reports 1 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 2 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 6 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 6 window(s) for this pid while AX listed none attributable to it"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-detached-supervisor",
+    "pid": 67905,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T10:14:05.841Z",
+    "heartbeatAt": "2026-11-28T10:18:10.638Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T10:08:45.935Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T10:14:17.420Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:14:26.397Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:14:35.177Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:14:42.120Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:14:49.485Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:14:56.085Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:15:02.305Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:15:08.879Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:15:14.923Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:15:21.573Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:15:27.277Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:15:34.068Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:15:40.992Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:15:47.565Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:15:55.153Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:16:02.276Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:16:10.351Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:16:16.907Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:16:23.284Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:16:30.730Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:16:39.871Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:16:48.342Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:16:56.063Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:17:06.689Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:17:15.244Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:17:26.453Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:17:35.914Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:17:44.936Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:17:52.488Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:18:00.723Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:18:08.635Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    },
+    {
+      "from": "blocked",
+      "to": "blocked",
+      "at": "2026-11-28T10:18:18.054Z",
+      "reason": "1 blocking window(s): <unobservable window>"
+    }
+  ],
+  "updatedAt": "2026-11-28T10:18:18.057Z"
+}

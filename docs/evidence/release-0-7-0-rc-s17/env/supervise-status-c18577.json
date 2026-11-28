@@ -1,0 +1,71 @@
+{
+  "exitCode": 3,
+  "phase": "blocked",
+  "health": "degraded",
+  "healthDetail": null,
+  "blocking": {
+    "host": "none",
+    "windows": [
+      {
+        "title": "<unobservable window>",
+        "role": "AXWindow",
+        "subrole": null,
+        "texts": [
+          "WindowServer reports 8 window(s) not visible to AX"
+        ],
+        "buttons": [],
+        "blocking": true,
+        "tier": "unknown",
+        "dialogClass": null,
+        "code": "A8N-SEC-001",
+        "content": {
+          "dialogClass": null,
+          "tier": "unknown",
+          "code": "A8N-SEC-001",
+          "evidenceLevel": null,
+          "fields": {},
+          "summary": "unclassified AXWindow \"<unobservable window>\" — WindowServer reports 8 window(s) not visible to AX"
+        }
+      }
+    ],
+    "detail": "1 blocking window(s): <unobservable window>"
+  },
+  "nextActions": [
+    {
+      "kind": "automatic",
+      "allowed": true,
+      "code": "supervision.health",
+      "reason": {
+        "code": "permitted"
+      },
+      "action": "Observation is degraded. Read the evidence before relying on the phase."
+    },
+    {
+      "kind": "automatic",
+      "allowed": true,
+      "code": "supervision.blocked",
+      "reason": {
+        "code": "bounded-wait"
+      },
+      "action": "After Effects is blocked: 1 blocking window(s): <unobservable window>. Blocking windows: <unobservable window>. Wait within the phase deadline 2026-11-28T10:30:35.163Z; automation is already recovering or the monitor will classify further."
+    },
+    {
+      "kind": "automatic",
+      "allowed": true,
+      "code": "supervision.state",
+      "reason": {
+        "code": "permitted"
+      },
+      "action": "Read the supervision report (`ae.supervisionState()` or `ae-a8n supervise status --session-root <dir>`) for the structured blocking evidence before deciding anything else."
+    },
+    {
+      "kind": "automatic",
+      "allowed": false,
+      "code": "session.terminate",
+      "reason": {
+        "code": "requires-permission"
+      },
+      "action": "Exit path for a host that will not answer: `AfterEffects.terminate({ sessionRoot, permit: \"terminate-owned-host\" })` (add `force: true` only to escalate a graceful request that did not end the process) signals the recorded owned host — it refuses without launch provenance — then `AfterEffects.rebuild({ sessionRoot })` continues the session on a new generation. Withheld from automation: it signals a live process, so it needs the explicit permit grant first."
+    }
+  ]
+}

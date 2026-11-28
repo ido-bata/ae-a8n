@@ -1,0 +1,31 @@
+{
+  "ok": false,
+  "error": {
+    "name": "AfterEffectsError",
+    "message": "no After Effects process this run started could be tied to it: app.info (97ca7a1f-02db-4fe7-a841-be13f8b7d8a4) timed out and no host process was found",
+    "readiness": null,
+    "nextActions": [
+      {
+        "kind": "automatic",
+        "allowed": true,
+        "code": "A8N-SEC-001",
+        "reason": {
+          "code": "permitted"
+        },
+        "action": "A licence, sign-in or permission window is blocking After Effects; `ae.supervisionState()` carries the window's classification."
+      },
+      {
+        "kind": "human",
+        "allowed": false,
+        "code": "runtime.host-quarantined",
+        "reason": {
+          "code": "requires-permission"
+        },
+        "action": "A human resolves the licence/sign-in/permission prompt inside After Effects; automation never approves consent, licence or OS permission dialogs."
+      }
+    ]
+  },
+  "provenance": null,
+  "supervision": null,
+  "tracePath": "/Users/rebui/work/ae-a8n.453/docs/evidence/release-0-7-0-rc-s17/sessions/s17-b-launch-2027-r2/trace.jsonl"
+}

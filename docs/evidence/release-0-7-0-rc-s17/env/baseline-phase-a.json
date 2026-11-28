@@ -1,0 +1,15 @@
+{
+  "at": "2026-11-28T09:58:55.358Z",
+  "ps": [
+    {
+      "pid": 18577,
+      "uid": 501,
+      "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects"
+    }
+  ],
+  "lsappinfo": [
+    "68) \"After Effects\" ASN:0x0-0x1766d656: ",
+    "    bundle path=\"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app\"",
+    "    executable path=\"/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects\""
+  ]
+}
