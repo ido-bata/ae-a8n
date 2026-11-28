@@ -148,6 +148,23 @@ describe("guarantee-boundary matrix: agreement with documented levels", () => {
     expect(win.support).toBe("unsupported");
   });
 
+  it("panel restore is advertised like resize — no capability-table gap (#445)", () => {
+    const row = find(
+      (r) => r.capability === "panel" && r.op === "restore" && r.platforms.includes("macos"),
+    );
+    expect(row.support).toBe("supported");
+    expect(row.verificationLevel).toBe("verified on real host");
+    expect(row.gate).toBe("panelMutationGate");
+    expect(row.gateProbe?.allowed).toBe(true);
+    expect(row.note ?? "").not.toContain("not advertised");
+
+    const win = find(
+      (r) => r.capability === "panel" && r.op === "restore" && r.platforms.includes("windows"),
+    );
+    expect(win.support).toBe("unsupported");
+    expect(win.refuseConditions).toContain("unsupported:windows");
+  });
+
   it("observe-class panel ops carry no mutation gate", () => {
     const row = find(
       (r) => r.capability === "panel" && r.op === "measure" && r.platforms.includes("macos"),
