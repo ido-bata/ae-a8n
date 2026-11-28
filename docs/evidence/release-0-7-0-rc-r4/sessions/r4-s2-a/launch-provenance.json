@@ -1,0 +1,14 @@
+{
+  "schema": "a8n.launch-provenance/v1",
+  "recordedAt": "2026-11-28T16:35:37.772Z",
+  "a8nVersion": "0.6.0",
+  "transport": "script-invocation",
+  "phase": "spawned",
+  "host": {
+    "pid": 84959,
+    "startedAt": 1795883531000,
+    "identity": null,
+    "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects",
+    "platform": "darwin"
+  }
+}

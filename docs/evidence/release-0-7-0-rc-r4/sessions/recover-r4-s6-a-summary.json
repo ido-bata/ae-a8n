@@ -1,0 +1,28 @@
+{
+  "label": "r4-s6-a",
+  "verdict": "pass",
+  "recovered": [
+    {
+      "pid": 7223,
+      "root": "/tmp/rc436r4-sessions/r4-s6-a",
+      "outcome": "terminated",
+      "method": "forced"
+    }
+  ],
+  "censusBefore": [
+    {
+      "pid": 7223,
+      "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects"
+    },
+    {
+      "pid": 36906,
+      "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+    }
+  ],
+  "censusAfter": [
+    {
+      "pid": 36906,
+      "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+    }
+  ]
+}
