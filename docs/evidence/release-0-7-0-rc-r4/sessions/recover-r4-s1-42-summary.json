@@ -1,0 +1,19 @@
+{
+  "label": "r4-s1-42",
+  "verdict": "pass",
+  "recovered": [
+    {
+      "pid": 95393,
+      "root": "/tmp/rc436r4-sessions/r4-s1-42",
+      "outcome": "terminated",
+      "method": "forced"
+    }
+  ],
+  "censusBefore": [
+    {
+      "pid": 95393,
+      "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects"
+    }
+  ],
+  "censusAfter": []
+}
