@@ -115,8 +115,11 @@ export type TerminateDeps = {
 
 const defaultSleep = (ms: number): Promise<void> =>
   new Promise((resolvePromise) => {
-    const timer = setTimeout(resolvePromise, ms);
-    (timer as { unref?: () => void }).unref?.();
+    // Deliberately ref'd: this sleep *is* the terminate's remaining work.
+    // An unref'd timer lets the event loop drain between census polls and
+    // the process exits mid-terminate — observed on real host (#458): the
+    // CLI returned exit 0 with no report while the host was still alive.
+    setTimeout(resolvePromise, ms);
   });
 
 type SupervisionRecord =

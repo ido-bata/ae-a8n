@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "blocked",
+  "observationHealth": "unavailable",
+  "blocking": {
+    "host": "process-gone",
+    "windows": [],
+    "detail": "the recorded owned After Effects process is proven gone by terminate (pid 37622 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; terminate found the recorded host already gone)"
+  },
+  "pendingRequests": [],
+  "enteredAt": "2026-11-28T10:49:32.437Z",
+  "deadline": "2026-11-28T11:04:32.437Z",
+  "evidence": [
+    "pid 37622 with the recorded start time is absent from the process list",
+    "no other instance of the recorded install is running in scope",
+    "terminate found the recorded host already gone"
+  ],
+  "monitor": null,
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T10:49:32.437Z",
+      "reason": "supervision started"
+    },
+    {
+      "from": "running",
+      "to": "blocked",
+      "at": "2026-11-28T10:49:32.437Z",
+      "reason": "the recorded owned After Effects process is proven gone by terminate (pid 37622 with the recorded start time is absent from the process list; no other instance of the recorded install is running in scope; terminate found the recorded host already gone)"
+    }
+  ],
+  "updatedAt": "2026-11-28T10:49:32.437Z"
+}

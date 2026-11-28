@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "running",
+  "observationHealth": "degraded",
+  "blocking": null,
+  "pendingRequests": [
+    {
+      "id": "93478941-30b5-4c3f-9c4b-dbc0f21bb444",
+      "method": "app.info",
+      "since": "2026-11-28T11:01:19.001Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T11:01:05.015Z",
+  "deadline": null,
+  "evidence": [
+    "probe-degraded: AX listing included 1 window(s) no census window accounts for — excluded as unattributed",
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: the After Effects process 87968 is not visible to the Accessibility API of rebui's session; it may have exited."
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 86542,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T11:01:05.012Z",
+    "heartbeatAt": "2026-11-28T11:01:51.816Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T11:01:05.015Z",
+      "reason": "supervision started"
+    }
+  ],
+  "updatedAt": "2026-11-28T11:01:55.268Z"
+}

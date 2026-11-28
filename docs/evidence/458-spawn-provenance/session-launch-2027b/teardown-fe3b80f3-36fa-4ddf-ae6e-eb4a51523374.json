@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "kind": "ae-a8n.teardown/v1",
+  "sessionId": "fe3b80f3-36fa-4ddf-ae6e-eb4a51523374",
+  "sessionRoot": "/tmp/rc458/session-launch-2027b",
+  "evaluatedAt": "2026-11-28T11:01:56.335Z",
+  "verdict": "clean",
+  "items": [
+    {
+      "area": "process",
+      "verdict": "clean",
+      "detail": "close={\"quit\":true,\"ownership\":{\"kind\":\"owned\",\"evidence\":\"pid 87968 is still the only instance\"}}; session.close trace ok"
+    },
+    {
+      "area": "input",
+      "verdict": "clean",
+      "detail": "no input operations ran this session"
+    },
+    {
+      "area": "leases",
+      "verdict": "clean",
+      "detail": "0 audit row(s) for pid 87968: 0 acquire, 0 release/reap"
+    },
+    {
+      "area": "recorder",
+      "verdict": "clean",
+      "detail": "no recording ops ran; no evidence index expected"
+    },
+    {
+      "area": "supervision",
+      "verdict": "clean",
+      "detail": "monitor lease free; supervision.json retained as durable state (phase=running) — it expires per its TTL and is required by resume/rebuild, not session residue"
+    },
+    {
+      "area": "artifacts",
+      "verdict": "clean",
+      "detail": "artifacts retained at /tmp/rc458/session-launch-2027b/artifacts (evidence, not residue)"
+    }
+  ],
+  "reportPath": null
+}
