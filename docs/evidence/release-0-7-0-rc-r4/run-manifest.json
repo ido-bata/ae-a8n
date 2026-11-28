@@ -1,0 +1,62 @@
+{
+ "schemaVersion": 1,
+ "kind": "ae-a8n.rc-run-manifest/v1",
+ "spec": "specs/release-acceptance/spec.md",
+ "createdAt": "2026-11-28",
+ "attempt": "re-run 4 / attempt-4 — comprehensive RC real-host acceptance re-run on the post-#458/#460 candidate. Prior runs: run-1 docs/evidence/release-0-7-0-rc/ (environment-blocked), run-2 docs/evidence/release-0-7-0-rc-r2/ (environment-blocked mid-run by BirthPrefs modal recurrence), attempt-3 docs/evidence/release-0-7-0-rc-r3/ (modal-storm; RC-S17 recovery streak proven), RC-S17 proof docs/evidence/release-0-7-0-rc-s17/, spawn-provenance docs/evidence/458-spawn-provenance/.",
+ "candidate": {
+  "commit": "fc6f6e3dea21f181225c6fec97a5400da306e2f2",
+  "tarball": "ido-bata-ae-a8n-0.6.0.tgz",
+  "tarballSha256": "467b523be2c3bba2130f52db4fc258d099875ebcf9e4ce2e82d6531f2f75f6e4",
+  "package": "@ido-bata/ae-a8n",
+  "version": "0.6.0",
+  "frozenFrom": "origin/release-0-7-0 HEAD at freeze (fc6f6e3 = merge of PR #460 attempt-3 evidence onto 60523c2/#459). `git diff 60523c2..fc6f6e3` is docs/evidence-only, so `npm pack` from this tree yields byte-identical tarball to attempt-3 (same sha256 467b523b…). `npm pack` run in worktree ae-a8n.436-r4 at fc6f6e3.",
+  "deltaSinceAttempt3": "none in package bytes — fc6f6e3 adds only docs/evidence (attempt-3 ledger/harness). All product code identical to 60523c2."
+ },
+ "platform": {
+  "lane": "macos",
+  "os": "macOS 27.2.1 (darwin 27)",
+  "arch": "arm64",
+  "aeInstall": "/Applications/Adobe After Effects 2027",
+  "aeVersion": "27.0x78",
+  "aeBuild": "78",
+  "note": "AE 2027 BirthPrefs modal blocker CLEARED before this run: dialog dismissed ~23:03 JST (verified: pid 56368 RunModal stack gone); fresh AE 2027 launch pid 21177 completed startup with zero BirthPrefs and clean quit. The modal CAN recur if re-armed (it re-armed after SIGKILL history in run-3). Handling contract: readiness failure with census/modal evidence → public AfterEffects.terminate via #458 spawn-provenance → census-verified gone → retry as NEW attempt; modal-blocked-then-recovered cycles are ledgered as RC-S17 anomaly-handling data, never silent retries. AE 2026 (pid 44375 at baseline, user-owned foreign host, frontmost) is present for RC-S8/RC-S12 foreign-observation scenarios; it is NEVER mutated — observation only."
+ },
+ "fixture": {
+  "id": "fixture.aep",
+  "path": "docs/evidence/release-0-7-0-rc-r4/fixtures/fixture.aep",
+  "sha256": "84d5d91112fcbef9d0cea461afc4e99d06a88822084e9dfb6cf59a63f96768c0",
+  "contents": "one composition 'A8N Acceptance' 640x480@30fps 5s (same fixture as runs 1-3; sha256 verified identical)"
+ },
+ "consumer": {
+  "surface": "packed-tarball consumer install + AfterEffects.launch/attach/rebuild/terminate + ae.* API + ae-a8n CLI",
+  "installDir": "/tmp/rc436r4-consumer (npm install of packed tarball ido-bata-ae-a8n-0.6.0.tgz sha256 467b523b…; not committed)",
+  "repoSide": "Plan B GUI helpers (swift sources) are not in the packed tarball; plan-b runs repo-side from the worktree checkout at the same frozen commit, labelled repo-side (same convention as runs 1-3)."
+ },
+ "budgets": {
+  "readinessProbeMs": 180000,
+  "note": "readinessProbeMs is the spec-fixed default (180000). Representative-op budgets declared before the attempt sequence; values carry over unchanged from the run-1/run-2/run-3 manifest ceilings. A breach on this candidate is a finding, not a re-declaration.",
+  "ops": {
+   "session.launch": 120000,
+   "app.info": 60000,
+   "project.open": 60000,
+   "project.info": 120000,
+   "project.state": 120000,
+   "project.comps": 60000,
+   "comp.info": 120000,
+   "comp.renderFrame": 120000,
+   "session.quit": 60000,
+   "session.close": 60000
+  },
+  "opsProvenance": "Same ceiling set as run-1/run-2/run-3 manifests. Run-4 attempt timings measured fresh on fc6f6e3; budgets are NOT relaxed post-hoc."
+ },
+ "recordingInCandidate": true,
+ "scenarios": "RC-S1..RC-S17 per specs/release-acceptance/spec.md §8; darwin-applicable rows only; others recorded not-applicable with reason",
+ "environmentNotes": [
+  "Baseline census: AE 2026 pid 44375 (user-owned foreign, frontmost) + helpers; zero AE 2027 processes (env/baseline.txt).",
+  "BirthPrefs modal may recur nondeterministically on ANY launch. Handling contract identical to run-3: readiness failure with census/modal evidence → AfterEffects.terminate via spawn-provenance (#458, permit terminate-owned-host, force permitted for the disposable owned environment) → census-verified gone → retry as a NEW attempt. No SIGKILL of residue, no dialog input, no waiting for a human. Each modal-blocked cycle is ledgered.",
+  "Input source baseline: PressAndHold + Kotoeri/ABC (env/baseline.txt). Clipboard sha256 baseline recorded.",
+  "Harness: docs/evidence/release-0-7-0-rc-r4/harness/ (inherited from run-3 harness; paths retargeted rc436r3→rc436r4, candidate identity updated to fc6f6e3/467b523b). recover-leftover.mjs and ae2026-fixture.mjs retargeted likewise.",
+  "Supervisor-process kills inside RC-S12/RC-S15 target only the node supervisor process the harness itself spawned (the honest-death path under test); AE processes are never signalled outside the sanctioned terminate path, except the RC-S2 owned-crash simulation which SIGKILLs only the path-verified owned pid."
+ ]
+}
