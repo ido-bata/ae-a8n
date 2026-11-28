@@ -1,0 +1,57 @@
+{
+  "label": "r4-s14-a",
+  "scenarioId": "RC-S14",
+  "verdict": "blocked",
+  "steps": [
+    {
+      "stepId": "launch",
+      "startedAt": "2026-11-28T17:23:53.528Z",
+      "durationMs": 31580,
+      "expected": "owned launch",
+      "actual": {},
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "openProject",
+      "startedAt": "2026-11-28T17:24:25.108Z",
+      "durationMs": 23079,
+      "expected": "fixture opens",
+      "actual": 1,
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "record-start",
+      "startedAt": "2026-11-28T17:24:48.193Z",
+      "durationMs": 1799,
+      "expected": "ae.record.start opens a bounded segment",
+      "actual": {
+        "error": "RecordingError",
+        "message": "unknown capture scope: \"screen\""
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "RecordingError",
+        "message": "unknown capture scope: \"screen\""
+      }
+    },
+    {
+      "stepId": "close",
+      "startedAt": "2026-11-28T17:24:49.992Z",
+      "durationMs": 6303,
+      "expected": "close owned",
+      "actual": {
+        "quit": true,
+        "ownership": {
+          "kind": "owned",
+          "evidence": "pid 33064 is still the only instance"
+        }
+      },
+      "evidenceRefs": []
+    }
+  ],
+  "cleanup": {
+    "verdict": "clean",
+    "ref": "/tmp/rc436r4-sessions/r4-s14-a/teardown-6ccbd7f2-10d5-4f9c-99d8-e41427ad32d5.json"
+  },
+  "sessionRoot": "/tmp/rc436r4-sessions/r4-s14-a"
+}

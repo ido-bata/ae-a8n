@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "kind": "ae-a8n.teardown/v1",
+  "sessionId": "40c1ec48-e635-408c-bbd1-e1ed77ccbd03",
+  "sessionRoot": "/tmp/rc436r4-sessions/r4-s1-48",
+  "evaluatedAt": "2026-11-28T17:42:34.961Z",
+  "verdict": "clean",
+  "items": [
+    {
+      "area": "process",
+      "verdict": "clean",
+      "detail": "close={\"quit\":true,\"ownership\":{\"kind\":\"owned\",\"evidence\":\"pid 35344 is still the only instance\"}}; session.close trace ok"
+    },
+    {
+      "area": "input",
+      "verdict": "clean",
+      "detail": "no input operations ran this session"
+    },
+    {
+      "area": "leases",
+      "verdict": "clean",
+      "detail": "0 audit row(s) for pid 35344: 0 acquire, 0 release/reap"
+    },
+    {
+      "area": "recorder",
+      "verdict": "clean",
+      "detail": "0 segment(s); no recorder residue reported"
+    },
+    {
+      "area": "supervision",
+      "verdict": "clean",
+      "detail": "monitor lease free; supervision.json retained as durable state (phase=running) — it expires per its TTL and is required by resume/rebuild, not session residue"
+    },
+    {
+      "area": "artifacts",
+      "verdict": "clean",
+      "detail": "artifacts retained at /tmp/rc436r4-sessions/r4-s1-48/artifacts (evidence, not residue)"
+    }
+  ],
+  "reportPath": null
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "running",
+  "observationHealth": "degraded",
+  "blocking": null,
+  "pendingRequests": [],
+  "enteredAt": "2026-11-28T17:25:29.230Z",
+  "deadline": null,
+  "evidence": [
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none attributable to it; AX listing included 1 window(s) the WindowServer attributes to other processes — the bundle-confused listing of #330; excluded as foreign; AX listing included 1 window(s) no census window accounts for — excluded as unattributed; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-detached-supervisor",
+    "pid": 51010,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T17:25:29.217Z",
+    "heartbeatAt": "2026-11-28T17:25:38.406Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T17:25:29.230Z",
+      "reason": "supervision started"
+    }
+  ],
+  "updatedAt": "2026-11-28T17:25:43.838Z"
+}

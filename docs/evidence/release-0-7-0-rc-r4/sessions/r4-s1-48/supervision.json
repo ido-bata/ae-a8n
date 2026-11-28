@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "running",
+  "observationHealth": "degraded",
+  "blocking": null,
+  "pendingRequests": [
+    {
+      "id": "094c511f-d699-4b46-8651-20ad625dfadd",
+      "method": "app.info",
+      "since": "2026-11-28T17:37:47.956Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T17:37:36.330Z",
+  "deadline": null,
+  "evidence": [
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 8 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: the After Effects process 35344 is no longer the one this run started (A8N-AE-004); no GUI action was taken."
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 34766,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T17:37:36.328Z",
+    "heartbeatAt": "2026-11-28T17:42:25.286Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T17:37:36.330Z",
+      "reason": "supervision started"
+    }
+  ],
+  "updatedAt": "2026-11-28T17:42:29.516Z"
+}

@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "running",
+  "observationHealth": "degraded",
+  "blocking": null,
+  "pendingRequests": [
+    {
+      "id": "4f142d5f-0574-4f95-8bb9-1e3f67bfdf11",
+      "method": "app.info",
+      "since": "2026-11-28T17:33:31.437Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T17:33:16.190Z",
+  "deadline": null,
+  "evidence": [
+    "probe-degraded: the accessibility query in rebui's session failed: ",
+    "probe-degraded: the After Effects process 9634 is not visible to the Accessibility API of rebui's session; it may have exited."
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 8711,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T17:33:16.021Z",
+    "heartbeatAt": "2026-11-28T17:37:24.978Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T17:33:16.190Z",
+      "reason": "supervision started"
+    }
+  ],
+  "updatedAt": "2026-11-28T17:37:28.192Z"
+}
