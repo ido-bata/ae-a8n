@@ -868,6 +868,28 @@ export type GuiStateObservation = {
     } | null;
   }[];
   /**
+   * The superset of `axUnaccountedWindows` (#451): WindowServer census
+   * windows for this pid that no AX window accounts for, on any Space and
+   * whether on-screen or not. Each row is degraded evidence — "possibly
+   * parked/offscreen — not proven blocking" — because an AX-invisible
+   * modal can sit at `onScreen: false` (the AE 2027 BirthPrefs modal,
+   * issue #451) and still be what stopped the host answering. `windowNumber`
+   * is the `screencapture -l` handle when the census carried one. This
+   * list never feeds `assessment` or any blocking verdict.
+   */
+  readonly axUnaccountedCensusWindows: readonly {
+    readonly layer: number;
+    readonly onScreen: boolean;
+    readonly name: string;
+    readonly windowNumber: number | null;
+    readonly bounds: {
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+    } | null;
+  }[];
+  /**
    * AX-listed windows the census attributes to OTHER pids (#330) — the
    * bundle-confused listing of multi-install hosts. Excluded from
    * `windows`' blocking verdicts; non-zero means part of the AX listing

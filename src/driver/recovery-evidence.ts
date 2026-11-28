@@ -57,6 +57,18 @@ export type RecoveryEvidenceRecord = {
   /** What could not be captured, and why. Empty means everything applied. */
   readonly uncapturable: readonly string[];
   /**
+   * Per-window captures of census windows AX cannot account for (#451):
+   * the AX-invisible-modal evidence. `path` is the image when one was
+   * written; `note` records why none exists. Empty when the attempt saw
+   * no such windows.
+   */
+  readonly censusCaptures: readonly {
+    readonly window: string;
+    readonly windowNumber: number | null;
+    readonly path: string | null;
+    readonly note: string | null;
+  }[];
+  /**
    * Host-side logs and crash reports are collected on demand by
    * `ae.diagnostics()` into the same artifact directory — the manifest
    * points there rather than duplicating the collector. `cepCsxs` names
@@ -103,6 +115,17 @@ export function uncapturableEvidence(outcome: RecoveryOutcome): string[] {
       }
     }
   }
+  // Census-window captures (#451): a window AX cannot see still owes its
+  // image or its recorded reason — the `kind:"none"` path has no
+  // `window` field, so this is the only place the gap is named.
+  for (const capture of outcome.censusCaptures ?? []) {
+    if (capture.path === undefined) {
+      gaps.push(
+        `window-capture:${capture.windowNumber ?? "unaddressed"}` +
+          (capture.note === undefined ? "" : ` (${capture.note})`),
+      );
+    }
+  }
   return gaps;
 }
 
@@ -132,6 +155,12 @@ export function recoveryEvidenceRecord(input: {
       note: outcome.screenshotNote ?? null,
     },
     uncapturable: uncapturableEvidence(outcome),
+    censusCaptures: (outcome.censusCaptures ?? []).map((capture) => ({
+      window: capture.window,
+      windowNumber: capture.windowNumber,
+      path: capture.path ?? null,
+      note: capture.note ?? null,
+    })),
     hostLogs: {
       collector: "ae.diagnostics()",
       cepCsxs: "not collected: CEPHtmlEngine/CSXS sources are #336's scope",

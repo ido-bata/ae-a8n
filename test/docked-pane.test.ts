@@ -98,6 +98,7 @@ function appState(
     axSuspect: false,
     axSuspectReason: null,
     axUnaccountedWindows: [],
+    axUnaccountedCensusWindows: [],
     axForeignWindowCount: 0,
     axUnmatchedWindowCount: 0,
     ...over,

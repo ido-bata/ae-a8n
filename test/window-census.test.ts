@@ -228,6 +228,27 @@ describe("assessGuiObservation — AX-invisible on-screen windows (#321)", () =>
     expect(state.axUnaccountedWindows).toHaveLength(0);
   });
 
+  it("off-screen census windows are degraded evidence, not blocking evidence (#451)", () => {
+    // The BirthPrefs shape: a modal parked at onScreen:false that AX never
+    // lists. It stays OUT of the on-screen blocking list but IS surfaced
+    // in the any-space degraded list with its window number.
+    const parked = win({
+      onScreen: false,
+      layer: 0,
+      name: "BirthPrefs",
+      windowNumber: 424242,
+      bounds: { x: 0, y: 0, width: 480, height: 320 },
+    });
+    const census = { available: true as const, windows: [mainWs, parked] };
+    const state = assessGuiObservation(63300, true, [mainAx], census);
+    expect(state.axUnaccountedWindows).toHaveLength(0);
+    expect(state.axUnaccountedCensusWindows).toHaveLength(1);
+    expect(state.axUnaccountedCensusWindows[0]).toMatchObject({
+      onScreen: false,
+      windowNumber: 424242,
+    });
+  });
+
   it("an AX window without a frame cannot account for anything", () => {
     const { frame: _frame, ...noFrame } = mainAx;
     const census = { available: true as const, windows: [mainWs] };

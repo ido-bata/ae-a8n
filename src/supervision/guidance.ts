@@ -34,6 +34,35 @@ const INSPECT_REPORT =
   "`ae-a8n supervise status --session-root <dir>`) for the structured " +
   "blocking evidence before deciding anything else.";
 
+/**
+ * The designed exit for a host that will not answer (#451): terminate
+ * the recorded owned process, then rebuild the session on a new
+ * generation. Reported for `blocked`/`recovering`/`quarantined` phases
+ * with `allowed: false` — the path exists and is machine-named, but it
+ * signals a live process, so automation may not take it without the
+ * explicit `permit: "terminate-owned-host"` grant. `kind: "automatic"`
+ * because a permitted caller performs it; `allowed: false` +
+ * `requires-permission` because the grant is the gate, not a human
+ * decision about the dialog itself.
+ */
+function terminateRebuildAction(): NextAction {
+  return nextAction({
+    kind: "automatic",
+    allowed: false,
+    code: "session.terminate",
+    reason: { code: "requires-permission" },
+    action:
+      "Exit path for a host that will not answer: " +
+      '`AfterEffects.terminate({ sessionRoot, permit: "terminate-owned-host" })` ' +
+      "(add `force: true` only to escalate a graceful request that did " +
+      "not end the process) signals the recorded owned host — it refuses " +
+      "without launch provenance — then `AfterEffects.rebuild({ " +
+      "sessionRoot })` continues the session on a new generation. " +
+      "Withheld from automation: it signals a live process, so it needs " +
+      "the explicit permit grant first.",
+  });
+}
+
 function windowSummary(report: SupervisionReportFacts): string {
   if (report.status !== "observed" || report.doc.blocking === null) {
     return "";
@@ -114,6 +143,10 @@ export function supervisionNextActions(
             `Wait within ${deadline}; automation is already recovering or the monitor will classify further.`,
         ),
         inspectAction("supervision.state", INSPECT_REPORT),
+        // The bounded wait may not be the answer: name the designed
+        // terminate → rebuild exit so a consumer never has to invent it
+        // (#451). Withheld — signalling a live process needs the permit.
+        terminateRebuildAction(),
       );
       break;
     }
@@ -140,6 +173,10 @@ export function supervisionNextActions(
             "Nothing was pressed and nothing may be pressed until a human resolves the state; inspect the evidence in `stateFile`.",
         ),
         inspectAction("supervision.state", INSPECT_REPORT),
+        // Quarantine stops presses, not exits: when the blocked host is
+        // never coming back, terminate → rebuild is still the designed
+        // way out — named here, withheld pending the permit (#451).
+        terminateRebuildAction(),
       );
       break;
     }

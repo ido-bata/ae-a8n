@@ -25,6 +25,7 @@ import {
   type ExpectedModalMatch,
   type ExpectedModalRegistry,
 } from "./expected-modals.js";
+import type { WindowServerWindow } from "../platform/darwin/window-census.js";
 import {
   GuiAttributionError,
   GuiMutationError,
@@ -93,6 +94,32 @@ export type RecoveryOutcome = {
    * kind the recovery saw. Absent when no window was classified.
    */
   readonly dialogTier?: "auto-safe" | "human-required" | "report-only" | "unknown";
+  /**
+   * Per-window captures of census windows no AX window accounts for
+   * (#451). Present only when the `kind: "none"` path found census
+   * windows AX cannot see — the AX-invisible-modal evidence case that
+   * used to return before any screenshot existed. Each entry records
+   * either the captured image or the reason none exists; nothing here
+   * is a mutation.
+   */
+  readonly censusCaptures?: readonly CensusWindowCapture[];
+};
+
+/**
+ * One census window's capture attempt (#451). `window` describes the
+ * WindowServer row honestly — including "possibly parked/offscreen — not
+ * proven blocking" when `onScreen` is false; `path` is set only when the
+ * image was actually written.
+ */
+export type CensusWindowCapture = {
+  /** One-line description of the census window (layer/onScreen/name/bounds). */
+  readonly window: string;
+  /** The WindowServer window number `screencapture -l` addressed, when known. */
+  readonly windowNumber: number | null;
+  /** The captured image path, when the capture succeeded. */
+  readonly path?: string;
+  /** Why no image exists, when it does not. */
+  readonly note?: string;
 };
 
 export interface HostRecovery {
@@ -136,6 +163,29 @@ export function isHumanOnlyWindow(window: GuiWindowInfo): boolean {
     .join(" ")
     .toLowerCase();
   return HUMAN_ONLY_WORDS.some((pattern) => pattern.test(text));
+}
+
+/**
+ * What a WindowServer census row says, in one line, for evidence (#451).
+ * An off-screen row is labelled honestly — "possibly parked/offscreen —
+ * not proven blocking" — because `onScreen: false` is exactly the shape
+ * the AX-invisible modal took on the real host (issue #451).
+ */
+export function describeCensusWindow(window: WindowServerWindow): string {
+  const parts = [`layer ${window.layer}`];
+  parts.push(window.onScreen ? "on-screen" : "possibly parked/offscreen — not proven blocking");
+  if (window.name !== "") {
+    parts.push(`name "${window.name}"`);
+  }
+  if (window.bounds !== null) {
+    parts.push(
+      `${window.bounds.width}x${window.bounds.height} at ${window.bounds.x},${window.bounds.y}`,
+    );
+  }
+  if (window.windowNumber != null) {
+    parts.push(`window ${window.windowNumber}`);
+  }
+  return parts.join(", ");
 }
 
 /** What a window says, in one line, for evidence. */
@@ -419,7 +469,14 @@ export type MacHostRecoveryOptions = {
 export type GuiRecoverySurface = Pick<
   MacGuiRecovery,
   "listWindows" | "capture" | "pressButtonIn"
->;
+> & {
+  /**
+   * Optional single-window capture (#451): the AX-invisible evidence path
+   * addresses one census window by its WindowServer window number. A
+   * surface without it records each row as uncapturable — never guessed.
+   */
+  readonly captureWindowById?: MacGuiRecovery["captureWindowById"];
+};
 
 /**
  * The GUI fallback for a macOS After Effects.
@@ -529,10 +586,45 @@ export class MacHostRecovery implements HostRecovery {
             `another reason, and nothing was clicked${unattributed}`
           : `After Effects ${pid} has no modal window; ${context.method} (${context.requestId}) timed out for another ` +
             `reason, and nothing was clicked${unattributed}`;
+      // AX-blind but census-positive (#451): this branch used to return
+      // before any capture ran, so the case that most needed images — an
+      // AX-invisible surface — produced none. Take the session screenshot
+      // and one `captureWindowById` per census window AX cannot account
+      // for. Read-only observation: no lease, no press, no new mutation
+      // authority. Every failure is recorded per window, never dropped.
+      const censusTargets = state.axUnaccountedCensusWindows;
+      const wantsCapture = state.axSuspect || censusTargets.length > 0;
+      let shot: string | undefined;
+      let shotNote: string | undefined;
+      const censusCaptures: CensusWindowCapture[] = [];
+      if (wantsCapture) {
+        const screenshotPath = join(
+          this.#screenshotDir,
+          `recovery-${context.requestId}.png`,
+        );
+        try {
+          gui.capture(screenshotPath);
+          shot = screenshotPath;
+        } catch (error) {
+          shotNote = `screen capture failed: ${errorMessage(error)}`;
+        }
+        for (const ws of censusTargets) {
+          censusCaptures.push(this.#captureCensusWindow(gui, context, ws));
+        }
+      }
+      const captured = censusCaptures.filter((c) => c.path !== undefined).length;
+      const captureNote =
+        censusCaptures.length === 0
+          ? ""
+          : ` ${censusCaptures.length} WindowServer window(s) for this pid are invisible to AX ` +
+            `(possibly parked/offscreen — not proven blocking); ${captured} window image(s) ` +
+            "were captured and the rest are recorded per window with the reason.";
       return {
         recovered: false,
         outcome: "refused",
-        evidence,
+        evidence: `${evidence}${captureNote}`,
+        ...screenshotFields(shot, shotNote),
+        ...(censusCaptures.length === 0 ? {} : { censusCaptures }),
       };
     }
     const window = choice.window;
@@ -635,6 +727,48 @@ export class MacHostRecovery implements HostRecovery {
       screenshotDir: this.#screenshotDir,
       requestId: context.requestId,
     });
+  }
+
+  /**
+   * One census window's capture attempt (#451). The window is addressed
+   * by its WindowServer window number — the handle `screencapture -l`
+   * takes — which needs no Accessibility at all, so it works exactly
+   * where the AX tree does not. A row without a window number, or a
+   * surface that cannot capture single windows, is recorded as
+   * uncapturable with the reason; a failed capture likewise. Nothing
+   * here mutates the host.
+   */
+  #captureCensusWindow(
+    gui: GuiRecoverySurface,
+    context: RecoveryContext,
+    ws: WindowServerWindow,
+  ): CensusWindowCapture {
+    const window = describeCensusWindow(ws);
+    const windowNumber = ws.windowNumber ?? null;
+    if (windowNumber === null) {
+      return { window, windowNumber: null, note: "the census row carries no window number" };
+    }
+    if (gui.captureWindowById === undefined) {
+      return {
+        window,
+        windowNumber,
+        note: "this GUI surface cannot capture a single window",
+      };
+    }
+    const path = join(
+      this.#screenshotDir,
+      `recovery-${context.requestId}-window-${windowNumber}.png`,
+    );
+    try {
+      gui.captureWindowById(path, windowNumber);
+      return { window, windowNumber, path };
+    } catch (error) {
+      return {
+        window,
+        windowNumber,
+        note: `window capture failed: ${errorMessage(error)}`,
+      };
+    }
   }
 
   /**

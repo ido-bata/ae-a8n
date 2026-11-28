@@ -183,6 +183,13 @@ export function guiStateObservation(
       name: ws.name,
       bounds: ws.bounds,
     })),
+    axUnaccountedCensusWindows: state.axUnaccountedCensusWindows.map((ws) => ({
+      layer: ws.layer,
+      onScreen: ws.onScreen,
+      name: ws.name,
+      windowNumber: ws.windowNumber ?? null,
+      bounds: ws.bounds,
+    })),
     axForeignWindowCount: state.axForeignWindowCount,
     axUnmatchedWindowCount: state.axUnmatchedWindowCount,
     assessment: assessGuiWindows(state.windows),
