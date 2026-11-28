@@ -1,0 +1,208 @@
+{
+  "label": "planb-a",
+  "scenarioId": "RC-PLAN-B",
+  "verdict": "pass",
+  "steps": [
+    {
+      "stepId": "launch+extension",
+      "startedAt": "2026-11-28T05:49:00.080Z",
+      "durationMs": 22397,
+      "expected": "owned launch AE 2027 + extension",
+      "actual": {},
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "openProject",
+      "startedAt": "2026-11-28T05:49:22.477Z",
+      "durationMs": 26617,
+      "expected": "fixture opens",
+      "actual": 1,
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "gui-capabilities",
+      "startedAt": "2026-11-28T05:49:49.094Z",
+      "durationMs": 2,
+      "expected": "panel/windowOps/dragDrop capability surfaces",
+      "actual": {
+        "panel": {
+          "platform": "darwin",
+          "identify": {
+            "support": "implemented",
+            "verification": "verified on real host",
+            "reason": "resolves through the window-ops AXUIElement enumeration (AXWindows/AXChildren + census attribution), the path #357 proved reaches real AE panels — the System Events enumeration this replaced returned almost nothing on AE. Requires the app to have been frontmost at least once for AX windows to vend (#406); a never-activated instance honestly reports not-found"
+          },
+          "measure": {
+            "support": "implemented",
+            "verification": "verified on real host",
+            "reason": "OS geometry readback verified on real host (#358); the in-AE channel (ScriptUI Window.size) needs a host-side extension and is not wired yet — readbackSource reports that honestly"
+          },
+          "resize": {
+            "support": "implemented",
+            "verification": "verified on real host",
+            "reason": "mutate-gui class permitted by panelMutationGate() under the #358 A-SAFETY class decision (docs/gui-supervision-safety-gates.md §panel mutation): the direct-AX `AXUIElementSetAttributeValue` vehicle via the window-ops `act` path, behind owned attribution + GUI lease + in-session identity re-verify. Verified end-to-end on owned AE 2027 (docs/evidence/realhost-2026-11-27/): resize → measure → restore on a real ScriptUI palette. Requires the AX window enumeration, which AE only vends after the app has been frontmost at least once (#406/#357)"
+          },
+          "captureRegion": {
+            "support": "implemented",
+            "verification": "automated test",
+            "reason": "screencapture -R is wired but unverified on a real host; point-vs-pixel scale is recorded per artifact"
+          },
+          "captureWindow": {
+            "support": "implemented",
+            "verification": "automated test",
+            "reason": "screencapture -l by CGWindowID is wired but unverified on a real host"
+          },
+          "dockedRegion": {
+            "support": "partial",
+            "verification": "automated test",
+            "reason": "observe-class pane walk is implemented for macOS (#361, ae.dockedPane): bounded AX subtree walk, axPath re-resolution and row enumeration. What AE's AX tree actually exposes for docked panes is unverified on a real host; resize/capture of a docked region remain unsupported because it is not a window"
+          },
+          "inAeReadback": {
+            "support": "unsupported",
+            "verification": "implemented",
+            "reason": "requires a host-side script extension (e.g. ScriptUI Window.size); measure() reports readbackSource honestly until then"
+          }
+        },
+        "windowOps": {
+          "platform": "darwin",
+          "observe": {
+            "support": "implemented",
+            "verification": "verified on real host",
+            "reason": "AX window listing (frame/miniaturized/main/focused) plus the WindowServer census attribution resolved a real ScriptUI palette on owned AE 2027 (#357) — but ONLY after the app had been frontmost; AE vends zero AX windows while it has never been active, so observe can still legitimately return an empty listing on a never-activated instance (use focusedObserve for the only AX-reachable surface there)"
+          },
+          "focusedObserve": {
+            "support": "partial",
+            "verification": "verified on real host",
+            "reason": "AXFocusedWindow resolution against the WindowServer census (#406): only the FOCUSED window is reachable — unfocused windows are AX-unreachable on AE by construction, and no mutation vehicle exists for this path (observe-class only, mutations refuse regardless of the gate). Verified on real host: resolved the focused ScriptUI palette to census windowNumber 2790 (docs/evidence/realhost-2026-11-27/)"
+          },
+          "move": {
+            "support": "unavailable",
+            "verification": "automated test",
+            "reason": "mutate-gui class gated off by windowOpsMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists, is contract-tested and is real-host verified on owned AE (#357) but refuses until the audit clears the class — window move: the helper's direct AXUIElementSetAttributeValue vehicle resized, moved and restored a real ScriptUI palette on owned AE 2027 (docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json)"
+          },
+          "resize": {
+            "support": "unavailable",
+            "verification": "automated test",
+            "reason": "mutate-gui class gated off by windowOpsMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists, is contract-tested and is real-host verified on owned AE (#357) but refuses until the audit clears the class — window resize: the helper's direct AXUIElementSetAttributeValue vehicle resized, moved and restored a real ScriptUI palette on owned AE 2027 (docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json)"
+          },
+          "minimize": {
+            "support": "unavailable",
+            "verification": "automated test",
+            "reason": "mutate-gui class gated off by windowOpsMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists, is contract-tested and is real-host verified on owned AE (#357) but refuses until the audit clears the class — window minimize: the helper's direct AXUIElementSetAttributeValue vehicle resized, moved and restored a real ScriptUI palette on owned AE 2027 (docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json)"
+          },
+          "restore": {
+            "support": "unavailable",
+            "verification": "automated test",
+            "reason": "mutate-gui class gated off by windowOpsMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists, is contract-tested and is real-host verified on owned AE (#357) but refuses until the audit clears the class — window restore: the helper's direct AXUIElementSetAttributeValue vehicle resized, moved and restored a real ScriptUI palette on owned AE 2027 (docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json)"
+          },
+          "maximize": {
+            "support": "unavailable",
+            "verification": "automated test",
+            "reason": "mutate-gui class gated off by windowOpsMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists, is contract-tested and is real-host verified on owned AE (#357) but refuses until the audit clears the class — window maximize: the helper's direct AXUIElementSetAttributeValue vehicle resized, moved and restored a real ScriptUI palette on owned AE 2027 (docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json)"
+          },
+          "focus": {
+            "support": "unavailable",
+            "verification": "automated test",
+            "reason": "mutate-gui class gated off by windowOpsMutationGate() per the A-SAFETY audit (docs/gui-supervision-safety-gates.md) and the workspace spec §13; the code path exists, is contract-tested and is real-host verified on owned AE (#357) but refuses until the audit clears the class — window focus: the helper's direct AXUIElementSetAttributeValue vehicle resized, moved and restored a real ScriptUI palette on owned AE 2027 (docs/evidence/realhost-2026-11-27/panel-ax-vehicle-poc.json)"
+          }
+        }
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "panel-observe",
+      "startedAt": "2026-11-28T05:49:49.096Z",
+      "durationMs": 2,
+      "expected": "panel list/identify observes owned windows",
+      "actual": {
+        "error": "PanelError",
+        "message": "no owned After Effects process and GUI session is attested for this session (ownership must be \"owned\" and the transport must name its target); there is no proven window list to resolve a panel against"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "PanelError",
+        "message": "no owned After Effects process and GUI session is attested for this session (ownership must be \"owned\" and the transport must name its target); there is no proven window list to resolve a panel against"
+      }
+    },
+    {
+      "stepId": "workspace-observe",
+      "startedAt": "2026-11-28T05:49:49.098Z",
+      "durationMs": 1,
+      "expected": "workspace state read",
+      "actual": {
+        "error": "WorkspaceError",
+        "message": "no owned After Effects process and GUI session is attested for this session (ownership must be \"owned\" and the transport must name its target); there is no proven screen to observe a workspace on"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "WorkspaceError",
+        "message": "no owned After Effects process and GUI session is attested for this session (ownership must be \"owned\" and the transport must name its target); there is no proven screen to observe a workspace on"
+      }
+    },
+    {
+      "stepId": "windowops-observe",
+      "startedAt": "2026-11-28T05:49:49.099Z",
+      "durationMs": 0,
+      "expected": "windowOps census/focused-window observe",
+      "actual": {
+        "error": "WindowOpsError",
+        "message": "no owned After Effects process and GUI session is attested for this session (ownership must be \"owned\" and the transport must name its target); there is no proven window to operate on"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "WindowOpsError",
+        "message": "no owned After Effects process and GUI session is attested for this session (ownership must be \"owned\" and the transport must name its target); there is no proven window to operate on"
+      }
+    },
+    {
+      "stepId": "dragdrop-probe",
+      "startedAt": "2026-11-28T05:49:49.099Z",
+      "durationMs": 1,
+      "expected": "dragDrop surface answers capability/gate query",
+      "actual": {
+        "error": "DragDropError",
+        "message": "no owned After Effects process and GUI session is attested for this session (ownership must be \"owned\" and the transport must name its target); there is no proven window list to drop onto"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "DragDropError",
+        "message": "no owned After Effects process and GUI session is attested for this session (ownership must be \"owned\" and the transport must name its target); there is no proven window list to drop onto"
+      }
+    },
+    {
+      "stepId": "dragdrop-undeclared-refusal",
+      "startedAt": "2026-11-28T05:49:49.100Z",
+      "durationMs": 0,
+      "expected": "undeclared drag class refuses with named reason",
+      "actual": {
+        "error": "DragDropError",
+        "message": "no owned After Effects process and GUI session is attested for this session (ownership must be \"owned\" and the transport must name its target); there is no proven window list to drop onto"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "DragDropError",
+        "message": "no owned After Effects process and GUI session is attested for this session (ownership must be \"owned\" and the transport must name its target); there is no proven window list to drop onto"
+      }
+    },
+    {
+      "stepId": "close",
+      "startedAt": "2026-11-28T05:49:49.100Z",
+      "durationMs": 4295,
+      "expected": "close owned",
+      "actual": {
+        "quit": false,
+        "ownership": {
+          "kind": "attached",
+          "evidence": "already running before launch: pid 54250 (/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects)"
+        },
+        "reason": "not quitting a host this session does not own (already running before launch: pid 54250 (/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects))"
+      },
+      "evidenceRefs": []
+    }
+  ],
+  "cleanup": {
+    "verdict": "clean",
+    "ref": "/tmp/rc436-sessions/planb-a/teardown-20db1719-272f-4498-8159-0c3771d7adbc.json"
+  },
+  "sessionRoot": "/tmp/rc436-sessions/planb-a"
+}

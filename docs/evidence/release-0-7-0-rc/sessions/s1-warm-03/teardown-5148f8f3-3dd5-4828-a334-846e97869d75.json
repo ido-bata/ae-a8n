@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "kind": "ae-a8n.teardown/v1",
+  "sessionId": "5148f8f3-3dd5-4828-a334-846e97869d75",
+  "sessionRoot": "/tmp/rc436-sessions/s1-warm-03",
+  "evaluatedAt": "2026-11-28T04:52:09.704Z",
+  "verdict": "clean",
+  "items": [
+    {
+      "area": "process",
+      "verdict": "clean",
+      "detail": "close={\"quit\":false,\"ownership\":{\"kind\":\"attached\",\"evidence\":\"attached to pid 39328 (the process running since 2026-11-28T04:45:11.000Z); it was already running and is not this session's to quit in the session of rebui (uid 501, asid 100021)\"},\"reason\":\"not quitting a host this session does not own (attached to pid 39328 (the process running since 2026-11-28T04:45:11.000Z); it was already running and is not this session's to quit in the session of rebui (uid 501, asid 100021))\"}; session.close trace ok; reason=not quitting a host this session does not own (attached to pid 39328 (the process running since 2026-11-28T04:45:11.000Z); it was already running and is not this session's to quit in the session of rebui (uid 501, asid 100021))"
+    },
+    {
+      "area": "input",
+      "verdict": "clean",
+      "detail": "no input operations ran this session"
+    },
+    {
+      "area": "leases",
+      "verdict": "clean",
+      "detail": "41372 audit row(s) (unscoped: target pid unknown at teardown): 61 acquire, 61 release/reap"
+    },
+    {
+      "area": "recorder",
+      "verdict": "clean",
+      "detail": "0 segment(s); no recorder residue reported"
+    },
+    {
+      "area": "supervision",
+      "verdict": "clean",
+      "detail": "monitor lease free; supervision.json retained as durable state (phase=running) — it expires per its TTL and is required by resume/rebuild, not session residue"
+    },
+    {
+      "area": "artifacts",
+      "verdict": "clean",
+      "detail": "artifacts retained at /tmp/rc436-sessions/s1-warm-03/artifacts (evidence, not residue)"
+    }
+  ],
+  "reportPath": null
+}

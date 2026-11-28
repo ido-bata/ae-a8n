@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "ae-a8n.supervision/v1",
+  "sessionId": null,
+  "phase": "running",
+  "observationHealth": "degraded",
+  "blocking": null,
+  "pendingRequests": [
+    {
+      "id": "697adc7e-4c71-466b-bc15-af0fe4095033",
+      "method": "app.info",
+      "since": "2026-11-28T04:54:06.126Z",
+      "state": "in-flight",
+      "transport": "script-invocation"
+    }
+  ],
+  "enteredAt": "2026-11-28T04:53:54.367Z",
+  "deadline": null,
+  "evidence": [
+    "probe-degraded: AX tree unserviceable: WindowServer reports 6 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred",
+    "probe-degraded: AX tree unserviceable: WindowServer reports 7 window(s) for this pid while AX listed none attributable to it; AX tree unserviceable but the process is within its 5min startup grace (launch-transient emptiness, #322); blocking evidence deferred"
+  ],
+  "monitor": {
+    "ownerId": "ae-a8n-session",
+    "pid": 18674,
+    "pidStart": null,
+    "acquiredAt": "2026-11-28T04:53:54.364Z",
+    "heartbeatAt": "2026-11-28T04:56:42.941Z"
+  },
+  "history": [
+    {
+      "from": "init",
+      "to": "running",
+      "at": "2026-11-28T04:53:54.367Z",
+      "reason": "supervision started"
+    }
+  ],
+  "updatedAt": "2026-11-28T04:56:50.154Z"
+}

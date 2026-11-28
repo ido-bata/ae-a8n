@@ -1,0 +1,68 @@
+{
+  "label": "s12-b",
+  "scenarioId": "RC-S12",
+  "verdict": "pass",
+  "steps": [
+    {
+      "stepId": "foreign-target",
+      "expected": "foreign AE 2026 pid present",
+      "actual": {
+        "pid": 7966,
+        "executable": "/Applications/Adobe After Effects 2026/Adobe After Effects 2026.app/Contents/MacOS/After Effects"
+      },
+      "ok": true
+    },
+    {
+      "stepId": "gui-session",
+      "expected": "Aqua session resolvable",
+      "actual": {
+        "uid": 501,
+        "username": "rebui",
+        "asid": 100021,
+        "kind": "Aqua"
+      },
+      "ok": true
+    },
+    {
+      "stepId": "spawn-supervisor",
+      "expected": "detached supervisor pid returned",
+      "actual": {
+        "pid": 17102
+      },
+      "ok": true
+    },
+    {
+      "stepId": "fresh-heartbeat",
+      "expected": "report health ok/degraded with fresh monitor",
+      "actual": {
+        "status": "observed",
+        "health": "degraded",
+        "phase": "blocked"
+      },
+      "ok": true
+    },
+    {
+      "stepId": "kill-supervisor",
+      "expected": "SIGKILL supervisor pid 17102",
+      "actual": {
+        "killed": 17102
+      },
+      "ok": true
+    },
+    {
+      "stepId": "post-kill-report",
+      "expected": "health=monitor-lost within TTL+margin",
+      "actual": {
+        "status": "observed",
+        "health": "monitor-lost",
+        "detail": "the monitor heartbeat is stale (last beat 2026-11-28T04:53:43.677Z, ttl 30000ms); the target's current GUI state is unknown"
+      },
+      "ok": true
+    }
+  ],
+  "notes": [
+    "pre-kill: {\"status\":\"observed\",\"health\":\"degraded\"}",
+    "post-kill: {\"status\":\"observed\",\"health\":\"monitor-lost\"}"
+  ],
+  "sessionDir": "/tmp/rc436-sessions/s12-b/supervisor"
+}
