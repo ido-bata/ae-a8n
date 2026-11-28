@@ -50,6 +50,7 @@ import type {
   HostState,
   HostTransport,
   InvokeOptions,
+  LaunchPhaseTiming,
   OwnedProcess,
   PendingLaunch,
 } from "./transport.js";
@@ -504,6 +505,8 @@ export class ScriptInvocationTransport implements HostTransport {
   /** Host processes already running when launch() began. */
   #preexisting: readonly HostProcess[] | null = null;
   #launchBegan = 0;
+  /** Sub-phases of the most recent `launch()`, for readiness instrumentation (#444). */
+  #launchPhaseRows: LaunchPhaseTiming[] = [];
   /** The process this session started, once the probe has answered. */
   #owned: HostProcess | null = null;
   #ownershipAtLaunch: HostOwnership = { kind: "unknown", evidence: "not launched" };
@@ -871,6 +874,58 @@ export class ScriptInvocationTransport implements HostTransport {
   }
 
   /**
+   * Times one synchronous `launch()` sub-phase. Kept separate from
+   * `#timeLaunchPhase` because `await`ing even a resolved value yields a
+   * microtask — and `launch()` must reach `#startWindows` without yielding:
+   * its `spawn` listener has to be attached before anything else queued can
+   * emit (issue #444 regression caught by the win32 launch test).
+   */
+  #timeSyncLaunchPhase<T>(stepId: string, fn: () => T): T {
+    const started = Date.now();
+    const startedAt = new Date(started).toISOString();
+    try {
+      const value = fn();
+      this.#launchPhaseRows.push({
+        stepId: `spawn.${stepId}`,
+        startedAt,
+        durationMs: Date.now() - started,
+      });
+      return value;
+    } catch (error) {
+      this.#launchPhaseRows.push({
+        stepId: `spawn.${stepId}`,
+        startedAt,
+        durationMs: Date.now() - started,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Times one `launch()` sub-phase into `#launchPhaseRows` (#444). The
+   * wrapped call's value or error passes through untouched — this is
+   * measurement, never control flow.
+   */
+  async #timeLaunchPhase<T>(stepId: string, fn: () => T | Promise<T>): Promise<T> {
+    const started = Date.now();
+    const startedAt = new Date(started).toISOString();
+    try {
+      return await fn();
+    } finally {
+      this.#launchPhaseRows.push({
+        stepId: `spawn.${stepId}`,
+        startedAt,
+        durationMs: Date.now() - started,
+      });
+    }
+  }
+
+  /** The sub-phases the most recent `launch()` observed, oldest first (#444). */
+  launchPhases(): readonly LaunchPhaseTiming[] {
+    return [...this.#launchPhaseRows];
+  }
+
+  /**
    * Starts After Effects only if it is not already running.
    *
    * Launching is deliberately not awaited to completion: AE takes tens of
@@ -885,12 +940,15 @@ export class ScriptInvocationTransport implements HostTransport {
       // then count as "already running".
       return;
     }
+    this.#launchPhaseRows = [];
     if (this.#platform === "darwin") {
       // Before anything is started or addressed: with script file writes
       // disabled the host can open a result file but never fill it, so the
       // readiness probe could only ever time out (issue #188). A proven
       // "blocked" fails here with the remedy; anything unevaluated proceeds.
-      const permission = this.#macScriptingPermission();
+      const permission = this.#timeSyncLaunchPhase("permission-check", () =>
+        this.#macScriptingPermission(),
+      );
       if (permission?.state === "blocked") {
         throw new ScriptingPermissionError(
           `After Effects script file/network access is disabled for this account ` +
@@ -908,7 +966,7 @@ export class ScriptInvocationTransport implements HostTransport {
       // branches below are unreachable from here — there is no code path
       // from this branch to `open`/`AfterFX.exe`.
       try {
-        this.#selectAttachTarget();
+        this.#timeSyncLaunchPhase("attach-select", () => this.#selectAttachTarget());
       } catch (error) {
         // A refused attach must not leave the transport "launched": a retry
         // would return early above and the driver would go on to invoke(),
@@ -921,7 +979,7 @@ export class ScriptInvocationTransport implements HostTransport {
     }
     if (this.#adopt !== null) {
       try {
-        this.#adoptProcess();
+        this.#timeSyncLaunchPhase("adopt-validate", () => this.#adoptProcess());
       } catch (error) {
         // Same rule as attach: a refused adoption is not a launch.
         this.#launched = false;
@@ -934,7 +992,9 @@ export class ScriptInvocationTransport implements HostTransport {
       // Before anything is started: whatever is running now is not ours. A
       // list that cannot be read leaves ownership unproven, never assumed.
       try {
-        this.#preexisting = this.#hostProcesses();
+        this.#preexisting = this.#timeSyncLaunchPhase("process-census", () =>
+          this.#hostProcesses(),
+        );
       } catch {
         this.#preexisting = null;
       }
@@ -945,7 +1005,9 @@ export class ScriptInvocationTransport implements HostTransport {
       // the same rule the Windows branch follows: the readiness probe below
       // is what decides whether the host answers.
       try {
-        this.#preexisting = this.#hostProcesses();
+        this.#preexisting = this.#timeSyncLaunchPhase("process-census", () =>
+          this.#hostProcesses(),
+        );
       } catch {
         this.#preexisting = null;
       }
@@ -955,7 +1017,9 @@ export class ScriptInvocationTransport implements HostTransport {
         // the snapshot" is all the evidence there would be — and that is
         // equally true of an instance the human starts a moment later. The
         // pid this call observes is what lets ownership be bound to it.
-        this.#spawnedPid = await this.#launchMacHost();
+        this.#spawnedPid = await this.#timeLaunchPhase("process-start", () =>
+          this.#launchMacHost(),
+        );
       }
       return;
     }
@@ -965,7 +1029,9 @@ export class ScriptInvocationTransport implements HostTransport {
     // No arguments: this is After Effects itself, not a command that finishes.
     // Waiting for it to exit would hold the session until AE quit and the
     // readiness probe would never run, so only the start is awaited.
-    this.#spawnedPid = await this.#startWindows([]);
+    this.#spawnedPid = await this.#timeLaunchPhase("process-start", () =>
+      this.#startWindows([]),
+    );
   }
 
   /**
@@ -1869,35 +1935,37 @@ export class ScriptInvocationTransport implements HostTransport {
           "is not inside an .app bundle",
       );
     }
-    await this.#openMacApp(bundle);
+    await this.#timeLaunchPhase("open-request", () => this.#openMacApp(bundle));
     const deadline = this.#now() + this.#macLaunchObserveMs;
     const knownPids = new Set((this.#preexisting ?? []).map((p) => p.pid));
-    for (;;) {
-      let now: HostProcess[] | null = null;
-      try {
-        now = this.#hostProcesses();
-      } catch {
-        now = null;
-      }
-      if (now !== null) {
-        const fresh = now.filter(
-          (p) => !knownPids.has(p.pid) && p.startedAt >= this.#launchBegan - START_SLACK_MS,
-        );
-        if (fresh.length === 1) {
-          const only = fresh[0] as HostProcess;
-          this.#spawnedAt = only.startedAt;
-          return only.pid;
+    return this.#timeLaunchPhase("pid-observe", async () => {
+      for (;;) {
+        let now: HostProcess[] | null = null;
+        try {
+          now = this.#hostProcesses();
+        } catch {
+          now = null;
         }
-        // None yet, or more than one: keep watching. A second same-bundle
-        // process is the failure this path exists to avoid, so two
-        // candidates are never picked between — the pid stays unrecorded
-        // and ownership stays "unknown".
+        if (now !== null) {
+          const fresh = now.filter(
+            (p) => !knownPids.has(p.pid) && p.startedAt >= this.#launchBegan - START_SLACK_MS,
+          );
+          if (fresh.length === 1) {
+            const only = fresh[0] as HostProcess;
+            this.#spawnedAt = only.startedAt;
+            return only.pid;
+          }
+          // None yet, or more than one: keep watching. A second same-bundle
+          // process is the failure this path exists to avoid, so two
+          // candidates are never picked between — the pid stays unrecorded
+          // and ownership stays "unknown".
+        }
+        if (this.#now() >= deadline) {
+          return undefined;
+        }
+        await new Promise((done) => setTimeout(done, this.#macLaunchPollMs));
       }
-      if (this.#now() >= deadline) {
-        return undefined;
-      }
-      await new Promise((done) => setTimeout(done, this.#macLaunchPollMs));
-    }
+    });
   }
 
   /**

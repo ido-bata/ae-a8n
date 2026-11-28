@@ -274,6 +274,21 @@ export type HostAttestation = {
  */
 export const DISPATCHER_TRANSPORT_KIND = "in-ae-dispatcher" as const;
 
+/**
+ * One timed sub-phase of `launch()`, kept by transports that can see inside
+ * it (script invocation: process census, spawn, first pid observation).
+ * Readiness instrumentation (#444) folds these into the `session.launch`
+ * `stepTimings` so a slow or failed readiness wait names the phase that
+ * spent the budget instead of reporting one opaque total.
+ */
+export type LaunchPhaseTiming = {
+  /** Stable phase id, e.g. `process-census`. */
+  readonly stepId: string;
+  /** ISO-8601 phase start. */
+  readonly startedAt: string;
+  readonly durationMs: number;
+};
+
 export interface HostTransport {
   /** Stable identifier recorded in the session manifest and trace. */
   readonly kind: string;
@@ -283,6 +298,13 @@ export interface HostTransport {
 
   /** Start the host if it is not already running. */
   launch(): Promise<void>;
+
+  /**
+   * The sub-phases the most recent `launch()` observed, oldest first.
+   * Optional: a transport without it is timed only at the driver's phase
+   * level. Read-only evidence — callers must not mutate the returned rows.
+   */
+  launchPhases?(): readonly LaunchPhaseTiming[];
 
   /**
    * Run an entry script in the host. Resolves once the host has finished with
