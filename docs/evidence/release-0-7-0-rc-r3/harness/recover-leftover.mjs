@@ -16,9 +16,9 @@
  *
  * Usage: node recover-leftover.mjs [--label <tag>]
  */
-import { readdirSync, existsSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, existsSync, readFileSync, statSync, mkdirSync, writeFileSync, copyFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { AfterEffects, TERMINATE_PERMIT } from "@ido-bata/ae-a8n";
 import { recordAttempt, writeJson, aeCensus } from "./lib.mjs";
 
@@ -82,6 +82,21 @@ for (const root of sessionRoots(ROOT)) {
     continue;
   }
   sawWork = true;
+  // Evidence capture BEFORE signalling (#451): a 1s `sample` of the
+  // blocked main thread proves the blocking class (e.g. BirthPrefs
+  // RunModal stack) — read-only observation, allowed on any pid.
+  const samplePath = `/tmp/rc436r3-sessions/recover-samples/pid-${pid}.txt`;
+  try {
+    mkdirSync(dirname(samplePath), { recursive: true });
+    const out = execFileSync("sample", [String(pid), "1"], {
+      encoding: "utf-8", timeout: 30000, maxBuffer: 64 * 1024 * 1024,
+    });
+    const m = /written to file (\S+\.txt)/.exec(out);
+    if (m) copyFileSync(m[1], samplePath);
+    else writeFileSync(samplePath, out, "utf-8");
+  } catch (e) {
+    notes.push(`sample pid ${pid} failed: ${String(e?.message ?? e).slice(0, 120)}`);
+  }
   const t0 = Date.now();
   try {
     const report = await AfterEffects.terminate({
@@ -176,7 +191,7 @@ if (foundWork) {
         ? "clean" : "residue",
       ref: summaryPath,
     },
-    evidenceRefs: [summaryPath],
+    evidenceRefs: [summaryPath, existsSync("/tmp/rc436r3-sessions/recover-samples") ? "/tmp/rc436r3-sessions/recover-samples/" : null].filter(Boolean),
     notes: `[modal-recovery sweep ${label}] ${notes.join(" | ")}`,
     sessionRoot: ROOT,
   });

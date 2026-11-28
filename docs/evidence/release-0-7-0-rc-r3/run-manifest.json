@@ -1,61 +1,62 @@
 {
-  "schemaVersion": 1,
-  "kind": "ae-a8n.rc-run-manifest/v1",
-  "spec": "specs/release-acceptance/spec.md",
-  "createdAt": "2026-11-29",
-  "attempt": "re-run 3 / attempt-3 (run 1: docs/evidence/release-0-7-0-rc/ environment-blocked; run 2: docs/evidence/release-0-7-0-rc-r2/ environment-blocked mid-run by BirthPrefs modal recurrence; RC-S17 proof: docs/evidence/release-0-7-0-rc-s17/). Candidate now includes #443 close/quit, #444 readiness phases, #445 panel.restore advertise, #450/#454 observation timeout, #451 census evidence+terminate guidance+CLI, #452 readiness census observation, #458 spawn-provenance safe-exit.",
-  "candidate": {
-    "commit": "60523c28d3b664b7c273f03fbbaf4ed16c5e741b",
-    "tarball": "ido-bata-ae-a8n-0.6.0.tgz",
-    "tarballSha256": "467b523be2c3bba2130f52db4fc258d099875ebcf9e4ce2e82d6531f2f75f6e4",
-    "package": "@ido-bata/ae-a8n",
-    "version": "0.6.0",
-    "frozenFrom": "origin/release-0-7-0 HEAD at freeze (60523c2 = merge of #459/#458; verified `git rev-parse HEAD` in worktree ae-a8n.436-r3; `npm pack` from that tree, sha256 above)"
+ "schemaVersion": 1,
+ "kind": "ae-a8n.rc-run-manifest/v1",
+ "spec": "specs/release-acceptance/spec.md",
+ "createdAt": "2026-11-29",
+ "attempt": "re-run 3 / attempt-3 (run 1: docs/evidence/release-0-7-0-rc/ environment-blocked; run 2: docs/evidence/release-0-7-0-rc-r2/ environment-blocked mid-run by BirthPrefs modal recurrence; RC-S17 proof: docs/evidence/release-0-7-0-rc-s17/). Candidate now includes #443 close/quit, #444 readiness phases, #445 panel.restore advertise, #450/#454 observation timeout, #451 census evidence+terminate guidance+CLI, #452 readiness census observation, #458 spawn-provenance safe-exit.",
+ "candidate": {
+  "commit": "60523c28d3b664b7c273f03fbbaf4ed16c5e741b",
+  "tarball": "ido-bata-ae-a8n-0.6.0.tgz",
+  "tarballSha256": "467b523be2c3bba2130f52db4fc258d099875ebcf9e4ce2e82d6531f2f75f6e4",
+  "package": "@ido-bata/ae-a8n",
+  "version": "0.6.0",
+  "frozenFrom": "origin/release-0-7-0 HEAD at freeze (60523c2 = merge of #459/#458; verified `git rev-parse HEAD` in worktree ae-a8n.436-r3; `npm pack` from that tree, sha256 above)"
+ },
+ "platform": {
+  "lane": "macos",
+  "os": "macOS 27.2.1 (darwin 27)",
+  "arch": "arm64",
+  "aeInstall": "/Applications/Adobe After Effects 2027",
+  "aeVersion": "27.0x78",
+  "aeBuild": "78",
+  "note": "AE 2026 install also present and clean at freeze (zero AE processes at baseline). RC-S8/RC-S12 need a second AE instance as the non-session foreign/observation target; it is launched through the public AfterEffects.launch path in its own session root when needed and recorded as driver-spawned-but-foreign-to-the-scenario (documented per-scenario). AE 2027 BirthPrefs modal recurs nondeterministically on launch; recovery uses only the public terminate path (#458 spawn provenance) — see harness/recover-leftover.mjs."
+ },
+ "fixture": {
+  "id": "fixture.aep",
+  "path": "docs/evidence/release-0-7-0-rc-r3/fixtures/fixture.aep",
+  "sha256": "84d5d91112fcbef9d0cea461afc4e99d06a88822084e9dfb6cf59a63f96768c0",
+  "contents": "one composition 'A8N Acceptance' 640x480@30fps 5s (same fixture as runs 1-2; sha256 verified identical)"
+ },
+ "consumer": {
+  "surface": "packed-tarball consumer install + AfterEffects.launch/attach/rebuild/terminate + ae.* API + ae-a8n CLI",
+  "installDir": "/tmp/rc436r3-consumer (npm install of the packed tarball ido-bata-ae-a8n-0.6.0.tgz sha256 467b523b…; not committed)",
+  "repoSide": "Plan B GUI helpers (swift sources) are not in the packed tarball; plan-b runs repo-side from the worktree checkout at the same frozen commit, labelled repo-side (same convention as runs 1-2)."
+ },
+ "budgets": {
+  "readinessProbeMs": 180000,
+  "note": "readinessProbeMs is the spec-fixed default (180000). Representative-op budgets declared before the attempt sequence; values carry over unchanged from the run-1/run-2 manifest ceilings (p95-style, ~1.4-3x observed max on the same op set). A breach on this candidate is a finding, not a re-declaration.",
+  "ops": {
+   "session.launch": 120000,
+   "app.info": 60000,
+   "project.open": 60000,
+   "project.info": 120000,
+   "project.state": 120000,
+   "project.comps": 60000,
+   "comp.info": 120000,
+   "comp.renderFrame": 120000,
+   "session.quit": 60000,
+   "session.close": 120000
   },
-  "platform": {
-    "lane": "macos",
-    "os": "macOS 27.2.1 (darwin 27)",
-    "arch": "arm64",
-    "aeInstall": "/Applications/Adobe After Effects 2027",
-    "aeVersion": "27.0x78",
-    "aeBuild": "78",
-    "note": "AE 2026 install also present and clean at freeze (zero AE processes at baseline). RC-S8/RC-S12 need a second AE instance as the non-session foreign/observation target; it is launched through the public AfterEffects.launch path in its own session root when needed and recorded as driver-spawned-but-foreign-to-the-scenario (documented per-scenario). AE 2027 BirthPrefs modal recurs nondeterministically on launch; recovery uses only the public terminate path (#458 spawn provenance) — see harness/recover-leftover.mjs."
-  },
-  "fixture": {
-    "id": "fixture.aep",
-    "path": "docs/evidence/release-0-7-0-rc-r3/fixtures/fixture.aep",
-    "sha256": "84d5d91112fcbef9d0cea461afc4e99d06a88822084e9dfb6cf59a63f96768c0",
-    "contents": "one composition 'A8N Acceptance' 640x480@30fps 5s (same fixture as runs 1-2; sha256 verified identical)"
-  },
-  "consumer": {
-    "surface": "packed-tarball consumer install + AfterEffects.launch/attach/rebuild/terminate + ae.* API + ae-a8n CLI",
-    "installDir": "/tmp/rc436r3-consumer (npm install of the packed tarball ido-bata-ae-a8n-0.6.0.tgz sha256 467b523b…; not committed)",
-    "repoSide": "Plan B GUI helpers (swift sources) are not in the packed tarball; plan-b runs repo-side from the worktree checkout at the same frozen commit, labelled repo-side (same convention as runs 1-2)."
-  },
-  "budgets": {
-    "readinessProbeMs": 180000,
-    "note": "readinessProbeMs is the spec-fixed default (180000). Representative-op budgets declared before the attempt sequence; values carry over unchanged from the run-1/run-2 manifest ceilings (p95-style, ~1.4-3x observed max on the same op set). A breach on this candidate is a finding, not a re-declaration.",
-    "ops": {
-      "session.launch": 120000,
-      "app.info": 60000,
-      "project.open": 60000,
-      "project.info": 120000,
-      "project.state": 120000,
-      "project.comps": 60000,
-      "comp.info": 120000,
-      "comp.renderFrame": 120000,
-      "session.quit": 60000,
-      "session.close": 120000
-    },
-    "opsProvenance": "Same ceiling set as run-1/run-2 manifests (derived from baseline warm launches). Run-3 attempt timings are measured fresh on 60523c2; budgets are NOT relaxed post-hoc."
-  },
-  "recordingInCandidate": true,
-  "scenarios": "RC-S1..RC-S17 per specs/release-acceptance/spec.md §8 (RC-S17 added by the s17 evidence run); darwin-applicable rows only; others recorded not-applicable with reason",
-  "environmentNotes": [
-    "Zero AE processes at baseline (env/baseline.txt, ps census). Prior modal-blocked residue (pids 18577/37622) was SIGTERM-reaped during #458 verification; both installs verified clean.",
-    "BirthPrefs modal may recur nondeterministically on ANY launch (reproduced twice on AE 2027 and once on AE 2026 during #458). Handling contract for this run: readiness failure with census/modal evidence → recovery evidence already captured by #451/#452 instrumentation → AfterEffects.terminate via spawn-provenance (#458, permit terminate-owned-host, force permitted for the disposable owned environment) → census-verified gone → retry as a NEW attempt. No SIGKILL of residue, no dialog input, no waiting for a human. Each modal-blocked cycle is ledgered (affected attempt fails/indeterminate honestly; the terminate+retry is recorded as an RC-S17 anomaly-handling attempt).",
-    "Input source baseline: see env/baseline.txt. Clipboard sha256 baseline recorded.",
-    "Harness: docs/evidence/release-0-7-0-rc-r3/harness/ (inherited from run-2 harness; paths retargeted rc436r2→rc436r3, candidate identity updated to 60523c2/467b523b, RC_DIR retargeted to this evidence dir).",
-    "Supervisor-process kills inside RC-S12/RC-S15 target only the node supervisor process the harness itself spawned (the honest-death path under test); AE processes are never signalled outside the sanctioned terminate path, except the RC-S2 owned-crash simulation which SIGKILLs only the path-verified owned pid."
-  ]
+  "opsProvenance": "Same ceiling set as run-1/run-2 manifests (derived from baseline warm launches). Run-3 attempt timings are measured fresh on 60523c2; budgets are NOT relaxed post-hoc."
+ },
+ "recordingInCandidate": true,
+ "scenarios": "RC-S1..RC-S17 per specs/release-acceptance/spec.md §8 (RC-S17 added by the s17 evidence run); darwin-applicable rows only; others recorded not-applicable with reason",
+ "environmentNotes": [
+  "Zero AE processes at baseline (env/baseline.txt, ps census). Prior modal-blocked residue (pids 18577/37622) was SIGTERM-reaped during #458 verification; both installs verified clean.",
+  "BirthPrefs modal may recur nondeterministically on ANY launch (reproduced twice on AE 2027 and once on AE 2026 during #458). Handling contract for this run: readiness failure with census/modal evidence → recovery evidence already captured by #451/#452 instrumentation → AfterEffects.terminate via spawn-provenance (#458, permit terminate-owned-host, force permitted for the disposable owned environment) → census-verified gone → retry as a NEW attempt. No SIGKILL of residue, no dialog input, no waiting for a human. Each modal-blocked cycle is ledgered (affected attempt fails/indeterminate honestly; the terminate+retry is recorded as an RC-S17 anomaly-handling attempt).",
+  "Input source baseline: see env/baseline.txt. Clipboard sha256 baseline recorded.",
+  "Harness: docs/evidence/release-0-7-0-rc-r3/harness/ (inherited from run-2 harness; paths retargeted rc436r2→rc436r3, candidate identity updated to 60523c2/467b523b, RC_DIR retargeted to this evidence dir).",
+  "Supervisor-process kills inside RC-S12/RC-S15 target only the node supervisor process the harness itself spawned (the honest-death path under test); AE processes are never signalled outside the sanctioned terminate path, except the RC-S2 owned-crash simulation which SIGKILLs only the path-verified owned pid.",
+  "Run-3 modal storm (r3-s1-26 onward): BirthPrefs UI_MessageBox blocked every AE 2027 launch (~10 consecutive readiness timeouts). Deep-dive in env/birthprefs-modal-investigation-r3.md: stack shows nested AEDoScriptFile→Up_ReportErrorDialog inside the BirthPrefs modal loop; foreign AE 2026 instance shows the same DVAMacDialog modal → host-state issue, not harness. Interventions tried and results: deleted CrashOccurred/ForceQuitOccured from com.Adobe.After Effects.27.0/.26.5 plists (no effect, keys stayed cleared); 'Skip Crash Recovery Prompt'=01 in 環境設定-indep-general.txt (no effect, reverted to 00). Dialog text unobtainable (AX-invisible, Vision OCR hangs). recover-leftover.mjs passed 10+ consecutive times (RC-S17) via sanctioned terminate; no SIGKILL, no dialog input, per contract."
+ ]
 }
