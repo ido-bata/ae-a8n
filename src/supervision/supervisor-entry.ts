@@ -24,7 +24,10 @@
  * environment variables set by the spawner; there is no argv surface.
  */
 
-import { MacGuiRecovery } from "../driver/gui-recovery.js";
+import {
+  boundedObservationRunSession,
+  MacGuiRecovery,
+} from "../driver/gui-recovery.js";
 import { censusPidVerifier } from "../driver/supervision-session.js";
 import { readUsername, type MacSession } from "../driver/mac-session.js";
 import { MacGuiProbe } from "../platform/darwin/gui-probe.js";
@@ -90,6 +93,12 @@ async function main(): Promise<number> {
       // Observation only — the supervisor holds no mutation path, so the
       // console-session guard that protects presses must not stop it.
       allowConsoleSession: true,
+      // A hung AX/census query must degrade the tick, not stall it past
+      // the monitor TTL: the blocking session commands are bounded so a
+      // live supervisor never reports `monitor-lost` for being slow
+      // (#450 — RC run-2 measured a 60s AX stall against a restarting
+      // foreign AE while the lease kept beating).
+      runSession: boundedObservationRunSession(),
     });
   } catch {
     return 0;

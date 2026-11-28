@@ -29,7 +29,10 @@ import {
   listAppInstances,
   type MacAppInstance,
 } from "./mac-session.js";
-import { MacGuiRecovery } from "./gui-recovery.js";
+import {
+  boundedObservationRunSession,
+  MacGuiRecovery,
+} from "./gui-recovery.js";
 import { MacGuiProbe } from "../platform/darwin/gui-probe.js";
 import { WindowsGuiProbe } from "../platform/windows/gui-probe.js";
 import type { WindowsGuiSession } from "./windows-gui-recovery.js";
@@ -298,6 +301,10 @@ export class SessionSupervision {
           // common case a supervised AE lives in. Same allowance as
           // `ae.guiState()`.
           allowConsoleSession: true,
+          // Same bound as the detached supervisor (#450): a session command
+          // that hangs past the monitor TTL would make this live monitor
+          // report `monitor-lost`; bounding it degrades the tick instead.
+          runSession: boundedObservationRunSession(),
         });
       } catch {
         return null;
