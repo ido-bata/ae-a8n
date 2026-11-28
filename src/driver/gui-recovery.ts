@@ -1867,6 +1867,45 @@ export function censusRunnerInSession(
   };
 }
 
+/**
+ * Session-command timeout for read-only observation paths (#450).
+ *
+ * The supervision monitor heartbeats its lease and publishes the durable
+ * document once per tick, and a tick cannot complete while a session
+ * command is still running — `runInSession` is a blocking
+ * `execFileSync`. The mutation-path commands legitimately allow 60s, but
+ * an observation that hangs longer than the monitor lease TTL (30s)
+ * makes a live monitor look dead: readers see `monitor-lost` while the
+ * process is alive and heartbeating. Observation paths therefore bound
+ * every session command to {@link OBSERVATION_SESSION_COMMAND_TIMEOUT_MS}
+ * so the worst-case tick — the AX listing plus the WindowServer census —
+ * still finishes inside the freshness window, and a genuinely hung query
+ * degrades to `probe-degraded` evidence instead of a false `monitor-lost`.
+ * Measured on RC run-2: a foreign AE exit+restart mid-run stalled the AX
+ * query to its 60s timeout, the tick could not complete, and the durable
+ * heartbeat went stale while the lease kept beating.
+ */
+export const OBSERVATION_SESSION_COMMAND_TIMEOUT_MS = 10_000;
+
+/**
+ * A `runInSession` wrapper that clamps every command's timeout to
+ * {@link OBSERVATION_SESSION_COMMAND_TIMEOUT_MS}. For observation-only
+ * consumers (the detached supervisor, session supervision) — never for
+ * the mutation path, whose presses may legitimately wait longer.
+ */
+export function boundedObservationRunSession(
+  runSession: typeof runInSession = runInSession,
+): typeof runInSession {
+  return (session, command, args, options) =>
+    runSession(session, command, args, {
+      ...options,
+      timeoutMs: Math.min(
+        options?.timeoutMs ?? OBSERVATION_SESSION_COMMAND_TIMEOUT_MS,
+        OBSERVATION_SESSION_COMMAND_TIMEOUT_MS,
+      ),
+    });
+}
+
 /** Whether a screenshot file was written and is not empty. Mainly a test seam. */
 export function screenshotLooksReal(path: string): boolean {
   try {
