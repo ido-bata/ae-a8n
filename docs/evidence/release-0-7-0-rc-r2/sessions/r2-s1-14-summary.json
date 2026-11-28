@@ -1,0 +1,66 @@
+{
+  "label": "r2-s1-14",
+  "scenarioId": "RC-S1",
+  "verdict": "fail",
+  "steps": [
+    {
+      "stepId": "launch+handshake-readiness",
+      "startedAt": "2026-11-28T07:16:28.568Z",
+      "durationMs": 1865,
+      "expected": "AfterEffects.launch resolves within readinessTimeoutMs (180000) with owned session",
+      "actual": {},
+      "evidenceRefs": [
+        "trace:session.launch"
+      ]
+    },
+    {
+      "stepId": "capabilities",
+      "startedAt": "2026-11-28T07:16:30.434Z",
+      "durationMs": 2,
+      "expected": "ae.capabilities() returns handshake",
+      "actual": {
+        "contractVersion": {
+          "major": 1,
+          "minor": 0
+        },
+        "ownership": "unknown",
+        "caps": 30
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "version",
+      "startedAt": "2026-11-28T07:16:30.436Z",
+      "durationMs": 1605,
+      "expected": "ae.version() returns 27.0x78",
+      "actual": {
+        "version": "27.0x78",
+        "info": {
+          "version": "27.0x78",
+          "build": "78"
+        }
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "openProject+state",
+      "startedAt": "2026-11-28T07:16:32.041Z",
+      "durationMs": 968,
+      "expected": "ae.openProject(fixture.aep) succeeds; project.info/state report the fixture",
+      "actual": {
+        "error": "UnsavedChangesError",
+        "message": "project.open refused: the open project has unsaved changes"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "UnsavedChangesError",
+        "message": "project.open refused: the open project has unsaved changes"
+      }
+    }
+  ],
+  "cleanup": {
+    "verdict": "clean",
+    "ref": "/tmp/rc436r2-sessions/r2-s1-14/teardown-5e26c9bb-6969-4573-916b-23eaf67d0fc5.json"
+  },
+  "sessionRoot": "/tmp/rc436r2-sessions/r2-s1-14"
+}

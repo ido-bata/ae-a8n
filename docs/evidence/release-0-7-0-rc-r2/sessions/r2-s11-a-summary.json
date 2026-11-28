@@ -1,0 +1,27 @@
+{
+  "label": "r2-s11-a",
+  "scenarioId": "RC-S11",
+  "verdict": "fail",
+  "steps": [
+    {
+      "stepId": "launch",
+      "startedAt": "2026-11-28T07:40:47.618Z",
+      "durationMs": 180943,
+      "expected": "owned launch",
+      "actual": {
+        "error": "AfterEffectsError",
+        "message": "After Effects was started (pid 93160, started 2026-11-28T07:40:47.000Z, /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 175518ms; the After Effects process is still running but did not answer; the call took 176487ms in total. Readiness: timeout — the host process is present but never answered within the readiness bud"
+      },
+      "evidenceRefs": [],
+      "error": {
+        "name": "AfterEffectsError",
+        "message": "After Effects was started (pid 93160, started 2026-11-28T07:40:47.000Z, /Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects in the session of rebui (uid 501, asid 100021)) but did not answer the readiness probe: After Effects did not answer app.info within 175518ms; the After Effects process is still running but did not answer; the call took 176487ms in total. Readiness: timeout — the host process is present but never answered within the readiness bud"
+      }
+    }
+  ],
+  "cleanup": {
+    "verdict": "unverifiable",
+    "ref": null
+  },
+  "sessionRoot": "/tmp/rc436r2-sessions/r2-s11-a"
+}

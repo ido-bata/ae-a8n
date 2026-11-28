@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "kind": "ae-a8n.teardown/v1",
+  "sessionId": "52910ff7-9b78-4e3e-8a91-09c678049adc",
+  "sessionRoot": "/tmp/rc436r2-sessions/r2-s1-11",
+  "evaluatedAt": "2026-11-28T07:16:19.131Z",
+  "verdict": "clean",
+  "items": [
+    {
+      "area": "process",
+      "verdict": "clean",
+      "detail": "close={\"quit\":false,\"ownership\":{\"kind\":\"attached\",\"evidence\":\"already running before launch: pid 58607 (/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects)\"},\"reason\":\"not quitting a host this session does not own (already running before launch: pid 58607 (/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects))\"}; session.close trace ok; reason=not quitting a host this session does not own (already running before launch: pid 58607 (/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects))"
+    },
+    {
+      "area": "input",
+      "verdict": "clean",
+      "detail": "no input operations ran this session"
+    },
+    {
+      "area": "leases",
+      "verdict": "clean",
+      "detail": "41522 audit row(s) (unscoped: target pid unknown at teardown): 61 acquire, 61 release/reap"
+    },
+    {
+      "area": "recorder",
+      "verdict": "clean",
+      "detail": "no recording ops ran; no evidence index expected"
+    },
+    {
+      "area": "supervision",
+      "verdict": "clean",
+      "detail": "no durable supervision document exists for this session"
+    },
+    {
+      "area": "artifacts",
+      "verdict": "clean",
+      "detail": "artifacts retained at /tmp/rc436r2-sessions/r2-s1-11/artifacts (evidence, not residue)"
+    }
+  ],
+  "reportPath": null
+}

@@ -1,0 +1,91 @@
+{
+  "label": "r2-s4-a",
+  "scenarioId": "RC-S4",
+  "verdict": "fail",
+  "ownedPid": 76749,
+  "steps": [
+    {
+      "stepId": "launch+extension",
+      "startedAt": "2026-11-28T07:51:20.224Z",
+      "durationMs": 65339,
+      "expected": "owned launch with rc436 extension host script",
+      "actual": {},
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "extension-declared",
+      "startedAt": "2026-11-28T07:52:25.563Z",
+      "durationMs": 0,
+      "expected": "extension methods declared",
+      "actual": [
+        "rc436.promptSave",
+        "rc436.unmarkedAlert",
+        "rc436.panelShow",
+        "rc436.panelInfo",
+        "rc436.panelClose",
+        "rc436.slowOp",
+        "rc436.projectState"
+      ],
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "recoveryTarget",
+      "startedAt": "2026-11-28T07:52:25.563Z",
+      "durationMs": 567,
+      "expected": "owned pid attested",
+      "actual": {
+        "pid": 76749,
+        "session": {
+          "uid": 501,
+          "username": "rebui",
+          "asid": 100021,
+          "kind": "Aqua"
+        }
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "prompt-save-call",
+      "startedAt": "2026-11-28T07:52:26.130Z",
+      "durationMs": 62212,
+      "expected": "rc436.promptSave raises the native save prompt; call outcome unproven/timeout",
+      "actual": {
+        "prompted": false,
+        "error": "Error: After Effects エラー: パラメーター 1 のため「close」を呼び出せません。列挙子の型が正しくありません。"
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "needs-human",
+      "startedAt": "2026-11-28T07:53:28.342Z",
+      "durationMs": 6,
+      "expected": "supervision reaches needs-human (bounded), never presses",
+      "actual": {
+        "wait": "reached",
+        "phase": "running",
+        "blocking": null,
+        "evidence": [
+          "probe-degraded: the accessibility query in rebui's session failed: "
+        ]
+      },
+      "evidenceRefs": []
+    },
+    {
+      "stepId": "teardown-kill-owned",
+      "startedAt": "2026-11-28T07:53:28.348Z",
+      "durationMs": 105,
+      "expected": "SIGKILL verified owned AE pid (modal has no public dismissal)",
+      "actual": {
+        "killed": 76749,
+        "path": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects"
+      },
+      "evidenceRefs": []
+    }
+  ],
+  "cleanup": {
+    "verdict": "unverifiable",
+    "ref": null,
+    "note": "session killed with host; teardown evaluated by harness below"
+  },
+  "sessionRoot": "/tmp/rc436r2-sessions/r2-s4-a"
+}

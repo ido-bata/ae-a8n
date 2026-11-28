@@ -1,0 +1,21 @@
+{
+  "label": "r2-s12-c",
+  "scenarioId": "RC-S12",
+  "verdict": "blocked",
+  "steps": [
+    {
+      "stepId": "foreign-target",
+      "expected": "foreign AE 2026 pid present",
+      "actual": [
+        {
+          "pid": 32901,
+          "executable": "/Applications/Adobe After Effects 2027/Adobe After Effects 2027.app/Contents/MacOS/After Effects"
+        }
+      ],
+      "ok": false,
+      "error": "no foreign AE 2026 in census"
+    }
+  ],
+  "notes": [],
+  "sessionDir": "/tmp/rc436r2-sessions/r2-s12-c/supervisor"
+}

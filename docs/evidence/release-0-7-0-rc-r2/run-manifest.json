@@ -51,10 +51,10 @@
   "recordingInCandidate": true,
   "scenarios": "RC-S1..RC-S16 per specs/release-acceptance/spec.md §8; darwin-applicable rows only; others recorded not-applicable with reason",
   "environmentNotes": [
-    "Foreign AE 2026 instance running throughout (pid 39218 at start) — read-only observation only (census + detached supervisor monitor-only).",
+    "Foreign AE 2026 instance running throughout (pid 39218 at start; exited mid-run and restarted by user as pid 62487) — read-only observation only (census + detached supervisor monitor-only). No mutation, attach, signal, or quit AppleEvent was ever sent to it.",
     "Input source baseline: PressAndHold + Kotoeri RomajiTyping/Japanese (com.apple.HIToolbox AppleSelectedInputSources) — see env/baseline.txt.",
     "Clipboard baseline sha256 recorded at run start (env/baseline.txt).",
     "Harness: docs/evidence/release-0-7-0-rc-r2/harness/ (copied from run-1 harness; session roots retargeted to /tmp/rc436r2-sessions, consumer ext staged at /tmp/rc436r2-consumer/ext/).",
-    "BirthPrefs modal blocker from run 1: verified resolved before freeze (AppleScript version=27.0.0; launch probe succeeded). If it recurs, #444 instrumentation should classify it modal-blocked:<class> — recorded honestly, no dismissal attempted."
+    "BirthPrefs modal blocker from run 1: verified resolved before freeze (AppleScript version=27.0.0; launch probe succeeded). It recurred mid-run (~16:2x JST) after unclean AE shutdowns; sample stack saved at env/birthprefs-modal-stack-r2.txt. Modal-blocked launches were recorded honestly as readiness timeouts (phase=extendscript-response, modal-invisible caveat); no dismissal attempted. All leftover owned AE 2027 processes were SIGKILLed after per-pid path verification; final census shows zero AE 2027 residue (env/census-final.txt)."
   ]
 }
