@@ -360,6 +360,30 @@ export type SpawnLauncher = (
 export const EXIT_TIMEOUT_MS = 60_000;
 const EXIT_POLL_MS = 250;
 
+/**
+ * `app.quit` was delivered to the host script but the owned process did not
+ * exit inside the budget. The host is still running — possibly behind a
+ * dialog `app.quit` could not dismiss — and was left untouched; nothing was
+ * killed. `blockerDetail` carries the windows the census attributed to the
+ * process at the deadline ("" when none could be observed).
+ *
+ * Named so the session close and the teardown verdict can tell "the quit
+ * never took effect" apart from a generic failure: the recorded process
+ * identity is re-checked live before the residue is called (#443).
+ */
+export class HostQuitTimeoutError extends Error {
+  readonly blockerDetail: string;
+
+  constructor(timeoutMs: number, blockerDetail: string) {
+    super(
+      `After Effects did not exit within ${timeoutMs} ms of app.quit; it was left running` +
+        blockerDetail,
+    );
+    this.name = "HostQuitTimeoutError";
+    this.blockerDetail = blockerDetail;
+  }
+}
+
 
 
 
@@ -1693,9 +1717,9 @@ export class ScriptInvocationTransport implements HostTransport {
     // not look" is never taken for "it exited".
     while (owned !== null && this.#hostProcesses().some((p) => sameProcess(this.#platform, p, owned))) {
       if (Date.now() >= deadline) {
-        throw new Error(
-          `After Effects did not exit within ${this.#exitTimeoutMs} ms of app.quit; it was left running` +
-            this.#quitBlockerDetail(owned),
+        throw new HostQuitTimeoutError(
+          this.#exitTimeoutMs,
+          this.#quitBlockerDetail(owned),
         );
       }
       await new Promise((resolve) => setTimeout(resolve, EXIT_POLL_MS));

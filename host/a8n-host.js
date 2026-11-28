@@ -462,6 +462,32 @@
   }
 
   /**
+   * Closes the open project without saving and proves nothing dirty remains
+   * before the caller proceeds.
+   *
+   * `Project.close` answers `false` when it did not close — a blocking
+   * dialog, a refused close — and the script must not carry on as if the
+   * project were gone. Left in place, a still-dirty project puts After
+   * Effects' own save prompt in front of whatever comes next: `app.quit()`
+   * then returns while the process never exits (observed on AE 27, where a
+   * quit timed out with the untitled project window still up). Failing here
+   * keeps the session usable — the caller can retry or decide — instead of
+   * trading a refused close for a hung quit.
+   */
+  function closeProjectWithoutSaving(action) {
+    var closed = app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+    var project = app.project;
+    var stillDirty = project !== null && project !== undefined && project.dirty === true;
+    if (closed === false || stillDirty) {
+      var stuck = new Error(
+        "the open project could not be closed without saving; " + action + " was not attempted"
+      );
+      stuck.name = "UnsavedChangesError";
+      throw stuck;
+    }
+  }
+
+  /**
    * Shows a modal dialog in After Effects and waits until it is closed.
    *
    * The dialog is native, not scripted: it is the one case an ExtendScript
@@ -488,7 +514,7 @@
     if (guardUnsavedChanges(params, "quitting")) {
       // Closed first, untitled or not: a dirty project would otherwise put a
       // save prompt in front of the quit.
-      app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+      closeProjectWithoutSaving("quitting");
     }
     app.quit();
     return { quitting: true };
@@ -504,7 +530,7 @@
     // save prompt in front of the script, and the changes may be someone
     // else's work.
     if (guardUnsavedChanges(params, "opening another project")) {
-      app.project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
+      closeProjectWithoutSaving("opening another project");
     }
     var opened = app.open(file);
     // app.open answers with the Project it opened; the path is on

@@ -145,6 +145,7 @@ import {
 } from "./errors.js";
 import type { StopResult } from "../driver/driver.js";
 import type { HostOwnership } from "../driver/transport.js";
+import { HostQuitTimeoutError } from "../driver/script-invocation.js";
 import { activateDispatcherForSession } from "./dispatcher-activation.js";
 import { attachAfterEffects } from "./attach.js";
 import { openAfterEffects } from "./launch.js";
@@ -1689,8 +1690,13 @@ export class AfterEffects {
         this.#closed = true;
         this.#session.supervision?.stop();
         // The session is gone even though close failed: still leave the
-        // teardown verdict, evaluated against what actually happened.
-        this.#teardownVerdict({ error: error instanceof Error ? error.message : String(error) });
+        // teardown verdict, evaluated against what actually happened. A
+        // quit that timed out is marked so the verdict can re-check the
+        // recorded host instead of reporting an unproven failure (#443).
+        this.#teardownVerdict({
+          error: error instanceof Error ? error.message : String(error),
+          quitTimedOut: error instanceof HostQuitTimeoutError,
+        });
       }
       contextualise("session.close", error);
     }
@@ -1703,7 +1709,9 @@ export class AfterEffects {
    * actually ending. Best-effort: a verdict write failure must never
    * mask the close outcome it describes.
    */
-  #teardownVerdict(close: CloseResult | { readonly error: string }): void {
+  #teardownVerdict(
+    close: CloseResult | { readonly error: string; readonly quitTimedOut?: boolean },
+  ): void {
     try {
       this.#teardownPid ??= this.#session.driver.recoveryTarget()?.pid ?? null;
       writeTeardownVerdict(this.#session, close, {
