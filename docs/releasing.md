@@ -273,6 +273,22 @@ gate documents: anyone holding npm publish credentials can still run
 the determined one; the server-side fix is the same owner decision listed
 under "What stops an accidental or double publish".
 
+## Release-candidate acceptance
+
+What a candidate must survive before it is treated as release-ready is
+defined by the RC acceptance contract —
+[`specs/release-acceptance/spec.md`](../specs/release-acceptance/spec.md)
+(decision record: [ADR-0008](adr/0008-release-candidate-acceptance.md)). It
+fixes the candidate identity every evidence artifact binds to
+(commit + tarball sha256 + platform + AE version), the public-execution-path
+rule, the all-attempts ledger, the pre-declared performance budgets, and the
+fail-closed honesty rules (`blocked`/`skipped`/`environment` never count as
+pass). The `platforms/*.json` records consumed by the gate above are the
+per-platform summary of that contract; a record whose `evidence` does not
+resolve to a complete attempt ledger does not satisfy it. The publish
+mechanics in this document are unchanged — RC acceptance is an input to the
+human release decision, not a publish step.
+
 ## GitHub Packages mirror (#117)
 
 Every version published on npmjs.com can also be mirrored to GitHub Packages

@@ -136,3 +136,9 @@ consumer 受入（G4）の前に、次の 3 点を「ある」と言えるかを
 `scripts/check-consumer-smoke.js` の出力は `RESULT: real-host pass` / `RESULT: skipped — …` を出し、末尾に到達レベルを明示する。skip 出力を「受入完了」と読み替えないこと。
 
 `check-dispatcher-acceptance.js` は lane ごとに別々に記録する: fake lane の `RESULT: fake pass` は **`fake/mock only`**、real lane の `RESULT: real-host pass` のみが `verified on real host` の候補になる。判定は出力末尾の `A8N_RESULT {"fake":…,"real":…}` JSON で行い、real lane が `blocked`（人間 activation 無し・AE 未起動）・`skipped`・`prepared` の場合、dispatcher scenario の real-host 受入は**未実施**として扱う。exit code だけで PASS と読み替えない。
+
+## 5. release candidate 単位の受入契約への参照
+
+§4 は **1 回の受入 run / Issue 記録**のテンプレートであり、その役割は変わらない。release candidate 全体を対象にした受入 — 固定 candidate identity（commit SHA + tarball sha256 + platform + AE version）、公開実行経路のみ、全試行を含む attempt ledger、事前宣言の性能 budget、再現性条件、teardown verdict、保証境界 matrix、fail-closed の判定ルール — の正本は [`specs/release-acceptance/spec.md`](../specs/release-acceptance/spec.md)（決定記録: [`docs/adr/0008-release-candidate-acceptance.md`](adr/0008-release-candidate-acceptance.md)）。
+
+RC run の attempt ledger は §4 テンプレートを run 集合レベルで内包する上位の記録であり、内容を二重管理しない。§4 の表は引き続き各 run・Issue・PR の記録に使い、ledger の attempt record（release-acceptance spec §5.2）がそれを機械可読に束ねる。`blocked` / `skipped` / `environment` を pass に数えない原則は両者で同一。
