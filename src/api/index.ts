@@ -728,8 +728,9 @@ export class AfterEffects {
    *   - the durable supervision document shows `blocked` with host
    *     `process-gone` (a quarantined or needs-human session refuses);
    *   - no live monitor still observes the dead pid;
-   *   - launch provenance proves an earlier session *owned* the host —
-   *     attached and unknown sessions have none and are never restarted;
+   *   - launch provenance names a host an earlier session spawned or
+   *     proved (`phase: "spawned"` or `"ready"`, #458) — attached and
+   *     unknown sessions have none and are never restarted;
    *   - a fresh process census proves the recorded pid+start identity is
    *     gone and that no other instance of the install is running;
    *   - on macOS the target uid still has an Aqua login session.
@@ -758,10 +759,12 @@ export class AfterEffects {
    * (#340). Rebuild never signals a process; this path never launches one.
    *
    * Every gate must hold or nothing is signalled: explicit
-   * `permit: "terminate-owned-host"` consent, launch provenance proving an
-   * earlier session owned the host (attached and unknown sessions refuse),
-   * and a fresh census re-proving the recorded pid+start identity with no
-   * sibling instance in scope. Graceful-first — the OS's polite request
+   * `permit: "terminate-owned-host"` consent, launch provenance naming a
+   * host an earlier session spawned or proved — `phase: "spawned"` covers
+   * a host whose readiness probe never answered (#458), so a
+   * modal-blocked launch is not unkillable (attached and unknown sessions
+   * refuse), and a fresh census re-proving the recorded pid+start
+   * identity with no sibling instance in scope. Graceful-first — the OS's polite request
    * (AE `quit` Apple Event on macOS, `taskkill` on Windows) — and the
    * force kill only under explicit `force: true`. Disappearance must be
    * *proven* by census; `survived`/`unproven` are honest outcomes.

@@ -17,6 +17,24 @@ import { errorMessage } from "../errors.js";
 
 export const LAUNCH_PROVENANCE_SCHEMA = "a8n.launch-provenance/v1";
 
+/**
+ * How far the recording session got with the host it names (#458):
+ *
+ * - `"spawned"`: the transport reported the process it started, but the
+ *   readiness probe never answered — the host may be wedged, modal-blocked,
+ *   or still starting. The record still names exactly which process this
+ *   session spawned (pid + pinned start identity), which is what lets
+ *   `terminate` prove "we spawned this exact pid" through the live census
+ *   re-proof and end a host that will never answer a script.
+ * - `"ready"`: the readiness probe answered and ownership was proven — the
+ *   full record `resume`/`rebuild`/`terminate` have always relied on.
+ *
+ * Records written before `phase` existed carry no field; readers treat
+ * them as `"ready"` because they could only be written after the probe.
+ */
+export const LAUNCH_PROVENANCE_PHASES = ["spawned", "ready"] as const;
+export type LaunchProvenancePhase = (typeof LAUNCH_PROVENANCE_PHASES)[number];
+
 export type LaunchProvenance = {
   readonly schema: typeof LAUNCH_PROVENANCE_SCHEMA;
   /** ISO timestamp of when the owning session recorded this. */
@@ -25,6 +43,8 @@ export type LaunchProvenance = {
   readonly a8nVersion: string;
   /** The transport kind that owned the host. */
   readonly transport: string;
+  /** How far the session got with the host; absent in pre-#458 records = "ready". */
+  readonly phase: LaunchProvenancePhase;
   readonly host: {
     readonly pid: number;
     /** Process start time in ms; null when the platform cannot report one. */
@@ -45,6 +65,20 @@ export type OwnedProcess = {
   readonly executable: string;
 };
 
+/**
+ * The host identity a provenance record names. `startedAt` may be null: a
+ * spawn-phase record is written from the transport's pending-launch report,
+ * which keeps `null` rather than guessing a start time when the process
+ * list could not be read. A null start time never authorizes a signal —
+ * every consumer's live census re-proof treats it as ambiguous.
+ */
+export type ProvenanceHost = {
+  readonly pid: number;
+  readonly startedAt: number | null;
+  readonly identity?: string | undefined;
+  readonly executable: string;
+};
+
 export function launchProvenancePath(sessionRoot: string): string {
   return join(sessionRoot, "launch-provenance.json");
 }
@@ -56,13 +90,19 @@ export function launchProvenancePath(sessionRoot: string): string {
  */
 export function recordLaunchProvenance(
   sessionRoot: string,
-  input: { readonly transport: string; readonly host: OwnedProcess },
+  input: {
+    readonly transport: string;
+    readonly host: ProvenanceHost;
+    /** Defaults to `"ready"` — the phase every pre-#458 caller meant. */
+    readonly phase?: LaunchProvenancePhase;
+  },
 ): void {
   const provenance: LaunchProvenance = {
     schema: LAUNCH_PROVENANCE_SCHEMA,
     recordedAt: new Date().toISOString(),
     a8nVersion: A8N_VERSION,
     transport: input.transport,
+    phase: input.phase ?? "ready",
     host: {
       pid: input.host.pid,
       startedAt: input.host.startedAt,
@@ -104,6 +144,8 @@ export function readLaunchProvenance(sessionRoot: string): LaunchProvenance | nu
     typeof p !== "object" ||
     p.schema !== LAUNCH_PROVENANCE_SCHEMA ||
     typeof p.transport !== "string" ||
+    (p.phase !== undefined &&
+      !(LAUNCH_PROVENANCE_PHASES as readonly unknown[]).includes(p.phase)) ||
     host === undefined ||
     typeof host !== "object" ||
     typeof host.pid !== "number" ||
@@ -117,7 +159,9 @@ export function readLaunchProvenance(sessionRoot: string): LaunchProvenance | nu
   ) {
     throw new Error(`launch provenance at ${path} does not match ${LAUNCH_PROVENANCE_SCHEMA}`);
   }
-  return p as LaunchProvenance;
+  // Records predating `phase` could only be written after the probe, so a
+  // missing field reads as "ready" — never as the weaker "spawned".
+  return { ...(p as LaunchProvenance), phase: p.phase ?? "ready" };
 }
 
 /** Removes the record, e.g. after the owned host was quit cleanly. */

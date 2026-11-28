@@ -77,10 +77,15 @@ that case there is `AfterEffects.attach(options)`:
 ## Resuming a session
 
 `AfterEffects.launch()` writes `launch-provenance.json` into the session
-directory once the readiness probe has proven ownership — the pid, the
-process start time, the Windows creation identity when there is one, the
-executable, the transport kind, and the ae-a8n version. It is evidence, not
-authority: a file alone never makes a host ours.
+directory in two phases (#458): `phase: "spawned"` as soon as the transport
+reports the process it started — before the readiness probe — and
+`phase: "ready"` once the probe has proven ownership. Both name the pid,
+the process start time, the Windows creation identity when there is one,
+the executable, the transport kind, and the ae-a8n version. It is evidence,
+not authority: a file alone never makes a host ours, and every consumer
+re-proves the recorded identity against a live census before acting on it.
+Records written before `phase` existed carry no field and read as
+`"ready"` — they could only be written after the probe.
 
 `AfterEffects.resume({ sessionRoot })` rebinds to that host after the calling
 process restarted. It re-checks everything live: the recorded pid must still
@@ -115,9 +120,11 @@ The contract, in order:
 
 - `options.permit` must be the literal `TERMINATE_PERMIT`
   (`"terminate-owned-host"`). There is no default and no implicit grant.
-- The session must carry launch provenance proving this session launched
-  the host. `attached` and `unknown` sessions are refused — nothing is
-  signalled, and nothing about their host is mutated.
+- The session must carry launch provenance naming a host this session's
+  driver spawned — `phase: "ready"` (probe proven) or `phase: "spawned"`
+  (spawned but the probe never answered, #458). `attached` and `unknown`
+  sessions are refused — nothing is signalled, and nothing about their
+  host is mutated.
 - A fresh process-census re-proof runs immediately before any signal:
   the recorded pid must still be the recorded process (pid *and* start
   time), it must be the only instance of its install in scope, and a pid
@@ -206,10 +213,22 @@ isolated `test` runner reports it as `unknown`, records the identity in the
 check's `evidence`, and quarantines the target so the next run does not treat
 the leftover as a fresh, unoccupied After Effects.)
 
-Recovery is a human's: find that pid in that session, quit After Effects, then
-clear the quarantine (`ae-a8n recover`) before running again. Repeating the
-probe from the same driver is refused — the same Apple Event that was denied
-would just be denied again.
+Recovery has a public path (#458): because the driver records
+`phase: "spawned"` provenance as soon as it knows the pid it started,
+`AfterEffects.terminate({ sessionRoot, permit: "terminate-owned-host",
+force: true })` — or `ae-a8n supervise terminate` with the same permit —
+can end that exact process. Every safety gate still applies: the live
+census must re-prove pid+start identity with no sibling instance before
+any signal, graceful is tried first, and disappearance must be proven by
+census. Once `process-gone` is recorded, `AfterEffects.rebuild` relaunches
+through the ordinary path. `stop()` still never quits it — ownership was
+never proven — and repeating the probe from the same driver is still
+refused.
+
+Hosts spawned *before* this record existed — or by anything other than a
+driver launch (an AppleScript `open`, a hand-started AE) — carry no
+provenance and remain outside every public exit path; those are a human's
+to resolve, exactly as before.
 
 ## Unsaved changes
 

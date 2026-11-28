@@ -9,17 +9,23 @@
  * have reported "never started".
  *
  * Provenance is not ownership. What is kept here is the identity of the
- * process this session started, so a human can find it; nothing is quit or
- * killed on the strength of it.
+ * process this session started — since #458 also as `phase: "spawned"`
+ * launch provenance, so `terminate` can re-prove and end it through the
+ * public path — so a human can find it; the driver itself still quits or
+ * kills nothing on the strength of it.
  */
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AfterEffectsError, contextualise } from "../src/api/errors.js";
 import { AeDriver, HostLeftRunningError } from "../src/driver/driver.js";
+import {
+  launchProvenancePath,
+  readLaunchProvenance,
+} from "../src/driver/launch-provenance.js";
 import { ScriptInvocationError } from "../src/driver/script-invocation.js";
 import type {
   HostOwnership,
@@ -205,5 +211,47 @@ describe("a launch whose readiness probe was denied", () => {
     expect(caught instanceof AfterEffectsError ? caught.code : null).toBe("A8N-AE-005");
     expect(caught instanceof AfterEffectsError ? caught.message : "").toContain("pid 91135");
     expect(caught instanceof AfterEffectsError ? caught.cause : null).toBe(left);
+  });
+});
+
+describe("spawn-phase launch provenance (#458)", () => {
+  it("records the spawned process when the readiness probe never answers", async () => {
+    const transport = new DeniedAfterStart(LAUNCH);
+    const driver = driverOn(transport);
+    await expect(driver.start()).rejects.toBeInstanceOf(HostLeftRunningError);
+
+    // The record terminate needs: driver-authored, bound to this session
+    // root, naming the exact pid + pinned start identity the transport
+    // reported — marked "spawned" because the probe never proved it.
+    const provenance = readLaunchProvenance(root);
+    expect(provenance).not.toBeNull();
+    expect(provenance?.phase).toBe("spawned");
+    expect(provenance?.transport).toBe("denied-after-start");
+    expect(provenance?.host).toEqual({
+      pid: LAUNCH.pid,
+      startedAt: STARTED_AT,
+      identity: null,
+      executable: LAUNCH.executable,
+      platform: process.platform,
+    });
+  });
+
+  it("records nothing when this session started no process", async () => {
+    const transport = new DeniedAfterStart(null);
+    const driver = driverOn(transport);
+    await expect(driver.start()).rejects.toBe(transport.denied);
+
+    // An attached host is somebody else's: no record may ever name it.
+    expect(existsSync(launchProvenancePath(root))).toBe(false);
+  });
+
+  it("keeps a null start time rather than guessing one", async () => {
+    const transport = new DeniedAfterStart({ ...LAUNCH, startedAt: null });
+    const driver = driverOn(transport);
+    await expect(driver.start()).rejects.toBeInstanceOf(HostLeftRunningError);
+
+    const provenance = readLaunchProvenance(root);
+    expect(provenance?.phase).toBe("spawned");
+    expect(provenance?.host.startedAt).toBeNull();
   });
 });

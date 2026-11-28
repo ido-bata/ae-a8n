@@ -555,7 +555,9 @@ export const TERMINATE_PERMIT = "terminate-owned-host" as const;
  * never launches one. Every gate must hold or nothing is signalled:
  *
  *   - `permit` must be `"terminate-owned-host"` — prior, explicit consent;
- *   - launch provenance must prove an earlier session *owned* the host —
+ *   - launch provenance must name a host this session's driver spawned —
+ *     `phase: "ready"` (the probe proved ownership) or `phase: "spawned"`
+ *     (the driver spawned it but the probe never answered, #458);
  *     attached and unknown sessions have none and are never signalled;
  *   - a fresh census must prove the recorded pid+start identity is still
  *     that same process and that no other instance of the install runs;

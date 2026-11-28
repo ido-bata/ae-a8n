@@ -9,9 +9,14 @@
  *
  *   1. Explicit permission: `permit: "terminate-owned-host"` is required.
  *      There is no default and no implicit consent.
- *   2. Ownership by record: launch provenance must exist — only a session
- *      that proved `owned` ever writes one, so attached and unknown
- *      sessions refuse here without anything being signalled.
+ *   2. Ownership by record: launch provenance must exist — a session that
+ *      proved `owned` writes `phase: "ready"`, and since #458 a session
+ *      whose driver spawned a host the probe never answered writes
+ *      `phase: "spawned"`. Both are driver-authored records of a process
+ *      this session started; attached and unknown sessions have neither
+ *      and refuse here without anything being signalled. The phase changes
+ *      what the record *means* (probe-proven vs spawn-reported), never the
+ *      live re-proof below.
  *   3. Live re-verification: a fresh census must still show the recorded
  *      pid+start identity as the same process, with no sibling instance
  *      of the install in scope. An unreadable census refuses — an unknown
@@ -267,9 +272,9 @@ export async function terminateSessionHost(
     throw new TypeError("force must be a boolean");
   }
 
-  // 2. Ownership by record: only a session that proved `owned` wrote
-  //    provenance. Its absence is the attached/unknown answer — refuse
-  //    without signalling.
+  // 2. Ownership by record: a session that spawned or proved an owned host
+  //    wrote provenance (`phase: "spawned"` or `"ready"`, #458). Its
+  //    absence is the attached/unknown answer — refuse without signalling.
   let provenance: ReturnType<typeof readLaunchProvenance>;
   try {
     provenance = readLaunchProvenance(sessionRoot);
